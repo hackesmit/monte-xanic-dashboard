@@ -466,6 +466,30 @@ header {
   background: var(--card);
   padding: 22px 22px 18px;
   transition: background 0.3s;
+  position: relative;
+}
+.chart-export-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  padding: 3px 8px;
+  font-size: 8px;
+  font-family: 'Sackers Gothic Medium';
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  opacity: 0;
+  z-index: 2;
+}
+.chart-card:hover .chart-export-btn { opacity: 1; }
+.chart-export-btn:hover {
+  border-color: var(--gold);
+  color: var(--gold);
+  background: rgba(196,160,96,0.08);
 }
 .chart-wide { grid-column: 1 / -1; }
 .chart-title {
@@ -957,6 +981,7 @@ canvas { max-width: 100%; }
   .charts-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
+  .chart-export-btn { opacity: 0.7; font-size: 7px; padding: 2px 6px; }
   .layout { grid-template-columns: 1fr; }
   .sidebar { border-right: none; border-bottom: 1px solid var(--border-gold); max-height: 300px; }
   header { padding: 0 20px; }
