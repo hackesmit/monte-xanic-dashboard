@@ -6,22 +6,51 @@ const App = {
   theme: 'dark',
 
   async init() {
-    // Restore theme preference
     this.restoreTheme();
 
-    // Try loading from cache first
+    // 1 — Try localStorage cache (instant render)
     if (DataStore.loadCache()) {
       this.onDataLoaded();
+      // Refresh from Supabase in background; silently update if new data arrives
+      DataStore.initSupabase().then(() => {
+        DataStore.loadFromSupabase().then(loaded => {
+          if (loaded && this.initialized) this.refresh();
+          this._updateDbStatus();
+        });
+      });
     } else {
-      // Try loading from pre-extracted JSON files
-      const loaded = await DataStore.loadFromJSON();
-      if (loaded) {
+      // 2 — Try Supabase (first visit or stale cache)
+      await DataStore.initSupabase();
+      const supaLoaded = await DataStore.loadFromSupabase();
+      this._updateDbStatus();
+      if (supaLoaded) {
         this.onDataLoaded();
       } else {
-        this.showDataLoader();
+        // 3 — Fall back to pre-extracted JSON files (legacy / offline)
+        const jsonLoaded = await DataStore.loadFromJSON();
+        if (jsonLoaded) {
+          this.onDataLoaded();
+        } else {
+          this.showDataLoader();
+        }
       }
     }
     this.bindGlobalEvents();
+  },
+
+  // Update the DB status badge in the header
+  _updateDbStatus() {
+    const badge = document.getElementById('db-status-badge');
+    if (!badge) return;
+    if (DataStore.supabase) {
+      badge.textContent = 'DB ✓';
+      badge.title = 'Conectado a Supabase';
+      badge.className = 'db-badge db-badge-ok';
+    } else {
+      badge.textContent = 'DB —';
+      badge.title = 'Sin conexión a base de datos (modo local)';
+      badge.className = 'db-badge db-badge-off';
+    }
   },
 
   bindGlobalEvents() {
@@ -119,13 +148,24 @@ const App = {
   onDataLoaded() {
     this.hideDataLoader();
     this.initialized = true;
-
-    // Initialize filters
     Filters.init();
-
-    // Set default view
     this.setView('berry');
     this.refresh();
+
+    // Load weather in background after dashboard is visible
+    WeatherStore.load().then(hasCache => {
+      const vintages = WeatherStore.getVintagesFromData();
+      if (!vintages.length) return;
+      // Sync any missing harvest-season days from Open-Meteo
+      WeatherStore.sync(vintages).then(() => {
+        // Re-render whichever view is active (weather charts only draw if visible)
+        if (this.currentView === 'vintage' || this.currentView === 'berry') this.refresh();
+      });
+      // If we already had cached weather, re-render immediately
+      if (hasCache && (this.currentView === 'vintage' || this.currentView === 'berry')) {
+        this.refresh();
+      }
+    });
   },
 
   setView(view) {
@@ -160,6 +200,8 @@ const App = {
         KPIs.updateBerryKPIs(filteredBerry);
         Charts.updateBerryCharts(filteredBerry);
         Tables.updateBerryTable(filteredBerry);
+        Charts.createTempCorrelation('chartBrixTemp', filteredBerry);
+        Charts.createRainCorrelation('chartTantRain', filteredBerry);
         break;
 
       case 'wine':
@@ -182,6 +224,8 @@ const App = {
         Charts.createVintageComparison('chartVintageTA', filteredBerry, 'ta', 'AT (g/L)');
         this.updateVintageSummary(filteredBerry);
         this.updateVintageVarietalTable(filteredBerry);
+        Charts.createWeatherTimeSeries('chartWeatherTemp', WeatherStore.getVintagesFromData());
+        Charts.createRainfallChart('chartWeatherRain', WeatherStore.getVintagesFromData());
         break;
     }
 

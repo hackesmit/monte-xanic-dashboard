@@ -6,7 +6,7 @@
 <title>Vendimia 2024–2025 — Monte Xanic</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="css/styles.css">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23000'/%3E%3Cpath d='M32 14c-2 3-6 8-6 14 0 4 2 7 4 9v8c-3 1-8 3-8 5h20c0-2-5-4-8-5v-8c2-2 4-5 4-9 0-6-4-11-6-14z' fill='%23C4A060' stroke='%23C4A060' stroke-width='0.5'/%3E%3Cpath d='M22 26c-3-2-7-3-9-2 2 3 5 6 9 6M42 26c3-2 7-3 9-2-2 3-5 6-9 6' fill='none' stroke='%23C4A060' stroke-width='1.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='12' r='2' fill='%23C4A060'/%3E%3C/svg%3E">
 </head>
@@ -17,14 +17,31 @@
   <div class="loader-card" id="loader-card">
     <div class="loader-icon">🍇</div>
     <div class="loader-title">Cargar Datos de Vendimia</div>
+
+    <!-- ── Local load (this session only) ── -->
+    <div class="loader-section-label">Ver en esta sesión</div>
     <div class="loader-sub">
-      Seleccione o arrastre su archivo de exportación WineXRay:<br>
-      <strong>1.</strong> Exportación WineXRay (.csv o .xlsx) — datos de bayas y vino<br>
-      <strong>2.</strong> Movimientos de tanque (opcional) — contexto de mezclas
+      Arrastre o seleccione su exportación WineXRay (.csv o .xlsx) para visualizar sin guardar.
     </div>
     <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" style="display:none">
     <button class="loader-btn" onclick="document.getElementById('file-input').click()">Seleccionar Archivos</button>
     <div class="loader-files" id="loader-status"></div>
+
+    <!-- ── DB upload (persists to Supabase) ── -->
+    <div class="loader-divider"></div>
+    <div class="loader-section-label">Guardar en Base de Datos</div>
+    <div class="loader-sub">
+      Arrastre o seleccione un archivo para agregarlo a la base de datos permanente.<br>
+      <strong>WineXRay</strong> (.csv) — muestras de bayas y vino<br>
+      <strong>Recepción de Tanque</strong> (.xlsx) — recepciones y prefermentativos
+    </div>
+    <input type="file" id="db-file-input" accept=".xlsx,.xls,.csv" style="display:none"
+      onchange="UploadManager.handleUpload(this.files[0], document.getElementById('db-upload-status')); this.value=''">
+    <button class="loader-btn loader-btn-db" id="db-upload-btn"
+      onclick="document.getElementById('db-file-input').click()">
+      Subir a Base de Datos
+    </button>
+    <div id="db-upload-status" class="loader-files"></div>
   </div>
 </div>
 
@@ -34,34 +51,8 @@
 <header>
   <div class="header-left">
     <div class="brand">
-      <svg class="brand-logo" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
-        <!-- Central flower/leaf -->
-        <path d="M40 18c-1.5 2.5-3.5 6-5 10.5-1.5 4.5-1.5 8 0 11 1 2 2.5 3.5 4 4.5v10c0 .5-.5 1-1 1.2-3 1.2-7 3-7 4.8h18c0-1.8-4-3.6-7-4.8-.5-.2-1-.7-1-1.2v-10c1.5-1 3-2.5 4-4.5 1.5-3 1.5-6.5 0-11-1.5-4.5-3.5-8-5-10.5z" fill="currentColor"/>
-        <!-- Left vine -->
-        <path d="M30 32c-3-3-8-5-12-4.5 1.5 2 4 5 7 6.5 2 1 4 1.2 5.5 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        <path d="M28 38c-4-1-8-.5-11 1.5 2.5 1.5 5.5 2 8.5 1 2-.5 3.5-1.5 4.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <!-- Right vine -->
-        <path d="M50 32c3-3 8-5 12-4.5-1.5 2-4 5-7 6.5-2 1-4 1.2-5.5 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        <path d="M52 38c4-1 8-.5 11 1.5-2.5 1.5-5.5 2-8.5 1-2-.5-3.5-1.5-4.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <!-- Top buds -->
-        <circle cx="35" cy="14" r="2.2" fill="currentColor"/>
-        <circle cx="45" cy="14" r="2.2" fill="currentColor"/>
-        <path d="M38 11c-1-3-2-5-3.5-5.5.5 2 .5 4 1.5 5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        <path d="M42 11c1-3 2-5 3.5-5.5-.5 2-.5 4-1.5 5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        <!-- Center drop/bud -->
-        <ellipse cx="40" cy="12" rx="1.5" ry="2.5" fill="currentColor"/>
-        <!-- Bottom wreath -->
-        <path d="M28 50c-2 2-3 5-2 8 2-1 4-3 5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M52 50c2 2 3 5 2 8-2-1-4-3-5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <path d="M32 55c-1 2-.5 5 1 7 1.5-1.5 2-3.5 2-5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-        <path d="M48 55c1 2 .5 5-1 7-1.5-1.5-2-3.5-2-5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
-      </svg>
-      <div>
-        <div class="brand-top">
-          <span class="brand-name">Monte Xanic</span>
-        </div>
-        <div class="header-tagline">Seguimiento de Maduración y Fenólicos — Vendimia 2024 & 2025</div>
-      </div>
+      <img src="assets/logo_montexanic.svg" class="brand-logo" alt="Monte Xanic">
+      <div class="header-tagline">Seguimiento de Maduración y Fenólicos — Vendimia 2024 &amp; 2025</div>
     </div>
   </div>
   <div class="header-right">
@@ -69,6 +60,7 @@
     <div class="hdr-stat"><div class="hdr-num" id="hdr-lotes">—</div><div class="hdr-lbl">Lotes</div></div>
     <div class="hdr-stat"><div class="hdr-num" id="hdr-varietales">—</div><div class="hdr-lbl">Varietales</div></div>
     <div class="hdr-stat"><div class="hdr-num" id="hdr-origenes">—</div><div class="hdr-lbl">Orígenes</div></div>
+    <span id="db-status-badge" class="db-badge db-badge-off" title="Sin conexión a base de datos">DB —</span>
     <button class="theme-toggle" onclick="App.toggleTheme()" title="Cambiar tema claro/oscuro" id="theme-toggle-btn">
       <span class="theme-icon-dark">&#9790;</span>
       <span class="theme-icon-light" style="display:none">&#9788;</span>
@@ -241,6 +233,20 @@
           <div class="chart-title">Muestras por Origen</div>
           <div class="chart-sub">Distribución de muestras por viñedo</div>
           <div style="height:260px"><canvas id="chartOrigen"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px">Correlaciones Climáticas</div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Brix vs Temperatura</div>
+          <div class="chart-sub">Temperatura media (°C) en el día de muestreo</div>
+          <div style="height:240px"><canvas id="chartBrixTemp"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">tANT vs Lluvia Acumulada</div>
+          <div class="chart-sub">Precipitación acumulada desde 1 Jul hasta fecha de muestreo</div>
+          <div style="height:240px"><canvas id="chartTantRain"></canvas></div>
         </div>
       </div>
 
@@ -428,6 +434,21 @@
         </div>
       </div>
 
+      <div class="section-label" style="margin-top:24px">Clima durante la Vendimia — Valle de Guadalupe</div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Temperatura Media Diaria</div>
+          <div class="chart-sub">°C por día de temporada (1 Jul = Día 1) — comparativo entre vendimias</div>
+          <div style="height:240px"><canvas id="chartWeatherTemp"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Eventos de Lluvia</div>
+          <div class="chart-sub">Precipitación (mm) por día de temporada — comparativo entre vendimias</div>
+          <div style="height:240px"><canvas id="chartWeatherRain"></canvas></div>
+        </div>
+      </div>
+
       <div class="section-label" style="margin-top:24px">Promedios por Varietal · por Vendimia</div>
       <div class="table-wrap">
         <div class="table-scroll">
@@ -530,6 +551,8 @@
 <!-- Scripts -->
 <script src="js/config.js"></script>
 <script src="js/dataLoader.js"></script>
+<script src="js/upload.js"></script>
+<script src="js/weather.js"></script>
 <script src="js/filters.js"></script>
 <script src="js/kpis.js"></script>
 <script src="js/charts.js"></script>
