@@ -1,0 +1,50 @@
+# Dependencies
+node_modules/
+
+# Environment variables & secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Files likely containing API keys or passwords
+*.key
+*.pem
+*.p12
+*.pfx
+*.cert
+*.crt
+secrets/
+secrets.json
+secrets.yaml
+secrets.yml
+config/secrets.*
+*credentials*
+*api-keys*
+*apikeys*
+*api_keys*
+*password*
+*passwords*
+auth.json
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
