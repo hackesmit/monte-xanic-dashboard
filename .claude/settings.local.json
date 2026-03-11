@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"import pandas as pd; print\\(''pandas OK''\\)\")",
+      "Bash(python -c \"import pandas as pd; print\\(''pandas OK''\\)\")",
+      "Bash(ls /c/Python*/python.exe)",
+      "Read(//c/Users/danie/AppData/Local/Programs/**)",
+      "Read(//c/Users/danie/AppData/Local/Microsoft/WindowsApps/**)",
+      "Bash(where python)",
+      "Bash(py --version)",
+      "Bash(node -e \"console.log\\(''Node.js'', process.version\\)\")",
+      "Bash(node.exe -e \"console.log\\(''Node.js'', process.version\\)\")",
+      "Bash(\"/c/Program Files/nodejs/node.exe\" -e \"console.log\\(''ok''\\)\")",
+      "Bash(where node)",
+      "Bash(cmd.exe /c \"where node\")",
+      "Bash(cmd.exe /c \"node --version\")",
+      "Bash(cmd.exe /c \"python --version\")",
+      "Bash(cmd.exe /c \"py --version\")",
+      "Bash(cmd.exe /c \"bun --version\")",
+      "Bash(PATH=\"/c/Users/danie/AppData/Local/Programs/Python/Python312:/c/Users/danie/AppData/Local/Programs/Python/Python311:/c/Users/danie/AppData/Local/Programs/Python/Python310:/c/Program Files/Python312:/c/Program Files/Python311:/c/Program Files/nodejs:$PATH\")",
+      "Bash(py.exe --version)",
+      "Bash(/c/Users/danie/AppData/Local/Microsoft/WindowsApps/python.exe --version)",
+      "Bash(powershell.exe -Command \"python --version\")",
+      "Bash(powershell.exe -Command \"Get-Command python -ErrorAction SilentlyContinue | Select-Object Source; Get-Command node -ErrorAction SilentlyContinue | Select-Object Source; Get-Command npm -ErrorAction SilentlyContinue | Select-Object Source; Get-Command bun -ErrorAction SilentlyContinue | Select-Object Source; Get-Command deno -ErrorAction SilentlyContinue | Select-Object Source\")",
+      "Read(//c/Program Files/**)",
+      "Read(//c//**)",
+      "Bash(powershell.exe -Command \"Get-Command npx -ErrorAction SilentlyContinue | Select Source\")",
+      "Bash(powershell.exe -Command \"Get-Command npm -ErrorAction SilentlyContinue | Select Source\")",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(powershell.exe -Command \"Write-Host ''test''\")",
+      "Bash(powershell.exe -Command \"winget list --name Node | Select-String ''Node''\")",
+      "Bash(python -c \"import openpyxl; print\\(''openpyxl available''\\)\")",
+      "Bash(pip install openpyxl)",
+      "Bash(python -m pip install openpyxl)",
+      "Bash(python extract_data.py)",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

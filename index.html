@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vendimia 2024–2025 — Monte Xanic</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Jost:wght@200;300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23000'/%3E%3Cpath d='M32 14c-2 3-6 8-6 14 0 4 2 7 4 9v8c-3 1-8 3-8 5h20c0-2-5-4-8-5v-8c2-2 4-5 4-9 0-6-4-11-6-14z' fill='%23C4A060' stroke='%23C4A060' stroke-width='0.5'/%3E%3Cpath d='M22 26c-3-2-7-3-9-2 2 3 5 6 9 6M42 26c3-2 7-3 9-2-2 3-5 6-9 6' fill='none' stroke='%23C4A060' stroke-width='1.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='12' r='2' fill='%23C4A060'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<!-- Data Loader Overlay -->
+<div id="data-loader" class="data-loader view-panel active">
+  <div class="loader-card" id="loader-card">
+    <div class="loader-icon">🍇</div>
+    <div class="loader-title">Cargar Datos de Vendimia</div>
+    <div class="loader-sub">
+      Seleccione o arrastre su archivo de exportación WineXRay:<br>
+      <strong>1.</strong> Exportación WineXRay (.csv o .xlsx) — datos de bayas y vino<br>
+      <strong>2.</strong> Movimientos de tanque (opcional) — contexto de mezclas
+    </div>
+    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" style="display:none">
+    <button class="loader-btn" onclick="document.getElementById('file-input').click()">Seleccionar Archivos</button>
+    <div class="loader-files" id="loader-status"></div>
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div id="dashboard-content" style="display:none">
+
+<header>
+  <div class="header-left">
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+        <!-- Central flower/leaf -->
+        <path d="M40 18c-1.5 2.5-3.5 6-5 10.5-1.5 4.5-1.5 8 0 11 1 2 2.5 3.5 4 4.5v10c0 .5-.5 1-1 1.2-3 1.2-7 3-7 4.8h18c0-1.8-4-3.6-7-4.8-.5-.2-1-.7-1-1.2v-10c1.5-1 3-2.5 4-4.5 1.5-3 1.5-6.5 0-11-1.5-4.5-3.5-8-5-10.5z" fill="currentColor"/>
+        <!-- Left vine -->
+        <path d="M30 32c-3-3-8-5-12-4.5 1.5 2 4 5 7 6.5 2 1 4 1.2 5.5 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M28 38c-4-1-8-.5-11 1.5 2.5 1.5 5.5 2 8.5 1 2-.5 3.5-1.5 4.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <!-- Right vine -->
+        <path d="M50 32c3-3 8-5 12-4.5-1.5 2-4 5-7 6.5-2 1-4 1.2-5.5 1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+        <path d="M52 38c4-1 8-.5 11 1.5-2.5 1.5-5.5 2-8.5 1-2-.5-3.5-1.5-4.5-2.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <!-- Top buds -->
+        <circle cx="35" cy="14" r="2.2" fill="currentColor"/>
+        <circle cx="45" cy="14" r="2.2" fill="currentColor"/>
+        <path d="M38 11c-1-3-2-5-3.5-5.5.5 2 .5 4 1.5 5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        <path d="M42 11c1-3 2-5 3.5-5.5-.5 2-.5 4-1.5 5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        <!-- Center drop/bud -->
+        <ellipse cx="40" cy="12" rx="1.5" ry="2.5" fill="currentColor"/>
+        <!-- Bottom wreath -->
+        <path d="M28 50c-2 2-3 5-2 8 2-1 4-3 5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M52 50c2 2 3 5 2 8-2-1-4-3-5-5.5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        <path d="M32 55c-1 2-.5 5 1 7 1.5-1.5 2-3.5 2-5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        <path d="M48 55c1 2 .5 5-1 7-1.5-1.5-2-3.5-2-5.5" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <div class="brand-top">
+          <span class="brand-name">Monte Xanic</span>
+        </div>
+        <div class="header-tagline">Seguimiento de Maduración y Fenólicos — Vendimia 2024 & 2025</div>
+      </div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-muestras">—</div><div class="hdr-lbl">Muestras</div></div>
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-lotes">—</div><div class="hdr-lbl">Lotes</div></div>
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-varietales">—</div><div class="hdr-lbl">Varietales</div></div>
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-origenes">—</div><div class="hdr-lbl">Orígenes</div></div>
+    <button class="theme-toggle" onclick="App.toggleTheme()" title="Cambiar tema claro/oscuro" id="theme-toggle-btn">
+      <span class="theme-icon-dark">&#9790;</span>
+      <span class="theme-icon-light" style="display:none">&#9788;</span>
+    </button>
+    <button class="help-toggle" onclick="App.toggleHelp()" title="Ayuda">?</button>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="nav-tabs">
+      <button class="nav-tab active" data-view="berry" onclick="App.setView('berry')">Bayas</button>
+      <button class="nav-tab" data-view="wine" onclick="App.setView('wine')">Vino</button>
+      <button class="nav-tab" data-view="extraction" onclick="App.setView('extraction')">Extracción</button>
+      <button class="nav-tab" data-view="vintage" onclick="App.setView('vintage')">Vendimias</button>
+    </div>
+
+    <!-- Berry Filters -->
+    <div id="berry-filters">
+      <div class="filter-section">
+        <div class="filter-label">Vendimia</div>
+        <div class="filter-chips" id="vintage-chips"></div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-label">Tipo de Uva</div>
+        <div class="type-filter-row">
+          <button class="type-btn" id="btn-type-all" onclick="Filters.setGrapeType('all')">Todas</button>
+          <button class="type-btn" id="btn-type-red" onclick="Filters.setGrapeType('red')">Tintas</button>
+          <button class="type-btn" id="btn-type-white" onclick="Filters.setGrapeType('white')">Blancas</button>
+        </div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-label">Varietal</div>
+        <button class="clear-btn" onclick="Filters.clearFilter('varieties')">Limpiar</button>
+        <div class="filter-chips" id="variety-chips"></div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-label">Origen</div>
+        <button class="clear-btn" onclick="Filters.clearFilter('origins')">Limpiar</button>
+        <div class="filter-chips" id="origin-chips"></div>
+      </div>
+
+      <div class="filter-section">
+        <div class="filter-label">Lote Específico</div>
+        <input type="text" class="lot-search" id="lot-search" placeholder="Buscar lote...">
+        <button class="clear-btn" onclick="Filters.clearFilter('lots')">Limpiar</button>
+        <div class="lot-chips-container">
+          <div class="filter-chips" id="lot-chips"></div>
+        </div>
+      </div>
+
+      <div class="filter-section" style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+        <button class="clear-btn" onclick="App.reloadData()" style="color:var(--flag-warning);border-color:rgba(224,144,48,0.3)">
+          Recargar Datos
+        </button>
+      </div>
+    </div>
+
+    <!-- Wine Filters (shown in wine view) -->
+    <div id="wine-filters" style="display:none">
+      <div class="filter-section">
+        <div class="filter-label">Tipo de Uva</div>
+        <div class="type-filter-row">
+          <button class="type-btn" id="btn-wine-type-all" onclick="Filters.setWineGrapeType('all')">Todas</button>
+          <button class="type-btn" id="btn-wine-type-red" onclick="Filters.setWineGrapeType('red')">Tintas</button>
+          <button class="type-btn" id="btn-wine-type-white" onclick="Filters.setWineGrapeType('white')">Blancas</button>
+        </div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-label">Varietal</div>
+        <button class="clear-btn" onclick="Filters.clearWineFilter('varieties')">Limpiar</button>
+        <div class="filter-chips" id="wine-variety-chips"></div>
+      </div>
+      <div class="filter-section">
+        <div class="filter-label">Proveedor / Origen</div>
+        <button class="clear-btn" onclick="Filters.clearWineFilter('origins')">Limpiar</button>
+        <div class="filter-chips" id="wine-origin-chips"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── MAIN CONTENT ── -->
+  <main class="main">
+
+    <!-- ═══════ BERRY VIEW ═══════ -->
+    <div id="view-berry" class="view-panel active">
+      <div class="section-label">Indicadores Clave</div>
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-label">Brix Promedio</div><div class="kpi-value" id="kpi-avg-brix">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">pH Promedio</div><div class="kpi-value" id="kpi-avg-ph">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">AT Promedio</div><div class="kpi-value" id="kpi-avg-ta">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="kpi-avg-tant">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Peso Baya Prom.</div><div class="kpi-value" id="kpi-avg-fw">—</div></div>
+      </div>
+
+      <div class="section-label">Evolución vs Días Post-Envero</div>
+
+      <!-- Chart controls -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <div class="color-mode-tabs">
+          <button class="color-mode-btn active" data-mode="variety" onclick="Filters.setColorBy('variety')">Por Varietal</button>
+          <button class="color-mode-btn" data-mode="origin" onclick="Filters.setColorBy('origin')">Por Origen</button>
+        </div>
+        <div class="chart-controls">
+          <button class="chart-toggle line-toggle" onclick="Charts.toggleLines()">Conectar Líneas</button>
+        </div>
+      </div>
+
+      <!-- Legend -->
+      <div id="legend-bar" class="legend-bar"></div>
+
+      <!-- Charts grid -->
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Brix</div>
+          <div class="chart-sub">Grados Brix vs días post-envero</div>
+          <div style="height:240px"><canvas id="chartBrix"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Antocianinas Totales</div>
+          <div class="chart-sub">tANT (ppm ME) vs días post-envero</div>
+          <div style="height:240px"><canvas id="chartAnt"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">pH</div>
+          <div class="chart-sub">pH vs días post-envero</div>
+          <div style="height:240px"><canvas id="chartPH"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Acidez Total</div>
+          <div class="chart-sub">TA (g/L) vs días post-envero</div>
+          <div style="height:240px"><canvas id="chartTA"></canvas></div>
+        </div>
+      </div>
+
+      <div class="charts-grid" style="margin-top:1px">
+        <div class="chart-card">
+          <div class="chart-title">Peso por Baya</div>
+          <div class="chart-sub">Gramos por baya vs días post-envero</div>
+          <div style="height:240px"><canvas id="chartWeight"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Brix vs pH</div>
+          <div class="chart-sub">Dispersión madurez fenólica</div>
+          <div style="height:240px"><canvas id="chartScatter"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-label">Comparativo por Varietal</div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Brix por Varietal</div>
+          <div class="chart-sub">Promedio general</div>
+          <div style="height:280px"><canvas id="chartVarBrix"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">tANT por Varietal</div>
+          <div class="chart-sub">Promedio general</div>
+          <div style="height:280px"><canvas id="chartVarAnt"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-label">Distribución por Origen</div>
+      <div class="charts-grid">
+        <div class="chart-card chart-wide">
+          <div class="chart-title">Muestras por Origen</div>
+          <div class="chart-sub">Distribución de muestras por viñedo</div>
+          <div style="height:260px"><canvas id="chartOrigen"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Data Table -->
+      <div class="section-label">Datos · <span id="berry-table-count"></span></div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th data-sort="sampleId" onclick="Tables.setSort('sampleId')">Sample ID <span class="sort-arrow"></span></th>
+                <th data-sort="sampleDate" onclick="Tables.setSort('sampleDate')">Fecha <span class="sort-arrow"></span></th>
+                <th data-sort="vintage" onclick="Tables.setSort('vintage')">Vendimia <span class="sort-arrow"></span></th>
+                <th data-sort="variety" onclick="Tables.setSort('variety')">Varietal <span class="sort-arrow"></span></th>
+                <th data-sort="appellation" onclick="Tables.setSort('appellation')">Origen <span class="sort-arrow"></span></th>
+                <th data-sort="brix" onclick="Tables.setSort('brix')">Brix <span class="sort-arrow"></span></th>
+                <th data-sort="pH" onclick="Tables.setSort('pH')">pH <span class="sort-arrow"></span></th>
+                <th data-sort="ta" onclick="Tables.setSort('ta')">AT <span class="sort-arrow"></span></th>
+                <th data-sort="tANT" onclick="Tables.setSort('tANT')">tANT <span class="sort-arrow"></span></th>
+                <th data-sort="berryFW" onclick="Tables.setSort('berryFW')">g/Baya <span class="sort-arrow"></span></th>
+                <th data-sort="daysPostCrush" onclick="Tables.setSort('daysPostCrush')">DPE <span class="sort-arrow"></span></th>
+              </tr>
+            </thead>
+            <tbody id="berry-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ WINE VIEW ═══════ -->
+    <div id="view-wine" class="view-panel">
+      <div class="section-label">Indicadores Clave — Recepción</div>
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="wine-kpi-tant">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">fANT Promedio</div><div class="kpi-value" id="wine-kpi-fant">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">pTAN Promedio</div><div class="kpi-value" id="wine-kpi-ptan">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">IPT Promedio</div><div class="kpi-value" id="wine-kpi-ipt">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Muestras</div><div class="kpi-value" id="wine-kpi-count">—</div></div>
+      </div>
+
+      <div class="section-label">Recepción de Tanque · <span id="wine-table-count"></span></div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Fecha</th>
+                <th>Tanque</th>
+                <th>Variedad</th>
+                <th>Origen</th>
+                <th>Tipo</th>
+                <th>tANT</th>
+                <th>fANT</th>
+                <th>pTAN</th>
+                <th>IPT</th>
+                <th>DPE</th>
+              </tr>
+            </thead>
+            <tbody id="wine-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px">Mostos (Pre-fermentación) · <span id="preferment-table-count"></span></div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Código</th>
+                <th>Fecha</th>
+                <th>Tanque</th>
+                <th>Variedad</th>
+                <th>Origen</th>
+                <th>tANT</th>
+                <th>fANT</th>
+                <th>pTAN</th>
+                <th>IPT</th>
+                <th>DPE</th>
+              </tr>
+            </thead>
+            <tbody id="preferment-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="padding:20px;text-align:center;color:var(--muted);font-size:11px" id="wine-no-data">
+        Cargue la exportación WineXRay para ver los datos de vino.
+      </div>
+    </div>
+
+    <!-- ═══════ EXTRACTION VIEW ═══════ -->
+    <div id="view-extraction" class="view-panel">
+      <div class="section-label">Comparación Baya → Vino · Extracción Fenólica</div>
+
+      <div class="charts-grid">
+        <div class="chart-card chart-wide">
+          <div class="chart-title">tANT: Baya vs Vino</div>
+          <div class="chart-sub">Antocianinas totales — porcentaje de extracción</div>
+          <div style="height:320px"><canvas id="chartExtraction"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px">Detalle de Extracción</div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Lote Baya</th>
+                <th>Lote Vino</th>
+                <th>Varietal</th>
+                <th>Origen</th>
+                <th>tANT Baya</th>
+                <th>tANT Vino</th>
+                <th>Extracción %</th>
+              </tr>
+            </thead>
+            <tbody id="extraction-table-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══════ VINTAGE COMPARISON VIEW ═══════ -->
+    <div id="view-vintage" class="view-panel">
+      <div class="section-label">Comparación 2024 vs 2025</div>
+
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+          <div style="width:12px;height:12px;background:#60A8C0;border-radius:50%"></div> 2024
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+          <div style="width:12px;height:12px;background:#C4A060;border-radius:50%"></div> 2025
+        </div>
+        <div style="flex:1"></div>
+        <button class="chart-toggle line-toggle" onclick="Charts.toggleLines()" style="font-size:9px">
+          Conectar Líneas
+        </button>
+      </div>
+
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Brix</div>
+          <div class="chart-sub">Comparación por lote entre vendimias</div>
+          <div style="height:260px"><canvas id="chartVintageBrix"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Antocianinas Totales</div>
+          <div class="chart-sub">tANT (ppm ME) entre vendimias</div>
+          <div style="height:260px"><canvas id="chartVintageAnt"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">pH</div>
+          <div class="chart-sub">pH entre vendimias</div>
+          <div style="height:260px"><canvas id="chartVintagePH"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Acidez Total</div>
+          <div class="chart-sub">AT (g/L) entre vendimias</div>
+          <div style="height:260px"><canvas id="chartVintageTA"></canvas></div>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px">Resumen Comparativo de Promedios</div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table vintage-summary-table">
+            <thead>
+              <tr>
+                <th>Parámetro</th>
+                <th style="text-align:center">
+                  <span style="display:inline-block;width:10px;height:10px;background:#60A8C0;border-radius:50%;vertical-align:middle;margin-right:4px"></span>2024
+                </th>
+                <th style="text-align:center">
+                  <span style="display:inline-block;width:10px;height:10px;background:#C4A060;border-radius:50%;vertical-align:middle;margin-right:4px"></span>2025
+                </th>
+                <th style="text-align:center">Diferencia</th>
+                <th style="text-align:center">Cambio %</th>
+              </tr>
+            </thead>
+            <tbody id="vintage-summary-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:24px">Promedios por Varietal · por Vendimia</div>
+      <div class="table-wrap">
+        <div class="table-scroll">
+          <table class="data-table vintage-varietal-table">
+            <thead>
+              <tr>
+                <th>Varietal</th>
+                <th style="text-align:center">Brix 2024</th>
+                <th style="text-align:center">Brix 2025</th>
+                <th style="text-align:center">pH 2024</th>
+                <th style="text-align:center">pH 2025</th>
+                <th style="text-align:center">tANT 2024</th>
+                <th style="text-align:center">tANT 2025</th>
+                <th style="text-align:center">AT 2024</th>
+                <th style="text-align:center">AT 2025</th>
+                <th style="text-align:center">n 2024</th>
+                <th style="text-align:center">n 2025</th>
+              </tr>
+            </thead>
+            <tbody id="vintage-varietal-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+</div>
+
+<!-- Help Modal -->
+<div id="help-modal" class="help-overlay" style="display:none">
+  <div class="help-card">
+    <div class="help-header">
+      <div class="help-title">Guía de Uso — Dashboard Vendimia</div>
+      <button class="help-close" onclick="App.toggleHelp()">&times;</button>
+    </div>
+    <div class="help-body">
+      <div class="help-section">
+        <h3>Cómo Iniciar</h3>
+        <p>El dashboard carga datos automáticamente desde archivos JSON pre-extraídos en la carpeta <code>data/</code>. Si los archivos no están presentes, se mostrará la pantalla de carga para subir datos manualmente.</p>
+        <p>Para servir el dashboard localmente, ejecute:</p>
+        <pre>python -m http.server 8080</pre>
+        <p>Luego abra <code>http://localhost:8080</code> en su navegador.</p>
+      </div>
+
+      <div class="help-section">
+        <h3>Cargar / Actualizar Datos</h3>
+        <p>Haga clic en <strong>"Recargar Datos"</strong> en la barra lateral para abrir la pantalla de carga. Puede arrastrar y soltar archivos o usar el botón de selección.</p>
+        <p><strong>Archivo principal:</strong></p>
+        <ul>
+          <li><strong>Exportación WineXRay</strong> (.csv o .xlsx) — Un solo archivo con todos los datos. El dashboard separa automáticamente muestras de bayas (<code>Sample Type = Berries</code>) y muestras de vino (Aging Wine, Young Wine, Must, etc.).</li>
+          <li><strong>Movimientos de tanque</strong> (opcional) — Archivo de contexto sobre mezclas y movimientos.</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Formato de Datos Requerido</h3>
+        <p><strong>Exportación WineXRay (.csv o .xlsx):</strong></p>
+        <p>Exportación directa de WineXRay. La primera fila debe ser encabezados. Valores nulos se representan con <code>-</code> o <code>—</code>. El archivo contiene tanto datos de bayas como de vino, diferenciados por la columna <code>Sample Type</code>. Columnas utilizadas:</p>
+        <div class="help-columns">
+          <code>Sample Id</code> <code>Sample Type</code> <code>Sample Date</code> <code>Vintage</code> <code>Variety</code> <code>Appellation</code> <code>Vessel Id</code> <code>DaysPostCrush</code> <code>Brix</code> <code>pH</code> <code>tANT</code> <code>fANT</code> <code>pTAN</code> <code>IPT</code> <code>Berry Fresh Weight</code>
+        </div>
+      </div>
+
+      <div class="help-section">
+        <h3>Vistas del Dashboard</h3>
+        <ul>
+          <li><strong>Bayas</strong> — Gráficas de dispersión de Brix, pH, tANT, Acidez y Peso vs Días Post-Envero. Comparativo por varietal y distribución por origen.</li>
+          <li><strong>Vino</strong> — Tablas de recepción de tanque y prefermentativos con KPIs. Filtre por varietal, proveedor/origen y tipo de uva.</li>
+          <li><strong>Extracción</strong> — Comparación baya→vino de antocianinas totales. Muestra porcentaje de extracción fenólica.</li>
+          <li><strong>Vendimias</strong> — Gráficas de comparación 2024 vs 2025 y tablas de resumen con promedios por parámetro y varietal.</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Controles y Filtros</h3>
+        <ul>
+          <li><strong>Tipo de Uva</strong> — Filtre entre tintas, blancas o todas.</li>
+          <li><strong>Varietal</strong> — Haga clic en chips para seleccionar/deseleccionar varietales. Los chips tienen borde de color indicando tinta (rojo) o blanca (amarillo).</li>
+          <li><strong>Origen</strong> — Filtre por viñedo/origen.</li>
+          <li><strong>Lote</strong> — Busque y filtre por lote específico.</li>
+          <li><strong>Color por</strong> — Cambie el color de las gráficas entre "Por Varietal" y "Por Origen".</li>
+          <li><strong>Conectar Líneas</strong> — Active/desactive líneas entre puntos de datos.</li>
+          <li><strong>Leyenda</strong> — Haga clic en items de la leyenda para ocultar/mostrar series.</li>
+          <li><strong>Modo Claro/Oscuro</strong> — Use el botón de luna/sol en la esquina superior derecha.</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Regenerar Datos JSON</h3>
+        <p>Para actualizar los datos pre-extraídos, coloque los archivos Excel en la carpeta del proyecto y ejecute:</p>
+        <pre>python extract_data.py</pre>
+        <p>Esto generará los archivos en <code>data/</code> y el dashboard los cargará automáticamente en la siguiente visita.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scripts -->
+<script src="js/config.js"></script>
+<script src="js/dataLoader.js"></script>
+<script src="js/filters.js"></script>
+<script src="js/kpis.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/tables.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>
