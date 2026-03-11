@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Vendimia 2024–2025 — Monte Xanic</title>
+<title>Vendimias — Monte Xanic</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
@@ -52,7 +52,7 @@
   <div class="header-left">
     <div class="brand">
       <img src="assets/logo_montexanic.svg" class="brand-logo" alt="Monte Xanic">
-      <div class="header-tagline">Seguimiento de Maduración y Fenólicos — Vendimia 2024 &amp; 2025</div>
+      <div class="header-tagline" id="header-tagline">Seguimiento de Maduración y Fenólicos</div>
     </div>
   </div>
   <div class="header-right">
@@ -386,15 +386,10 @@
 
     <!-- ═══════ VINTAGE COMPARISON VIEW ═══════ -->
     <div id="view-vintage" class="view-panel">
-      <div class="section-label">Comparación 2024 vs 2025</div>
+      <div class="section-label" id="vintage-section-label">Comparación entre Vendimias</div>
 
-      <div style="display:flex;gap:8px;margin-bottom:12px">
-        <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
-          <div style="width:12px;height:12px;background:#60A8C0;border-radius:50%"></div> 2024
-        </div>
-        <div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
-          <div style="width:12px;height:12px;background:#C4A060;border-radius:50%"></div> 2025
-        </div>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <div id="vintage-legend-dots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
         <div style="flex:1"></div>
         <button class="chart-toggle line-toggle" onclick="Charts.toggleLines()" style="font-size:9px">
           Conectar Líneas
@@ -432,15 +427,9 @@
       <div class="table-wrap">
         <div class="table-scroll">
           <table class="data-table vintage-summary-table">
-            <thead>
+            <thead id="vintage-summary-head">
               <tr>
                 <th>Parámetro</th>
-                <th style="text-align:center">
-                  <span style="display:inline-block;width:10px;height:10px;background:#60A8C0;border-radius:50%;vertical-align:middle;margin-right:4px"></span>2024
-                </th>
-                <th style="text-align:center">
-                  <span style="display:inline-block;width:10px;height:10px;background:#C4A060;border-radius:50%;vertical-align:middle;margin-right:4px"></span>2025
-                </th>
                 <th style="text-align:center">Diferencia</th>
                 <th style="text-align:center">Cambio %</th>
               </tr>
@@ -471,19 +460,9 @@
       <div class="table-wrap">
         <div class="table-scroll">
           <table class="data-table vintage-varietal-table">
-            <thead>
+            <thead id="vintage-varietal-head">
               <tr>
                 <th>Varietal</th>
-                <th style="text-align:center">Brix 2024</th>
-                <th style="text-align:center">Brix 2025</th>
-                <th style="text-align:center">pH 2024</th>
-                <th style="text-align:center">pH 2025</th>
-                <th style="text-align:center">tANT 2024</th>
-                <th style="text-align:center">tANT 2025</th>
-                <th style="text-align:center">AT 2024</th>
-                <th style="text-align:center">AT 2025</th>
-                <th style="text-align:center">n 2024</th>
-                <th style="text-align:center">n 2025</th>
               </tr>
             </thead>
             <tbody id="vintage-varietal-body"></tbody>
@@ -538,7 +517,7 @@
           <li><strong>Bayas</strong> — Gráficas de dispersión de Brix, pH, tANT, Acidez y Peso vs Días Post-Envero. Comparativo por varietal y distribución por origen.</li>
           <li><strong>Vino</strong> — Tablas de recepción de tanque y prefermentativos con KPIs. Filtre por varietal, proveedor/origen y tipo de uva.</li>
           <li><strong>Extracción</strong> — Comparación baya→vino de antocianinas totales. Muestra porcentaje de extracción fenólica.</li>
-          <li><strong>Vendimias</strong> — Gráficas de comparación 2024 vs 2025 y tablas de resumen con promedios por parámetro y varietal.</li>
+          <li><strong>Vendimias</strong> — Gráficas de comparación entre vendimias y tablas de resumen con promedios por parámetro y varietal.</li>
         </ul>
       </div>
 

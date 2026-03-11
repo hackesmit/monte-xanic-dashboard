@@ -296,7 +296,7 @@ const Charts = {
     });
   },
 
-  // Vintage comparison chart: overlay 2024 vs 2025 for same plots
+  // Vintage comparison chart: overlay N vintages for same plots
   createVintageComparison(canvasId, data, yField, yLabel) {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
@@ -316,16 +316,14 @@ const Charts = {
       byLot[key][v].push({ x, y, sampleId: d.sampleId, variety: d.variety, appellation: d.appellation, vintage: v });
     });
 
-    // Only keep lots that appear in both vintages
+    // Only keep lots that appear in 2+ vintages
     const datasets = [];
-    const colors2024 = '#60A8C0';
-    const colors2025 = '#C4A060';
 
     Object.entries(byLot).forEach(([lot, vintages]) => {
-      const vkeys = Object.keys(vintages);
+      const vkeys = Object.keys(vintages).sort();
       if (vkeys.length < 2) return;
       vkeys.forEach(v => {
-        const color = v == 2024 ? colors2024 : colors2025;
+        const color = this._vintageColor(Number(v));
         const pts = vintages[v].sort((a, b) => a.x - b.x);
         datasets.push({
           label: `${lot} (${v})`,
@@ -541,7 +539,16 @@ const Charts = {
 
   // Vintage colours shared across all weather charts
   _vintageColor(year) {
-    const map = { 2024: '#60A8C0', 2025: '#C4A060', 2026: '#7EC87A', 2023: '#9B59B6' };
+    const map = {
+      2022: '#E06070',
+      2023: '#9B59B6',
+      2024: '#60A8C0',
+      2025: '#C4A060',
+      2026: '#7EC87A',
+      2027: '#E0A050',
+      2028: '#50C8B0',
+      2029: '#C870C8'
+    };
     return map[year] || '#888';
   },
 

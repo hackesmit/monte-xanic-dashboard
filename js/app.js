@@ -218,6 +218,7 @@ const App = {
         break;
 
       case 'vintage':
+        this._updateVintageUI(filteredBerry);
         Charts.createVintageComparison('chartVintageBrix', filteredBerry, 'brix', 'Brix (°Bx)');
         Charts.createVintageComparison('chartVintageAnt', filteredBerry, 'tANT', 'tANT (ppm ME)');
         Charts.createVintageComparison('chartVintagePH', filteredBerry, 'pH', 'pH');
@@ -233,10 +234,46 @@ const App = {
     KPIs.updateBerryKPIs(filteredBerry);
   },
 
+  // ── Vintage UI helpers ──
+
+  _updateVintageUI(data) {
+    const years = [...new Set(data.map(d => d.vintage).filter(Boolean))].map(Number).sort();
+
+    // Update section label
+    const sectionLabel = document.getElementById('vintage-section-label');
+    if (sectionLabel) {
+      if (years.length >= 2) {
+        sectionLabel.textContent = 'Comparación ' + years.join(' vs ');
+      } else if (years.length === 1) {
+        sectionLabel.textContent = 'Vendimia ' + years[0];
+      } else {
+        sectionLabel.textContent = 'Comparación entre Vendimias';
+      }
+    }
+
+    // Update legend dots
+    const dotsContainer = document.getElementById('vintage-legend-dots');
+    if (dotsContainer) {
+      dotsContainer.innerHTML = years.map(y => {
+        const color = Charts._vintageColor(y);
+        return `<div style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--muted)">
+          <div style="width:12px;height:12px;background:${color};border-radius:50%"></div> ${y}
+        </div>`;
+      }).join('');
+    }
+
+    // Update header tagline with detected years
+    const tagline = document.getElementById('header-tagline');
+    if (tagline && years.length) {
+      tagline.textContent = 'Seguimiento de Maduración y Fenólicos — Vendimia ' + years.join(' & ');
+    }
+  },
+
   // ── Vintage Summary Tables ──
 
   updateVintageSummary(data) {
     const body = document.getElementById('vintage-summary-body');
+    const thead = document.getElementById('vintage-summary-head');
     if (!body) return;
 
     const avg = (arr) => {
@@ -244,8 +281,29 @@ const App = {
       return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
     };
 
-    const data2024 = data.filter(d => d.vintage == 2024);
-    const data2025 = data.filter(d => d.vintage == 2025);
+    // Dynamically detect all vintage years, sorted ascending
+    const years = [...new Set(data.map(d => d.vintage).filter(Boolean))].map(Number).sort();
+    if (!years.length) { body.innerHTML = ''; return; }
+
+    // Group data by vintage
+    const dataByYear = {};
+    years.forEach(y => { dataByYear[y] = data.filter(d => Number(d.vintage) === y); });
+
+    // Build dynamic header
+    if (thead) {
+      let headerHtml = '<tr><th>Parámetro</th>';
+      years.forEach(y => {
+        const color = Charts._vintageColor(y);
+        headerHtml += `<th style="text-align:center"><span style="display:inline-block;width:10px;height:10px;background:${color};border-radius:50%;vertical-align:middle;margin-right:4px"></span>${y}</th>`;
+      });
+      // Diff columns between the two most recent vintages
+      if (years.length >= 2) {
+        headerHtml += '<th style="text-align:center">Diferencia</th>';
+        headerHtml += '<th style="text-align:center">Cambio %</th>';
+      }
+      headerHtml += '</tr>';
+      thead.innerHTML = headerHtml;
+    }
 
     const metrics = [
       { name: 'Brix Promedio', field: 'brix', dec: 1, unit: '°Bx' },
@@ -260,36 +318,47 @@ const App = {
     const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
 
     body.innerHTML = metrics.map(m => {
-      let v24, v25;
-      if (m.field === '_count') {
-        v24 = data2024.length;
-        v25 = data2025.length;
-      } else if (m.field === '_lots') {
-        v24 = new Set(data2024.map(d => d.sampleId)).size;
-        v25 = new Set(data2025.map(d => d.sampleId)).size;
-      } else {
-        v24 = avg(data2024.map(d => d[m.field]));
-        v25 = avg(data2025.map(d => d[m.field]));
+      // Compute value for each vintage year
+      const vals = {};
+      years.forEach(y => {
+        const yd = dataByYear[y];
+        if (m.field === '_count') {
+          vals[y] = yd.length;
+        } else if (m.field === '_lots') {
+          vals[y] = new Set(yd.map(d => d.sampleId)).size;
+        } else {
+          vals[y] = avg(yd.map(d => d[m.field]));
+        }
+      });
+
+      let row = `<td style="text-align:left;font-weight:400;color:var(--gold-lt)">${m.name}${m.unit ? ' <span style="color:var(--muted);font-weight:300">(' + m.unit + ')</span>' : ''}</td>`;
+
+      years.forEach(y => {
+        const color = Charts._vintageColor(y);
+        row += `<td style="color:${color}">${fmt(vals[y], m.dec)}</td>`;
+      });
+
+      // Diff between the two most recent vintages
+      if (years.length >= 2) {
+        const prev = years[years.length - 2];
+        const curr = years[years.length - 1];
+        const vPrev = vals[prev];
+        const vCurr = vals[curr];
+        const diff = (vPrev !== null && vCurr !== null) ? vCurr - vPrev : null;
+        const pct = (vPrev !== null && vCurr !== null && vPrev !== 0) ? ((diff / Math.abs(vPrev)) * 100) : null;
+        const diffClass = diff !== null ? (diff > 0 ? 'diff-positive' : diff < 0 ? 'diff-negative' : 'diff-neutral') : '';
+        const sign = diff !== null && diff > 0 ? '+' : '';
+        row += `<td class="${diffClass}">${diff !== null ? sign + fmt(diff, m.dec) : '—'}</td>`;
+        row += `<td class="${diffClass}">${pct !== null ? sign + pct.toFixed(1) + '%' : '—'}</td>`;
       }
 
-      const diff = (v24 !== null && v25 !== null) ? v25 - v24 : null;
-      const pct = (v24 !== null && v25 !== null && v24 !== 0) ? ((diff / Math.abs(v24)) * 100) : null;
-
-      const diffClass = diff !== null ? (diff > 0 ? 'diff-positive' : diff < 0 ? 'diff-negative' : 'diff-neutral') : '';
-      const sign = diff !== null && diff > 0 ? '+' : '';
-
-      return `<tr>
-        <td style="text-align:left;font-weight:400;color:var(--gold-lt)">${m.name}${m.unit ? ' <span style="color:var(--muted);font-weight:300">(' + m.unit + ')</span>' : ''}</td>
-        <td style="color:#60A8C0">${fmt(v24, m.dec)}</td>
-        <td style="color:#C4A060">${fmt(v25, m.dec)}</td>
-        <td class="${diffClass}">${diff !== null ? sign + fmt(diff, m.dec) : '—'}</td>
-        <td class="${diffClass}">${pct !== null ? sign + pct.toFixed(1) + '%' : '—'}</td>
-      </tr>`;
+      return `<tr>${row}</tr>`;
     }).join('');
   },
 
   updateVintageVarietalTable(data) {
     const body = document.getElementById('vintage-varietal-body');
+    const thead = document.getElementById('vintage-varietal-head');
     if (!body) return;
 
     const avg = (arr) => {
@@ -298,27 +367,54 @@ const App = {
     };
     const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
 
-    // Group by variety
+    // Dynamically detect all vintage years, sorted ascending
+    const years = [...new Set(data.map(d => d.vintage).filter(Boolean))].map(Number).sort();
+    if (!years.length) { body.innerHTML = ''; return; }
+
+    // Build dynamic header: Varietal | Brix Y1 | Brix Y2 | ... | pH Y1 | ... | n Y1 | n Y2 | ...
+    const paramCols = [
+      { label: 'Brix', field: 'brix', dec: 1 },
+      { label: 'pH', field: 'pH', dec: 2 },
+      { label: 'tANT', field: 'tANT', dec: 0 },
+      { label: 'AT', field: 'ta', dec: 1 },
+      { label: 'n', field: '_count', dec: 0 }
+    ];
+
+    if (thead) {
+      let headerHtml = '<tr><th>Varietal</th>';
+      paramCols.forEach(p => {
+        years.forEach(y => {
+          headerHtml += `<th style="text-align:center">${p.label} ${y}</th>`;
+        });
+      });
+      headerHtml += '</tr>';
+      thead.innerHTML = headerHtml;
+    }
+
+    // Group data by variety and vintage
     const varieties = [...new Set(data.map(d => d.variety).filter(Boolean))].sort();
 
     body.innerHTML = varieties.map(v => {
-      const d24 = data.filter(d => d.variety === v && d.vintage == 2024);
-      const d25 = data.filter(d => d.variety === v && d.vintage == 2025);
       const color = CONFIG.varietyColors[v] || '#888';
+      const byYear = {};
+      years.forEach(y => { byYear[y] = data.filter(d => d.variety === v && Number(d.vintage) === y); });
 
-      return `<tr>
-        <td style="text-align:left"><span class="badge badge-variety" style="border-color:${color}55;color:${color}">${v}</span></td>
-        <td style="color:#60A8C0">${fmt(avg(d24.map(d => d.brix)), 1)}</td>
-        <td style="color:#C4A060">${fmt(avg(d25.map(d => d.brix)), 1)}</td>
-        <td style="color:#60A8C0">${fmt(avg(d24.map(d => d.pH)), 2)}</td>
-        <td style="color:#C4A060">${fmt(avg(d25.map(d => d.pH)), 2)}</td>
-        <td style="color:#60A8C0">${fmt(avg(d24.map(d => d.tANT)), 0)}</td>
-        <td style="color:#C4A060">${fmt(avg(d25.map(d => d.tANT)), 0)}</td>
-        <td style="color:#60A8C0">${fmt(avg(d24.map(d => d.ta)), 1)}</td>
-        <td style="color:#C4A060">${fmt(avg(d25.map(d => d.ta)), 1)}</td>
-        <td style="color:#60A8C0">${d24.length || '—'}</td>
-        <td style="color:#C4A060">${d25.length || '—'}</td>
-      </tr>`;
+      let row = `<td style="text-align:left"><span class="badge badge-variety" style="border-color:${color}55;color:${color}">${v}</span></td>`;
+
+      paramCols.forEach(p => {
+        years.forEach(y => {
+          const vintColor = Charts._vintageColor(y);
+          let val;
+          if (p.field === '_count') {
+            val = byYear[y].length || null;
+          } else {
+            val = avg(byYear[y].map(d => d[p.field]));
+          }
+          row += `<td style="color:${vintColor}">${p.field === '_count' ? (val || '—') : fmt(val, p.dec)}</td>`;
+        });
+      });
+
+      return `<tr>${row}</tr>`;
     }).join('');
   },
 
