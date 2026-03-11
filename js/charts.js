@@ -241,6 +241,74 @@ const Charts = {
     });
   },
 
+  // Create horizontal bar chart grouped by origin
+  createOriginBarChart(canvasId, data, valueField, label) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const byOrigin = {};
+    data.forEach(d => {
+      const o = d.appellation;
+      const val = d[valueField];
+      if (o && typeof val === 'number' && !isNaN(val)) {
+        if (!byOrigin[o]) byOrigin[o] = [];
+        byOrigin[o].push(val);
+      }
+    });
+
+    const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const origins = Object.keys(byOrigin).sort((a, b) => avg(byOrigin[b]) - avg(byOrigin[a]));
+    const values = origins.map(o => parseFloat(avg(byOrigin[o]).toFixed(2)));
+    const shortLabels = origins.map(o => Filters.shortenOrigin(o));
+    const bgColors = origins.map(o => (CONFIG.originColors[o] || '#888') + '66');
+    const bdColors = origins.map(o => CONFIG.originColors[o] || '#888');
+
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: shortLabels,
+        datasets: [{
+          label,
+          data: values,
+          backgroundColor: bgColors,
+          borderColor: bdColors,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => origins[items[0].dataIndex] || items[0].label,
+              label: (ctx) => `${label}: ${ctx.parsed.x}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
   // Create doughnut chart (origin distribution)
   createDoughnut(canvasId, data) {
     this.destroy(canvasId);
@@ -873,5 +941,9 @@ const Charts = {
     this.createBarChart('chartVarBrix', clean, 'brix', 'Brix Promedio');
     this.createBarChart('chartVarAnt', clean, 'tANT', 'tANT Promedio');
     this.createDoughnut('chartOrigen', data);
+    this.createOriginBarChart('chartOriginBrix', clean, 'brix', 'Brix Promedio');
+    this.createOriginBarChart('chartOriginAnt', clean, 'tANT', 'tANT Promedio');
+    this.createOriginBarChart('chartOriginPH', clean, 'pH', 'pH Promedio');
+    this.createOriginBarChart('chartOriginTA', clean, 'ta', 'AT Promedio');
   }
 };
