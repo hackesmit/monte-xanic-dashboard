@@ -786,6 +786,72 @@ const Charts = {
     ctx.fillText(msg, canvas.width / 2, canvas.height / 2);
   },
 
+  // Export a chart canvas as PNG with dark background and watermark
+  exportChart(canvasId, title) {
+    const chart = this.instances[canvasId];
+    const srcCanvas = document.getElementById(canvasId);
+    if (!srcCanvas) return;
+
+    const pad = 40;
+    const titleH = 44;
+    const watermarkH = 30;
+    const w = srcCanvas.width;
+    const h = srcCanvas.height;
+    const totalW = w + pad * 2;
+    const totalH = h + titleH + watermarkH + pad;
+
+    const tmp = document.createElement('canvas');
+    tmp.width = totalW;
+    tmp.height = totalH;
+    const ctx = tmp.getContext('2d');
+
+    // Dark background
+    ctx.fillStyle = '#161616';
+    ctx.fillRect(0, 0, totalW, totalH);
+
+    // Title
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '16px "Sackers Gothic Medium", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(title, pad, pad + 6);
+
+    // Separator line
+    ctx.strokeStyle = 'rgba(196,160,96,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, titleH + 4);
+    ctx.lineTo(totalW - pad, titleH + 4);
+    ctx.stroke();
+
+    // Draw chart image
+    if (chart) {
+      // Temporarily render chart to image to get clean output
+      const chartImg = new Image();
+      chartImg.onload = () => {
+        ctx.drawImage(chartImg, pad, titleH + 8, w, h);
+        drawWatermark();
+      };
+      chartImg.src = srcCanvas.toDataURL('image/png');
+    } else {
+      ctx.drawImage(srcCanvas, pad, titleH + 8, w, h);
+      drawWatermark();
+    }
+
+    function drawWatermark() {
+      ctx.fillStyle = 'rgba(196,160,96,0.4)';
+      ctx.font = '10px "Sackers Gothic Medium", sans-serif';
+      ctx.textAlign = 'right';
+      ctx.fillText('Monte Xanic \u2014 Vendimia', totalW - pad, totalH - 12);
+
+      // Trigger download
+      const link = document.createElement('a');
+      const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+      link.download = `monte-xanic-${safeName}.png`;
+      link.href = tmp.toDataURL('image/png');
+      link.click();
+    }
+  },
+
   // Update all berry charts
   updateBerryCharts(data) {
     const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
