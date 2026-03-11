@@ -467,6 +467,16 @@ const App = {
     }).join('');
   },
 
+  // ── Mobile Filter Toggle ──
+
+  toggleMobileFilters() {
+    const sidebar = document.querySelector('.sidebar');
+    const btn = document.getElementById('mobile-filter-toggle');
+    if (!sidebar || !btn) return;
+    const expanded = sidebar.classList.toggle('filters-expanded');
+    btn.textContent = expanded ? 'Filtros \u25B2' : 'Filtros \u25BC';
+  },
+
   // ── Theme Toggle ──
 
   toggleTheme() {

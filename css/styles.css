@@ -974,6 +974,11 @@ header {
 
 canvas { max-width: 100%; }
 
+/* ── Mobile Filter Toggle (hidden on desktop) ── */
+.mobile-filter-toggle {
+  display: none;
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1200px) {
   .layout { grid-template-columns: 220px 1fr; }
@@ -983,10 +988,79 @@ canvas { max-width: 100%; }
 @media (max-width: 768px) {
   .chart-export-btn { opacity: 0.7; font-size: 7px; padding: 2px 6px; }
   .layout { grid-template-columns: 1fr; }
-  .sidebar { border-right: none; border-bottom: 1px solid var(--border-gold); max-height: 300px; }
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border-gold);
+    max-height: none;
+    overflow: visible;
+    padding-bottom: 12px;
+  }
   header { padding: 0 20px; }
   .header-right { display: none; }
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
   .brand-name { font-size: 22px; }
   .brand-logo { height: 36px; width: auto; }
+
+  /* Mobile filter toggle button */
+  .mobile-filter-toggle {
+    display: block;
+    width: 100%;
+    padding: 10px 16px;
+    font-family: 'Sackers Gothic Medium', sans-serif;
+    font-size: 10px;
+    font-weight: 400;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--gold);
+    background: transparent;
+    border: 1px solid var(--border-gold);
+    cursor: pointer;
+    margin-top: 12px;
+    transition: background 0.2s, border-color 0.2s;
+  }
+  .mobile-filter-toggle:hover {
+    background: rgba(196,160,96,0.06);
+    border-color: var(--gold);
+  }
+
+  /* Collapse filter sections by default on mobile */
+  #berry-filters,
+  #wine-filters {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease;
+  }
+
+  /* Expand when sidebar has .filters-expanded */
+  .sidebar.filters-expanded #berry-filters,
+  .sidebar.filters-expanded #wine-filters {
+    max-height: 50vh;
+    overflow-y: auto;
+  }
+
+  /* Horizontal scrolling chips on mobile */
+  .filter-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 4px;
+    /* Gradient scroll indicators */
+    mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 8px, black calc(100% - 24px), transparent 100%);
+  }
+
+  /* Touch-friendly chip sizing */
+  .chip {
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
+    padding: 6px 12px;
+  }
+
+  /* Smaller lot-chips container */
+  .lot-chips-container {
+    max-height: 120px;
+  }
 }
