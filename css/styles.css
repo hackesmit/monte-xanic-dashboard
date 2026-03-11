@@ -1,5 +1,13 @@
 /* ── Monte Xanic / Kompali — Vendimia Dashboard ── */
 
+@font-face {
+  font-family: 'Sackers Gothic Medium';
+  src: url('../fonts/SackersGothicMedium.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* ══ DARK THEME (default) ══ */
 :root {
   --black:       #000000;
@@ -62,7 +70,7 @@
 body {
   background: var(--black);
   color: var(--text);
-  font-family: 'Jost', sans-serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-weight: 300;
   min-height: 100vh;
   font-size: 13px;
@@ -92,10 +100,10 @@ header {
   gap: 16px;
 }
 .brand-logo {
-  width: 52px;
   height: 52px;
-  color: var(--logo-color);
+  width: auto;
   flex-shrink: 0;
+  display: block;
 }
 .brand-top {
   display: flex;
@@ -104,7 +112,7 @@ header {
   margin-bottom: 3px;
 }
 .brand-name {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 30px;
   font-weight: 300;
   letter-spacing: 0.12em;
@@ -119,7 +127,7 @@ header {
   flex-shrink: 0;
 }
 .brand-sub {
-  font-family: 'Jost', sans-serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 11px;
   letter-spacing: 0.25em;
   text-transform: uppercase;
@@ -127,11 +135,12 @@ header {
   font-weight: 400;
 }
 .header-tagline {
-  font-family: 'Playfair Display', serif;
-  font-style: italic;
-  font-size: 12px;
+  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-size: 11px;
   color: var(--muted);
-  letter-spacing: 0.08em;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-top: 6px;
 }
 .header-right {
   display: flex;
@@ -148,7 +157,7 @@ header {
 }
 .hdr-stat:last-child { border-right: none; }
 .hdr-num {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 28px;
   font-weight: 300;
   color: var(--white);
@@ -182,7 +191,7 @@ header {
   background: rgba(196,160,96,0.06);
 }
 .help-toggle {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 16px;
   font-weight: 500;
 }
@@ -214,7 +223,7 @@ header {
   padding: 9px 4px;
   cursor: pointer;
   font-size: 8px;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   font-weight: 400;
   color: var(--muted);
   background: transparent;
@@ -262,7 +271,7 @@ header {
   background: transparent;
   border: 1px solid var(--border);
   cursor: pointer;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   margin-bottom: 8px;
   transition: all 0.15s;
 }
@@ -280,7 +289,7 @@ header {
   border: 1px solid var(--border);
   cursor: pointer;
   font-size: 10px;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   color: var(--muted);
   background: transparent;
   transition: all 0.15s;
@@ -324,7 +333,7 @@ header {
   font-size: 9px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   font-weight: 400;
   background: transparent;
   border: 1px solid var(--border);
@@ -359,7 +368,7 @@ header {
   width: 100%;
   padding: 5px 8px;
   font-size: 10px;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   background: var(--card);
   border: 1px solid var(--border);
   color: var(--text);
@@ -431,7 +440,7 @@ header {
   margin-bottom: 10px;
 }
 .kpi-value {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 30px;
   font-weight: 300;
   color: var(--white);
@@ -441,7 +450,7 @@ header {
   font-size: 12px;
   color: var(--muted);
   margin-left: 3px;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
 }
 
 /* ── CHARTS ── */
@@ -460,7 +469,7 @@ header {
 }
 .chart-wide { grid-column: 1 / -1; }
 .chart-title {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 16px;
   font-weight: 400;
   color: var(--white);
@@ -482,7 +491,7 @@ header {
 .chart-toggle {
   padding: 3px 10px;
   font-size: 9px;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -536,7 +545,7 @@ header {
 .color-mode-btn {
   padding: 4px 10px;
   font-size: 9px;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -591,7 +600,7 @@ header {
   text-align: left;
   border-bottom: 1px solid var(--border-gold);
   font-weight: 400;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   white-space: nowrap;
   cursor: pointer;
   transition: background 0.3s;
@@ -671,7 +680,7 @@ header {
   opacity: 0.6;
 }
 .loader-title {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 22px;
   color: var(--white);
   margin-bottom: 8px;
@@ -687,7 +696,7 @@ header {
   background: var(--gold);
   color: #000;
   border: none;
-  font-family: 'Jost';
+  font-family: 'Sackers Gothic Medium';
   font-size: 11px;
   font-weight: 500;
   letter-spacing: 0.16em;
@@ -696,6 +705,53 @@ header {
   transition: background 0.15s;
 }
 .loader-btn:hover { background: var(--gold-lt); }
+
+.loader-section-label {
+  font-size: 9px;
+  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+  margin-top: 4px;
+}
+.loader-divider {
+  width: 100%;
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 24px 0 20px;
+}
+.loader-btn-db {
+  background: transparent;
+  color: var(--gold);
+  border: 1px solid var(--gold);
+}
+.loader-btn-db:hover {
+  background: rgba(196,160,96,0.12);
+  color: var(--gold-lt);
+  border-color: var(--gold-lt);
+}
+
+/* DB status badge (header) */
+.db-badge {
+  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  padding: 3px 7px;
+  border-radius: 3px;
+  cursor: default;
+  white-space: nowrap;
+}
+.db-badge-ok  { background: rgba(126,200,122,0.15); color: #7EC87A; border: 1px solid rgba(126,200,122,0.3); }
+.db-badge-off { background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid var(--border); }
+
+/* Upload status messages */
+.upload-success { color: #7EC87A; }
+.upload-error   { color: #E05050; }
+.upload-pending { color: var(--muted); }
+
 .loader-files {
   margin-top: 20px;
   font-size: 11px;
@@ -819,7 +875,7 @@ header {
   flex-shrink: 0;
 }
 .help-title {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 20px;
   color: var(--white);
   font-weight: 400;
@@ -845,7 +901,7 @@ header {
   margin-bottom: 24px;
 }
 .help-section h3 {
-  font-family: 'Playfair Display', serif;
+  font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 15px;
   color: var(--gold);
   font-weight: 400;
@@ -907,5 +963,5 @@ canvas { max-width: 100%; }
   .header-right { display: none; }
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
   .brand-name { font-size: 22px; }
-  .brand-logo { width: 36px; height: 36px; }
+  .brand-logo { height: 36px; width: auto; }
 }

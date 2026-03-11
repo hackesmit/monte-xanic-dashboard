@@ -19,13 +19,13 @@ const Charts = {
   axisOpts(xLabel, yLabel) {
     return {
       x: {
-        title: { display: !!xLabel, text: xLabel, color: '#6B6B6B', font: { size: 9, family: 'Jost' } },
-        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Jost' } },
+        title: { display: !!xLabel, text: xLabel, color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
         grid: { color: CONFIG.chartDefaults.gridColor }
       },
       y: {
-        title: { display: !!yLabel, text: yLabel, color: '#6B6B6B', font: { size: 9, family: 'Jost' } },
-        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Jost' } },
+        title: { display: !!yLabel, text: yLabel, color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
         grid: { color: CONFIG.chartDefaults.gridColor }
       }
     };
@@ -57,8 +57,8 @@ const Charts = {
       borderWidth: 1,
       titleColor: '#DDB96E',
       bodyColor: '#D8D0C4',
-      titleFont: { family: 'Jost', weight: '400', size: 11 },
-      bodyFont: { family: 'Jost', weight: '300', size: 10 },
+      titleFont: { family: 'Sackers Gothic Medium', weight: '400', size: 11 },
+      bodyFont: { family: 'Sackers Gothic Medium', weight: '300', size: 10 },
       padding: 10,
       displayColors: true
     };
@@ -228,11 +228,11 @@ const Charts = {
         },
         scales: {
           x: {
-            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Jost' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid: { color: CONFIG.chartDefaults.gridColor }
           },
           y: {
-            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Jost' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid: { color: 'transparent' }
           }
         },
@@ -278,7 +278,7 @@ const Charts = {
             position: 'right',
             labels: {
               color: CONFIG.chartDefaults.tickColor,
-              font: { size: 9, family: 'Jost' },
+              font: { size: 9, family: 'Sackers Gothic Medium' },
               boxWidth: 10,
               padding: 10
             }
@@ -346,7 +346,7 @@ const Charts = {
       // No matching data
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#6B6B6B';
-      ctx.font = '12px Jost';
+      ctx.font = '11px "Sackers Gothic Medium"';
       ctx.textAlign = 'center';
       ctx.fillText('No hay datos comparables entre vendimias', canvas.width / 2, canvas.height / 2);
       return;
@@ -364,7 +364,7 @@ const Charts = {
             position: 'top',
             labels: {
               color: CONFIG.chartDefaults.tickColor,
-              font: { size: 9, family: 'Jost' },
+              font: { size: 9, family: 'Sackers Gothic Medium' },
               boxWidth: 10,
               padding: 8
             }
@@ -427,7 +427,7 @@ const Charts = {
     if (pairs.length === 0) {
       const ctx = canvas.getContext('2d');
       ctx.fillStyle = '#6B6B6B';
-      ctx.font = '12px Jost';
+      ctx.font = '11px "Sackers Gothic Medium"';
       ctx.textAlign = 'center';
       ctx.fillText('Cargue ambos archivos para ver la comparación', canvas.width / 2, canvas.height / 2);
       return;
@@ -468,7 +468,7 @@ const Charts = {
             display: true,
             labels: {
               color: CONFIG.chartDefaults.tickColor,
-              font: { size: 9, family: 'Jost' }
+              font: { size: 9, family: 'Sackers Gothic Medium' }
             }
           },
           tooltip: {
@@ -490,12 +490,12 @@ const Charts = {
         },
         scales: {
           x: {
-            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 8, family: 'Jost' }, maxRotation: 45 },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 8, family: 'Sackers Gothic Medium' }, maxRotation: 45 },
             grid: { color: 'transparent' }
           },
           y: {
-            title: { display: true, text: 'tANT (ppm)', color: '#6B6B6B', font: { size: 9, family: 'Jost' } },
-            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Jost' } },
+            title: { display: true, text: 'tANT (ppm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid: { color: CONFIG.chartDefaults.gridColor }
           }
         },
@@ -535,6 +535,255 @@ const Charts = {
         <span>${item.label}</span>
       </div>`;
     }).join('');
+  },
+
+  // ── Weather Charts ─────────────────────────────────────────────
+
+  // Vintage colours shared across all weather charts
+  _vintageColor(year) {
+    const map = { 2024: '#60A8C0', 2025: '#C4A060', 2026: '#7EC87A', 2023: '#9B59B6' };
+    return map[year] || '#888';
+  },
+
+  // Temperature time series: daily mean °C, all vintages overlaid
+  createWeatherTimeSeries(canvasId, vintages) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const datasets = [];
+    for (const year of vintages) {
+      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`);
+      if (!rows.length) continue;
+      const color = this._vintageColor(year);
+      const pts   = rows
+        .filter(r => r.temp_avg !== null)
+        .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.temp_avg }));
+      datasets.push({
+        label: String(year),
+        data:  pts,
+        borderColor:     color,
+        backgroundColor: 'transparent',
+        pointRadius:     1.5,
+        pointHoverRadius: 5,
+        borderWidth:     1.5,
+        showLine:        true,
+        tension:         0.3,
+        fill:            false
+      });
+    }
+
+    if (!datasets.length) {
+      this._drawNoData(canvas, 'Sin datos de temperatura disponibles');
+      return;
+    }
+
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' }, boxWidth: 12, padding: 10 }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
+            titleColor: '#DDB96E', bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => `Día ${items[0].raw.x} temporada ${items[0].dataset.label}`,
+              label: (ctx)   => `Temp: ${ctx.raw.y?.toFixed(1)}°C`
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid:  { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            title: { display: true, text: 'Temperatura media (°C)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid:  { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Rainfall scatter: each rainy day as a dot (x = day-of-season, y = mm)
+  createRainfallChart(canvasId, vintages) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const datasets = [];
+    for (const year of vintages) {
+      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`);
+      if (!rows.length) continue;
+      const color = this._vintageColor(year);
+      const pts   = rows
+        .filter(r => r.rainfall_mm !== null && r.rainfall_mm > 0)
+        .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.rainfall_mm }));
+      if (!pts.length) continue;
+      datasets.push({
+        label:           String(year),
+        data:            pts,
+        backgroundColor: color + 'BB',
+        borderColor:     color,
+        pointRadius:     5,
+        pointHoverRadius: 8,
+        showLine:        false
+      });
+    }
+
+    if (!datasets.length) {
+      this._drawNoData(canvas, 'Sin eventos de lluvia registrados');
+      return;
+    }
+
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' }, boxWidth: 12, padding: 10 }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
+            titleColor: '#DDB96E', bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => `Día ${items[0].raw.x} temporada ${items[0].dataset.label}`,
+              label: (ctx)   => `Lluvia: ${ctx.raw.y?.toFixed(1)} mm`
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid:  { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            title: { display: true, text: 'Precipitación (mm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid:  { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Brix vs Temperature on sample date — scatter by variety/origin
+  createTempCorrelation(canvasId, berryData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const colorBy   = Filters.state.colorBy;
+    const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
+    const colors    = colorBy === 'origin' ? CONFIG.originColors : CONFIG.varietyColors;
+    const groups    = {};
+
+    berryData.forEach(d => {
+      if (typeof d.brix !== 'number' || !d.sampleDate) return;
+      const temp = WeatherStore.getTempForDate(d.sampleDate);
+      if (temp === null) return;
+      const g = d[groupField] || 'Unknown';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push({ x: temp, y: d.brix, sampleId: d.sampleId, variety: d.variety, appellation: d.appellation });
+    });
+
+    const datasets = Object.entries(groups).map(([name, pts]) => {
+      const color = colors[name] || '#888';
+      return {
+        label: name, data: pts,
+        backgroundColor: color + 'AA', pointBorderColor: color,
+        pointRadius: CONFIG.chartDefaults.pointRadius + 1, borderWidth: 0, showLine: false,
+        hidden: this.hiddenSeries.has(name)
+      };
+    });
+
+    if (!datasets.some(d => d.data.length)) {
+      this._drawNoData(canvas, 'Sin datos de temperatura para correlación');
+      return;
+    }
+
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: this.tooltipConfig() },
+        scales: this.axisOpts('Temperatura media °C (día de muestreo)', 'Brix (°Bx)'),
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // tANT vs Cumulative Rainfall since July 1 — scatter by variety/origin
+  createRainCorrelation(canvasId, berryData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const colorBy   = Filters.state.colorBy;
+    const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
+    const colors    = colorBy === 'origin' ? CONFIG.originColors : CONFIG.varietyColors;
+    const groups    = {};
+
+    berryData.forEach(d => {
+      if (typeof d.tANT !== 'number' || !d.sampleDate) return;
+      const rain = WeatherStore.getCumulativeRainfall(d.sampleDate);
+      if (rain === null) return;
+      const g = d[groupField] || 'Unknown';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push({ x: rain, y: d.tANT, sampleId: d.sampleId, variety: d.variety, appellation: d.appellation });
+    });
+
+    const datasets = Object.entries(groups).map(([name, pts]) => {
+      const color = colors[name] || '#888';
+      return {
+        label: name, data: pts,
+        backgroundColor: color + 'AA', pointBorderColor: color,
+        pointRadius: CONFIG.chartDefaults.pointRadius + 1, borderWidth: 0, showLine: false,
+        hidden: this.hiddenSeries.has(name)
+      };
+    });
+
+    if (!datasets.some(d => d.data.length)) {
+      this._drawNoData(canvas, 'Sin datos de lluvia para correlación');
+      return;
+    }
+
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false }, tooltip: this.tooltipConfig() },
+        scales: this.axisOpts('Lluvia acumulada desde 1 Jul (mm)', 'tANT (ppm ME)'),
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  _drawNoData(canvas, msg) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#6B6B6B';
+    ctx.font = '11px "Sackers Gothic Medium"';
+    ctx.textAlign = 'center';
+    ctx.fillText(msg, canvas.width / 2, canvas.height / 2);
   },
 
   // Update all berry charts

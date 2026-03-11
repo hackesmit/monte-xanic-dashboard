@@ -1,10 +1,126 @@
-// ── Data Loader: SheetJS Excel parsing + state management ──
+// ── Data Loader: SheetJS Excel parsing + Supabase queries + state management ──
 
 const DataStore = {
   berryData: [],
   wineRecepcion: [],
   winePreferment: [],
   loaded: { berry: false, wine: false },
+  supabase: null,        // Supabase client instance (set by initSupabase)
+  _supabaseReady: false, // true once credentials have been fetched
+
+  // Initialise the Supabase client by fetching credentials from /api/config.
+  // Falls back to localStorage dev keys when running locally without the API.
+  async initSupabase() {
+    if (this._supabaseReady) return !!this.supabase;
+    try {
+      let url, anonKey;
+
+      // Primary: Vercel serverless function
+      try {
+        const res = await fetch('/api/config');
+        if (res.ok) {
+          const cfg = await res.json();
+          url     = cfg.supabaseUrl;
+          anonKey = cfg.supabaseAnonKey;
+        }
+      } catch (_) { /* offline or local dev without vercel dev */ }
+
+      // Fallback: manually-stored dev keys (localStorage only, never committed)
+      if (!url || !anonKey) {
+        url     = localStorage.getItem('xanic_dev_supabase_url');
+        anonKey = localStorage.getItem('xanic_dev_supabase_key');
+      }
+
+      if (url && anonKey && window.supabase) {
+        this.supabase = window.supabase.createClient(url, anonKey);
+        this._supabaseReady = true;
+        return true;
+      }
+    } catch (e) {
+      console.warn('[DataStore] Supabase init failed:', e);
+    }
+    this._supabaseReady = true; // mark attempted so we don't retry endlessly
+    return false;
+  },
+
+  // Map a Supabase wine_samples row → DataStore.berryData JS object
+  _rowToBerry(row) {
+    const obj = {};
+    const map = CONFIG.supabaseToBerryJS;
+    for (const col in map) {
+      if (col in row) obj[map[col]] = row[col];
+    }
+    obj.lotCode   = this.extractLotCode(obj.sampleId);
+    obj.grapeType = this.getGrapeType(obj.variety);
+    return obj;
+  },
+
+  // Map a Supabase wine_samples row → DataStore.wineRecepcion JS object
+  _rowToWine(row) {
+    const obj = {};
+    const map = CONFIG.supabaseToWineJS;
+    for (const col in map) {
+      if (col in row) obj[map[col]] = row[col];
+    }
+    obj.grapeType = this.getGrapeType(obj.variedad);
+    return obj;
+  },
+
+  // Map a Supabase prefermentativos row → DataStore.winePreferment JS object
+  _rowToPrefWine(row) {
+    const obj = {};
+    const map = CONFIG.supabasePrefToWineJS;
+    for (const col in map) {
+      if (col in row) obj[map[col]] = row[col];
+    }
+    // batch_code is a better display key than report_code
+    if (row.batch_code) obj.codigoBodega = row.batch_code;
+    obj.sampleType = 'Must';
+    obj.grapeType  = this.getGrapeType(obj.variedad);
+    return obj;
+  },
+
+  // Query Supabase and populate berryData / wineRecepcion / winePreferment.
+  // Returns true if berry data was loaded successfully.
+  async loadFromSupabase() {
+    if (!this.supabase) return false;
+    try {
+      // Fetch all wine_samples in one query (typically < 5000 rows)
+      const { data: samples, error: sErr } = await this.supabase
+        .from('wine_samples')
+        .select('*')
+        .order('sample_date', { ascending: true });
+
+      if (sErr) { console.warn('[DataStore] wine_samples query failed:', sErr.message); return false; }
+
+      this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries').map(r => this._rowToBerry(r));
+      this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries').map(r => this._rowToWine(r));
+
+      // Fetch prefermentativos for winePreferment supplement
+      const { data: prefs, error: pErr } = await this.supabase
+        .from('prefermentativos')
+        .select('*')
+        .order('measurement_date', { ascending: true });
+
+      if (!pErr && prefs && prefs.length) {
+        const prefWine = prefs.map(r => this._rowToPrefWine(r));
+        // Merge: Must rows from wine_samples + prefermentativos
+        const mustRows = this.wineRecepcion.filter(r => r.sampleType === 'Must');
+        this.winePreferment = [...mustRows, ...prefWine];
+      } else {
+        this.winePreferment = this.wineRecepcion.filter(r => r.sampleType === 'Must');
+      }
+
+      this.loaded.berry = this.berryData.length > 0;
+      this.loaded.wine  = this.wineRecepcion.length > 0;
+
+      if (this.loaded.berry || this.loaded.wine) this.cacheData();
+      return this.loaded.berry;
+    } catch (e) {
+      console.warn('[DataStore] loadFromSupabase error:', e);
+      return false;
+    }
+  },
 
   parseValue(v) {
     if (v === '-' || v === '—' || v === '' || v === null || v === undefined) return null;
