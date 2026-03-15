@@ -56,7 +56,12 @@
       "Bash(curl -s \"https://bkcaezwonznazgedugap.supabase.co/rest/v1/prefermentativos?select=count\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrY2FlendvbnpuYXpnZWR1Z2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ3NTYsImV4cCI6MjA4ODgyMDc1Nn0.-unJ3wgS71LlwEalxmhlE0gHFDTcuYCRDOkA5DWOckk\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrY2FlendvbnpuYXpnZWR1Z2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ3NTYsImV4cCI6MjA4ODgyMDc1Nn0.-unJ3wgS71LlwEalxmhlE0gHFDTcuYCRDOkA5DWOckk\" && echo \"\" && curl -s \"https://bkcaezwonznazgedugap.supabase.co/rest/v1/tank_receptions?select=count\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrY2FlendvbnpuYXpnZWR1Z2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ3NTYsImV4cCI6MjA4ODgyMDc1Nn0.-unJ3wgS71LlwEalxmhlE0gHFDTcuYCRDOkA5DWOckk\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrY2FlendvbnpuYXpnZWR1Z2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ3NTYsImV4cCI6MjA4ODgyMDc1Nn0.-unJ3wgS71LlwEalxmhlE0gHFDTcuYCRDOkA5DWOckk\"2)",
       "Bash(curl -s \"https://bkcaezwonznazgedugap.supabase.co/rest/v1/wine_samples?select=sample_type&limit=1000\" -H \"apikey: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrY2FlendvbnpuYXpnZWR1Z2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ3NTYsImV4cCI6MjA4ODgyMDc1Nn0.-unJ3wgS71LlwEalxmhlE0gHFDTcuYCRDOkA5DWOckk\" -H \"Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJrY2FlendvbnpuYXpnZWR1Z2FwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMyNDQ3NTYsImV4cCI6MjA4ODgyMDc1Nn0.-unJ3wgS71LlwEalxmhlE0gHFDTcuYCRDOkA5DWOckk\" | python3 -c \"import json,sys,collections; d=json.load\\(sys.stdin\\); c=collections.Counter\\(r['sample_type'] for r in d\\); [print\\(f'{k}: {v}'\\) for k,v in sorted\\(c.items\\(\\)\\)]\")",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(git add:*)",
+      "Bash(git config:*)",
+      "Bash(git push:*)",
+      "Bash(gh auth:*)",
+      "Bash(git remote:*)"
     ]
   }
 }
