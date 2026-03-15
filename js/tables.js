@@ -38,7 +38,7 @@ const Tables = {
 
     container.innerHTML = display.map(d => {
       const varColor = CONFIG.varietyColors[d.variety] || '#888';
-      const origColor = CONFIG.originColors[d.appellation] || '#888';
+      const origColor = CONFIG.resolveOriginColor(d.appellation);
       return `<tr>
         <td style="font-weight:400;color:var(--gold-lt)">${d.sampleId || '—'}</td>
         <td>${d.sampleDate || '—'}</td>
@@ -85,7 +85,7 @@ const Tables = {
 
     container.innerHTML = data.map(d => {
       const varColor = CONFIG.varietyColors[d.variedad] || '#888';
-      const origColor = CONFIG.originColors[d.proveedor] || '#888';
+      const origColor = CONFIG.resolveOriginColor(d.proveedor);
       return `<tr>
         <td style="font-weight:400;color:var(--gold-lt)">${d.codigoBodega || '—'}</td>
         <td>${d.fecha || '—'}</td>

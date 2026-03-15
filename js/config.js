@@ -50,6 +50,22 @@ const CONFIG = {
     'Dubacano':              '#3498DB'
   },
 
+  // Resolve origin color: full name → short alias → hash fallback
+  _originColorCache: {},
+  resolveOriginColor(name) {
+    if (!name) return '#888888';
+    if (this._originColorCache[name]) return this._originColorCache[name];
+    const short = name.replace('Valle de Guadalupe (', '').replace('Valle de Ojos Negros (', '').replace(')', '').trim();
+    const c = this.originColors[name] || this.originColors[short] || this._hashColor(name);
+    this._originColorCache[name] = c;
+    return c;
+  },
+  _hashColor(str) {
+    let h = 0;
+    for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
+    return `hsl(${((h % 360) + 360) % 360}, 60%, 55%)`;
+  },
+
   // Varietal abbreviations (code → full name)
   varietyAbbr: {
     'CS':'Cabernet Sauvignon','CF':'Cabernet Franc','SY':'Syrah','ME':'Merlot',
