@@ -6,6 +6,12 @@ const KPIs = {
     return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
   },
 
+  range(arr) {
+    const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
+    if (!valid.length) return { min: null, max: null };
+    return { min: Math.min(...valid), max: Math.max(...valid) };
+  },
+
   fmt(v, decimals) {
     return v !== null && v !== undefined ? v.toFixed(decimals) : '—';
   },
@@ -26,6 +32,12 @@ const KPIs = {
     this.setKPI('kpi-avg-tant', avgTANT, 0, 'ppm');
     this.setKPI('kpi-avg-fw', avgFW, 2, 'g');
 
+    this.setRange('kpi-range-brix', this.range(clean.map(d => d.brix)), 1);
+    this.setRange('kpi-range-ph', this.range(clean.map(d => d.pH)), 2);
+    this.setRange('kpi-range-ta', this.range(clean.map(d => d.ta)), 1);
+    this.setRange('kpi-range-tant', this.range(clean.map(d => d.tANT)), 0);
+    this.setRange('kpi-range-fw', this.range(clean.map(d => d.berryFW)), 2);
+
     // Header KPIs
     const el = (id) => document.getElementById(id);
     if (el('hdr-muestras')) el('hdr-muestras').textContent = data.length;
@@ -42,6 +54,18 @@ const KPIs = {
     } else {
       const formatted = decimals === 0 ? Math.round(value) : value.toFixed(decimals);
       el.innerHTML = unit ? `${formatted}<span class="kpi-unit">${unit}</span>` : formatted;
+    }
+  },
+
+  setRange(id, range, decimals) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (range.min === null || range.max === null) {
+      el.textContent = '—';
+    } else {
+      const fmtMin = decimals === 0 ? Math.round(range.min) : range.min.toFixed(decimals);
+      const fmtMax = decimals === 0 ? Math.round(range.max) : range.max.toFixed(decimals);
+      el.textContent = `${fmtMin} – ${fmtMax}`;
     }
   },
 

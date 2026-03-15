@@ -3,6 +3,10 @@
 const Tables = {
   sortField: null,
   sortDir: 'desc',
+  _lastBerryData: [],
+  _lastWineData: [],
+  _lastPrefermentData: [],
+  _lastExtractionData: [],
 
   // Berry data table
   updateBerryTable(data) {
@@ -32,6 +36,7 @@ const Tables = {
     }
 
     const display = sorted.slice(0, 300);
+    this._lastBerryData = sorted;
     if (countEl) {
       countEl.textContent = `${data.length} registros${data.length > 300 ? ' · mostrando 300' : ''}`;
     }
@@ -82,6 +87,7 @@ const Tables = {
     if (!container) return;
 
     if (countEl) countEl.textContent = `${data.length} registros`;
+    this._lastWineData = data;
 
     container.innerHTML = data.map(d => {
       const varColor = CONFIG.varietyColors[d.variedad] || '#888';
@@ -109,6 +115,7 @@ const Tables = {
     if (!container) return;
 
     if (countEl) countEl.textContent = `${data.length} registros`;
+    this._lastPrefermentData = data;
 
     container.innerHTML = data.map(d => {
       const varColor = CONFIG.varietyColors[d.variedad] || '#888';
@@ -144,5 +151,97 @@ const Tables = {
       arrow.textContent = this.sortDir === 'asc' ? '▲' : '▼';
     }
     App.refresh();
+  },
+
+  exportCSV(type) {
+    const configs = {
+      bayas: {
+        data: this._lastBerryData,
+        filename: 'bayas_datos.csv',
+        columns: [
+          { key: 'sampleId', header: 'ID Muestra' },
+          { key: 'sampleDate', header: 'Fecha' },
+          { key: 'vintage', header: 'Vendimia' },
+          { key: 'variety', header: 'Variedad' },
+          { key: 'appellation', header: 'Origen' },
+          { key: 'brix', header: 'Brix (°Bx)' },
+          { key: 'pH', header: 'pH' },
+          { key: 'ta', header: 'A.T. (g/L)' },
+          { key: 'tANT', header: 'tANT (ppm)' },
+          { key: 'berryFW', header: 'Peso Baya (g)' },
+          { key: 'daysPostCrush', header: 'Días Post-Cosecha' }
+        ]
+      },
+      vino: {
+        data: this._lastWineData,
+        filename: 'vino_recepcion.csv',
+        columns: [
+          { key: 'codigoBodega', header: 'Código Bodega' },
+          { key: 'fecha', header: 'Fecha' },
+          { key: 'tanque', header: 'Tanque' },
+          { key: 'variedad', header: 'Variedad' },
+          { key: 'proveedor', header: 'Proveedor' },
+          { key: 'sampleType', header: 'Tipo Muestra' },
+          { key: 'antoWX', header: 'Antocianinas WX' },
+          { key: 'freeANT', header: 'fANT' },
+          { key: 'pTAN', header: 'pTAN' },
+          { key: 'iptSpica', header: 'IPT' },
+          { key: 'daysPostCrush', header: 'Días Post-Cosecha' }
+        ]
+      },
+      prefermentativos: {
+        data: this._lastPrefermentData,
+        filename: 'prefermentativos.csv',
+        columns: [
+          { key: 'codigoBodega', header: 'Código Bodega' },
+          { key: 'fecha', header: 'Fecha' },
+          { key: 'tanque', header: 'Tanque' },
+          { key: 'variedad', header: 'Variedad' },
+          { key: 'proveedor', header: 'Proveedor' },
+          { key: 'antoWX', header: 'Antocianinas WX' },
+          { key: 'freeANT', header: 'fANT' },
+          { key: 'pTAN', header: 'pTAN' },
+          { key: 'iptSpica', header: 'IPT' },
+          { key: 'daysPostCrush', header: 'Días Post-Cosecha' }
+        ]
+      },
+      extraccion: {
+        data: this._lastExtractionData,
+        filename: 'extraccion.csv',
+        columns: [
+          { key: 'variety', header: 'Variedad' },
+          { key: 'appellation', header: 'Origen' },
+          { key: 'berryTANT', header: 'tANT Baya (ppm)' },
+          { key: 'wineTANT', header: 'tANT Vino (ppm)' },
+          { key: 'extractionPct', header: 'Extracción (%)' }
+        ]
+      }
+    };
+
+    const cfg = configs[type];
+    if (!cfg || !cfg.data.length) return;
+
+    const escape = (v) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+
+    const header = cfg.columns.map(c => escape(c.header)).join(',');
+    const rows = cfg.data.map(d =>
+      cfg.columns.map(c => escape(d[c.key])).join(',')
+    );
+
+    const csv = '\uFEFF' + header + '\n' + rows.join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = cfg.filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 };
