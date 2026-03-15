@@ -63,7 +63,13 @@ const CONFIG = {
   _hashColor(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) h = str.charCodeAt(i) + ((h << 5) - h);
-    return `hsl(${((h % 360) + 360) % 360}, 60%, 55%)`;
+    // Return hex (not HSL) so appending alpha suffixes like + 'AA' works
+    const hue = ((h % 360) + 360) % 360;
+    const s = 0.6, l = 0.55;
+    const a = s * Math.min(l, 1 - l);
+    const f = n => { const k = (n + hue / 30) % 12; return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+    const toHex = x => Math.round(x * 255).toString(16).padStart(2, '0');
+    return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
   },
 
   // Varietal abbreviations (code → full name)
