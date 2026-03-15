@@ -78,7 +78,7 @@ const Filters = {
     const origins = DataStore.getUniqueValues('appellation');
     origins.forEach(v => {
       const chip = document.createElement('button');
-      const color = CONFIG.originColors[v] || '#888';
+      const color = CONFIG.resolveOriginColor(v);
       chip.className = 'chip origin-chip';
       chip.style.setProperty('--chip-color', color);
       chip.style.setProperty('--chip-bg', color + '18');
@@ -136,7 +136,7 @@ const Filters = {
     DataStore.winePreferment.forEach(d => { if (d.proveedor) origins.add(d.proveedor); });
     [...origins].sort().forEach(v => {
       const chip = document.createElement('button');
-      const color = CONFIG.originColors[v] || CONFIG.originColors[this.shortenOrigin(v)] || '#888';
+      const color = CONFIG.resolveOriginColor(v);
       chip.className = 'chip origin-chip';
       chip.style.setProperty('--chip-color', color);
       chip.style.setProperty('--chip-bg', color + '18');
@@ -284,16 +284,18 @@ const Filters = {
   // Get color for a data point based on current color mode
   getColor(dataPoint) {
     if (this.state.colorBy === 'origin') {
-      return CONFIG.originColors[dataPoint.appellation] || '#888888';
+      return CONFIG.resolveOriginColor(dataPoint.appellation);
     }
-    return CONFIG.varietyColors[dataPoint.variety] || '#888888';
+    return CONFIG.varietyColors[dataPoint.variety] || CONFIG._hashColor(dataPoint.variety || '');
   },
 
   // Get legend items for current color mode
   getLegendItems(data) {
     const field = this.state.colorBy === 'origin' ? 'appellation' : 'variety';
-    const colors = this.state.colorBy === 'origin' ? CONFIG.originColors : CONFIG.varietyColors;
     const unique = [...new Set(data.map(d => d[field]).filter(Boolean))].sort();
-    return unique.map(v => ({ label: v, color: colors[v] || '#888' }));
+    if (this.state.colorBy === 'origin') {
+      return unique.map(v => ({ label: v, color: CONFIG.resolveOriginColor(v) }));
+    }
+    return unique.map(v => ({ label: v, color: CONFIG.varietyColors[v] || CONFIG._hashColor(v) }));
   }
 };

@@ -93,11 +93,13 @@ const Charts = {
 
     const colorBy = Filters.state.colorBy;
     const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
-    const colors = colorBy === 'origin' ? CONFIG.originColors : CONFIG.varietyColors;
+    const resolveColor = colorBy === 'origin'
+      ? (n) => CONFIG.resolveOriginColor(n)
+      : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n);
     const groups = this.groupScatterData(data, xField, yField, groupField);
 
     const datasets = Object.entries(groups).map(([name, pts]) => {
-      const color = colors[name] || '#888888';
+      const color = resolveColor(name);
       const sorted = [...pts].sort((a, b) => a.x - b.x);
       return {
         label: name,
@@ -140,11 +142,13 @@ const Charts = {
 
     const colorBy = Filters.state.colorBy;
     const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
-    const colors = colorBy === 'origin' ? CONFIG.originColors : CONFIG.varietyColors;
+    const resolveColor = colorBy === 'origin'
+      ? (n) => CONFIG.resolveOriginColor(n)
+      : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n);
     const groups = this.groupScatterData(data, xField, yField, groupField);
 
     const datasets = Object.entries(groups).map(([name, pts]) => {
-      const color = colors[name] || '#888888';
+      const color = resolveColor(name);
       return {
         label: name,
         data: pts,
@@ -261,8 +265,8 @@ const Charts = {
     const origins = Object.keys(byOrigin).sort((a, b) => avg(byOrigin[b]) - avg(byOrigin[a]));
     const values = origins.map(o => parseFloat(avg(byOrigin[o]).toFixed(2)));
     const shortLabels = origins.map(o => Filters.shortenOrigin(o));
-    const bgColors = origins.map(o => (CONFIG.originColors[o] || '#888') + '66');
-    const bdColors = origins.map(o => CONFIG.originColors[o] || '#888');
+    const bgColors = origins.map(o => CONFIG.resolveOriginColor(o) + '66');
+    const bdColors = origins.map(o => CONFIG.resolveOriginColor(o));
 
     this.instances[canvasId] = new Chart(canvas, {
       type: 'bar',
@@ -324,7 +328,7 @@ const Charts = {
 
     const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
     const values = labels.map(l => counts[l]);
-    const colors = labels.map(l => CONFIG.originColors[l] || '#888');
+    const colors = labels.map(l => CONFIG.resolveOriginColor(l));
 
     this.instances[canvasId] = new Chart(canvas, {
       type: 'doughnut',
@@ -766,7 +770,9 @@ const Charts = {
 
     const colorBy   = Filters.state.colorBy;
     const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
-    const colors    = colorBy === 'origin' ? CONFIG.originColors : CONFIG.varietyColors;
+    const resolveColor = colorBy === 'origin'
+      ? (n) => CONFIG.resolveOriginColor(n)
+      : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n);
     const groups    = {};
 
     berryData.forEach(d => {
@@ -779,7 +785,7 @@ const Charts = {
     });
 
     const datasets = Object.entries(groups).map(([name, pts]) => {
-      const color = colors[name] || '#888';
+      const color = resolveColor(name);
       return {
         label: name, data: pts,
         backgroundColor: color + 'AA', pointBorderColor: color,
@@ -813,7 +819,9 @@ const Charts = {
 
     const colorBy   = Filters.state.colorBy;
     const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
-    const colors    = colorBy === 'origin' ? CONFIG.originColors : CONFIG.varietyColors;
+    const resolveColor = colorBy === 'origin'
+      ? (n) => CONFIG.resolveOriginColor(n)
+      : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n);
     const groups    = {};
 
     berryData.forEach(d => {
@@ -826,7 +834,7 @@ const Charts = {
     });
 
     const datasets = Object.entries(groups).map(([name, pts]) => {
-      const color = colors[name] || '#888';
+      const color = resolveColor(name);
       return {
         label: name, data: pts,
         backgroundColor: color + 'AA', pointBorderColor: color,
