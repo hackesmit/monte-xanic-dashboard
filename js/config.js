@@ -22,7 +22,12 @@ const CONFIG = {
     'Petit Verdot':      '#00BCD4',
     'Durif':             '#8BC34A',
     'Nebbiolo':          '#FFB300',
-    'Sauvignon Blanc':   '#F0E68C'
+    'Sauvignon Blanc':   '#F0E68C',
+    'Petite Sirah':      '#E65100',
+    'Mourvèdre':         '#AD1457',
+    'Chardonnay':        '#FFD54F',
+    'Viognier':          '#AED581',
+    'Chenin Blanc':      '#80DEEA'
   },
 
   // Origin colors (full names as they appear in data)
@@ -38,6 +43,7 @@ const CONFIG = {
     'Valle de Ojos Negros (Dubacano)':               '#3498DB',
     'California':                                     '#95A5A6',
     'San Gerónimo':                                   '#F39C12',
+    'Camino Corazón (Valle de Parras)':               '#D4E157',
     // Short aliases for backwards compat
     'Kompali':               '#C4A060',
     'Viña Alta':             '#60A8C0',
@@ -245,7 +251,8 @@ const CONFIG = {
     'Siete Leguas':          'cross',
     'Dubacano':              'dash',
     'California':            'circle',
-    'San Gerónimo':          'triangle'
+    'San Gerónimo':          'triangle',
+    'Camino Corazón (Valle de Parras)': 'rectRot'
   },
 
   // ── Supabase Column Mappings ──────────────────────────────────

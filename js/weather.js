@@ -162,6 +162,56 @@ const WeatherStore = {
     return [...years].map(Number).sort();
   },
 
+  // Growing Degree Days: sum of max(0, temp_avg - baseTemp) from Jul 1 – Oct 31
+  gdd(year, baseTemp = 10) {
+    const start = `${year}-07-01`;
+    const end   = `${year}-10-31`;
+    let total   = 0;
+    let hasAny  = false;
+    const cur   = new Date(start);
+    const endD  = new Date(end);
+    while (cur <= endD) {
+      const row = this._byDate[cur.toISOString().split('T')[0]];
+      if (row && row.temp_avg !== null) {
+        total += Math.max(0, row.temp_avg - baseTemp);
+        hasAny = true;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    return hasAny ? total : null;
+  },
+
+  // Season summary for Jul 1 – Oct 31 of given year
+  seasonSummary(year) {
+    const start = `${year}-07-01`;
+    const end   = `${year}-10-31`;
+    let gdd          = 0;
+    let totalRainfall = 0;
+    let sumMax = 0, sumMin = 0, countTemp = 0, hotDays = 0;
+    let hasAny = false;
+    const cur  = new Date(start);
+    const endD = new Date(end);
+    while (cur <= endD) {
+      const row = this._byDate[cur.toISOString().split('T')[0]];
+      if (row) {
+        hasAny = true;
+        if (row.temp_avg !== null) gdd += Math.max(0, row.temp_avg - 10);
+        if (row.rainfall_mm !== null) totalRainfall += row.rainfall_mm;
+        if (row.temp_max !== null) { sumMax += row.temp_max; countTemp++; if (row.temp_max > 35) hotDays++; }
+        if (row.temp_min !== null) sumMin += row.temp_min;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    if (!hasAny) return null;
+    return {
+      gdd,
+      totalRainfall,
+      avgTempMax: countTemp ? sumMax / countTemp : null,
+      avgTempMin: countTemp ? sumMin / countTemp : null,
+      hotDays
+    };
+  },
+
   // Normalize M/D/YYYY or YYYY-MM-DD → YYYY-MM-DD
   _toISO(dateStr) {
     if (!dateStr) return '';

@@ -257,5 +257,42 @@ const UploadManager = {
   async _refreshDashboard() {
     const loaded = await DataStore.loadFromSupabase();
     if (loaded && App.initialized) App.refresh();
+  },
+
+  initDragDrop() {
+    const card = document.getElementById('loader-card');
+    if (!card) return;
+    let dragCounter = 0;
+
+    card.addEventListener('dragenter', (e) => {
+      e.preventDefault();
+      dragCounter++;
+      card.classList.add('drag-over');
+    });
+
+    card.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    });
+
+    card.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      dragCounter--;
+      if (dragCounter <= 0) {
+        dragCounter = 0;
+        card.classList.remove('drag-over');
+      }
+    });
+
+    card.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dragCounter = 0;
+      card.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) {
+        UploadManager.handleUpload(file, document.getElementById('db-upload-status'));
+      }
+    });
   }
 };
+
+document.addEventListener('DOMContentLoaded', () => UploadManager.initDragDrop());
