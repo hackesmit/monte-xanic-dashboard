@@ -17,7 +17,10 @@ const DataStore = {
 
       // Primary: Vercel serverless function
       try {
-        const res = await fetch('/api/config');
+        const _token = sessionStorage.getItem('xanic_session_token');
+        const res = await fetch('/api/config', {
+          headers: _token ? { 'x-session-token': _token } : {}
+        });
         if (res.ok) {
           const cfg = await res.json();
           url     = cfg.supabaseUrl;
@@ -80,27 +83,38 @@ const DataStore = {
     return obj;
   },
 
+  // Paginated fetch — Supabase defaults to 1000 rows max per query
+  async _fetchAll(table, orderCol = 'id') {
+    const PAGE = 1000;
+    let all = [], from = 0;
+    while (true) {
+      const { data, error } = await this.supabase
+        .from(table).select('*')
+        .order(orderCol, { ascending: true })
+        .range(from, from + PAGE - 1);
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+      all = all.concat(data);
+      if (data.length < PAGE) break;
+      from += PAGE;
+    }
+    return all;
+  },
+
   // Query Supabase and populate berryData / wineRecepcion / winePreferment.
   // Returns true if berry data was loaded successfully.
   async loadFromSupabase() {
     if (!this.supabase) return false;
     try {
-      // Fetch all wine_samples in one query (typically < 5000 rows)
-      const { data: samples, error: sErr } = await this.supabase
-        .from('wine_samples')
-        .select('*')
-        .order('sample_date', { ascending: true });
+      const samples = await this._fetchAll('wine_samples', 'sample_date');
 
-      if (sErr) { console.warn('[DataStore] wine_samples query failed:', sErr.message); return false; }
-
-      this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries').map(r => this._rowToBerry(r));
-      this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries').map(r => this._rowToWine(r));
+      this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries' || r.sample_type === 'Berry').map(r => this._rowToBerry(r));
+      this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries' && r.sample_type !== 'Berry').map(r => this._rowToWine(r));
 
       // Fetch prefermentativos for winePreferment supplement
-      const { data: prefs, error: pErr } = await this.supabase
-        .from('prefermentativos')
-        .select('*')
-        .order('measurement_date', { ascending: true });
+      let prefs = [], pErr = null;
+      try { prefs = await this._fetchAll('prefermentativos', 'measurement_date'); }
+      catch (e) { pErr = e; }
 
       if (!pErr && prefs && prefs.length) {
         const prefWine = prefs.map(r => this._rowToPrefWine(r));
@@ -213,7 +227,7 @@ const DataStore = {
     if (!sampleId) return '';
     let code = String(sampleId);
     // Remove vintage prefix (24 or 25)
-    code = code.replace(/^(24|25)/, '');
+    code = code.replace(/^\d{2}/, '');
     // Remove _BERRIES, _RECEPCION suffixes
     code = code.replace(/_(BERRIES|RECEPCION)$/i, '');
     return code;
@@ -233,8 +247,8 @@ const DataStore = {
       reader.onload = (e) => {
         try {
           if (isCSV) {
-            // Fix unquoted commas in CSV headers (e.g. "Total Phenolics Index (IPT, d-less)")
             let text = e.target.result;
+            if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
             text = text.replace(
               'Total Phenolics Index (IPT, d-less)',
               '"Total Phenolics Index (IPT, d-less)"'
@@ -252,7 +266,7 @@ const DataStore = {
       };
       reader.onerror = reject;
       if (isCSV) {
-        reader.readAsText(file);
+        reader.readAsText(file, 'UTF-8');
       } else {
         reader.readAsArrayBuffer(file);
       }
@@ -340,15 +354,16 @@ const DataStore = {
     }
 
     // Parse berry data using existing berry parser
-    this.berryData = this.parseBerrySheet(berryRows);
+    const newBerry = this.parseBerrySheet(berryRows);
+    this.berryData = this.berryData.concat(newBerry);
     this.loaded.berry = this.berryData.length > 0;
 
     // Parse wine data using new WineXRay parser
     const allWine = this.parseWineFromXRay(wineRows);
     // Split into recepcion (non-Must) and preferment (Must)
-    this.wineRecepcion = allWine.filter(d => d.sampleType !== 'Must');
-    this.winePreferment = allWine.filter(d => d.sampleType === 'Must');
-    this.loaded.wine = allWine.length > 0;
+    this.wineRecepcion = this.wineRecepcion.concat(allWine.filter(d => d.sampleType !== 'Must'));
+    this.winePreferment = this.winePreferment.concat(allWine.filter(d => d.sampleType === 'Must'));
+    this.loaded.wine = this.wineRecepcion.length > 0 || this.winePreferment.length > 0;
 
     return { berry: this.berryData.length, wine: allWine.length };
   },
@@ -439,6 +454,14 @@ const DataStore = {
     });
   },
 
+  // Enrich loaded data with computed fields (lotCode, grapeType)
+  _enrichData() {
+    this.berryData.forEach(d => {
+      if (d.sampleId && !d.lotCode) d.lotCode = this.extractLotCode(d.sampleId);
+      if (d.variety && !d.grapeType) d.grapeType = this.getGrapeType(d.variety);
+    });
+  },
+
   // Cache data to localStorage
   cacheData() {
     try {
@@ -465,6 +488,7 @@ const DataStore = {
       this.berryData = cache.berry || [];
       this.wineRecepcion = cache.wineR || [];
       this.winePreferment = cache.wineP || [];
+      this._enrichData();
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine = this.wineRecepcion.length > 0;
       return this.loaded.berry;
@@ -488,6 +512,7 @@ const DataStore = {
       this.berryData = berryRes;
       this.wineRecepcion = wineRRes;
       this.winePreferment = winePRes;
+      this._enrichData();
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine = this.wineRecepcion.length > 0;
       this.cacheData();

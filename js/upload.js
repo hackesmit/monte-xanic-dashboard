@@ -3,9 +3,16 @@
 // All user-facing messages are in Spanish.
 
 const UploadManager = {
+  _uploading: false,
 
-  // Regex for WineXRay below-detection values: <50, <10, >50, etc.
-  _belowDetectionRe: /^[<>]\s*\d+(\.\d+)?$/,
+  _belowDetectionRe: /^<\s*\d+(\.\d+)?$/,
+  _aboveDetectionRe: /^>\s*(\d+(\.\d+)?)$/,
+
+  _esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  },
 
   getFileType(file) {
     const name = file.name.toLowerCase();
@@ -52,12 +59,21 @@ const UploadManager = {
         if (this._belowDetectionRe.test(str)) {
           obj.below_detection = true;
           obj[col] = null;
+        } else if (this._aboveDetectionRe.test(str)) {
+          const m = str.match(this._aboveDetectionRe);
+          obj[col] = m ? parseFloat(m[1]) : null;
         } else {
           obj[col] = this._normalizeValue(val);
         }
       });
 
-      if (obj.sample_id) result.push(obj);
+      if (obj.sample_id) {
+        if (!obj.vintage_year && obj.sample_id) {
+          const vm = String(obj.sample_id).match(/^(\d{2})/);
+          if (vm) obj.vintage_year = 2000 + parseInt(vm[1], 10);
+        }
+        result.push(obj);
+      }
     }
     return result;
   },
@@ -90,7 +106,13 @@ const UploadManager = {
             obj[col] = val;
             if (val !== null) hasData = true;
           });
-          if (hasData && obj.report_code) preferment.push(obj);
+          if (hasData && obj.report_code) {
+            if (obj.batch_code && !obj.vintage_year) {
+              const vm = String(obj.batch_code).match(/^(\d{2})/);
+              if (vm) obj.vintage_year = 2000 + parseInt(vm[1], 10);
+            }
+            preferment.push(obj);
+          }
         }
 
       } else if (lower.includes('recep')) {
@@ -151,6 +173,18 @@ const UploadManager = {
 
   // Main entry point — called when a file is dropped on the DB upload zone
   async handleUpload(file, statusEl) {
+    if (this._uploading) {
+      this._setStatus(statusEl, 'error', 'Carga en progreso, espere...');
+      return;
+    }
+
+    const MAX_SIZE = 10 * 1024 * 1024;
+    if (file.size > MAX_SIZE) {
+      this._setStatus(statusEl, 'error', '✗ Archivo demasiado grande (máx 10 MB).');
+      return;
+    }
+
+    this._uploading = true;
     const type = this.getFileType(file);
 
     if (type === 'unknown') {
@@ -163,7 +197,7 @@ const UploadManager = {
       return;
     }
 
-    this._setStatus(statusEl, 'pending', `⏳ Leyendo ${file.name}...`);
+    this._setStatus(statusEl, 'pending', `⏳ Leyendo ${this._esc(file.name)}...`);
 
     try {
       const wb = await DataStore.loadFile(file);
@@ -223,15 +257,25 @@ const UploadManager = {
           if (!fetchErr && inserted) {
             const codeToId = {};
             inserted.forEach(r => { codeToId[r.report_code] = r.id; });
+            // Delete old lots before inserting new ones
+            const receptionIds = Object.values(codeToId);
+            if (receptionIds.length) {
+              await DataStore.supabase.from('reception_lots').delete().in('reception_id', receptionIds);
+            }
             const lotRows = lots
               .filter(l => codeToId[l.report_code])
               .map(l => ({ reception_id: codeToId[l.report_code], lot_code: l.lot_code, lot_position: l.lot_position }));
-            await this.upsertRows('reception_lots', lotRows, 'reception_id,lot_code');
+            if (lotRows.length) {
+              const sb = DataStore.supabase;
+              for (let i = 0; i < lotRows.length; i += 500) {
+                await sb.from('reception_lots').insert(lotRows.slice(i, i + 500));
+              }
+            }
           }
         }
 
         // 3 — Insert prefermentativos
-        const { count: pCount, error: pErr } = await this.upsertRows('prefermentativos', preferment, 'report_code');
+        const { count: pCount, error: pErr } = await this.upsertRows('prefermentativos', preferment, 'report_code,measurement_date');
         if (pErr) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] prefermentativos error:', pErr);
@@ -245,6 +289,8 @@ const UploadManager = {
     } catch (err) {
       console.error('[upload] unexpected error:', err);
       this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
+    } finally {
+      this._uploading = false;
     }
   },
 

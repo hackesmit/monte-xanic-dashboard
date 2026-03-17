@@ -2,8 +2,12 @@
 
 const Charts = {
   instances: {},
-  showLines: false,  // Toggle: scatter only by default
+  showLines: false,
   hiddenSeries: new Set(),
+
+  _getThemeColor(varName) {
+    return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+  },
 
   destroy(id) {
     if (this.instances[id]) {
@@ -36,6 +40,7 @@ const Charts = {
     return {
       callbacks: {
         title: (items) => {
+          if (!items.length) return '';
           if (items.length && items[0].raw && items[0].raw.sampleId) {
             return items[0].raw.sampleId;
           }
@@ -52,11 +57,11 @@ const Charts = {
           return lines;
         }
       },
-      backgroundColor: '#1C1C1C',
+      backgroundColor: this._getThemeColor('--card2') || '#1C1C1C',
       borderColor: 'rgba(196,160,96,0.5)',
       borderWidth: 1,
-      titleColor: '#DDB96E',
-      bodyColor: '#D8D0C4',
+      titleColor: this._getThemeColor('--gold-lt') || '#DDB96E',
+      bodyColor: this._getThemeColor('--text') || '#D8D0C4',
       titleFont: { family: 'Sackers Gothic Medium', weight: '400', size: 11 },
       bodyFont: { family: 'Sackers Gothic Medium', weight: '300', size: 10 },
       padding: 10,
@@ -195,7 +200,7 @@ const Charts = {
       }
     });
 
-    const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     const labels = Object.keys(byVar).sort((a, b) => avg(byVar[b]) - avg(byVar[a]));
     const values = labels.map(v => parseFloat(avg(byVar[v]).toFixed(2)));
     const bgColors = labels.map(v => (CONFIG.varietyColors[v] || '#888') + '66');
@@ -261,7 +266,7 @@ const Charts = {
       }
     });
 
-    const avg = arr => arr.reduce((a, b) => a + b, 0) / arr.length;
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     const origins = Object.keys(byOrigin).sort((a, b) => avg(byOrigin[b]) - avg(byOrigin[a]));
     const values = origins.map(o => parseFloat(avg(byOrigin[o]).toFixed(2)));
     const shortLabels = origins.map(o => Filters.shortenOrigin(o));
@@ -413,12 +418,7 @@ const Charts = {
     });
 
     if (datasets.length === 0) {
-      // No matching data
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#6B6B6B';
-      ctx.font = '11px "Sackers Gothic Medium"';
-      ctx.textAlign = 'center';
-      ctx.fillText('No hay datos comparables entre vendimias', canvas.width / 2, canvas.height / 2);
+      this._drawNoData(canvas, 'No hay datos comparables entre vendimias');
       return;
     }
 
@@ -495,19 +495,13 @@ const Charts = {
     });
 
     if (pairs.length === 0) {
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#6B6B6B';
-      ctx.font = '11px "Sackers Gothic Medium"';
-      ctx.textAlign = 'center';
-      ctx.fillText('Cargue ambos archivos para ver la comparación', canvas.width / 2, canvas.height / 2);
+      this._drawNoData(canvas, 'Cargue ambos archivos para ver la comparación');
       return;
     }
 
     const labels = pairs.map(p => p.berryLot);
     const berryVals = pairs.map(p => p.berryTANT);
     const wineVals = pairs.map(p => p.wineTANT);
-    const bgBerry = pairs.map(p => (CONFIG.varietyColors[p.variety] || '#888') + '88');
-    const bgWine = pairs.map(p => (CONFIG.varietyColors[p.variety] || '#888') + 'CC');
 
     this.instances[canvasId] = new Chart(canvas, {
       type: 'bar',
@@ -600,8 +594,8 @@ const Charts = {
     const items = Filters.getLegendItems(data);
     container.innerHTML = items.map(item => {
       const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
-      return `<div class="legend-item${dimmed}" onclick="Charts.toggleSeries('${item.label}')" title="${item.label}">
-        <div class="legend-dot" style="background:${item.color}"></div>
+      return `<div class="legend-item${dimmed}" onclick="Charts.toggleSeries('${item.label.replace(/'/g, "\\'")}')" title="${item.label.replace(/"/g, '&quot;')}">
+        <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
         <span>${item.label}</span>
       </div>`;
     }).join('');
@@ -626,6 +620,7 @@ const Charts = {
 
   // Temperature time series: daily mean °C, all vintages overlaid
   createWeatherTimeSeries(canvasId, vintages) {
+    if (typeof WeatherStore === 'undefined') return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -696,6 +691,7 @@ const Charts = {
 
   // Rainfall scatter: each rainy day as a dot (x = day-of-season, y = mm)
   createRainfallChart(canvasId, vintages) {
+    if (typeof WeatherStore === 'undefined') return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -764,6 +760,7 @@ const Charts = {
 
   // Brix vs Temperature on sample date — scatter by variety/origin
   createTempCorrelation(canvasId, berryData) {
+    if (typeof WeatherStore === 'undefined') return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -813,6 +810,7 @@ const Charts = {
 
   // tANT vs Cumulative Rainfall since July 1 — scatter by variety/origin
   createRainCorrelation(canvasId, berryData) {
+    if (typeof WeatherStore === 'undefined') return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -863,7 +861,7 @@ const Charts = {
   _drawNoData(canvas, msg) {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.fillStyle = '#6B6B6B';
+    ctx.fillStyle = this._getThemeColor('--muted') || '#6B6B6B';
     ctx.font = '11px "Sackers Gothic Medium"';
     ctx.textAlign = 'center';
     ctx.fillText(msg, canvas.width / 2, canvas.height / 2);

@@ -6,10 +6,6 @@ const KPIs = {
     return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
   },
 
-  fmt(v, decimals) {
-    return v !== null && v !== undefined ? v.toFixed(decimals) : '—';
-  },
-
   updateBerryKPIs(data) {
     // Filter out pH outliers for clean averages
     const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
@@ -29,9 +25,9 @@ const KPIs = {
     // Header KPIs
     const el = (id) => document.getElementById(id);
     if (el('hdr-muestras')) el('hdr-muestras').textContent = data.length;
-    if (el('hdr-lotes')) el('hdr-lotes').textContent = new Set(data.map(d => d.sampleId)).size;
-    if (el('hdr-varietales')) el('hdr-varietales').textContent = new Set(data.map(d => d.variety)).size;
-    if (el('hdr-origenes')) el('hdr-origenes').textContent = new Set(data.map(d => d.appellation)).size;
+    if (el('hdr-lotes')) el('hdr-lotes').textContent = new Set(data.map(d => d.sampleId).filter(Boolean)).size;
+    if (el('hdr-varietales')) el('hdr-varietales').textContent = new Set(data.map(d => d.variety).filter(Boolean)).size;
+    if (el('hdr-origenes')) el('hdr-origenes').textContent = new Set(data.map(d => d.appellation).filter(Boolean)).size;
   },
 
   setKPI(id, value, decimals, unit) {

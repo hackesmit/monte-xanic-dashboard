@@ -175,6 +175,14 @@ const Filters = {
 
   clearFilter(field) {
     this.state[field].clear();
+    if (field === 'varieties') {
+      this.state.grapeType = 'all';
+      ['btn-type-all', 'btn-type-red', 'btn-type-white'].forEach(id => {
+        document.getElementById(id)?.classList.remove('active-all', 'active-red', 'active-white');
+      });
+      document.getElementById('btn-type-all')?.classList.add('active-all');
+      document.querySelectorAll('#variety-chips .variety-chip').forEach(c => { c.style.display = ''; });
+    }
     const containerId = {
       vintages: 'vintage-chips',
       varieties: 'variety-chips',
@@ -189,6 +197,14 @@ const Filters = {
 
   clearWineFilter(field) {
     this.wineState[field].clear();
+    if (field === 'varieties') {
+      this.wineState.grapeType = 'all';
+      ['btn-wine-type-all', 'btn-wine-type-red', 'btn-wine-type-white'].forEach(id => {
+        document.getElementById(id)?.classList.remove('active-all', 'active-red', 'active-white');
+      });
+      document.getElementById('btn-wine-type-all')?.classList.add('active-all');
+      document.querySelectorAll('#wine-variety-chips .variety-chip').forEach(c => { c.style.display = ''; });
+    }
     const containerId = {
       varieties: 'wine-variety-chips',
       origins: 'wine-origin-chips'
@@ -221,6 +237,13 @@ const Filters = {
         chip.style.display = chip.dataset.type === type ? '' : 'none';
       }
     });
+    // Prune selected varieties that don't match the new type
+    if (type !== 'all') {
+      const valid = CONFIG.grapeTypes[type] || [];
+      for (const v of this.state.varieties) {
+        if (!valid.includes(v)) { this.state.varieties.delete(v); }
+      }
+    }
     App.refresh();
   },
 
@@ -245,6 +268,13 @@ const Filters = {
         chip.style.display = chip.dataset.type === type ? '' : 'none';
       }
     });
+    // Prune selected wine varieties that don't match the new type
+    if (type !== 'all') {
+      const valid = CONFIG.grapeTypes[type] || [];
+      for (const v of this.wineState.varieties) {
+        if (!valid.includes(v)) { this.wineState.varieties.delete(v); }
+      }
+    }
     App.refresh();
   },
 

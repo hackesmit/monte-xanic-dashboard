@@ -4,6 +4,13 @@ const Tables = {
   sortField: null,
   sortDir: 'desc',
 
+  _esc(val) {
+    if (val == null) return '';
+    const d = document.createElement('div');
+    d.textContent = String(val);
+    return d.innerHTML;
+  },
+
   // Berry data table
   updateBerryTable(data) {
     const container = document.getElementById('berry-table-body');
@@ -18,9 +25,9 @@ const Tables = {
         let vb = b[this.sortField];
         if (va === null || va === undefined) va = this.sortDir === 'asc' ? Infinity : -Infinity;
         if (vb === null || vb === undefined) vb = this.sortDir === 'asc' ? Infinity : -Infinity;
-        if (typeof va === 'string') {
-          return this.sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
-        }
+        if (typeof va === 'string' && typeof vb === 'string') return this.sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+        if (typeof va === 'string') return this.sortDir === 'asc' ? 1 : -1;
+        if (typeof vb === 'string') return this.sortDir === 'asc' ? -1 : 1;
         return this.sortDir === 'asc' ? va - vb : vb - va;
       });
     } else {
@@ -40,12 +47,12 @@ const Tables = {
       const varColor = CONFIG.varietyColors[d.variety] || '#888';
       const origColor = CONFIG.resolveOriginColor(d.appellation);
       return `<tr>
-        <td style="font-weight:400;color:var(--gold-lt)">${d.sampleId || '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.sampleId) || '—'}</td>
         <td>${d.sampleDate || '—'}</td>
         <td>${d.vintage || '—'}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${d.variety || '—'}</span></td>
-        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${d.appellation || '—'}</span></td>
-        <td class="${this.brixClass(d.brix)}">${d.brix !== null && d.brix !== undefined ? d.brix.toFixed(1) : '—'}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variety) || '—'}</span></td>
+        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.appellation) || '—'}</span></td>
+        <td ${this.brixStyle(d.brix)}>${d.brix !== null && d.brix !== undefined ? d.brix.toFixed(1) : '—'}</td>
         <td style="${this.phStyle(d.pH)}">${d.pH !== null && d.pH !== undefined ? d.pH.toFixed(2) : '—'}</td>
         <td>${d.ta !== null && d.ta !== undefined ? d.ta.toFixed(1) : '—'}</td>
         <td>${d.tANT !== null && typeof d.tANT === 'number' ? Math.round(d.tANT) : '—'}</td>
@@ -55,7 +62,7 @@ const Tables = {
     }).join('');
   },
 
-  brixClass(v) {
+  brixStyle(v) {
     if (v === null || v === undefined) return '';
     if (v >= 24) return 'style="color:#E07070;font-weight:400"';
     if (v >= 21) return 'style="color:#7EC87A"';
@@ -87,12 +94,12 @@ const Tables = {
       const varColor = CONFIG.varietyColors[d.variedad] || '#888';
       const origColor = CONFIG.resolveOriginColor(d.proveedor);
       return `<tr>
-        <td style="font-weight:400;color:var(--gold-lt)">${d.codigoBodega || '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}</td>
         <td>${d.fecha || '—'}</td>
-        <td>${d.tanque || '—'}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${d.variedad || '—'}</span></td>
-        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${d.proveedor || '—'}</span></td>
-        <td style="font-size:10px;color:var(--muted)">${d.sampleType || '—'}</td>
+        <td>${this._esc(d.tanque) || '—'}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '—'}</span></td>
+        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.proveedor) || '—'}</span></td>
+        <td style="font-size:10px;color:var(--muted)">${this._esc(d.sampleType) || '—'}</td>
         <td>${this.fmtNum(d.antoWX, 0)}</td>
         <td>${this.fmtNum(d.freeANT, 0)}</td>
         <td>${this.fmtNum(d.pTAN, 0)}</td>
@@ -113,11 +120,11 @@ const Tables = {
     container.innerHTML = data.map(d => {
       const varColor = CONFIG.varietyColors[d.variedad] || '#888';
       return `<tr>
-        <td style="font-weight:400;color:var(--gold-lt)">${d.codigoBodega || '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}</td>
         <td>${d.fecha || '—'}</td>
-        <td>${d.tanque || '—'}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${d.variedad || '—'}</span></td>
-        <td>${d.proveedor || '—'}</td>
+        <td>${this._esc(d.tanque) || '—'}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '—'}</span></td>
+        <td>${this._esc(d.proveedor) || '—'}</td>
         <td>${this.fmtNum(d.antoWX, 0)}</td>
         <td>${this.fmtNum(d.freeANT, 0)}</td>
         <td>${this.fmtNum(d.pTAN, 0)}</td>

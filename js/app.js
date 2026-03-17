@@ -1,9 +1,11 @@
 // ── Main Application Logic ──
 
 const App = {
-  currentView: 'berry', // 'berry', 'wine', 'extraction', 'vintage'
+  currentView: 'berry',
   initialized: false,
   theme: 'dark',
+
+  _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
 
   async init() {
     this.restoreTheme();
@@ -16,8 +18,8 @@ const App = {
         DataStore.loadFromSupabase().then(loaded => {
           if (loaded && this.initialized) this.refresh();
           this._updateDbStatus();
-        });
-      });
+        }).catch(err => console.error('Supabase load failed:', err));
+      }).catch(err => console.error('Supabase init failed:', err));
     } else {
       // 2 — Try Supabase (first visit or stale cache)
       await DataStore.initSupabase();
@@ -86,22 +88,22 @@ const App = {
       const name = file.name.toLowerCase();
       try {
         // Try WineXRay format first (CSV or any file) — auto-detect by headers
-        if (statusEl) statusEl.innerHTML += `<div class="loader-file-item"><span class="pending">⏳</span> Procesando ${file.name}...</div>`;
+        if (statusEl) statusEl.innerHTML += `<div class="loader-file-item"><span class="pending">⏳</span> Procesando ${this._esc(file.name)}...</div>`;
 
         if (name.endsWith('.csv') || name.includes('result') || name.includes('winexray') || name.includes('export')) {
           // Likely WineXRay — try unified processing
           const result = await DataStore.processWineXRayFile(file);
           if (result.berry > 0 || result.wine > 0) {
-            if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${file.name} — ${result.berry} bayas, ${result.wine} vinos`;
+            if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${result.berry} bayas, ${result.wine} vinos`;
           } else {
-            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${file.name} — No se encontraron datos`;
+            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} — No se encontraron datos`;
           }
         } else if (name.includes('berry') || name.includes('corrected') || name.includes('combined')) {
           const count = await DataStore.processBerryFile(file);
-          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${file.name} — ${count} registros de bayas`;
+          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${count} registros de bayas`;
         } else if (name.includes('recep') || name.includes('tanque') || name.includes('tank') || name.includes('rg-lab')) {
           const count = await DataStore.processWineFile(file);
-          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${file.name} — ${count} registros de vino`;
+          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${count} registros de vino`;
         } else {
           // Unknown file — try WineXRay first, then berry, then wine
           try {
@@ -110,22 +112,22 @@ const App = {
             const rows = DataStore.sheetToArray(wb, sheetName);
             if (DataStore.isWineXRayFormat(rows[0])) {
               const result = await DataStore.processWineXRayFile(file);
-              if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${file.name} — ${result.berry} bayas, ${result.wine} vinos`;
+              if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${result.berry} bayas, ${result.wine} vinos`;
             } else {
               const count = await DataStore.processBerryFile(file);
               if (count > 0) {
-                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${file.name} — ${count} registros`;
+                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${count} registros`;
               } else {
                 const wCount = await DataStore.processWineFile(file);
-                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${file.name} — ${wCount} registros`;
+                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${wCount} registros`;
               }
             }
           } catch (e2) {
-            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${file.name} — Error: ${e2.message}`;
+            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} — Error: ${this._esc(e2.message)}`;
           }
         }
       } catch (err) {
-        if (statusEl) statusEl.innerHTML += `<div class="loader-file-item"><span style="color:var(--flag-error)">✗</span> ${file.name} — Error: ${err.message}</div>`;
+        if (statusEl) statusEl.innerHTML += `<div class="loader-file-item"><span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} — Error: ${this._esc(err.message)}</div>`;
       }
     }
 
@@ -213,7 +215,7 @@ const App = {
         break;
 
       case 'extraction':
-        Charts.createExtractionChart('chartExtraction', DataStore.berryData, DataStore.wineRecepcion);
+        Charts.createExtractionChart('chartExtraction', filteredBerry, Filters.getFilteredWine());
         this.updateExtractionTable();
         break;
 
@@ -230,8 +232,6 @@ const App = {
         break;
     }
 
-    // Update header stats
-    KPIs.updateBerryKPIs(filteredBerry);
   },
 
   // ── Vintage UI helpers ──
@@ -538,7 +538,8 @@ const App = {
     DataStore.loaded = { berry: false, wine: false };
     this.initialized = false;
     Charts.destroyAll();
-    document.getElementById('loader-status').innerHTML = '';
+    const loaderStatus = document.getElementById('loader-status');
+    if (loaderStatus) loaderStatus.innerHTML = '';
     this.showDataLoader();
   }
 };
