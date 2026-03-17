@@ -291,6 +291,10 @@ header {
   border-color: var(--gold);
   color: var(--gold);
 }
+.clear-all-btn {
+  color: var(--gold-dim);
+  border-color: var(--border-gold);
+}
 .filter-chips {
   display: flex;
   flex-wrap: wrap;

@@ -85,6 +85,9 @@
 
     <!-- Berry Filters -->
     <div id="berry-filters">
+      <div class="filter-section" style="text-align:right">
+        <button class="clear-btn clear-all-btn" onclick="Filters.clearAll()">Limpiar Todo</button>
+      </div>
       <div class="filter-section">
         <div class="filter-label">Vendimia</div>
         <div class="filter-chips" id="vintage-chips"></div>
@@ -129,6 +132,9 @@
 
     <!-- Wine Filters (shown in wine view) -->
     <div id="wine-filters" style="display:none">
+      <div class="filter-section" style="text-align:right">
+        <button class="clear-btn clear-all-btn" onclick="Filters.clearAllWine()">Limpiar Todo</button>
+      </div>
       <div class="filter-section">
         <div class="filter-label">Tipo de Uva</div>
         <div class="type-filter-row">

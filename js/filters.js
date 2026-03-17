@@ -173,6 +173,36 @@ const Filters = {
     App.refresh();
   },
 
+  clearAll() {
+    ['vintages', 'varieties', 'origins', 'lots'].forEach(f => this.state[f].clear());
+    this.state.grapeType = 'all';
+    this.state.colorBy = 'variety';
+    ['btn-type-all', 'btn-type-red', 'btn-type-white'].forEach(id => {
+      document.getElementById(id)?.classList.remove('active-all', 'active-red', 'active-white');
+    });
+    document.getElementById('btn-type-all')?.classList.add('active-all');
+    document.querySelectorAll('#variety-chips .variety-chip').forEach(c => { c.style.display = ''; });
+    document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
+    document.querySelector('.color-mode-btn[data-mode="variety"]')?.classList.add('active');
+    const lotSearch = document.getElementById('lot-search');
+    if (lotSearch) lotSearch.value = '';
+    this.filterLotSearch('');
+    App.refresh();
+  },
+
+  clearAllWine() {
+    ['varieties', 'origins'].forEach(f => this.wineState[f].clear());
+    this.wineState.grapeType = 'all';
+    ['btn-wine-type-all', 'btn-wine-type-red', 'btn-wine-type-white'].forEach(id => {
+      document.getElementById(id)?.classList.remove('active-all', 'active-red', 'active-white');
+    });
+    document.getElementById('btn-wine-type-all')?.classList.add('active-all');
+    document.querySelectorAll('#wine-variety-chips .variety-chip').forEach(c => { c.style.display = ''; });
+    document.querySelectorAll('#wine-variety-chips .chip, #wine-origin-chips .chip').forEach(c => c.classList.remove('active'));
+    App.refresh();
+  },
+
   clearFilter(field) {
     this.state[field].clear();
     if (field === 'varieties') {
