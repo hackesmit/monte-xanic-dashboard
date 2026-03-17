@@ -7,6 +7,7 @@ const UploadManager = {
 
   _belowDetectionRe: /^<\s*\d+(\.\d+)?$/,
   _aboveDetectionRe: /^>\s*(\d+(\.\d+)?)$/,
+  _labTestRe: /\b(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)\b/i,
 
   _esc(str) {
     const d = document.createElement('div');
@@ -45,6 +46,10 @@ const UploadManager = {
 
       const sampleType = typeIdx !== -1 ? String(row[typeIdx] || '').trim() : '';
       if (sampleType === 'Control Wine') continue;
+
+      // Skip lab extraction tests and non-grape fruit samples
+      const sampleIdRaw = headers.indexOf('Sample Id') !== -1 ? String(row[headers.indexOf('Sample Id')] || '').trim() : '';
+      if (this._labTestRe.test(sampleIdRaw) || this._labTestRe.test(sampleType)) continue;
 
       const obj = { below_detection: false };
 
@@ -303,5 +308,25 @@ const UploadManager = {
   async _refreshDashboard() {
     const loaded = await DataStore.loadFromSupabase();
     if (loaded && App.initialized) App.refresh();
+  },
+
+  async cleanupLabSamples() {
+    if (!DataStore.supabase) { console.error('Supabase not connected'); return; }
+    const patterns = ['COLORPRO%', 'CRUSH%', 'WATER%', '%BLUEBERRY%', '%RASPBERRY%', '%RASBERRY%', '%BLACKBERRY%', '%BLKBERRY%'];
+    let total = 0;
+    for (const p of patterns) {
+      const { data, error } = await DataStore.supabase
+        .from('wine_samples').delete()
+        .ilike('sample_id', p)
+        .select('id');
+      if (error) { console.error(`Delete ${p} failed:`, error.message); continue; }
+      if (data) { total += data.length; console.log(`Deleted ${data.length} rows matching ${p}`); }
+    }
+    console.log(`Total deleted: ${total} lab/test samples`);
+    if (total > 0) {
+      DataStore.clearCache();
+      await this._refreshDashboard();
+    }
+    return total;
   }
 };
