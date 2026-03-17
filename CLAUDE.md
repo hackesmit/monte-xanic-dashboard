@@ -136,20 +136,32 @@ rainfall_mm, humidity_pct, uv_index, wind_speed, uploaded_at
 Xanic Dashboard/
 ├── index.html                  # Single page
 ├── CLAUDE.md                   # This file
-├── .gitignore                  # Excludes .env.local
+├── .gitignore                  # Excludes .env.local, .claude/
 ├── .env.local                  # Supabase keys — NEVER commit
 ├── css/styles.css              # All styling, dark/light themes
 ├── js/
 │   ├── app.js                  # Main app logic, routing, themes
+│   ├── auth.js                 # Client-side auth (token verify, login UI)
 │   ├── config.js               # Colors, grape types, column mappings
-│   ├── dataLoader.js           # Supabase queries
+│   ├── dataLoader.js           # Supabase queries (paginated)
 │   ├── filters.js              # Filter state & UI management
 │   ├── charts.js               # Chart.js rendering
 │   ├── tables.js               # Table rendering & sorting
 │   ├── kpis.js                 # KPI calculations
-│   ├── weather.js              # Open-Meteo API (NEW)
-│   └── upload.js               # Excel/CSV → Supabase pipeline (NEW)
+│   ├── maps.js                 # Vineyard quality map (NOT YET ACTIVE)
+│   ├── weather.js              # Open-Meteo API + Supabase cache
+│   └── upload.js               # Excel/CSV → Supabase pipeline
+├── api/
+│   ├── config.js               # Vercel serverless: Supabase credentials (auth-gated)
+│   ├── login.js                # Vercel serverless: bcrypt login + HMAC token
+│   └── verify.js               # Vercel serverless: token verification
+├── assets/
+│   ├── logo_montexanic.svg     # Brand logo
+│   └── favicon.svg             # Favicon (logo symbol)
+├── sql/                        # One-time SQL scripts
 ├── data/                       # Legacy JSON files (reference only)
+├── vercel.json                 # Vercel config + security headers
+├── package.json                # bcryptjs dependency (for login API)
 └── extract_data.py             # Legacy — deprecated after migration
 ```
 
@@ -158,9 +170,13 @@ Xanic Dashboard/
 ## Existing Features
 - **Bayas (Berries):** Scatter plots, bar charts, KPIs for Brix / pH / tANT / TA / Weight
 - **Vino (Wine):** Tank reception & pre-fermentation tables, phenolic KPIs
-- **Extracción:** Berry-to-wine tANT extraction % mapping
-- **Vendimias:** 2024 vs 2025 vintage comparison with % change
-- **UI:** Dark/light theme toggle, interactive legends, color-by-variety/origin, responsive layout
+- **Extracción:** Berry-to-wine tANT extraction % mapping (uses filtered data)
+- **Vendimias:** Multi-vintage comparison with % change, weather overlays
+- **Weather:** Temperature time series, rainfall scatter, Brix vs temp and tANT vs rain correlations
+- **Upload:** Drag & drop WineXRay CSV or Recepción Excel → Supabase (with validation, lab sample filtering)
+- **Auth:** Login screen with bcrypt password, HMAC session tokens, rate limiting
+- **UI:** Dark/light theme toggle, interactive legends, color-by-variety/origin, responsive layout, "Limpiar Todo" filter reset
+- **Security:** Auth-gated API, XSS escaping, CSP headers, no hardcoded credentials
 
 ---
 
@@ -171,24 +187,41 @@ Xanic Dashboard/
 - [x] Connect GitHub repo to Vercel
 - [x] Dashboard live at https://monte-xanic-dashboard-ky5t.vercel.app/
 
-### Phase 2 — Database Migration *(Priority: NOW)*
-- [ ] Create Supabase project (free tier)
-- [ ] Create tables using schema above
-- [ ] Build `upload.js` — drag & drop CSV/Excel → Supabase
-- [ ] Handle WineXRay CSV: detect `<50`/`<10` values → store as NULL
-- [ ] Handle Recepción Excel: read both sheets, split reception_lots
-- [ ] Update `dataLoader.js` to query Supabase instead of local JSON
-- [ ] Add Spanish success/error messages on upload
-- [ ] Import existing JSON data into Supabase as baseline
+### Phase 2 — Database Migration ✅ COMPLETE
+- [x] Create Supabase project (free tier)
+- [x] Create tables using schema above
+- [x] Build `upload.js` — drag & drop CSV/Excel → Supabase
+- [x] Handle WineXRay CSV: detect `<50`/`<10` values → store as NULL
+- [x] Handle Recepción Excel: read both sheets, split reception_lots
+- [x] Update `dataLoader.js` to query Supabase instead of local JSON (paginated)
+- [x] Add Spanish success/error messages on upload
+- [x] Import existing JSON data into Supabase as baseline
+- [x] Lab sample filtering (COLORPRO, CRUSH, WATER, blueberry, raspberry auto-skipped)
 
-### Phase 3 — Meteorology Integration *(Priority: HIGH)*
-- [ ] Create `weather.js` — fetch Open-Meteo historical data
-- [ ] Cache in `meteorology` Supabase table
-- [ ] Overlay temperature + rainfall on Vendimias charts
-- [ ] Brix vs temperature correlation chart
-- [ ] tANT vs rainfall correlation chart
+### Phase 3 — Meteorology Integration ✅ COMPLETE
+- [x] Create `weather.js` — fetch Open-Meteo historical data
+- [x] Cache in `meteorology` Supabase table
+- [x] Overlay temperature + rainfall on Vendimias charts
+- [x] Brix vs temperature correlation chart
+- [x] tANT vs rainfall correlation chart
 
-### Phase 4 — Polish *(Priority: MEDIUM)*
+### Phase 4 — Authentication ✅ COMPLETE
+- [x] Login screen with username/password
+- [x] bcrypt password hashing + HMAC session tokens (24h expiry)
+- [x] Auth-gated `/api/config` endpoint (Supabase credentials protected)
+- [x] Rate limiting on login (10 attempts / 15 min)
+- [ ] **Login screen UI polish** — style the login form to match dashboard design
+
+### Phase 5 — Vineyard Quality Map *(Priority: HIGH)*
+- [ ] Add `maps.js` CONFIG: `fieldLotToSection`, `fieldLotRanchPatterns`, `mapMetrics`, `vineyardSections`
+- [ ] Add map view DOM elements to `index.html` (SVG container, metric selector, detail panel, KPIs)
+- [ ] Load `maps.js` via `<script>` tag in `index.html`
+- [ ] Add "Mapa" nav tab to sidebar
+- [ ] SVG vineyard section map with color-coded quality metrics (Brix, pH, tANT, TA)
+- [ ] Section detail panel with per-section KPIs
+- [ ] Ranch-level tonnage-weighted aggregation
+
+### Phase 6 — Polish *(Priority: MEDIUM)*
 - [ ] Export charts as PNG/PDF
 - [ ] Mobile filter panel improvements
 - [ ] Multi-vintage trend lines (3+ years)
