@@ -4,16 +4,16 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Vendimias — Monte Xanic</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <link rel="stylesheet" href="css/styles.css">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23000'/%3E%3Cpath d='M32 14c-2 3-6 8-6 14 0 4 2 7 4 9v8c-3 1-8 3-8 5h20c0-2-5-4-8-5v-8c2-2 4-5 4-9 0-6-4-11-6-14z' fill='%23C4A060' stroke='%23C4A060' stroke-width='0.5'/%3E%3Cpath d='M22 26c-3-2-7-3-9-2 2 3 5 6 9 6M42 26c3-2 7-3 9-2-2 3-5 6-9 6' fill='none' stroke='%23C4A060' stroke-width='1.5' stroke-linecap='round'/%3E%3Ccircle cx='32' cy='12' r='2' fill='%23C4A060'/%3E%3C/svg%3E">
 </head>
 <body>
 
 <!-- Data Loader Overlay -->
-<div id="data-loader" class="data-loader view-panel active">
+<div id="data-loader" class="data-loader view-panel">
   <div class="loader-card" id="loader-card">
     <div class="loader-icon">🍇</div>
     <div class="loader-title">Cargar Datos de Vendimia</div>
@@ -23,7 +23,7 @@
     <div class="loader-sub">
       Arrastre o seleccione su exportación WineXRay (.csv o .xlsx) para visualizar sin guardar.
     </div>
-    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" style="display:none">
+    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" style="display:none" aria-label="Seleccionar archivos locales">
     <button class="loader-btn" onclick="document.getElementById('file-input').click()">Seleccionar Archivos</button>
     <div class="loader-files" id="loader-status"></div>
 
@@ -35,7 +35,7 @@
       <strong>WineXRay</strong> (.csv) — muestras de bayas y vino<br>
       <strong>Recepción de Tanque</strong> (.xlsx) — recepciones y prefermentativos
     </div>
-    <input type="file" id="db-file-input" accept=".xlsx,.xls,.csv" style="display:none"
+    <input type="file" id="db-file-input" accept=".xlsx,.xls,.csv" style="display:none" aria-label="Subir archivo a base de datos"
       onchange="UploadManager.handleUpload(this.files[0], document.getElementById('db-upload-status')); this.value=''">
     <button class="loader-btn loader-btn-db" id="db-upload-btn"
       onclick="document.getElementById('db-file-input').click()">
@@ -61,11 +61,11 @@
     <div class="hdr-stat"><div class="hdr-num" id="hdr-varietales">—</div><div class="hdr-lbl">Varietales</div></div>
     <div class="hdr-stat"><div class="hdr-num" id="hdr-origenes">—</div><div class="hdr-lbl">Orígenes</div></div>
     <span id="db-status-badge" class="db-badge db-badge-off" title="Sin conexión a base de datos">DB —</span>
-    <button class="theme-toggle" onclick="App.toggleTheme()" title="Cambiar tema claro/oscuro" id="theme-toggle-btn">
+    <button class="theme-toggle" onclick="App.toggleTheme()" title="Cambiar tema claro/oscuro" id="theme-toggle-btn" aria-label="Cambiar tema">
       <span class="theme-icon-dark">&#9790;</span>
       <span class="theme-icon-light" style="display:none">&#9788;</span>
     </button>
-    <button class="help-toggle" onclick="App.toggleHelp()" title="Ayuda">?</button>
+    <button class="help-toggle" onclick="App.toggleHelp()" title="Ayuda" aria-label="Ayuda">?</button>
   </div>
 </header>
 
@@ -113,7 +113,7 @@
 
       <div class="filter-section">
         <div class="filter-label">Lote Específico</div>
-        <input type="text" class="lot-search" id="lot-search" placeholder="Buscar lote...">
+        <input type="text" class="lot-search" id="lot-search" placeholder="Buscar lote..." aria-label="Buscar lote">
         <button class="clear-btn" onclick="Filters.clearFilter('lots')">Limpiar</button>
         <div class="lot-chips-container">
           <div class="filter-chips" id="lot-chips"></div>

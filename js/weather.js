@@ -48,12 +48,13 @@ const WeatherStore = {
       try {
         const rows = await this._fetchFromAPI(start, end);
         if (!rows.length) continue;
-        await DataStore.supabase
+        const { error: upsertErr } = await DataStore.supabase
           .from('meteorology')
           .upsert(rows, { onConflict: 'date' });
+        if (upsertErr) console.warn('[WeatherStore] upsert failed:', upsertErr.message);
         rows.forEach(r => {
+          if (!this._byDate[r.date]) this.data.push(r);
           this._byDate[r.date] = r;
-          if (!this.data.find(d => d.date === r.date)) this.data.push(r);
         });
         this.data.sort((a, b) => a.date.localeCompare(b.date));
       } catch (e) {
@@ -64,14 +65,16 @@ const WeatherStore = {
 
   // Return true if we already have near-complete data for the range (≤3 missing days allowed)
   _hasFullRange(start, end) {
-    const startD    = new Date(start);
-    const endD      = new Date(end);
-    const totalDays = Math.floor((endD - startD) / 86400000) + 1;
-    let present     = 0;
-    const cur       = new Date(startD);
-    while (cur <= endD) {
-      if (this._byDate[cur.toISOString().split('T')[0]]) present++;
-      cur.setDate(cur.getDate() + 1);
+    const sp = start.split('-').map(Number);
+    const ep = end.split('-').map(Number);
+    let cur = Date.UTC(sp[0], sp[1] - 1, sp[2]);
+    const endMs = Date.UTC(ep[0], ep[1] - 1, ep[2]);
+    const totalDays = Math.floor((endMs - cur) / 86400000) + 1;
+    let present = 0;
+    while (cur <= endMs) {
+      const iso = new Date(cur).toISOString().split('T')[0];
+      if (this._byDate[iso]) present++;
+      cur += 86400000;
     }
     return (totalDays - present) <= 3;
   },
@@ -96,7 +99,14 @@ const WeatherStore = {
       timezone: this._TZ
     });
 
-    const res = await fetch(`${this._API_BASE}?${params}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let res;
+    try {
+      res = await fetch(`${this._API_BASE}?${params}`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
     if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
     const json = await res.json();
     const d    = json.daily;
@@ -130,10 +140,10 @@ const WeatherStore = {
   },
 
   // Cumulative rainfall from July 1 of the sample's vintage year up to sampleDate
-  getCumulativeRainfall(dateStr) {
+  getCumulativeRainfall(dateStr, vintageYear) {
     const iso = this._toISO(dateStr);
     if (!iso) return null;
-    const year   = parseInt(iso.substring(0, 4));
+    const year   = vintageYear || parseInt(iso.substring(0, 4));
     const start  = `${year}-07-01`;
     const endD   = new Date(iso);
     let total    = 0;
@@ -151,8 +161,9 @@ const WeatherStore = {
   dayOfSeason(dateStr) {
     const iso = this._toISO(dateStr);
     if (!iso) return null;
-    const d    = new Date(iso);
-    const jul1 = new Date(d.getFullYear(), 6, 1);
+    const parts = iso.split('-');
+    const d = Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+    const jul1 = Date.UTC(parseInt(parts[0]), 6, 1);
     return Math.floor((d - jul1) / 86400000) + 1;
   },
 
@@ -164,13 +175,16 @@ const WeatherStore = {
 
   // Normalize M/D/YYYY or YYYY-MM-DD → YYYY-MM-DD
   _toISO(dateStr) {
-    if (!dateStr) return '';
-    const s = String(dateStr);
+    if (!dateStr) return null;
+    const s = String(dateStr).trim();
     if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
     const p = s.split('/');
     if (p.length === 3) {
-      return `${p[2]}-${p[0].padStart(2, '0')}-${p[1].padStart(2, '0')}`;
+      const [m, d, y] = p.map(Number);
+      if (m >= 1 && m <= 12 && d >= 1 && d <= 31 && y >= 1900) {
+        return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      }
     }
-    return s;
+    return null;
   }
 };

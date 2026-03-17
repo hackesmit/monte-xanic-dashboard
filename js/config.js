@@ -4,7 +4,8 @@ const CONFIG = {
   // Grape type classification
   grapeTypes: {
     red: ['Cabernet Sauvignon','Syrah','Cabernet Franc','Merlot','Tempranillo',
-          'Marselan','Grenache','Caladoc','Malbec','Petit Verdot','Durif','Nebbiolo'],
+          'Marselan','Grenache','Caladoc','Malbec','Petit Verdot','Durif','Nebbiolo',
+          'Mourvèdre','Petite Sirah'],
     white: ['Sauvignon Blanc','Chardonnay','Viognier','Chenin Blanc']
   },
 
@@ -22,7 +23,12 @@ const CONFIG = {
     'Petit Verdot':      '#00BCD4',
     'Durif':             '#8BC34A',
     'Nebbiolo':          '#FFB300',
-    'Sauvignon Blanc':   '#F0E68C'
+    'Sauvignon Blanc':   '#F0E68C',
+    'Mourvèdre':         '#8B4513',
+    'Petite Sirah':      '#2F0A28',
+    'Chardonnay':        '#F5E6A3',
+    'Viognier':          '#E8D5A0',
+    'Chenin Blanc':      '#D4E8B0'
   },
 
   // Origin colors (full names as they appear in data)
@@ -38,6 +44,7 @@ const CONFIG = {
     'Valle de Ojos Negros (Dubacano)':               '#3498DB',
     'California':                                     '#95A5A6',
     'San Gerónimo':                                   '#F39C12',
+    'Camino Corazón (Valle de Parras)':               '#C47A5A',
     // Short aliases for backwards compat
     'Kompali':               '#C4A060',
     'Viña Alta':             '#60A8C0',
@@ -77,7 +84,8 @@ const CONFIG = {
     'CS':'Cabernet Sauvignon','CF':'Cabernet Franc','SY':'Syrah','ME':'Merlot',
     'MA':'Malbec','GRE':'Grenache','GR':'Grenache','PV':'Petit Verdot',
     'TE':'Tempranillo','TEM':'Tempranillo','CA':'Caladoc','CAL':'Caladoc',
-    'MS':'Marselan','MRS':'Marselan','DU':'Durif','NB':'Nebbiolo','SB':'Sauvignon Blanc'
+    'MS':'Marselan','MRS':'Marselan','DU':'Durif','NB':'Nebbiolo','SB':'Sauvignon Blanc',
+    'CH':'Chardonnay','VG':'Viognier','CB':'Chenin Blanc','MV':'Mourvèdre','PS':'Petite Sirah'
   },
 
   // Origin abbreviations (code → full name)
@@ -298,6 +306,12 @@ const CONFIG = {
     'I':                      'color_i',
     'T':                      'color_t',
     'Berry Fresh Weight (gr)': 'berry_weight',
+    'Berry Extractable Anthocyanins (mg/100b)': 'berry_anthocyanins',
+    'Berry Sugars (mg/b)':    'berry_sugars_mg',
+    'Alcohol (% vol)':        'alcohol',
+    'Volatile Acidity (g/L)': 'va',
+    'Malic Acid (g/L)':       'malic_acid',
+    'Residual Sugars (g/L)':  'rs',
     'Notes...':               'notes'
   },
 
@@ -328,7 +342,9 @@ const CONFIG = {
     'Antocianinas WX (FFA)':     'antocianinas_wx',
     'Poli SPICA':                'poli_spica',
     'Anto SPICA':                'anto_spica',
-    'IPT SPICA':                 'ipt_spica'
+    'IPT SPICA':                 'ipt_spica',
+    'Acidificado':               'acidificado',
+    'P010 (kg)':                 'p010_kg'
   },
 
   // Prefermentativos Excel column headers → prefermentativos columns
@@ -402,7 +418,7 @@ const CONFIG = {
 
   // prefermentativos Supabase columns → DataStore.winePreferment JS field names
   supabasePrefToWineJS: {
-    'report_code':      'codigoBodega',
+    'report_code':      'reportCode',
     'measurement_date': 'fecha',
     'batch_code':       'codigoBodega',
     'tank_id':          'tanque',
