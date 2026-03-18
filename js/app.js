@@ -8,6 +8,7 @@ const App = {
   _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
 
   async init() {
+    if (this.initialized) return;
     this.restoreTheme();
 
     // 1 — Try localStorage cache (instant render)
@@ -544,5 +545,8 @@ const App = {
   }
 };
 
-// Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', () => App.init());
+// Initialize on DOM ready — auth gate before app
+document.addEventListener('DOMContentLoaded', async () => {
+  const authed = await Auth.init();
+  if (authed) App.init();
+});
