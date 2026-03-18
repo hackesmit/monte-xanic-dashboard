@@ -42,7 +42,13 @@ const WeatherStore = {
     const today = new Date().toISOString().split('T')[0];
     const coords = CONFIG.valleyCoordinates || { VDG: { lat: 32.08, lon: -116.62 } };
 
+    // Detect if location column exists by checking if any loaded row has it
+    const hasLocationCol = this.data.some(r => r.location !== undefined);
+
     for (const valley of this._VALLEYS) {
+      // Only sync non-VDG valleys if the location column exists in DB
+      if (valley !== 'VDG' && !hasLocationCol) continue;
+
       const coord = coords[valley];
       if (!coord) continue;
 
@@ -55,12 +61,22 @@ const WeatherStore = {
         try {
           const rows = await this._fetchFromAPI(start, end, coord.lat, coord.lon);
           if (!rows.length) continue;
-          // Tag rows with location
-          rows.forEach(r => { r.location = valley; });
-          const { error: upsertErr } = await DataStore.supabase
-            .from('meteorology')
-            .upsert(rows, { onConflict: 'date,location' });
-          if (upsertErr) console.warn(`[WeatherStore] upsert failed for ${valley}:`, upsertErr.message);
+
+          // Persist to Supabase
+          if (hasLocationCol) {
+            rows.forEach(r => { r.location = valley; });
+            const { error: upsertErr } = await DataStore.supabase
+              .from('meteorology')
+              .upsert(rows, { onConflict: 'date,location' });
+            if (upsertErr) console.warn(`[WeatherStore] upsert failed for ${valley}:`, upsertErr.message);
+          } else {
+            // Pre-migration: no location column, use old single-column conflict
+            const { error: upsertErr } = await DataStore.supabase
+              .from('meteorology')
+              .upsert(rows, { onConflict: 'date' });
+            if (upsertErr) console.warn('[WeatherStore] upsert failed:', upsertErr.message);
+          }
+
           rows.forEach(r => {
             if (!this._byDate[r.date]) this._byDate[r.date] = {};
             if (!this._byDate[r.date][valley]) this.data.push(r);
