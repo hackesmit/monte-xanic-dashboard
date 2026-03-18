@@ -205,6 +205,7 @@ const App = {
         Tables.updateBerryTable(filteredBerry);
         Charts.createTempCorrelation('chartBrixTemp', filteredBerry);
         Charts.createRainCorrelation('chartTantRain', filteredBerry);
+        Charts.updateEvolutionChart();
         break;
 
       case 'wine':

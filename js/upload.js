@@ -51,6 +51,9 @@ const UploadManager = {
       const sampleIdRaw = headers.indexOf('Sample Id') !== -1 ? String(row[headers.indexOf('Sample Id')] || '').trim() : '';
       if (this._labTestRe.test(sampleIdRaw) || this._labTestRe.test(sampleType)) continue;
 
+      // Skip experimental, California, and specifically excluded samples
+      if (CONFIG.isSampleExcluded(sampleIdRaw)) continue;
+
       const obj = { below_detection: false };
 
       headers.forEach((h, idx) => {
@@ -73,6 +76,9 @@ const UploadManager = {
       });
 
       if (obj.sample_id) {
+        if (obj.variety) obj.variety = CONFIG.normalizeVariety(obj.variety);
+        if (obj.appellation) obj.appellation = CONFIG.normalizeAppellation(obj.appellation, obj.sample_id);
+        if (obj.appellation === 'California') continue;
         if (!obj.vintage_year && obj.sample_id) {
           const vm = String(obj.sample_id).match(/^(\d{2})/);
           if (vm) obj.vintage_year = 2000 + parseInt(vm[1], 10);
@@ -221,7 +227,7 @@ const UploadManager = {
         const wineCount  = samples.length - berryCount;
         this._setStatus(statusEl, 'pending', `⏳ ${samples.length} muestras (${berryCount} bayas, ${wineCount} vinos). Guardando...`);
 
-        const { count, error } = await this.upsertRows('wine_samples', samples, 'sample_id');
+        const { count, error } = await this.upsertRows('wine_samples', samples, 'sample_id,sample_date');
         if (error) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] wine_samples error:', error);

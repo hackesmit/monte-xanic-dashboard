@@ -298,6 +298,25 @@
         </div>
       </div>
 
+      <div class="section-label" style="margin-top:24px">Evolución Fenólica</div>
+      <div class="evo-controls" style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+        <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Compuestos:</span>
+        <label class="evo-toggle-label"><input type="checkbox" class="evo-compound-toggle" value="tANT" checked onchange="Charts.updateEvolutionChart()"><span class="evo-toggle-text">tANT</span></label>
+        <label class="evo-toggle-label"><input type="checkbox" class="evo-compound-toggle" value="fANT" onchange="Charts.updateEvolutionChart()"><span class="evo-toggle-text">fANT</span></label>
+        <label class="evo-toggle-label"><input type="checkbox" class="evo-compound-toggle" value="bANT" onchange="Charts.updateEvolutionChart()"><span class="evo-toggle-text">bANT</span></label>
+        <label class="evo-toggle-label"><input type="checkbox" class="evo-compound-toggle" value="pTAN" onchange="Charts.updateEvolutionChart()"><span class="evo-toggle-text">pTAN</span></label>
+        <label class="evo-toggle-label"><input type="checkbox" class="evo-compound-toggle" value="iRPs" onchange="Charts.updateEvolutionChart()"><span class="evo-toggle-text">iRPs</span></label>
+        <label class="evo-toggle-label"><input type="checkbox" class="evo-compound-toggle" value="ipt" onchange="Charts.updateEvolutionChart()"><span class="evo-toggle-text">IPT</span></label>
+        <div style="flex:1"></div>
+        <span style="font-size:9px;color:var(--muted)">Brix siempre visible en eje secundario · Clic en lote para resaltar · Doble clic para reiniciar</span>
+      </div>
+      <div class="chart-card chart-wide">
+        <button class="chart-export-btn" onclick="Charts.exportChart('chartEvolution', 'Evolucion Fenolica')" title="Exportar como PNG">&#x2913; PNG</button>
+        <div class="chart-title">Evolución Fenólica por Lote</div>
+        <div class="chart-sub">Baya → Vino · Fenólicos (eje izquierdo) + Brix (eje derecho, cuadros morados)</div>
+        <div style="height:360px"><canvas id="chartEvolution"></canvas></div>
+      </div>
+
       <div class="section-label" style="margin-top:24px">Correlaciones Climáticas</div>
       <div class="charts-grid">
         <div class="chart-card">

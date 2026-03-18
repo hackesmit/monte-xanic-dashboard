@@ -1184,3 +1184,37 @@ canvas { max-width: 100%; }
     animation-duration: 0.01ms !important;
   }
 }
+
+/* ── Evolution chart compound toggles ── */
+.evo-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  font-size: 10px;
+  color: var(--muted);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.evo-toggle-label:hover {
+  border-color: var(--gold-dim);
+  color: var(--gold-lt);
+}
+.evo-toggle-label:has(input:checked) {
+  border-color: var(--gold);
+  background: rgba(196,160,96,0.12);
+  color: var(--gold-lt);
+}
+.evo-compound-toggle {
+  width: 12px;
+  height: 12px;
+  accent-color: var(--gold);
+  cursor: pointer;
+}
+.evo-toggle-text {
+  font-family: 'Sackers Gothic Medium', sans-serif;
+  letter-spacing: 0.3px;
+}
