@@ -1,15 +1,15 @@
 // ── Weather Store: Open-Meteo API + Supabase meteorology cache ──
-// Valle de Guadalupe: 32.0°N, 116.6°W
+// Valley-specific weather for 3 locations:
+//   VDG (Valle de Guadalupe), VON (Valle de Ojos Negros), SV (San Vicente)
 // Harvest season: July 1 – October 31
 
 const WeatherStore = {
-  data:    [],   // Sorted array of daily rows { date, temp_max, temp_min, temp_avg, rainfall_mm, ... }
-  _byDate: {},   // YYYY-MM-DD → row (O(1) lookup)
+  data:    [],   // Flat array of all rows { date, location, temp_max, ... }
+  _byDate: {},   // YYYY-MM-DD → { VDG: row, VON: row, SV: row }
 
   _API_BASE: 'https://api.open-meteo.com/v1/archive',
-  _LAT:       32.0,
-  _LON:      -116.6,
   _TZ:       'America/Tijuana',
+  _VALLEYS:  ['VDG', 'VON', 'SV'],
 
   // ── Load ───────────────────────────────────────────────────────
 
@@ -23,7 +23,11 @@ const WeatherStore = {
       if (error) { console.warn('[WeatherStore] load:', error.message); return false; }
       this.data    = data || [];
       this._byDate = {};
-      this.data.forEach(r => { this._byDate[r.date] = r; });
+      this.data.forEach(r => {
+        const loc = r.location || 'VDG';
+        if (!this._byDate[r.date]) this._byDate[r.date] = {};
+        this._byDate[r.date][loc] = r;
+      });
       return this.data.length > 0;
     } catch (e) {
       console.warn('[WeatherStore] load error:', e);
@@ -32,39 +36,45 @@ const WeatherStore = {
   },
 
   // ── Sync ───────────────────────────────────────────────────────
-  // Fetch any missing harvest-season days from Open-Meteo and cache them.
-  // vintages: array of vintage years, e.g. [2024, 2025]
 
   async sync(vintages) {
     if (!DataStore.supabase) return;
     const today = new Date().toISOString().split('T')[0];
+    const coords = CONFIG.valleyCoordinates || { VDG: { lat: 32.08, lon: -116.62 } };
 
-    for (const year of vintages) {
-      const start = `${year}-07-01`;
-      const end   = `${year}-10-31` <= today ? `${year}-10-31` : today;
-      if (start > today) continue;
-      if (this._hasFullRange(start, end)) continue;
+    for (const valley of this._VALLEYS) {
+      const coord = coords[valley];
+      if (!coord) continue;
 
-      try {
-        const rows = await this._fetchFromAPI(start, end);
-        if (!rows.length) continue;
-        const { error: upsertErr } = await DataStore.supabase
-          .from('meteorology')
-          .upsert(rows, { onConflict: 'date' });
-        if (upsertErr) console.warn('[WeatherStore] upsert failed:', upsertErr.message);
-        rows.forEach(r => {
-          if (!this._byDate[r.date]) this.data.push(r);
-          this._byDate[r.date] = r;
-        });
-        this.data.sort((a, b) => a.date.localeCompare(b.date));
-      } catch (e) {
-        console.warn('[WeatherStore] sync failed for', year, ':', e.message);
+      for (const year of vintages) {
+        const start = `${year}-07-01`;
+        const end   = `${year}-10-31` <= today ? `${year}-10-31` : today;
+        if (start > today) continue;
+        if (this._hasFullRange(start, end, valley)) continue;
+
+        try {
+          const rows = await this._fetchFromAPI(start, end, coord.lat, coord.lon);
+          if (!rows.length) continue;
+          // Tag rows with location
+          rows.forEach(r => { r.location = valley; });
+          const { error: upsertErr } = await DataStore.supabase
+            .from('meteorology')
+            .upsert(rows, { onConflict: 'date,location' });
+          if (upsertErr) console.warn(`[WeatherStore] upsert failed for ${valley}:`, upsertErr.message);
+          rows.forEach(r => {
+            if (!this._byDate[r.date]) this._byDate[r.date] = {};
+            if (!this._byDate[r.date][valley]) this.data.push(r);
+            this._byDate[r.date][valley] = r;
+          });
+        } catch (e) {
+          console.warn('[WeatherStore] sync failed for', valley, year, ':', e.message);
+        }
       }
     }
+    this.data.sort((a, b) => a.date.localeCompare(b.date));
   },
 
-  // Return true if we already have near-complete data for the range (≤3 missing days allowed)
-  _hasFullRange(start, end) {
+  _hasFullRange(start, end, location) {
     const sp = start.split('-').map(Number);
     const ep = end.split('-').map(Number);
     let cur = Date.UTC(sp[0], sp[1] - 1, sp[2]);
@@ -73,7 +83,7 @@ const WeatherStore = {
     let present = 0;
     while (cur <= endMs) {
       const iso = new Date(cur).toISOString().split('T')[0];
-      if (this._byDate[iso]) present++;
+      if (this._byDate[iso] && this._byDate[iso][location]) present++;
       cur += 86400000;
     }
     return (totalDays - present) <= 3;
@@ -81,10 +91,10 @@ const WeatherStore = {
 
   // ── Open-Meteo fetch ───────────────────────────────────────────
 
-  async _fetchFromAPI(startDate, endDate) {
+  async _fetchFromAPI(startDate, endDate, lat, lon) {
     const params = new URLSearchParams({
-      latitude:   this._LAT,
-      longitude:  this._LON,
+      latitude:   lat,
+      longitude:  lon,
       start_date: startDate,
       end_date:   endDate,
       daily: [
@@ -126,38 +136,46 @@ const WeatherStore = {
 
   // ── Accessors ──────────────────────────────────────────────────
 
-  getRange(startDate, endDate) {
-    return this.data.filter(d => d.date >= startDate && d.date <= endDate);
+  getRange(startDate, endDate, location) {
+    const loc = location || 'VDG';
+    return this.data.filter(d => {
+      const dloc = d.location || 'VDG';
+      return dloc === loc && d.date >= startDate && d.date <= endDate;
+    });
   },
 
-  getByDate(dateStr) {
-    return this._byDate[this._toISO(dateStr)] || null;
+  getByDate(dateStr, appellation) {
+    const iso = this._toISO(dateStr);
+    if (!iso || !this._byDate[iso]) return null;
+    const valley = CONFIG.getWeatherValley(appellation);
+    return this._byDate[iso][valley] || this._byDate[iso]['VDG'] || null;
   },
 
-  getTempForDate(dateStr) {
-    const w = this.getByDate(dateStr);
+  getTempForDate(dateStr, appellation) {
+    const w = this.getByDate(dateStr, appellation);
     return w ? w.temp_avg : null;
   },
 
-  // Cumulative rainfall from July 1 of the sample's vintage year up to sampleDate
-  getCumulativeRainfall(dateStr, vintageYear) {
+  getCumulativeRainfall(dateStr, vintageYear, appellation) {
     const iso = this._toISO(dateStr);
     if (!iso) return null;
     const year   = vintageYear || parseInt(iso.substring(0, 4));
+    const valley = CONFIG.getWeatherValley(appellation);
     const start  = `${year}-07-01`;
     const endD   = new Date(iso);
     let total    = 0;
     let hasAny   = false;
     const cur    = new Date(start);
     while (cur <= endD) {
-      const row = this._byDate[cur.toISOString().split('T')[0]];
+      const d = cur.toISOString().split('T')[0];
+      const dayData = this._byDate[d];
+      const row = dayData ? (dayData[valley] || dayData['VDG']) : null;
       if (row && row.rainfall_mm !== null) { total += row.rainfall_mm; hasAny = true; }
       cur.setDate(cur.getDate() + 1);
     }
     return hasAny ? total : null;
   },
 
-  // Day-of-season index: July 1 = 1, Aug 1 = 32, etc.
   dayOfSeason(dateStr) {
     const iso = this._toISO(dateStr);
     if (!iso) return null;
@@ -167,13 +185,11 @@ const WeatherStore = {
     return Math.floor((d - jul1) / 86400000) + 1;
   },
 
-  // Return unique vintage years present in DataStore.berryData
   getVintagesFromData() {
     const years = new Set(DataStore.berryData.map(d => d.vintage).filter(Boolean));
     return [...years].map(Number).sort();
   },
 
-  // Normalize M/D/YYYY or YYYY-MM-DD → YYYY-MM-DD
   _toISO(dateStr) {
     if (!dateStr) return null;
     const s = String(dateStr).trim();

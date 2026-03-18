@@ -5,7 +5,7 @@ const CONFIG = {
   grapeTypes: {
     red: ['Cabernet Sauvignon','Syrah','Cabernet Franc','Merlot','Tempranillo',
           'Marselan','Grenache','Caladoc','Malbec','Petit Verdot','Durif','Nebbiolo',
-          'Mourvèdre','Petite Sirah'],
+          'Mourvèdre'],
     white: ['Sauvignon Blanc','Chardonnay','Viognier','Chenin Blanc']
   },
 
@@ -25,45 +25,112 @@ const CONFIG = {
     'Nebbiolo':          '#FFB300',
     'Sauvignon Blanc':   '#F0E68C',
     'Mourvèdre':         '#8B4513',
-    'Petite Sirah':      '#2F0A28',
     'Chardonnay':        '#F5E6A3',
     'Viognier':          '#E8D5A0',
     'Chenin Blanc':      '#D4E8B0'
   },
 
-  // Origin colors (full names as they appear in data)
+  // Origin colors (ranch-first format)
   originColors: {
-    'Valle de Ojos Negros (Kompali)':               '#C4A060',
-    'Valle de Ojos Negros (Viña Alta)':              '#60A8C0',
-    'Valle de Guadalupe (Olé)':                      '#E07060',
-    'Valle de Ojos Negros (Ojos Negros)':            '#7EC87A',
-    'Valle de Guadalupe (Monte Xanic)':              '#DDB96E',
-    'Valle de Ojos Negros (Dominio de las Abejas)':  '#9B59B6',
-    'Valle de Ojos Negros (Rancho 14)':              '#E67E22',
-    'Valle de Guadalupe (Siete Leguas)':             '#1ABC9C',
-    'Valle de Ojos Negros (Dubacano)':               '#3498DB',
-    'California':                                     '#95A5A6',
-    'San Gerónimo':                                   '#F39C12',
-    'Camino Corazón (Valle de Parras)':               '#C47A5A',
-    // Short aliases for backwards compat
-    'Kompali':               '#C4A060',
-    'Viña Alta':             '#60A8C0',
-    'Olé':                   '#E07060',
-    'Ojos Negros':           '#7EC87A',
-    'Monte Xanic':           '#DDB96E',
-    'Dominio de las Abejas': '#9B59B6',
-    'Rancho 14':             '#E67E22',
-    'Siete Leguas':          '#1ABC9C',
-    'Dubacano':              '#3498DB'
+    'Monte Xanic (VDG)':           '#DDB96E',
+    'Olé (VDG)':                   '#E07060',
+    'Siete Leguas (VDG)':          '#1ABC9C',
+    'Rancho 14 (VDG)':             '#E67E22',
+    'Kompali (VON)':               '#C4A060',
+    'Viña Alta (VON)':             '#60A8C0',
+    'Ojos Negros (VON)':           '#7EC87A',
+    'Dominio de las Abejas (VON)': '#9B59B6',
+    'Dubacano (SV)':               '#3498DB',
+    'Llano Colorado (SV)':         '#2ECC71',
+    'San Gerónimo':                '#F39C12',
+    'Camino Corazón (VP)':         '#C47A5A'
   },
 
-  // Resolve origin color: full name → short alias → hash fallback
+  // Normalize appellation strings (old → new ranch-first format)
+  appellationFixes: {
+    // Full old format → new ranch-first format
+    'Valle de Guadalupe (Monte Xanic)':              'Monte Xanic (VDG)',
+    'Valle de Guadalupe (Olé)':                      'Olé (VDG)',
+    'Valle de Guadalupe (Ole)':                      'Olé (VDG)',
+    'Valle de Guadalupe (Siete Leguas)':             'Siete Leguas (VDG)',
+    'Valle de Ojos Negros (Rancho 14)':              'Rancho 14 (VDG)',
+    'Valle de Ojos Negros (Kompali)':                'Kompali (VON)',
+    'Valle de Ojos Negros (Viña Alta)':              'Viña Alta (VON)',
+    'Valle de Ojos Negros (Vina Alta)':              'Viña Alta (VON)',
+    'Valle de Ojos Negros (Ojos Negros)':            'Ojos Negros (VON)',
+    'Valle de Ojos Negros (Dominio de las Abejas)':  'Dominio de las Abejas (VON)',
+    'Valle de Ojos Negros (Dubacano)':               'Dubacano (SV)',
+    'Camino Corazón (Valle de Parras)':              'Camino Corazón (VP)',
+    'Camino Corazon (Valle de Parras)':              'Camino Corazón (VP)',
+    'San Geronimo':                                  'San Gerónimo',
+    // Short/bare names that may appear
+    'Monte Xanic':           'Monte Xanic (VDG)',
+    'Kompali':               'Kompali (VON)',
+    'Viña Alta':             'Viña Alta (VON)',
+    'Vina Alta':             'Viña Alta (VON)',
+    'Olé':                   'Olé (VDG)',
+    'Ole':                   'Olé (VDG)',
+    'Ojos Negros':           'Ojos Negros (VON)',
+    'Dominio de las Abejas': 'Dominio de las Abejas (VON)',
+    'Rancho 14':             'Rancho 14 (VDG)',
+    'Siete Leguas':          'Siete Leguas (VDG)',
+    'Dubacano':              'Dubacano (SV)',
+    'Llano Colorado':        'Llano Colorado (SV)',
+    'California':            'California'
+  },
+
+  // Sample code → ranch mapping for resolving bare valley appellations
+  _codeToRanch: {
+    'MX': 'Monte Xanic (VDG)', 'VDG': 'Monte Xanic (VDG)',
+    'OLE': 'Olé (VDG)', '7L': 'Siete Leguas (VDG)', 'R14': 'Rancho 14 (VDG)',
+    'VA': 'Viña Alta (VON)', 'ON': 'Ojos Negros (VON)',
+    'DA': 'Dominio de las Abejas (VON)', 'DLA': 'Dominio de las Abejas (VON)',
+    'DUB': 'Dubacano (SV)', 'LLC': 'Llano Colorado (SV)',
+    'SG': 'San Gerónimo', 'UC': 'Dominio de las Abejas (VON)'
+  },
+  _resolveRanchFromCode(sampleId) {
+    if (!sampleId) return null;
+    const id = String(sampleId).replace(/^\d{2}/, ''); // strip vintage prefix
+    // K* prefix → Kompali
+    if (/^K/i.test(id)) return 'Kompali (VON)';
+    // Try known code prefixes (longest first)
+    const prefixes = ['DLA','DUB','LLC','OLE','VDG','MX','VA','ON','DA','7L','R14','SG','UC'];
+    for (const p of prefixes) {
+      if (id.toUpperCase().startsWith(p)) return this._codeToRanch[p] || null;
+    }
+    // Try extracting ranch code from after variety abbreviation (e.g., 25CFVA-2B → VA)
+    const m = id.match(/^[A-Z]{2,3}(MX|VDG|OLE|7L|R14|VA|ON|DA|DLA|DUB|LLC|SG|UC)/i);
+    if (m) return this._codeToRanch[m[1].toUpperCase()] || null;
+    return null;
+  },
+
+  normalizeAppellation(name, sampleId) {
+    if (!name) return name;
+    // Fix mojibake/replacement characters
+    let fixed = name;
+    if (fixed.includes('\uFFFD')) {
+      fixed = fixed
+        .replace('Vi\uFFFDa', 'Viña').replace('Ol\uFFFD', 'Olé')
+        .replace('Ger\uFFFDnimo', 'Gerónimo').replace('Coraz\uFFFDn', 'Corazón');
+    }
+    // Check direct mapping
+    if (this.appellationFixes[fixed]) return this.appellationFixes[fixed];
+    // Bare valley names → resolve from sample code
+    if (/^Valle de Guadalupe$/i.test(fixed) || /^Valle de Ojos Negros$/i.test(fixed)) {
+      const resolved = this._resolveRanchFromCode(sampleId);
+      if (resolved) return resolved;
+      // Fallback: VDG → Monte Xanic, VON → Ojos Negros
+      return /Guadalupe/i.test(fixed) ? 'Monte Xanic (VDG)' : 'Ojos Negros (VON)';
+    }
+    return fixed;
+  },
+
+  // Resolve origin color: direct lookup or hash fallback
   _originColorCache: {},
   resolveOriginColor(name) {
     if (!name) return '#888888';
     if (this._originColorCache[name]) return this._originColorCache[name];
-    const short = name.replace('Valle de Guadalupe (', '').replace('Valle de Ojos Negros (', '').replace(')', '').trim();
-    const c = this.originColors[name] || this.originColors[short] || this._hashColor(name);
+    const c = this.originColors[name] || this._hashColor(name);
     this._originColorCache[name] = c;
     return c;
   },
@@ -85,15 +152,22 @@ const CONFIG = {
     'MA':'Malbec','GRE':'Grenache','GR':'Grenache','PV':'Petit Verdot',
     'TE':'Tempranillo','TEM':'Tempranillo','CA':'Caladoc','CAL':'Caladoc',
     'MS':'Marselan','MRS':'Marselan','DU':'Durif','NB':'Nebbiolo','SB':'Sauvignon Blanc',
-    'CH':'Chardonnay','VG':'Viognier','CB':'Chenin Blanc','MV':'Mourvèdre','PS':'Petite Sirah'
+    'CH':'Chardonnay','VG':'Viognier','CB':'Chenin Blanc','MV':'Mourvèdre','PS':'Durif'
+  },
+
+  normalizeVariety(name) {
+    if (name === 'Petite Sirah') return 'Durif';
+    return name;
   },
 
   // Origin abbreviations (code → full name)
   originAbbr: {
-    'MX':'Monte Xanic','VA':'Viña Alta','ON':'Ojos Negros','OLE':'Olé',
-    'DUB':'Dubacano','DA':'Dominio de las Abejas','DLA':'Dominio de las Abejas',
-    '7L':'Siete Leguas','KMP':'Kompali','R14':'Rancho 14','SG':'San Gerónimo',
-    'UC':'Dominio de las Abejas'
+    'MX':'Monte Xanic (VDG)','VDG':'Monte Xanic (VDG)',
+    'VA':'Viña Alta (VON)','ON':'Ojos Negros (VON)','OLE':'Olé (VDG)',
+    'DUB':'Dubacano (SV)','LLC':'Llano Colorado (SV)',
+    'DA':'Dominio de las Abejas (VON)','DLA':'Dominio de las Abejas (VON)',
+    '7L':'Siete Leguas (VDG)','KMP':'Kompali (VON)','R14':'Rancho 14 (VDG)',
+    'SG':'San Gerónimo','UC':'Dominio de las Abejas (VON)'
   },
 
   // Berry → Wine lot mappings (from presentation)
@@ -146,15 +220,6 @@ const CONFIG = {
     'KCS-S8-1-CONT': ['25CSKMP-1'],
     'KCS-S2A':       ['25CSKMP-4'],
     'KCS-S2B':       ['25CSKMP-6'],
-    'KCS-S8-1-BIO':  ['25CSKMP-EXP-1'],
-    'KCS-S8-1-MAT':  ['25CSKMP-EXP-2'],
-    'KCS-S8-1-R':    ['25CSKMP-EXP-3'],
-    'KCS-S8-1-ABA':  ['25CSKMP-EXP-4'],
-    'KCS-S2B-ALIVIO':['25CSKMP-EXP-5'],
-    'CSOLE-1CP':     ['25CSOLE-EXP-5'],
-    'CSOLE-2SP':     ['25CSOLE-EXP-6'],
-    'CSOLE-3CP':     ['25CSOLE-EXP-3'],
-    'CSOLE-4SP':     ['25CSOLE-EXP-8'],
     'CSON-3':        ['25CSON-2'],
     // Durif
     'KDU-S2B':       ['25DUKMP-1','25DUKMP-2'],
@@ -170,6 +235,35 @@ const CONFIG = {
     'CSON-3','GREON-6','GREVA-3B','GREVA-4A','GREVA-4B',
     'MAON-2','MEON-1','SYON-4','SYVA-1B','SYVA-1E','TEON-5'
   ],
+
+  // Samples to exclude from all views
+  _excludedSamples: new Set(['24ROSEMX-5', '24CABERNETMERLOT-1', '25ROSEMX-1']),
+  _excludeRe: /EXP|EXPERIMENTO|^NORMAL$/i,
+
+  isSampleExcluded(sampleId) {
+    if (!sampleId) return false;
+    return this._excludedSamples.has(sampleId) || this._excludeRe.test(sampleId);
+  },
+
+  // Valley coordinates for weather
+  valleyCoordinates: {
+    VDG: { lat: 32.08, lon: -116.62 },
+    VON: { lat: 32.00, lon: -116.25 },
+    SV:  { lat: 32.05, lon: -116.45 }
+  },
+
+  // Extract valley abbreviation from ranch-first appellation
+  getWeatherValley(appellation) {
+    if (!appellation) return 'VDG';
+    const m = appellation.match(/\(([A-Z]{2,3})\)$/);
+    if (m) {
+      const key = m[1];
+      if (key === 'VDG' || key === 'VON' || key === 'SV') return key;
+      if (key === 'VP') return 'VDG'; // fallback
+    }
+    if (/San Ger[oó]nimo/i.test(appellation)) return 'VDG'; // no berry weather needed
+    return 'VDG';
+  },
 
   // Berry data column mappings (Excel → internal)
   berryColumns: {
@@ -265,17 +359,18 @@ const CONFIG = {
 
   // Point shapes per origin (Chart.js point styles)
   originPointStyles: {
-    'Kompali':               'circle',
-    'Viña Alta':             'triangle',
-    'Olé':                   'rect',
-    'Ojos Negros':           'rectRounded',
-    'Monte Xanic':           'star',
-    'Dominio de las Abejas': 'crossRot',
-    'Rancho 14':             'rectRot',
-    'Siete Leguas':          'cross',
-    'Dubacano':              'dash',
-    'California':            'circle',
-    'San Gerónimo':          'triangle'
+    'Kompali (VON)':               'circle',
+    'Viña Alta (VON)':             'triangle',
+    'Olé (VDG)':                   'rect',
+    'Ojos Negros (VON)':           'rectRounded',
+    'Monte Xanic (VDG)':           'star',
+    'Dominio de las Abejas (VON)': 'crossRot',
+    'Rancho 14 (VDG)':             'rectRot',
+    'Siete Leguas (VDG)':          'cross',
+    'Dubacano (SV)':               'dash',
+    'Llano Colorado (SV)':         'circle',
+    'San Gerónimo':                'triangle',
+    'Camino Corazón (VP)':         'rect'
   },
 
   // ── Supabase Column Mappings ──────────────────────────────────

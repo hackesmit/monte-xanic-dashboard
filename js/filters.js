@@ -66,9 +66,8 @@ const Filters = {
   },
 
   shortenOrigin(name) {
-    return name
-      .replace('Valle de Guadalupe (', '').replace('Valle de Ojos Negros (', '')
-      .replace(')', '').trim();
+    // New ranch-first format is already display-ready
+    return name || '';
   },
 
   buildOriginChips() {

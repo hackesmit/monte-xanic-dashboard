@@ -53,8 +53,14 @@ const DataStore = {
     for (const col in map) {
       if (col in row) obj[map[col]] = row[col];
     }
-    obj.lotCode   = this.extractLotCode(obj.sampleId);
-    obj.grapeType = this.getGrapeType(obj.variety);
+    // Filter excluded samples
+    if (CONFIG.isSampleExcluded(obj.sampleId)) return null;
+    obj.variety      = CONFIG.normalizeVariety(obj.variety);
+    obj.appellation  = CONFIG.normalizeAppellation(obj.appellation, obj.sampleId);
+    // Filter California
+    if (obj.appellation === 'California') return null;
+    obj.lotCode      = this.extractLotCode(obj.sampleId);
+    obj.grapeType    = this.getGrapeType(obj.variety);
     return obj;
   },
 
@@ -65,6 +71,11 @@ const DataStore = {
     for (const col in map) {
       if (col in row) obj[map[col]] = row[col];
     }
+    // Filter excluded samples
+    if (CONFIG.isSampleExcluded(obj.codigoBodega)) return null;
+    obj.variedad  = CONFIG.normalizeVariety(obj.variedad);
+    obj.proveedor = CONFIG.normalizeAppellation(obj.proveedor, obj.codigoBodega);
+    if (obj.proveedor === 'California') return null;
     obj.grapeType = this.getGrapeType(obj.variedad);
     return obj;
   },
@@ -76,8 +87,9 @@ const DataStore = {
     for (const col in map) {
       if (col in row) obj[map[col]] = row[col];
     }
-    // batch_code is a better display key than report_code
     if (row.batch_code) obj.codigoBodega = row.batch_code;
+    if (CONFIG.isSampleExcluded(obj.codigoBodega)) return null;
+    obj.variedad   = CONFIG.normalizeVariety(obj.variedad);
     obj.sampleType = 'Must';
     obj.grapeType  = this.getGrapeType(obj.variedad);
     return obj;
@@ -108,8 +120,8 @@ const DataStore = {
     try {
       const samples = await this._fetchAll('wine_samples', 'sample_date');
 
-      this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries' || r.sample_type === 'Berry').map(r => this._rowToBerry(r));
-      this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries' && r.sample_type !== 'Berry').map(r => this._rowToWine(r));
+      this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries' || r.sample_type === 'Berry').map(r => this._rowToBerry(r)).filter(Boolean);
+      this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries' && r.sample_type !== 'Berry').map(r => this._rowToWine(r)).filter(Boolean);
 
       // Fetch prefermentativos for winePreferment supplement
       let prefs = [], pErr = null;
@@ -117,7 +129,7 @@ const DataStore = {
       catch (e) { pErr = e; }
 
       if (!pErr && prefs && prefs.length) {
-        const prefWine = prefs.map(r => this._rowToPrefWine(r));
+        const prefWine = prefs.map(r => this._rowToPrefWine(r)).filter(Boolean);
         // Merge: Must rows from wine_samples + prefermentativos
         const mustRows = this.wineRecepcion.filter(r => r.sampleType === 'Must');
         this.winePreferment = [...mustRows, ...prefWine];
