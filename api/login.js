@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const clientIp = req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown';
+  const clientIp = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || 'unknown';
   if (!checkRateLimit(clientIp)) {
     res.status(429).json({ ok: false, error: 'Demasiados intentos. Intente de nuevo en 15 minutos.' });
     return;
@@ -44,7 +44,8 @@ export default async function handler(req, res) {
   const sessionSecret = process.env.SESSION_SECRET;
 
   if (!expectedUser || !passwordHash || !sessionSecret) {
-    res.status(500).json({ ok: false, error: 'Configuración de autenticación incompleta' });
+    await delay(300);
+    res.status(401).json({ ok: false, error: 'Credenciales incorrectas' });
     return;
   }
 
