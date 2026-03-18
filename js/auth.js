@@ -88,7 +88,8 @@ const Auth = {
 
   logout() {
     sessionStorage.removeItem(this._tokenKey);
-    // Reset app state
+    DataStore.clearCache();
+    App.initialized = false;
     const dashboard = document.getElementById('dashboard-content');
     if (dashboard) dashboard.style.display = 'none';
     this.showLoginScreen();
