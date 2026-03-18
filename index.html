@@ -12,6 +12,24 @@
 </head>
 <body>
 
+<!-- Login Screen -->
+<div id="login-screen" class="login-screen" style="display:none">
+  <div class="login-card">
+    <img src="assets/logo_montexanic.svg" class="login-logo" alt="Monte Xanic">
+    <div class="login-divider"></div>
+    <div class="login-tagline">Seguimiento de Maduración y Fenólicos</div>
+    <form id="login-form" onsubmit="Auth.handleSubmit(event)">
+      <label class="login-label" for="login-user">Usuario</label>
+      <input type="text" id="login-user" class="login-input" autocomplete="username" required>
+      <label class="login-label" for="login-pass">Contraseña</label>
+      <input type="password" id="login-pass" class="login-input" autocomplete="current-password" required>
+      <button type="submit" id="login-btn" class="login-btn">Iniciar Sesión</button>
+      <div id="login-error" class="login-error"></div>
+    </form>
+    <div class="login-footer">Monte Xanic &mdash; Bodega Vinícola</div>
+  </div>
+</div>
+
 <!-- Data Loader Overlay -->
 <div id="data-loader" class="data-loader view-panel">
   <div class="loader-card" id="loader-card">
@@ -66,6 +84,7 @@
       <span class="theme-icon-light" style="display:none">&#9788;</span>
     </button>
     <button class="help-toggle" onclick="App.toggleHelp()" title="Ayuda" aria-label="Ayuda">?</button>
+    <button class="help-toggle" onclick="Auth.logout()" title="Cerrar sesión" aria-label="Cerrar sesión" style="font-size:10px">&#x23FB;</button>
   </div>
 </header>
 
@@ -580,6 +599,7 @@
 </div>
 
 <!-- Scripts -->
+<script src="js/auth.js"></script>
 <script src="js/config.js"></script>
 <script src="js/dataLoader.js"></script>
 <script src="js/upload.js"></script>
