@@ -5,16 +5,22 @@ const Charts = {
   showLines: false,
   hiddenSeries: new Set(),
 
-  // Identify the last (most recent) data point per lot code
+  // Identify the last (most recent) data point per lot code (only for lots with 2+ points)
   _identifyLastPoints(data) {
+    const lotCounts = {};
     const lastByLot = {};
     data.forEach(d => {
       if (!d.lotCode || d.daysPostCrush === null || d.daysPostCrush === undefined) return;
+      lotCounts[d.lotCode] = (lotCounts[d.lotCode] || 0) + 1;
       if (!lastByLot[d.lotCode] || d.daysPostCrush > lastByLot[d.lotCode].daysPostCrush) {
         lastByLot[d.lotCode] = d;
       }
     });
-    return new Set(Object.values(lastByLot).map(d => d.sampleId));
+    return new Set(
+      Object.entries(lastByLot)
+        .filter(([lot]) => (lotCounts[lot] || 0) >= 2)
+        .map(([, d]) => d.sampleId)
+    );
   },
 
   _getThemeColor(varName) {
@@ -84,7 +90,8 @@ const Charts = {
 
   // Group data by a field and return datasets
   groupScatterData(data, xField, yField, groupField) {
-    // Pre-compute last points
+    // Pre-compute last points — only for lots with 2+ measurements
+    const lotCounts = {};
     const lastByLot = {};
     data.forEach(d => {
       const x = d[xField]; const y = d[yField];
@@ -92,11 +99,17 @@ const Charts = {
       if (typeof x !== 'number' || typeof y !== 'number') return;
       const lot = d.lotCode || d.sampleId;
       if (!lot) return;
+      lotCounts[lot] = (lotCounts[lot] || 0) + 1;
       if (!lastByLot[lot] || (d.daysPostCrush || 0) > (lastByLot[lot].dpc || 0)) {
         lastByLot[lot] = { sid: d.sampleId, dpc: d.daysPostCrush || 0 };
       }
     });
-    const lastSids = new Set(Object.values(lastByLot).map(v => v.sid));
+    // Only flag last point if lot has multiple measurements
+    const lastSids = new Set(
+      Object.entries(lastByLot)
+        .filter(([lot]) => (lotCounts[lot] || 0) >= 2)
+        .map(([, v]) => v.sid)
+    );
 
     const groups = {};
     data.forEach(d => {
