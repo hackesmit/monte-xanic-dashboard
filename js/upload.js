@@ -9,11 +9,7 @@ const UploadManager = {
   _aboveDetectionRe: /^>\s*(\d+(\.\d+)?)$/,
   _labTestRe: /\b(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)\b/i,
 
-  _esc(str) {
-    const d = document.createElement('div');
-    d.textContent = str;
-    return d.innerHTML;
-  },
+  _esc(str) { return Utils.esc(str); },
 
   getFileType(file) {
     const name = file.name.toLowerCase();

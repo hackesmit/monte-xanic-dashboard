@@ -1,20 +1,15 @@
 // ── KPI Calculations ──
 
 const KPIs = {
-  avg(arr) {
-    const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
-    return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
-  },
-
   updateBerryKPIs(data) {
     // Filter out pH outliers for clean averages
-    const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
+    const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < CONFIG.thresholds.phMin || d.pH > CONFIG.thresholds.phMax)));
 
-    const avgBrix = this.avg(clean.map(d => d.brix));
-    const avgPH = this.avg(clean.map(d => d.pH));
-    const avgTA = this.avg(clean.map(d => d.ta));
-    const avgTANT = this.avg(clean.map(d => d.tANT));
-    const avgFW = this.avg(clean.map(d => d.berryFW));
+    const avgBrix = Utils.avg(clean.map(d => d.brix));
+    const avgPH = Utils.avg(clean.map(d => d.pH));
+    const avgTA = Utils.avg(clean.map(d => d.ta));
+    const avgTANT = Utils.avg(clean.map(d => d.tANT));
+    const avgFW = Utils.avg(clean.map(d => d.berryFW));
 
     this.setKPI('kpi-avg-brix', avgBrix, 1, '°Bx');
     this.setKPI('kpi-avg-ph', avgPH, 2, '');
@@ -23,7 +18,7 @@ const KPIs = {
     this.setKPI('kpi-avg-fw', avgFW, 2, 'g');
 
     // Header KPIs
-    const el = (id) => document.getElementById(id);
+    const el = Utils.el;
     if (el('hdr-muestras')) el('hdr-muestras').textContent = data.length;
     if (el('hdr-lotes')) el('hdr-lotes').textContent = new Set(data.map(d => d.sampleId).filter(Boolean)).size;
     if (el('hdr-varietales')) el('hdr-varietales').textContent = new Set(data.map(d => d.variety).filter(Boolean)).size;
@@ -42,10 +37,10 @@ const KPIs = {
   },
 
   updateWineKPIs(recepcion) {
-    const avgTANT = this.avg(recepcion.map(d => d.antoWX));
-    const avgFANT = this.avg(recepcion.map(d => d.freeANT));
-    const avgPTAN = this.avg(recepcion.map(d => d.pTAN));
-    const avgIPT = this.avg(recepcion.map(d => d.iptSpica));
+    const avgTANT = Utils.avg(recepcion.map(d => d.antoWX));
+    const avgFANT = Utils.avg(recepcion.map(d => d.freeANT));
+    const avgPTAN = Utils.avg(recepcion.map(d => d.pTAN));
+    const avgIPT = Utils.avg(recepcion.map(d => d.iptSpica));
 
     this.setKPI('wine-kpi-tant', avgTANT, 0, 'ppm');
     this.setKPI('wine-kpi-fant', avgFANT, 0, 'ppm');

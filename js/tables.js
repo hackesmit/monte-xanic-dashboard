@@ -4,12 +4,7 @@ const Tables = {
   sortField: null,
   sortDir: 'desc',
 
-  _esc(val) {
-    if (val == null) return '';
-    const d = document.createElement('div');
-    d.textContent = String(val);
-    return d.innerHTML;
-  },
+  _esc(val) { return Utils.esc(val); },
 
   // Berry data table
   updateBerryTable(data) {
@@ -76,11 +71,7 @@ const Tables = {
     return '';
   },
 
-  // Format numeric helper
-  fmtNum(v, dec) {
-    if (v === null || v === undefined || typeof v !== 'number' || isNaN(v)) return '—';
-    return dec === 0 ? Math.round(v) : v.toFixed(dec);
-  },
+  fmtNum(v, dec) { return Utils.fmtNum(v, dec); },
 
   // Wine reception table
   updateWineTable(data) {

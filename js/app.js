@@ -5,7 +5,7 @@ const App = {
   initialized: false,
   theme: 'dark',
 
-  _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
+  _esc(s) { return Utils.esc(s); },
 
   async init() {
     if (this.initialized) return;
@@ -278,11 +278,6 @@ const App = {
     const thead = document.getElementById('vintage-summary-head');
     if (!body) return;
 
-    const avg = (arr) => {
-      const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
-      return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
-    };
-
     // Dynamically detect all vintage years, sorted ascending
     const years = [...new Set(data.map(d => d.vintage).filter(Boolean))].map(Number).sort();
     if (!years.length) { body.innerHTML = ''; return; }
@@ -317,8 +312,6 @@ const App = {
       { name: 'Lotes Únicos', field: '_lots', dec: 0, unit: '' }
     ];
 
-    const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
-
     body.innerHTML = metrics.map(m => {
       // Compute value for each vintage year
       const vals = {};
@@ -329,7 +322,7 @@ const App = {
         } else if (m.field === '_lots') {
           vals[y] = new Set(yd.map(d => d.sampleId)).size;
         } else {
-          vals[y] = avg(yd.map(d => d[m.field]));
+          vals[y] = Utils.avg(yd.map(d => d[m.field]));
         }
       });
 
@@ -337,7 +330,7 @@ const App = {
 
       years.forEach(y => {
         const color = Charts._vintageColor(y);
-        row += `<td style="color:${color}">${fmt(vals[y], m.dec)}</td>`;
+        row += `<td style="color:${color}">${Utils.fmtNum(vals[y], m.dec)}</td>`;
       });
 
       // Diff between the two most recent vintages
@@ -350,7 +343,7 @@ const App = {
         const pct = (vPrev !== null && vCurr !== null && vPrev !== 0) ? ((diff / Math.abs(vPrev)) * 100) : null;
         const diffClass = diff !== null ? (diff > 0 ? 'diff-positive' : diff < 0 ? 'diff-negative' : 'diff-neutral') : '';
         const sign = diff !== null && diff > 0 ? '+' : '';
-        row += `<td class="${diffClass}">${diff !== null ? sign + fmt(diff, m.dec) : '—'}</td>`;
+        row += `<td class="${diffClass}">${diff !== null ? sign + Utils.fmtNum(diff, m.dec) : '—'}</td>`;
         row += `<td class="${diffClass}">${pct !== null ? sign + pct.toFixed(1) + '%' : '—'}</td>`;
       }
 
@@ -362,12 +355,6 @@ const App = {
     const body = document.getElementById('vintage-varietal-body');
     const thead = document.getElementById('vintage-varietal-head');
     if (!body) return;
-
-    const avg = (arr) => {
-      const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
-      return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
-    };
-    const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
 
     // Dynamically detect all vintage years, sorted ascending
     const years = [...new Set(data.map(d => d.vintage).filter(Boolean))].map(Number).sort();
@@ -410,9 +397,9 @@ const App = {
           if (p.field === '_count') {
             val = byYear[y].length || null;
           } else {
-            val = avg(byYear[y].map(d => d[p.field]));
+            val = Utils.avg(byYear[y].map(d => d[p.field]));
           }
-          row += `<td style="color:${vintColor}">${p.field === '_count' ? (val || '—') : fmt(val, p.dec)}</td>`;
+          row += `<td style="color:${vintColor}">${p.field === '_count' ? (val || '—') : Utils.fmtNum(val, p.dec)}</td>`;
         });
       });
 
