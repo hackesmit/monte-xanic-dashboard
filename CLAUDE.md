@@ -12,7 +12,7 @@ Wine analytics dashboard for Monte Xanic winery. Tracks berry chemistry (Brix, p
 - **Database:** Supabase (PostgreSQL) — replaces local JSON files
 - **Weather:** Open-Meteo API (free, no key required)
 - **Styling:** Custom CSS with CSS variables (dark/light themes)
-- **Fonts:** Playfair Display + Jost (Google Fonts)
+- **Fonts:** Sackers Gothic Medium (local TTF)
 - **Hosting:** Vercel (auto-deploys on every GitHub push)
 - **Auth:** Vercel Password Protection (internal staff access only)
 
@@ -140,32 +140,54 @@ Xanic Dashboard/
 ├── CLAUDE.md                   # This file
 ├── .gitignore                  # Excludes .env.local, .claude/
 ├── .env.local                  # Supabase keys — NEVER commit
-├── css/styles.css              # All styling, dark/light themes
-├── js/
-│   ├── app.js                  # Main app logic, routing, themes
-│   ├── auth.js                 # Client-side auth (token verify, login UI)
-│   ├── config.js               # Colors, grape types, column mappings
-│   ├── dataLoader.js           # Supabase queries (paginated)
-│   ├── filters.js              # Filter state & UI management
-│   ├── charts.js               # Chart.js rendering
-│   ├── tables.js               # Table rendering & sorting
-│   ├── kpis.js                 # KPI calculations
-│   ├── maps.js                 # Vineyard quality map (NOT YET ACTIVE)
-│   ├── weather.js              # Open-Meteo API + Supabase cache
-│   └── upload.js               # Excel/CSV → Supabase pipeline
-├── api/
-│   ├── config.js               # Vercel serverless: Supabase credentials (auth-gated)
-│   ├── login.js                # Vercel serverless: bcrypt login + HMAC token
-│   └── verify.js               # Vercel serverless: token verification
+├── package.json                # bcryptjs dependency (for login API)
+├── package-lock.json
+├── vercel.json                 # Vercel config + security headers
+│
+├── api/                        # Vercel serverless (must stay at root)
+│   ├── config.js               # Supabase credentials (auth-gated)
+│   ├── login.js                # bcrypt login + HMAC token
+│   └── verify.js               # Token verification
+│
 ├── assets/
 │   ├── logo_montexanic.svg     # Brand logo
 │   └── favicon.svg             # Favicon (logo symbol)
+│
+├── fonts/
+│   └── SackersGothicMedium.ttf # Brand font (local)
+│
+├── css/
+│   └── styles.css              # All styling, dark/light themes
+│
+├── js/
+│   ├── utils.js                # Shared utilities (avg, esc, fmtNum, el)
+│   ├── config.js               # Colors, grape types, column mappings, api/tables/thresholds/timeouts
+│   ├── auth.js                 # Client-side auth (token verify, login UI)
+│   ├── dataLoader.js           # Supabase queries (paginated)
+│   ├── upload.js               # Excel/CSV → Supabase pipeline
+│   ├── weather.js              # Open-Meteo API + Supabase cache
+│   ├── filters.js              # Filter state & UI management
+│   ├── kpis.js                 # KPI calculations
+│   ├── charts/                 # Chart.js rendering (split from monolith)
+│   │   ├── chartUtils.js       # Charts object + shared config (tooltip, axis, color, export)
+│   │   ├── berryCharts.js      # Scatter, bar, doughnut, origin charts
+│   │   ├── evolutionChart.js   # Phenolic evolution (berry→wine linking)
+│   │   ├── vintageCharts.js    # Vintage comparison + weather time series
+│   │   ├── correlationCharts.js # Brix vs temp, tANT vs rainfall
+│   │   └── extractionChart.js  # Berry-to-wine extraction
+│   ├── tables.js               # Table rendering & sorting
+│   ├── maps.js                 # Vineyard quality map (NOT YET ACTIVE)
+│   └── app.js                  # Main app logic, routing, themes
+│
 ├── sql/
-│   └── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
-├── data/                       # Legacy JSON files (reference only)
-├── vercel.json                 # Vercel config + security headers
-├── package.json                # bcryptjs dependency (for login API)
-└── extract_data.py             # Legacy — deprecated after migration
+│   ├── schema.sql              # Full DB schema
+│   ├── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
+│   └── cleanup_lab_samples.sql # Remove lab/test samples
+│
+└── scripts/                    # Dev/one-time scripts (not served)
+    ├── extract_data.py         # Legacy data extraction (deprecated)
+    ├── seed_supabase.js        # One-time DB seeding
+    └── serve.ps1               # Local dev server
 ```
 
 ---
@@ -314,15 +336,23 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 - Never introduce npm packages or build tools — CDN only
 - Never add heavy frameworks — Vanilla JS ES6 only
 - Maintain Chart.js 4.4.1 and SheetJS 0.18.5 API compatibility
+- Shared utilities (avg, esc, fmtNum, el) live in `utils.js` — never redefine locally
+- API endpoints, table names, and thresholds live in `CONFIG` sub-objects — never hardcode
 
 ### File Responsibilities
+- Shared utilities (avg, esc, fmtNum, el) → `utils.js` only — never redefine locally
 - KPI calculations → `kpis.js` only
-- Chart rendering → `charts.js` only
+- Berry/scatter/bar charts → `charts/berryCharts.js`
+- Evolution chart → `charts/evolutionChart.js`
+- Vintage/weather charts → `charts/vintageCharts.js`
+- Correlation charts → `charts/correlationCharts.js`
+- Extraction chart → `charts/extractionChart.js`
+- Chart shared state (Charts object, tooltip, export) → `charts/chartUtils.js`
 - Filter logic → `filters.js` only
 - Supabase queries → `dataLoader.js` only
 - Weather API → `weather.js` only
 - Upload pipeline → `upload.js` only
-- Column mappings → `config.js` only
+- Column mappings, API endpoints, table names, thresholds → `config.js` only
 
 ### Upload Pipeline Rules (`upload.js`)
 - Auto-detect file type: `.csv` = WineXRay, `.xlsx` = Recepción de Tanque
@@ -344,9 +374,18 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 - `vintage_year` always extracted from batch code prefix (25 → 2025, 24 → 2024)
 
 ### Deployment
-- Test locally with `serve.ps1` before pushing
+- Test locally with `scripts/serve.ps1` or `python -m http.server 8080` before pushing
 - Never commit `.env.local`
 - Vercel environment variables must match `.env.local` keys exactly
+
+---
+
+## Git Workflow
+- `main` is production — always deployable, auto-deploys to Vercel
+- Use feature branches for any non-trivial change (3+ files, new features, structural)
+- Branch naming: `feat/`, `fix/`, `refactor/`, `docs/`, `chore/` + short description
+- Open PR → verify Vercel preview deployment → merge to main
+- Direct-to-main only for typo fixes and single-line changes
 
 ---
 
