@@ -340,14 +340,6 @@ const Filters = {
     }
   },
 
-  // Get color for a data point based on current color mode
-  getColor(dataPoint) {
-    if (this.state.colorBy === 'origin') {
-      return CONFIG.resolveOriginColor(dataPoint.appellation);
-    }
-    return CONFIG.varietyColors[dataPoint.variety] || CONFIG._hashColor(dataPoint.variety || '');
-  },
-
   // Get legend items for current color mode
   getLegendItems(data) {
     const field = this.state.colorBy === 'origin' ? 'appellation' : 'variety';
