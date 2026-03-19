@@ -18,7 +18,7 @@ const DataStore = {
       // Primary: Vercel serverless function
       try {
         const _token = sessionStorage.getItem('xanic_session_token');
-        const res = await fetch('/api/config', {
+        const res = await fetch(CONFIG.api.config, {
           headers: _token ? { 'x-session-token': _token } : {}
         });
         if (res.ok) {
@@ -118,14 +118,14 @@ const DataStore = {
   async loadFromSupabase() {
     if (!this.supabase) return false;
     try {
-      const samples = await this._fetchAll('wine_samples', 'sample_date');
+      const samples = await this._fetchAll(CONFIG.tables.wineSamples, 'sample_date');
 
       this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries' || r.sample_type === 'Berry').map(r => this._rowToBerry(r)).filter(Boolean);
       this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries' && r.sample_type !== 'Berry').map(r => this._rowToWine(r)).filter(Boolean);
 
       // Fetch prefermentativos for winePreferment supplement
       let prefs = [], pErr = null;
-      try { prefs = await this._fetchAll('prefermentativos', 'measurement_date'); }
+      try { prefs = await this._fetchAll(CONFIG.tables.prefermentativos, 'measurement_date'); }
       catch (e) { pErr = e; }
 
       if (!pErr && prefs && prefs.length) {

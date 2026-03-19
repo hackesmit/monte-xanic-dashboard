@@ -7,7 +7,7 @@ const WeatherStore = {
   data:    [],   // Flat array of all rows { date, location, temp_max, ... }
   _byDate: {},   // YYYY-MM-DD → { VDG: row, VON: row, SV: row }
 
-  _API_BASE: 'https://api.open-meteo.com/v1/archive',
+  _API_BASE: CONFIG.api.openMeteo,
   _TZ:       'America/Tijuana',
   _VALLEYS:  ['VDG', 'VON', 'SV'],
 
@@ -17,7 +17,7 @@ const WeatherStore = {
     if (!DataStore.supabase) return false;
     try {
       const { data, error } = await DataStore.supabase
-        .from('meteorology')
+        .from(CONFIG.tables.meteorology)
         .select('*')
         .order('date', { ascending: true });
       if (error) { console.warn('[WeatherStore] load:', error.message); return false; }
@@ -66,13 +66,13 @@ const WeatherStore = {
           if (hasLocationCol) {
             rows.forEach(r => { r.location = valley; });
             const { error: upsertErr } = await DataStore.supabase
-              .from('meteorology')
+              .from(CONFIG.tables.meteorology)
               .upsert(rows, { onConflict: 'date,location' });
             if (upsertErr) console.warn(`[WeatherStore] upsert failed for ${valley}:`, upsertErr.message);
           } else {
             // Pre-migration: no location column, use old single-column conflict
             const { error: upsertErr } = await DataStore.supabase
-              .from('meteorology')
+              .from(CONFIG.tables.meteorology)
               .upsert(rows, { onConflict: 'date' });
             if (upsertErr) console.warn('[WeatherStore] upsert failed:', upsertErr.message);
           }
@@ -126,7 +126,7 @@ const WeatherStore = {
     });
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), CONFIG.timeouts.weatherApiMs);
     let res;
     try {
       res = await fetch(`${this._API_BASE}?${params}`, { signal: controller.signal });

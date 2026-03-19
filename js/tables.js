@@ -59,15 +59,15 @@ const Tables = {
 
   brixStyle(v) {
     if (v === null || v === undefined) return '';
-    if (v >= 24) return 'style="color:#E07070;font-weight:400"';
-    if (v >= 21) return 'style="color:#7EC87A"';
+    if (v >= CONFIG.thresholds.brixHigh) return 'style="color:#E07070;font-weight:400"';
+    if (v >= CONFIG.thresholds.brixMed) return 'style="color:#7EC87A"';
     return 'style="color:var(--gold)"';
   },
 
   phStyle(v) {
     if (v === null || v === undefined) return '';
-    if (v > 4.5) return 'color:var(--flag-error);font-weight:400';
-    if (v > 3.9) return 'color:var(--flag-alert)';
+    if (v > CONFIG.thresholds.phError) return 'color:var(--flag-error);font-weight:400';
+    if (v > CONFIG.thresholds.phAlert) return 'color:var(--flag-alert)';
     return '';
   },
 

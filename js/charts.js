@@ -983,7 +983,7 @@ const Charts = {
 
   // Update all berry charts
   updateBerryCharts(data) {
-    const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
+    const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < CONFIG.thresholds.phMin || d.pH > CONFIG.thresholds.phMax)));
 
     this.updateLegend(data);
     this.createScatter('chartBrix', clean, 'daysPostCrush', 'brix', 'Días Post-Envero', 'Brix (°Bx)');

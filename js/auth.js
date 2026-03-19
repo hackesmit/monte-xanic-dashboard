@@ -18,7 +18,7 @@ const Auth = {
 
     // Token exists — validate server-side
     try {
-      const resp = await fetch('/api/verify', {
+      const resp = await fetch(CONFIG.api.verify, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token })
@@ -63,7 +63,7 @@ const Auth = {
     if (btn) { btn.disabled = true; btn.textContent = 'Verificando...'; }
 
     try {
-      const resp = await fetch('/api/login', {
+      const resp = await fetch(CONFIG.api.login, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })

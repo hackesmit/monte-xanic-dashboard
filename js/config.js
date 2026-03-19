@@ -357,6 +357,39 @@ const CONFIG = {
     tickColor: '#4A4A4A'
   },
 
+  // API endpoints
+  api: {
+    verify:    '/api/verify',
+    login:     '/api/login',
+    config:    '/api/config',
+    openMeteo: 'https://api.open-meteo.com/v1/archive'
+  },
+
+  // Supabase table names
+  tables: {
+    wineSamples:      'wine_samples',
+    tankReceptions:   'tank_receptions',
+    receptionLots:    'reception_lots',
+    prefermentativos: 'prefermentativos',
+    meteorology:      'meteorology'
+  },
+
+  // Numeric thresholds
+  thresholds: {
+    brixMed:  21,
+    brixHigh: 24,
+    phMin:    2.5,
+    phMax:    5.0,
+    phAlert:  3.9,
+    phError:  4.5,
+    uploadMaxBytes: 10 * 1024 * 1024
+  },
+
+  // Timeouts
+  timeouts: {
+    weatherApiMs: 15000
+  },
+
   // Point shapes per origin (Chart.js point styles)
   originPointStyles: {
     'Kompali (VON)':               'circle',

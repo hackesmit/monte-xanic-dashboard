@@ -185,8 +185,7 @@ const UploadManager = {
       return;
     }
 
-    const MAX_SIZE = 10 * 1024 * 1024;
-    if (file.size > MAX_SIZE) {
+    if (file.size > CONFIG.thresholds.uploadMaxBytes) {
       this._setStatus(statusEl, 'error', '✗ Archivo demasiado grande (máx 10 MB).');
       return;
     }
@@ -223,7 +222,7 @@ const UploadManager = {
         const wineCount  = samples.length - berryCount;
         this._setStatus(statusEl, 'pending', `⏳ ${samples.length} muestras (${berryCount} bayas, ${wineCount} vinos). Guardando...`);
 
-        const { count, error } = await this.upsertRows('wine_samples', samples, 'sample_id,sample_date');
+        const { count, error } = await this.upsertRows(CONFIG.tables.wineSamples, samples, 'sample_id,sample_date');
         if (error) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] wine_samples error:', error);
@@ -246,7 +245,7 @@ const UploadManager = {
           `⏳ ${receptions.length} recepciones, ${preferment.length} prefermentativos. Guardando...`);
 
         // 1 — Insert receptions
-        const { count: rCount, error: rErr } = await this.upsertRows('tank_receptions', receptions, 'report_code');
+        const { count: rCount, error: rErr } = await this.upsertRows(CONFIG.tables.tankReceptions, receptions, 'report_code');
         if (rErr) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] tank_receptions error:', rErr);
@@ -257,7 +256,7 @@ const UploadManager = {
         if (lots.length) {
           const reportCodes = [...new Set(lots.map(l => l.report_code))];
           const { data: inserted, error: fetchErr } = await DataStore.supabase
-            .from('tank_receptions')
+            .from(CONFIG.tables.tankReceptions)
             .select('id, report_code')
             .in('report_code', reportCodes);
 
@@ -267,7 +266,7 @@ const UploadManager = {
             // Delete old lots before inserting new ones
             const receptionIds = Object.values(codeToId);
             if (receptionIds.length) {
-              await DataStore.supabase.from('reception_lots').delete().in('reception_id', receptionIds);
+              await DataStore.supabase.from(CONFIG.tables.receptionLots).delete().in('reception_id', receptionIds);
             }
             const lotRows = lots
               .filter(l => codeToId[l.report_code])
@@ -275,14 +274,14 @@ const UploadManager = {
             if (lotRows.length) {
               const sb = DataStore.supabase;
               for (let i = 0; i < lotRows.length; i += 500) {
-                await sb.from('reception_lots').insert(lotRows.slice(i, i + 500));
+                await sb.from(CONFIG.tables.receptionLots).insert(lotRows.slice(i, i + 500));
               }
             }
           }
         }
 
         // 3 — Insert prefermentativos
-        const { count: pCount, error: pErr } = await this.upsertRows('prefermentativos', preferment, 'report_code,measurement_date');
+        const { count: pCount, error: pErr } = await this.upsertRows(CONFIG.tables.prefermentativos, preferment, 'report_code,measurement_date');
         if (pErr) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] prefermentativos error:', pErr);
@@ -318,7 +317,7 @@ const UploadManager = {
     let total = 0;
     for (const p of patterns) {
       const { data, error } = await DataStore.supabase
-        .from('wine_samples').delete()
+        .from(CONFIG.tables.wineSamples).delete()
         .ilike('sample_id', p)
         .select('id');
       if (error) { console.error(`Delete ${p} failed:`, error.message); continue; }
