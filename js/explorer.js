@@ -1,0 +1,272 @@
+// ── Chart Explorer Module ──
+// Allows users to create up to 4 custom charts with configurable axes, chart type, and grouping.
+
+const Explorer = {
+  slots: [],
+  maxSlots: 4,
+  _nextId: 0,
+
+  // ── Helpers ────────────────────────────────────────────────────
+
+  _slotById(id) { return this.slots.find(s => s.id === id); },
+  _slotIndexById(id) { return this.slots.findIndex(s => s.id === id); },
+
+  // ── Public API ──────────────────────────────────────────────────
+
+  addChart() {
+    if (this.slots.length >= this.maxSlots) return;
+    const id = this._nextId++;
+    const slot = { id, source: 'berry', xField: 'daysPostCrush', yField: 'brix', chartType: 'scatter', groupBy: 'variety' };
+    this.slots.push(slot);
+    this._injectSlotDOM(slot);
+    this.renderSlot(slot.id);
+  },
+
+  removeChart(id) {
+    const idx = this._slotIndexById(id);
+    if (idx === -1) return;
+    Charts.destroy('explorerChart_' + id);
+    const el = document.getElementById('explorer-slot-' + id);
+    if (el) el.remove();
+    this.slots.splice(idx, 1);
+  },
+
+  toggleConfig(id) {
+    const panel = document.getElementById('explorer-config-panel-' + id);
+    const btn = document.getElementById('explorer-toggle-btn-' + id);
+    if (!panel) return;
+    const hidden = panel.style.display === 'none';
+    panel.style.display = hidden ? '' : 'none';
+    if (btn) btn.textContent = hidden ? '\u25B2 Configurar' : '\u25BC Configurar';
+  },
+
+  onSourceChange(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    const sourceEl = document.getElementById('explorer-source-' + id);
+    if (!sourceEl) return;
+    slot.source = sourceEl.value;
+    // Reset fields to first available
+    const metrics = CONFIG.explorerMetrics[slot.source];
+    const keys = Object.keys(metrics);
+    slot.xField = keys[0] || 'daysPostCrush';
+    slot.yField = keys.length > 1 ? keys[1] : keys[0];
+    // Repopulate dropdowns
+    this._populateDropdowns(slot);
+    // Reset groupBy
+    const groups = CONFIG.explorerGroupBy[slot.source];
+    slot.groupBy = groups && groups.length ? groups[0].value : 'variety';
+    const groupEl = document.getElementById('explorer-group-' + id);
+    if (groupEl) groupEl.value = slot.groupBy;
+  },
+
+  onChartTypeChange(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    const typeEl = document.getElementById('explorer-type-' + id);
+    if (!typeEl) return;
+    slot.chartType = typeEl.value;
+    // Disable X dropdown for bar charts
+    const xEl = document.getElementById('explorer-x-' + id);
+    if (xEl) xEl.disabled = (slot.chartType === 'bar');
+  },
+
+  renderSlot(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    // Read current values from DOM
+    const sourceEl = document.getElementById('explorer-source-' + id);
+    const xEl = document.getElementById('explorer-x-' + id);
+    const yEl = document.getElementById('explorer-y-' + id);
+    const typeEl = document.getElementById('explorer-type-' + id);
+    const groupEl = document.getElementById('explorer-group-' + id);
+    if (sourceEl) slot.source = sourceEl.value;
+    if (xEl) slot.xField = xEl.value;
+    if (yEl) slot.yField = yEl.value;
+    if (typeEl) slot.chartType = typeEl.value;
+    if (groupEl) slot.groupBy = groupEl.value;
+
+    const canvasId = 'explorerChart_' + id;
+    const data = this._getData(slot);
+    const enriched = this._computeDerived(data, slot.source);
+    const metrics = CONFIG.explorerMetrics[slot.source] || {};
+    const xMeta = metrics[slot.xField] || { label: slot.xField, unit: '' };
+    const yMeta = metrics[slot.yField] || { label: slot.yField, unit: '' };
+    const xLabel = xMeta.unit ? `${xMeta.label} (${xMeta.unit})` : xMeta.label;
+    const yLabel = yMeta.unit ? `${yMeta.label} (${yMeta.unit})` : yMeta.label;
+    const colorResolver = this._getColorResolver(slot.groupBy, slot.source);
+
+    if (slot.chartType === 'bar') {
+      Charts.createExplorerBar(canvasId, enriched, slot.yField, yMeta.label, slot.groupBy, colorResolver);
+    } else {
+      const opts = { showLine: slot.chartType === 'line' };
+      Charts.createExplorerChart(canvasId, enriched, slot.xField, slot.yField, xLabel, yLabel, slot.groupBy, colorResolver, opts);
+    }
+
+    // Update summary text
+    this._updateSummary(slot, xMeta, yMeta);
+  },
+
+  refreshAll() {
+    this.slots.forEach(slot => this.renderSlot(slot.id));
+  },
+
+  destroyAll() {
+    this.slots.forEach(slot => Charts.destroy('explorerChart_' + slot.id));
+  },
+
+  init() {
+    if (this.slots.length === 0) {
+      this.addChart();
+    }
+  },
+
+  // ── Private ─────────────────────────────────────────────────────
+
+  _getData(slot) {
+    if (slot.source === 'wine') {
+      return Filters.getFilteredWine ? Filters.getFilteredWine() : (DataStore.wineRecepcion || []);
+    }
+    return Filters.getFiltered ? Filters.getFiltered() : (DataStore.berryData || []);
+  },
+
+  _computeDerived(data, source) {
+    if (source !== 'berry') return data;
+    return data.map(d => {
+      const out = Object.assign({}, d);
+      // Maturity Index = Brix / TA
+      if (typeof d.brix === 'number' && typeof d.ta === 'number' && d.ta > 0) {
+        out.maturityIndex = Math.round((d.brix / d.ta) * 100) / 100;
+      } else {
+        out.maturityIndex = null;
+      }
+      // GDD
+      if (typeof WeatherStore !== 'undefined' && d.sampleDate) {
+        out.gdd = WeatherStore.getCumulativeGDD ? WeatherStore.getCumulativeGDD(d.sampleDate, d.appellation) : null;
+      } else {
+        out.gdd = null;
+      }
+      // ANT Extractability — requires wine match
+      out.antExtractability = null;
+      if (typeof d.tANT === 'number' && d.lotCode && CONFIG.berryToWine[d.lotCode]) {
+        const wineLots = CONFIG.berryToWine[d.lotCode];
+        const wineData = DataStore.wineRecepcion || [];
+        for (const wl of wineLots) {
+          const wine = wineData.find(w => w.codigoBodega === wl && typeof w.antoWX === 'number');
+          if (wine) {
+            out.antExtractability = Math.round((wine.antoWX / d.tANT) * 1000) / 10;
+            break;
+          }
+        }
+      }
+      return out;
+    });
+  },
+
+  _getColorResolver(groupField, source) {
+    if (groupField === 'appellation' || groupField === 'proveedor') {
+      return (name) => CONFIG.resolveOriginColor(name);
+    }
+    if (groupField === 'variety' || groupField === 'variedad') {
+      return (name) => CONFIG.varietyColors[name] || CONFIG._hashColor(name);
+    }
+    // Vintage
+    return (name) => {
+      const vintageColors = { 2022: '#E06070', 2023: '#9B59B6', 2024: '#60A8C0', 2025: '#C4A060', 2026: '#7EC87A' };
+      return vintageColors[name] || vintageColors[Number(name)] || CONFIG._hashColor(String(name));
+    };
+  },
+
+  _updateSummary(slot, xMeta, yMeta) {
+    const el = document.getElementById('explorer-summary-' + slot.id);
+    if (!el) return;
+    const typeMeta = CONFIG.explorerChartTypes.find(t => t.value === slot.chartType);
+    const typeLabel = typeMeta ? typeMeta.label : slot.chartType;
+    if (slot.chartType === 'bar') {
+      const groups = CONFIG.explorerGroupBy[slot.source] || [];
+      const groupMeta = groups.find(g => g.value === slot.groupBy);
+      el.textContent = `${yMeta.label} por ${groupMeta ? groupMeta.label : slot.groupBy} \u2014 ${typeLabel}`;
+    } else {
+      el.textContent = `${yMeta.label} vs ${xMeta.label} \u2014 ${typeLabel}`;
+    }
+  },
+
+  _injectSlotDOM(slot) {
+    const container = document.getElementById('explorer-charts');
+    if (!container) return;
+
+    const metrics = CONFIG.explorerMetrics[slot.source] || {};
+    const groups = CONFIG.explorerGroupBy[slot.source] || [];
+
+    const div = document.createElement('div');
+    div.id = 'explorer-slot-' + slot.id;
+    div.className = 'explorer-slot';
+    const sid = slot.id;
+    div.innerHTML = `
+      <div class="explorer-slot-header">
+        <button class="explorer-toggle-btn" id="explorer-toggle-btn-${sid}" onclick="Explorer.toggleConfig(${sid})">\u25BC Configurar</button>
+        <span class="explorer-summary" id="explorer-summary-${sid}"></span>
+        <button class="explorer-remove-btn" onclick="Explorer.removeChart(${sid})" title="Eliminar">\u00D7</button>
+      </div>
+      <div class="explorer-config-panel" id="explorer-config-panel-${sid}" style="display:none">
+        <div class="explorer-config-row">
+          <label class="explorer-config-label">Fuente
+            <select id="explorer-source-${sid}" class="explorer-select" onchange="Explorer.onSourceChange(${sid})">
+              <option value="berry" ${slot.source === 'berry' ? 'selected' : ''}>Bayas</option>
+              <option value="wine" ${slot.source === 'wine' ? 'selected' : ''}>Vino</option>
+            </select>
+          </label>
+          <label class="explorer-config-label">Eje X
+            <select id="explorer-x-${sid}" class="explorer-select" ${slot.chartType === 'bar' ? 'disabled' : ''}>
+              ${Object.entries(metrics).map(([k, v]) => `<option value="${k}" ${k === slot.xField ? 'selected' : ''}>${v.label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="explorer-config-label">Eje Y
+            <select id="explorer-y-${sid}" class="explorer-select">
+              ${Object.entries(metrics).map(([k, v]) => `<option value="${k}" ${k === slot.yField ? 'selected' : ''}>${v.label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="explorer-config-label">Tipo
+            <select id="explorer-type-${sid}" class="explorer-select" onchange="Explorer.onChartTypeChange(${sid})">
+              ${CONFIG.explorerChartTypes.map(t => `<option value="${t.value}" ${t.value === slot.chartType ? 'selected' : ''}>${t.label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="explorer-config-label">Agrupar por
+            <select id="explorer-group-${sid}" class="explorer-select">
+              ${groups.map(g => `<option value="${g.value}" ${g.value === slot.groupBy ? 'selected' : ''}>${g.label}</option>`).join('')}
+            </select>
+          </label>
+          <button class="explorer-render-btn" onclick="Explorer.renderSlot(${sid})">Actualizar</button>
+        </div>
+      </div>
+      <div class="explorer-canvas-wrap" style="height:280px">
+        <canvas id="explorerChart_${sid}"></canvas>
+      </div>
+    `;
+    container.appendChild(div);
+  },
+
+  _populateDropdowns(slot) {
+    const metrics = CONFIG.explorerMetrics[slot.source] || {};
+    const groups = CONFIG.explorerGroupBy[slot.source] || [];
+
+    const xEl = document.getElementById('explorer-x-' + slot.id);
+    const yEl = document.getElementById('explorer-y-' + slot.id);
+    const groupEl = document.getElementById('explorer-group-' + slot.id);
+
+    const optionsHtml = Object.entries(metrics).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+
+    if (xEl) {
+      xEl.innerHTML = optionsHtml;
+      xEl.value = slot.xField;
+    }
+    if (yEl) {
+      yEl.innerHTML = optionsHtml;
+      yEl.value = slot.yField;
+    }
+    if (groupEl) {
+      groupEl.innerHTML = groups.map(g => `<option value="${g.value}">${g.label}</option>`).join('');
+      groupEl.value = slot.groupBy;
+    }
+  }
+};

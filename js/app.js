@@ -162,10 +162,10 @@ const App = {
       // Sync any missing harvest-season days from Open-Meteo
       WeatherStore.sync(vintages).then(() => {
         // Re-render whichever view is active (weather charts only draw if visible)
-        if (this.currentView === 'vintage' || this.currentView === 'berry') this.refresh();
+        if (this.currentView === 'vintage' || this.currentView === 'berry' || this.currentView === 'explorer') this.refresh();
       });
       // If we already had cached weather, re-render immediately
-      if (hasCache && (this.currentView === 'vintage' || this.currentView === 'berry')) {
+      if (hasCache && (this.currentView === 'vintage' || this.currentView === 'berry' || this.currentView === 'explorer')) {
         this.refresh();
       }
     });
@@ -187,7 +187,7 @@ const App = {
     // Show/hide relevant sidebar sections
     const berryFilters = document.getElementById('berry-filters');
     const wineFilters = document.getElementById('wine-filters');
-    if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction') ? '' : 'none';
+    if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer') ? '' : 'none';
     if (wineFilters) wineFilters.style.display = (view === 'wine') ? '' : 'none';
 
     this.refresh();
@@ -231,6 +231,11 @@ const App = {
         this.updateVintageVarietalTable(filteredBerry);
         Charts.createWeatherTimeSeries('chartWeatherTemp', WeatherStore.getVintagesFromData());
         Charts.createRainfallChart('chartWeatherRain', WeatherStore.getVintagesFromData());
+        break;
+
+      case 'explorer':
+        Explorer.init();
+        Explorer.refreshAll();
         break;
     }
 

@@ -6,6 +6,7 @@
 const WeatherStore = {
   data:    [],   // Flat array of all rows { date, location, temp_max, ... }
   _byDate: {},   // YYYY-MM-DD → { VDG: row, VON: row, SV: row }
+  _gddCache: {},
 
   _API_BASE: 'https://api.open-meteo.com/v1/archive',
   _TZ:       'America/Tijuana',
@@ -23,6 +24,7 @@ const WeatherStore = {
       if (error) { console.warn('[WeatherStore] load:', error.message); return false; }
       this.data    = data || [];
       this._byDate = {};
+      this._gddCache = {};
       this.data.forEach(r => {
         const loc = r.location || 'VDG';
         if (!this._byDate[r.date]) this._byDate[r.date] = {};
@@ -190,6 +192,33 @@ const WeatherStore = {
       cur.setDate(cur.getDate() + 1);
     }
     return hasAny ? total : null;
+  },
+
+  getCumulativeGDD(dateStr, appellation) {
+    const iso = this._toISO(dateStr);
+    if (!iso) return null;
+    const valley = CONFIG.getWeatherValley(appellation);
+    const cacheKey = `${iso}_${valley}`;
+    if (this._gddCache[cacheKey] !== undefined) return this._gddCache[cacheKey];
+    const year = parseInt(iso.substring(0, 4));
+    const start = `${year}-07-01`;
+    const endD = new Date(iso);
+    let total = 0;
+    let hasAny = false;
+    const cur = new Date(start);
+    while (cur <= endD) {
+      const d = cur.toISOString().split('T')[0];
+      const dayData = this._byDate[d];
+      const row = dayData ? (dayData[valley] || dayData['VDG']) : null;
+      if (row && row.temp_avg !== null) {
+        total += Math.max(0, row.temp_avg - 10);
+        hasAny = true;
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
+    const result = hasAny ? Math.round(total * 10) / 10 : null;
+    this._gddCache[cacheKey] = result;
+    return result;
   },
 
   dayOfSeason(dateStr) {

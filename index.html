@@ -96,6 +96,7 @@
       <button class="nav-tab" data-view="wine" onclick="App.setView('wine')">Vino</button>
       <button class="nav-tab" data-view="extraction" onclick="App.setView('extraction')">Extracción</button>
       <button class="nav-tab" data-view="vintage" onclick="App.setView('vintage')">Vendimias</button>
+      <button class="nav-tab" data-view="explorer" onclick="App.setView('explorer')">Explorador</button>
     </div>
 
     <button class="mobile-filter-toggle" id="mobile-filter-toggle" onclick="App.toggleMobileFilters()">
@@ -543,6 +544,13 @@
       </div>
     </div>
 
+    <!-- ═══════ EXPLORER VIEW ═══════ -->
+    <div id="view-explorer" class="view-panel">
+      <div class="section-label">Explorador de Gráficas</div>
+      <div id="explorer-charts"></div>
+      <button class="explorer-add-btn" onclick="Explorer.addChart()">+ Agregar Gráfica</button>
+    </div>
+
   </main>
 </div>
 
@@ -623,6 +631,7 @@
 <script src="js/filters.js"></script>
 <script src="js/kpis.js"></script>
 <script src="js/charts.js"></script>
+<script src="js/explorer.js"></script>
 <script src="js/tables.js"></script>
 <script src="js/app.js"></script>
 
