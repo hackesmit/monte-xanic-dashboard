@@ -101,13 +101,13 @@
 <div class="layout">
   <!-- ── SIDEBAR ── -->
   <aside class="sidebar">
-    <div class="nav-tabs">
-      <button class="nav-tab active" data-view="berry" onclick="App.setView('berry')">Bayas</button>
-      <button class="nav-tab" data-view="wine" onclick="App.setView('wine')">Vino</button>
-      <button class="nav-tab" data-view="extraction" onclick="App.setView('extraction')">Extracción</button>
-      <button class="nav-tab" data-view="vintage" onclick="App.setView('vintage')">Vendimias</button>
-      <button class="nav-tab" data-view="explorer" onclick="App.setView('explorer')">Explorador</button>
-    </div>
+    <select class="nav-select" id="nav-select" onchange="App.setView(this.value)">
+      <option value="berry" selected>Bayas</option>
+      <option value="wine">Vino</option>
+      <option value="extraction">Extracción</option>
+      <option value="vintage">Vendimias</option>
+      <option value="explorer">Explorador</option>
+    </select>
 
     <button class="mobile-filter-toggle" id="mobile-filter-toggle" onclick="App.toggleMobileFilters()">
       Filtros ▼

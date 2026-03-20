@@ -180,10 +180,9 @@ const App = {
   setView(view) {
     this.currentView = view;
 
-    // Update nav tabs
-    document.querySelectorAll('.nav-tab').forEach(tab => {
-      tab.classList.toggle('active', tab.dataset.view === view);
-    });
+    // Sync dropdown
+    const navSelect = document.getElementById('nav-select');
+    if (navSelect && navSelect.value !== view) navSelect.value = view;
 
     // Show/hide view panels
     document.querySelectorAll('.view-panel').forEach(panel => {
