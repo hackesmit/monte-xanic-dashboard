@@ -32,8 +32,8 @@ Wine analytics dashboard for Monte Xanic winery. Tracks berry chemistry (Brix, p
 - Upload: drag Excel into dashboard → auto-splits lots → inserts into `tank_receptions` + `reception_lots` tables
 
 ### Source 3 — Open-Meteo API (automatic)
-- Historical weather for Valle de Guadalupe: lat 32.0, lon -116.6
-- Fetched automatically, cached in `meteorology` table
+- Historical weather for 3 valleys: VDG (32.08, -116.62), VON (32.00, -116.25), SV (32.05, -116.45)
+- Fetched automatically per valley, cached in `meteorology` table with `location` column
 
 ---
 
@@ -51,7 +51,7 @@ crush_date            -- crush/harvest date
 days_post_crush       -- integer
 vintage_year          -- 2022, 2023, 2024, 2025
 variety               -- 'Cabernet Sauvignon', 'Syrah', etc.
-appellation           -- full string from WineXRay e.g. 'Valle de Ojos Negros (Kompali)'
+appellation           -- ranch-first format e.g. 'Kompali (VON)', 'Monte Xanic (VDG)'
 tant                  -- total anthocyanins ppm ME (nullable)
 fant                  -- free anthocyanins ppm ME (nullable)
 bant                  -- bound anthocyanins ppm ME (nullable)
@@ -125,19 +125,24 @@ variety, brix, ph, ta, temperature, tant, notes, uploaded_at
 ### Table: `meteorology`
 Auto-populated from Open-Meteo API, cached to avoid redundant calls
 ```
-id, date, temp_max, temp_min, temp_avg,
+id, date, location, temp_max, temp_min, temp_avg,
 rainfall_mm, humidity_pct, uv_index, wind_speed, uploaded_at
 ```
+- `location`: valley abbreviation — `'VDG'`, `'VON'`, or `'SV'` (default `'VDG'`)
+- Unique constraint: `(date, location)`
 
 ---
 
 ## Project Structure
 ```
-Xanic Dashboard/
+monte-xanic-dashboard/
 ├── index.html                  # Single page
 ├── CLAUDE.md                   # This file
 ├── .gitignore                  # Excludes .env.local, .claude/
 ├── .env.local                  # Supabase keys — NEVER commit
+├── .vercelignore               # Blocks non-public files from Vercel deploy
+├── .editorconfig               # Editor formatting rules
+├── .nvmrc                      # Node version pin (20)
 ├── css/styles.css              # All styling, dark/light themes
 ├── js/
 │   ├── app.js                  # Main app logic, routing, themes
@@ -157,23 +162,26 @@ Xanic Dashboard/
 │   └── verify.js               # Vercel serverless: token verification
 ├── assets/
 │   ├── logo_montexanic.svg     # Brand logo
-│   └── favicon.svg             # Favicon (logo symbol)
-├── sql/                        # One-time SQL scripts
-├── data/                       # Legacy JSON files (reference only)
+│   ├── favicon.svg             # Favicon (logo symbol)
+│   ├── fonts/
+│   │   └── SackersGothicMedium.ttf  # Custom header font
+│   └── maps/                   # Reserved for Phase 5 vineyard map
+├── sql/
+│   └── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
 ├── vercel.json                 # Vercel config + security headers
-├── package.json                # bcryptjs dependency (for login API)
-└── extract_data.py             # Legacy — deprecated after migration
+└── package.json                # bcryptjs + npm scripts
 ```
 
 ---
 
 ## Existing Features
-- **Bayas (Berries):** Scatter plots, bar charts, KPIs for Brix / pH / tANT / TA / Weight
+- **Bayas (Berries):** Scatter plots, bar charts, KPIs for Brix / pH / tANT / TA / Weight. Last-point highlighting per lot (★ Punto final).
+- **Evolución Fenólica:** Interactive evolution chart — phenolic compounds (tANT, fANT, bANT, pTAN, iRPs, IPT) on left Y-axis + Brix on right Y-axis. Per-lot lines, click-to-highlight, berry→wine linking via `berryToWine` mapping.
 - **Vino (Wine):** Tank reception & pre-fermentation tables, phenolic KPIs
 - **Extracción:** Berry-to-wine tANT extraction % mapping (uses filtered data)
 - **Vendimias:** Multi-vintage comparison with % change, weather overlays
-- **Weather:** Temperature time series, rainfall scatter, Brix vs temp and tANT vs rain correlations
-- **Upload:** Drag & drop WineXRay CSV or Recepción Excel → Supabase (with validation, lab sample filtering)
+- **Weather:** Valley-specific weather (VDG, VON, SV). Temperature time series, rainfall scatter, Brix vs temp and tANT vs rain correlations per valley.
+- **Upload:** Drag & drop WineXRay CSV or Recepción Excel → Supabase (with validation, lab/EXP/California sample filtering). Composite key `(sample_id, sample_date)` preserves sample evolution.
 - **Auth:** Login screen with bcrypt password, HMAC session tokens, rate limiting
 - **UI:** Dark/light theme toggle, interactive legends, color-by-variety/origin, responsive layout, "Limpiar Todo" filter reset
 - **Security:** Auth-gated API, XSS escaping, CSP headers, no hardcoded credentials
@@ -212,6 +220,16 @@ Xanic Dashboard/
 - [x] Rate limiting on login (10 attempts / 15 min)
 - [ ] **Login screen UI polish** — style the login form to match dashboard design
 
+### Phase 4b — Data & Visualization Overhaul ✅ COMPLETE
+- [x] Origin naming: ranch-first format — `Monte Xanic (VDG)`, `Kompali (VON)`, etc.
+- [x] Petite Sirah → Durif rename across all code paths and DB
+- [x] Remove experimental (EXP/EXPERIMENTO), California, and flagged samples
+- [x] Composite key `(sample_id, sample_date)` — preserves sample evolution history
+- [x] Valley-specific weather for VDG, VON, SV with per-sample resolution
+- [x] Last-point highlighting per lot (★ Punto final tooltip, larger marker)
+- [x] Evolution chart: toggleable phenolic compounds + Brix dual-axis, berry→wine linking
+- [x] Supabase migration script: `sql/migration_overhaul.sql`
+
 ### Phase 5 — Vineyard Quality Map *(Priority: HIGH)*
 - [ ] Add `maps.js` CONFIG: `fieldLotToSection`, `fieldLotRanchPatterns`, `mapMetrics`, `vineyardSections`
 - [ ] Add map view DOM elements to `index.html` (SVG container, metric selector, detail panel, KPIs)
@@ -231,23 +249,29 @@ Xanic Dashboard/
 ---
 
 ## Grape Varieties
-**Red (12):** Cabernet Sauvignon, Cabernet Franc, Merlot, Syrah, Nebbiolo, Tempranillo, Grenache, Mourvèdre, Petite Sirah, Durif, Malbec, Petit Verdot
+**Red (13):** Cabernet Sauvignon, Cabernet Franc, Merlot, Syrah, Nebbiolo, Tempranillo, Grenache, Mourvèdre, Durif, Malbec, Petit Verdot, Marselan, Caladoc
 
 **White (4):** Chardonnay, Sauvignon Blanc, Viognier, Chenin Blanc
 
 ---
 
 ## Vineyard Origins & Appellations
-Full appellation strings from WineXRay (preserve exactly as-is):
-- `Valle de Guadalupe (Monte Xanic)`
-- `Valle de Ojos Negros (Ojos Negros)`
-- `Valle de Ojos Negros (Kompali)`
-- `Valle de Ojos Negros (Dominio de las Abejas)`
-- `Valle de Ojos Negros (Viña Alta)`
-- `Valle de Ojos Negros (Dubacano)`
-- `San Gerónimo`
-- `California` (control samples)
-- `Camino Corazón (Valle de Parras)` (external)
+Ranch-first format with valley abbreviation:
+
+| Valley | Abbr | Ranches |
+|--------|------|---------|
+| Valle de Guadalupe | VDG | Monte Xanic, Olé, Siete Leguas, Rancho 14 |
+| Valle de Ojos Negros | VON | Viña Alta, Ojos Negros, Dominio de las Abejas, Kompali |
+| San Vicente | SV | Dubacano, Llano Colorado |
+
+Appellation strings stored in DB (ranch-first format):
+- `Monte Xanic (VDG)`, `Olé (VDG)`, `Siete Leguas (VDG)`, `Rancho 14 (VDG)`
+- `Kompali (VON)`, `Viña Alta (VON)`, `Ojos Negros (VON)`, `Dominio de las Abejas (VON)`
+- `Dubacano (SV)`, `Llano Colorado (SV)`
+- `San Gerónimo` (wine only, no berry weather)
+- `Camino Corazón (VP)` (external)
+
+Sample code → ranch mapping: `MX`→Monte Xanic, `OLE`→Olé, `7L`→Siete Leguas, `R14`→Rancho 14, `K*`→Kompali, `VA`→Viña Alta, `ON`→Ojos Negros, `DA/DLA`→Dominio de las Abejas, `DUB`→Dubacano, `LLC`→Llano Colorado
 
 ---
 
@@ -311,7 +335,9 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 - Recepción Excel: always read BOTH sheets (Recepción + Prefermentativos)
 - Recepción Excel: split up to 4 vineyard lot columns into separate `reception_lots` rows
 - Always show row count confirmation in Spanish before inserting
-- Always handle duplicate `sample_id` / `report_code` gracefully (upsert, not duplicate)
+- Always handle duplicate `(sample_id, sample_date)` / `report_code` gracefully (upsert, not duplicate)
+- Skip EXP/EXPERIMENTO/NORMAL samples and California appellation on upload
+- Normalize variety (`Petite Sirah` → `Durif`) and appellation (old format → ranch-first) on upload
 - Show Spanish success message: "✓ X muestras agregadas correctamente"
 - Show Spanish error message: "✗ Error al cargar datos. Verificar formato del archivo."
 
@@ -322,7 +348,7 @@ SUPABASE_ANON_KEY=your_supabase_anon_key
 - `vintage_year` always extracted from batch code prefix (25 → 2025, 24 → 2024)
 
 ### Deployment
-- Test locally with `serve.ps1` before pushing
+- Test locally with `npm start` before pushing
 - Never commit `.env.local`
 - Vercel environment variables must match `.env.local` keys exactly
 

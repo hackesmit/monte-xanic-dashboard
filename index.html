@@ -558,9 +558,8 @@
     <div class="help-body">
       <div class="help-section">
         <h3>Cómo Iniciar</h3>
-        <p>El dashboard carga datos automáticamente desde archivos JSON pre-extraídos en la carpeta <code>data/</code>. Si los archivos no están presentes, se mostrará la pantalla de carga para subir datos manualmente.</p>
-        <p>Para servir el dashboard localmente, ejecute:</p>
-        <pre>python -m http.server 8080</pre>
+        <p>El dashboard carga datos automáticamente desde Supabase. Para servir localmente, ejecute:</p>
+        <pre>npm start</pre>
         <p>Luego abra <code>http://localhost:8080</code> en su navegador.</p>
       </div>
 
@@ -608,10 +607,8 @@
       </div>
 
       <div class="help-section">
-        <h3>Regenerar Datos JSON</h3>
-        <p>Para actualizar los datos pre-extraídos, coloque los archivos Excel en la carpeta del proyecto y ejecute:</p>
-        <pre>python extract_data.py</pre>
-        <p>Esto generará los archivos en <code>data/</code> y el dashboard los cargará automáticamente en la siguiente visita.</p>
+        <h3>Actualizar Datos</h3>
+        <p>Arrastre archivos CSV (WineXRay) o Excel (Recepción de Tanque) a la pantalla de carga. Los datos se guardan directamente en Supabase.</p>
       </div>
     </div>
   </div>
