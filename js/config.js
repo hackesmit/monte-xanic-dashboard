@@ -524,5 +524,65 @@ const CONFIG = {
     'temperature':      'temp',
     'tant':             'antoWX',
     'notes':            'notes'
+  },
+
+  // ── Explorer Metric Registry ──────────────────────────────────
+  explorerMetrics: {
+    berry: {
+      daysPostCrush: { label: 'Dias Post-Envero', unit: 'dias' },
+      brix:          { label: 'Brix', unit: '°Bx' },
+      pH:            { label: 'pH', unit: '' },
+      ta:            { label: 'Acidez Total', unit: 'g/L' },
+      tANT:          { label: 'tANT', unit: 'ppm ME' },
+      fANT:          { label: 'fANT', unit: 'ppm ME' },
+      bANT:          { label: 'bANT', unit: 'ppm ME' },
+      pTAN:          { label: 'pTAN', unit: 'ppm CE' },
+      iRPs:          { label: 'iRPs', unit: 'ppm CE' },
+      IPT:           { label: 'IPT', unit: '' },
+      berryFW:       { label: 'Peso Baya', unit: 'g' },
+      berryAnt:      { label: 'ANT Extraibles', unit: 'mg/100b' },
+      berrySugars:   { label: 'Azucares Baya', unit: 'mg/b' },
+      alcohol:       { label: 'Alcohol', unit: '% v/v' },
+      va:            { label: 'Acidez Volatil', unit: 'g/L' },
+      malic_acid:    { label: 'Acido Malico', unit: 'g/L' },
+      rs:            { label: 'Azucar Residual', unit: 'g/L' },
+      colorL:        { label: 'Color L*', unit: '' },
+      colorA:        { label: 'Color a*', unit: '' },
+      colorB:        { label: 'Color b*', unit: '' },
+      maturityIndex:     { label: 'Indice de Madurez', unit: 'Brix/AT', derived: true },
+      gdd:               { label: 'GDD Acumulados', unit: '°C·dia', derived: true },
+      antExtractability: { label: 'Extractabilidad ANT', unit: '%', derived: true }
+    },
+    wine: {
+      daysPostCrush: { label: 'Dias Post-Envero', unit: 'dias' },
+      brix:          { label: 'Brix', unit: '°Bx' },
+      pH:            { label: 'pH', unit: '' },
+      at:            { label: 'Acidez Total', unit: 'g/L' },
+      antoWX:        { label: 'tANT', unit: 'ppm ME' },
+      freeANT:       { label: 'fANT', unit: 'ppm ME' },
+      boundANT:      { label: 'bANT', unit: 'ppm ME' },
+      pTAN:          { label: 'pTAN', unit: 'ppm CE' },
+      iRPs:          { label: 'iRPs', unit: 'ppm CE' },
+      iptSpica:      { label: 'IPT', unit: '' }
+    }
+  },
+
+  explorerChartTypes: [
+    { value: 'scatter',  label: 'Dispersión' },
+    { value: 'bar',      label: 'Barras' },
+    { value: 'line',     label: 'Líneas' }
+  ],
+
+  explorerGroupBy: {
+    berry: [
+      { value: 'variety',     label: 'Varietal' },
+      { value: 'appellation', label: 'Origen' },
+      { value: 'vintage',     label: 'Vendimia' }
+    ],
+    wine: [
+      { value: 'variedad',    label: 'Varietal' },
+      { value: 'proveedor',   label: 'Origen' },
+      { value: 'vintage',     label: 'Vendimia' }
+    ]
   }
 };

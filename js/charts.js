@@ -150,16 +150,17 @@ const Charts = {
       const color = resolveColor(name);
       const sorted = [...pts].sort((a, b) => a.x - b.x);
       // Per-point styling for last points
-      const radii = sorted.map(p => lastPoints.has(p.sampleId) ? CONFIG.chartDefaults.pointRadius + 3 : CONFIG.chartDefaults.pointRadius);
+      const radii = sorted.map(() => CONFIG.chartDefaults.pointRadius);
       const bgColors = sorted.map(p => lastPoints.has(p.sampleId) ? color : color + '99');
-      const bdWidths = sorted.map(p => lastPoints.has(p.sampleId) ? 2 : 0.5);
+      const bdColors = sorted.map(p => lastPoints.has(p.sampleId) ? '#DDB96E' : color);
+      const bdWidths = sorted.map(p => lastPoints.has(p.sampleId) ? 3 : 0.5);
       return {
         label: name,
         data: sorted,
         borderColor: color,
         backgroundColor: bgColors,
         pointBackgroundColor: bgColors,
-        pointBorderColor: color,
+        pointBorderColor: bdColors,
         pointRadius: radii,
         pointHoverRadius: CONFIG.chartDefaults.pointHoverRadius,
         pointBorderWidth: bdWidths,
@@ -981,6 +982,119 @@ const Charts = {
     }
   },
 
+  // ── Explorer Parameterized Charts ──────────────────────────────
+
+  createExplorerChart(canvasId, data, xField, yField, xLabel, yLabel, groupField, colorResolver, opts) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'Sin datos para esta selección'); return; }
+
+    const groups = this.groupScatterData(data, xField, yField, groupField);
+    const showLine = opts && opts.showLine;
+
+    const datasets = Object.entries(groups).map(([name, pts]) => {
+      const color = colorResolver(name);
+      const sorted = [...pts].sort((a, b) => a.x - b.x);
+      return {
+        label: name,
+        data: sorted,
+        borderColor: color,
+        backgroundColor: color + '99',
+        pointBackgroundColor: color + '99',
+        pointBorderColor: color,
+        pointRadius: CONFIG.chartDefaults.pointRadius,
+        pointHoverRadius: CONFIG.chartDefaults.pointHoverRadius,
+        pointBorderWidth: 1,
+        borderWidth: showLine ? CONFIG.chartDefaults.borderWidth : 0,
+        showLine: !!showLine,
+        tension: CONFIG.chartDefaults.tension,
+        fill: false
+      };
+    });
+
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: this.tooltipConfig()
+        },
+        scales: this.axisOpts(xLabel, yLabel),
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  createExplorerBar(canvasId, data, valueField, label, groupField, colorResolver) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'Sin datos para esta selección'); return; }
+
+    const byGroup = {};
+    data.forEach(d => {
+      const g = d[groupField] || 'Unknown';
+      const val = d[valueField];
+      if (typeof val === 'number' && !isNaN(val)) {
+        if (!byGroup[g]) byGroup[g] = [];
+        byGroup[g].push(val);
+      }
+    });
+
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const labels = Object.keys(byGroup).sort((a, b) => avg(byGroup[b]) - avg(byGroup[a]));
+    const values = labels.map(g => parseFloat(avg(byGroup[g]).toFixed(2)));
+    const bgColors = labels.map(g => colorResolver(g) + '66');
+    const bdColors = labels.map(g => colorResolver(g));
+
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label,
+          data: values,
+          backgroundColor: bgColors,
+          borderColor: bdColors,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              label: (ctx) => `${label}: ${ctx.parsed.x}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
   // Update all berry charts
   updateBerryCharts(data) {
     const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
@@ -1090,8 +1204,9 @@ const Charts = {
 
         // Identify last point
         const lastIdx = pts.length - 1;
-        const radii = pts.map((_, i) => i === lastIdx ? 7 : 4);
-        const bdWidths = pts.map((_, i) => i === lastIdx ? 2 : 0.5);
+        const radii = pts.map(() => 4);
+        const bdColors = pts.map((_, i) => i === lastIdx ? '#DDB96E' : lotColor);
+        const bdWidths = pts.map((_, i) => i === lastIdx ? 3 : 0.5);
 
         datasets.push({
           label: `${lotCode} · ${compoundMeta[compound]?.label || compound}`,
@@ -1099,7 +1214,7 @@ const Charts = {
           borderColor: lotColor,
           backgroundColor: lotColor + '99',
           pointBackgroundColor: pts.map((_, i) => i === lastIdx ? lotColor : lotColor + '99'),
-          pointBorderColor: lotColor,
+          pointBorderColor: bdColors,
           pointRadius: radii,
           pointBorderWidth: bdWidths,
           pointHoverRadius: 8,
