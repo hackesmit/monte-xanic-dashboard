@@ -1153,7 +1153,7 @@ canvas { max-width: 100%; }
 .login-btn {
   display: block;
   width: 100%;
-  padding: 12px;
+  padding: 14px;
   font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 11px;
   font-weight: 500;
@@ -1165,6 +1165,10 @@ canvas { max-width: 100%; }
   cursor: pointer;
   transition: background 0.15s;
   margin-top: 8px;
+  -webkit-appearance: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  min-height: 48px;
 }
 .login-btn:hover { background: var(--gold-lt); }
 .login-btn:disabled {
