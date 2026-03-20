@@ -17,7 +17,7 @@ const DataStore = {
 
       // Primary: Vercel serverless function
       try {
-        const _token = sessionStorage.getItem('xanic_session_token');
+        const _token = localStorage.getItem('xanic_session_token');
         const res = await fetch('/api/config', {
           headers: _token ? { 'x-session-token': _token } : {}
         });
