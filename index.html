@@ -37,9 +37,10 @@
   </div>
 </div>
 
-<!-- Data Loader Overlay -->
-<div id="data-loader" class="data-loader view-panel">
+<!-- Data Loader Modal -->
+<div id="data-loader" class="data-loader-overlay" style="display:none">
   <div class="loader-card" id="loader-card">
+    <button class="loader-close" onclick="App.hideDataLoader()">&times;</button>
     <div class="loader-icon">🍇</div>
     <div class="loader-title">Cargar Datos de Vendimia</div>
 

@@ -143,12 +143,14 @@ const App = {
   },
 
   showDataLoader() {
-    document.getElementById('data-loader')?.classList.add('active');
-    document.getElementById('dashboard-content')?.style.setProperty('display', 'none');
+    const modal = document.getElementById('data-loader');
+    if (modal) modal.style.display = 'flex';
+    Auth.applyRole();
   },
 
   hideDataLoader() {
-    document.getElementById('data-loader')?.classList.remove('active');
+    const modal = document.getElementById('data-loader');
+    if (modal) modal.style.display = 'none';
     document.getElementById('dashboard-content')?.style.removeProperty('display');
   },
 

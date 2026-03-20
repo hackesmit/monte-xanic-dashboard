@@ -696,22 +696,43 @@ header {
 }
 
 /* ── DATA LOADER ── */
-.data-loader {
+.data-loader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 60vh;
-  padding: 60px;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 .loader-card {
+  position: relative;
   background: var(--card);
   border: 2px dashed var(--border-gold);
-  padding: 60px 80px;
+  padding: 48px 60px;
   text-align: center;
-  max-width: 600px;
+  max-width: 560px;
+  width: 90vw;
+  max-height: 85vh;
+  overflow-y: auto;
   transition: border-color 0.2s, background 0.3s;
 }
+.loader-close {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 24px;
+  cursor: pointer;
+  line-height: 1;
+  padding: 4px 8px;
+  transition: color 0.15s;
+}
+.loader-close:hover { color: var(--gold); }
 .loader-card.dragover {
   border-color: var(--gold);
   background: rgba(196,160,96,0.04);
