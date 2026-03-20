@@ -191,6 +191,10 @@
 
     <!-- ═══════ BERRY VIEW ═══════ -->
     <div id="view-berry" class="view-panel active">
+      <div class="mobile-filter-summary" id="filter-summary-berry">
+        <span class="summary-text" id="summary-text-berry"></span>
+        <button class="summary-clear" onclick="Filters.clearAll()">Limpiar</button>
+      </div>
       <div class="section-label">Indicadores Clave</div>
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-label">Brix Promedio</div><div class="kpi-value" id="kpi-avg-brix">—</div></div>
@@ -222,25 +226,25 @@
           <button class="chart-export-btn" onclick="Charts.exportChart('chartBrix', 'Brix')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Brix</div>
           <div class="chart-sub">Grados Brix vs días post-envero</div>
-          <div style="height:240px"><canvas id="chartBrix"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartBrix"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartAnt', 'Antocianinas Totales')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Antocianinas Totales</div>
           <div class="chart-sub">tANT (ppm ME) vs días post-envero</div>
-          <div style="height:240px"><canvas id="chartAnt"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartAnt"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartPH', 'pH')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">pH</div>
           <div class="chart-sub">pH vs días post-envero</div>
-          <div style="height:240px"><canvas id="chartPH"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartPH"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartTA', 'Acidez Total')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Acidez Total</div>
           <div class="chart-sub">TA (g/L) vs días post-envero</div>
-          <div style="height:240px"><canvas id="chartTA"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartTA"></canvas></div>
         </div>
       </div>
 
@@ -249,29 +253,32 @@
           <button class="chart-export-btn" onclick="Charts.exportChart('chartWeight', 'Peso por Baya')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Peso por Baya</div>
           <div class="chart-sub">Gramos por baya vs días post-envero</div>
-          <div style="height:240px"><canvas id="chartWeight"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartWeight"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartScatter', 'Brix vs pH')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Brix vs pH</div>
           <div class="chart-sub">Dispersión madurez fenólica</div>
-          <div style="height:240px"><canvas id="chartScatter"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartScatter"></canvas></div>
         </div>
       </div>
 
+      <div class="mobile-section-group" id="section-varietal-origin">
+        <button class="mobile-section-toggle" onclick="App.toggleMobileSection('section-varietal-origin')">Análisis por Varietal y Origen</button>
+        <div class="mobile-section-body">
       <div class="section-label">Comparativo por Varietal</div>
       <div class="charts-grid">
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartVarBrix', 'Brix por Varietal')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Brix por Varietal</div>
           <div class="chart-sub">Promedio general</div>
-          <div style="height:280px"><canvas id="chartVarBrix"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:280px"><canvas id="chartVarBrix"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartVarAnt', 'tANT por Varietal')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">tANT por Varietal</div>
           <div class="chart-sub">Promedio general</div>
-          <div style="height:280px"><canvas id="chartVarAnt"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:280px"><canvas id="chartVarAnt"></canvas></div>
         </div>
       </div>
 
@@ -281,7 +288,7 @@
           <button class="chart-export-btn" onclick="Charts.exportChart('chartOrigen', 'Muestras por Origen')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Muestras por Origen</div>
           <div class="chart-sub">Distribución de muestras por viñedo</div>
-          <div style="height:260px"><canvas id="chartOrigen"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:260px"><canvas id="chartOrigen"></canvas></div>
         </div>
       </div>
 
@@ -290,25 +297,30 @@
         <div class="chart-card">
           <div class="chart-title">Brix por Origen</div>
           <div class="chart-sub">Promedio general</div>
-          <div style="height:280px"><canvas id="chartOriginBrix"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:280px"><canvas id="chartOriginBrix"></canvas></div>
         </div>
         <div class="chart-card">
           <div class="chart-title">tANT por Origen</div>
           <div class="chart-sub">Promedio general</div>
-          <div style="height:280px"><canvas id="chartOriginAnt"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:280px"><canvas id="chartOriginAnt"></canvas></div>
         </div>
         <div class="chart-card">
           <div class="chart-title">pH por Origen</div>
           <div class="chart-sub">Promedio general</div>
-          <div style="height:280px"><canvas id="chartOriginPH"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:280px"><canvas id="chartOriginPH"></canvas></div>
         </div>
         <div class="chart-card">
           <div class="chart-title">AT por Origen</div>
           <div class="chart-sub">Promedio general</div>
-          <div style="height:280px"><canvas id="chartOriginTA"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:280px"><canvas id="chartOriginTA"></canvas></div>
+        </div>
+      </div>
         </div>
       </div>
 
+      <div class="mobile-section-group" id="section-evolution-climate">
+        <button class="mobile-section-toggle" onclick="App.toggleMobileSection('section-evolution-climate')">Evolución y Clima</button>
+        <div class="mobile-section-body">
       <div class="section-label" style="margin-top:24px">Evolución Fenólica</div>
       <div class="evo-controls" style="display:flex;gap:12px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
         <span style="font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.5px">Compuestos:</span>
@@ -325,7 +337,7 @@
         <button class="chart-export-btn" onclick="Charts.exportChart('chartEvolution', 'Evolucion Fenolica')" title="Exportar como PNG">&#x2913; PNG</button>
         <div class="chart-title">Evolución Fenólica por Lote</div>
         <div class="chart-sub">Baya → Vino · Fenólicos (eje izquierdo) + Brix (eje derecho, cuadros morados)</div>
-        <div style="height:360px"><canvas id="chartEvolution"></canvas></div>
+        <div class="chart-h chart-h-lg" style="height:360px"><canvas id="chartEvolution"></canvas></div>
       </div>
 
       <div class="section-label" style="margin-top:24px">Correlaciones Climáticas</div>
@@ -334,13 +346,16 @@
           <button class="chart-export-btn" onclick="Charts.exportChart('chartBrixTemp', 'Brix vs Temperatura')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Brix vs Temperatura</div>
           <div class="chart-sub">Temperatura media (°C) en el día de muestreo</div>
-          <div style="height:240px"><canvas id="chartBrixTemp"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartBrixTemp"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartTantRain', 'tANT vs Lluvia Acumulada')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">tANT vs Lluvia Acumulada</div>
           <div class="chart-sub">Precipitación acumulada desde 1 Jul hasta fecha de muestreo</div>
-          <div style="height:240px"><canvas id="chartTantRain"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartTantRain"></canvas></div>
+        </div>
+      </div>
+
         </div>
       </div>
 
@@ -372,6 +387,10 @@
 
     <!-- ═══════ WINE VIEW ═══════ -->
     <div id="view-wine" class="view-panel">
+      <div class="mobile-filter-summary" id="filter-summary-wine">
+        <span class="summary-text" id="summary-text-wine"></span>
+        <button class="summary-clear" onclick="Filters.clearAllWine()">Limpiar</button>
+      </div>
       <div class="section-label">Indicadores Clave — Recepción</div>
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="wine-kpi-tant">—</div></div>
@@ -442,7 +461,7 @@
           <button class="chart-export-btn" onclick="Charts.exportChart('chartExtraction', 'Extraccion tANT Baya vs Vino')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">tANT: Baya vs Vino</div>
           <div class="chart-sub">Antocianinas totales — porcentaje de extracción</div>
-          <div style="height:320px"><canvas id="chartExtraction"></canvas></div>
+          <div class="chart-h chart-h-lg" style="height:320px"><canvas id="chartExtraction"></canvas></div>
         </div>
       </div>
 
@@ -484,25 +503,25 @@
           <button class="chart-export-btn" onclick="Charts.exportChart('chartVintageBrix', 'Vendimias Brix')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Brix</div>
           <div class="chart-sub">Comparación por lote entre vendimias</div>
-          <div style="height:260px"><canvas id="chartVintageBrix"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:260px"><canvas id="chartVintageBrix"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartVintageAnt', 'Vendimias tANT')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Antocianinas Totales</div>
           <div class="chart-sub">tANT (ppm ME) entre vendimias</div>
-          <div style="height:260px"><canvas id="chartVintageAnt"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:260px"><canvas id="chartVintageAnt"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartVintagePH', 'Vendimias pH')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">pH</div>
           <div class="chart-sub">pH entre vendimias</div>
-          <div style="height:260px"><canvas id="chartVintagePH"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:260px"><canvas id="chartVintagePH"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartVintageTA', 'Vendimias Acidez Total')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Acidez Total</div>
           <div class="chart-sub">AT (g/L) entre vendimias</div>
-          <div style="height:260px"><canvas id="chartVintageTA"></canvas></div>
+          <div class="chart-h chart-h-md" style="height:260px"><canvas id="chartVintageTA"></canvas></div>
         </div>
       </div>
 
@@ -529,13 +548,13 @@
           <button class="chart-export-btn" onclick="Charts.exportChart('chartWeatherTemp', 'Temperatura Media Diaria')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Temperatura Media Diaria</div>
           <div class="chart-sub">°C por día de temporada (1 Jul = Día 1) — comparativo entre vendimias</div>
-          <div style="height:240px"><canvas id="chartWeatherTemp"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartWeatherTemp"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartWeatherRain', 'Eventos de Lluvia')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Eventos de Lluvia</div>
           <div class="chart-sub">Precipitación (mm) por día de temporada — comparativo entre vendimias</div>
-          <div style="height:240px"><canvas id="chartWeatherRain"></canvas></div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartWeatherRain"></canvas></div>
         </div>
       </div>
 
@@ -563,6 +582,11 @@
 
   </main>
 </div>
+
+<div class="mobile-backdrop" id="mobile-backdrop"></div>
+<button class="mobile-fab" id="mobile-fab" aria-label="Filtros">
+  Filtros <span class="fab-badge" id="fab-badge">0</span>
+</button>
 
 </div>
 

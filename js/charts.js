@@ -39,19 +39,25 @@ const Charts = {
   },
 
   axisOpts(xLabel, yLabel) {
+    const mob = window.innerWidth <= 768;
+    const tickSize = mob ? 7 : 9;
+    const titleSize = mob ? 8 : 9;
+    const maxTicks = mob ? 6 : undefined;
     return {
       x: {
-        title: { display: !!xLabel, text: xLabel, color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
-        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+        title: { display: !!xLabel, text: xLabel, color: '#6B6B6B', font: { size: titleSize, family: 'Sackers Gothic Medium' } },
+        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: tickSize, family: 'Sackers Gothic Medium' }, maxTicksLimit: maxTicks },
         grid: { color: CONFIG.chartDefaults.gridColor }
       },
       y: {
-        title: { display: !!yLabel, text: yLabel, color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
-        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+        title: { display: !!yLabel, text: yLabel, color: '#6B6B6B', font: { size: titleSize, family: 'Sackers Gothic Medium' } },
+        ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: tickSize, family: 'Sackers Gothic Medium' }, maxTicksLimit: maxTicks },
         grid: { color: CONFIG.chartDefaults.gridColor }
       }
     };
   },
+
+  _mobileRadius() { return window.innerWidth <= 768 ? 3 : CONFIG.chartDefaults.pointRadius; },
 
   // Build tooltip that always shows Sample Id
   tooltipConfig() {
@@ -150,7 +156,8 @@ const Charts = {
       const color = resolveColor(name);
       const sorted = [...pts].sort((a, b) => a.x - b.x);
       // Per-point styling for last points
-      const radii = sorted.map(() => CONFIG.chartDefaults.pointRadius);
+      const r = this._mobileRadius();
+      const radii = sorted.map(() => r);
       const bgColors = sorted.map(p => lastPoints.has(p.sampleId) ? color : color + '99');
       const bdColors = sorted.map(p => lastPoints.has(p.sampleId) ? '#DDB96E' : color);
       const bdWidths = sorted.map(p => lastPoints.has(p.sampleId) ? 3 : 0.5);
@@ -209,7 +216,7 @@ const Charts = {
         backgroundColor: color + 'AA',
         pointBackgroundColor: color + 'CC',
         pointBorderColor: color,
-        pointRadius: CONFIG.chartDefaults.pointRadius + 1,
+        pointRadius: this._mobileRadius() + 1,
         pointHoverRadius: CONFIG.chartDefaults.pointHoverRadius,
         borderWidth: 0,
         showLine: false,
@@ -641,13 +648,41 @@ const Charts = {
     const container = document.getElementById('legend-bar');
     if (!container) return;
     const items = Filters.getLegendItems(data);
-    container.innerHTML = items.map(item => {
+    const mob = window.innerWidth <= 768;
+
+    // On mobile, sort by data count (most data first) and limit visible items
+    let sorted = items;
+    if (mob) {
+      const counts = {};
+      const field = Filters.state.colorBy === 'origin' ? 'appellation' : 'variety';
+      data.forEach(d => { const k = d[field]; if (k) counts[k] = (counts[k] || 0) + 1; });
+      sorted = [...items].sort((a, b) => (counts[b.label] || 0) - (counts[a.label] || 0));
+    }
+    const maxVisible = mob ? 5 : Infinity;
+    const visible = sorted.slice(0, maxVisible);
+    const hidden = sorted.slice(maxVisible);
+
+    let html = visible.map(item => {
       const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
       return `<div class="legend-item${dimmed}" onclick="Charts.toggleSeries('${item.label.replace(/'/g, "\\'")}')" title="${item.label.replace(/"/g, '&quot;')}">
         <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
         <span>${item.label}</span>
       </div>`;
     }).join('');
+
+    if (hidden.length > 0) {
+      html += `<div class="legend-item legend-expand" onclick="this.parentElement.classList.toggle('legend-show-all')" style="cursor:pointer;color:var(--muted);font-style:italic">
+        <span>+ ${hidden.length} m\u00e1s</span>
+      </div>`;
+      html += hidden.map(item => {
+        const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
+        return `<div class="legend-item legend-overflow${dimmed}" onclick="Charts.toggleSeries('${item.label.replace(/'/g, "\\'")}')" title="${item.label.replace(/"/g, '&quot;')}" style="display:none">
+          <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
+          <span>${item.label}</span>
+        </div>`;
+      }).join('');
+    }
+    container.innerHTML = html;
   },
 
   // ── Weather Charts ─────────────────────────────────────────────
