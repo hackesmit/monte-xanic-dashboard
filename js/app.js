@@ -638,43 +638,35 @@ const App = {
 
   // ── Theme Toggle ──
 
+  _syncThemeIcons() {
+    const isLight = this.theme === 'light';
+    const darkIcon = document.querySelector('.theme-icon-dark');
+    const lightIcon = document.querySelector('.theme-icon-light');
+    if (darkIcon) darkIcon.style.display = isLight ? 'none' : '';
+    if (lightIcon) lightIcon.style.display = isLight ? '' : 'none';
+  },
+
   toggleTheme() {
     this.theme = this.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-theme', this.theme);
     localStorage.setItem('xanic_theme', this.theme);
+    this._syncThemeIcons();
 
-    // Toggle icon visibility
-    const darkIcon = document.querySelector('.theme-icon-dark');
-    const lightIcon = document.querySelector('.theme-icon-light');
-    if (this.theme === 'light') {
-      if (darkIcon) darkIcon.style.display = 'none';
-      if (lightIcon) lightIcon.style.display = '';
-    } else {
-      if (darkIcon) darkIcon.style.display = '';
-      if (lightIcon) lightIcon.style.display = 'none';
-    }
-
-    // Re-render charts for new theme colors
     if (this.initialized) {
       this.updateChartTheme();
-      this.refresh();
+      Charts._applyThemeToCharts();
     }
   },
 
   restoreTheme() {
     const saved = localStorage.getItem('xanic_theme');
-    if (saved === 'light') {
-      this.theme = 'light';
-      document.documentElement.setAttribute('data-theme', 'light');
-      const darkIcon = document.querySelector('.theme-icon-dark');
-      const lightIcon = document.querySelector('.theme-icon-light');
-      if (darkIcon) darkIcon.style.display = 'none';
-      if (lightIcon) lightIcon.style.display = '';
-    }
+    this.theme = saved === 'light' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', this.theme);
+    this.updateChartTheme();
+    this._syncThemeIcons();
   },
 
   updateChartTheme() {
-    // Update Chart.js global defaults for the current theme
     const isLight = this.theme === 'light';
     CONFIG.chartDefaults.gridColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
     CONFIG.chartDefaults.tickColor = isLight ? '#7A7A7A' : '#4A4A4A';
