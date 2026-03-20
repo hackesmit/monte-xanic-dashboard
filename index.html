@@ -52,21 +52,23 @@
     <button class="loader-btn" onclick="document.getElementById('file-input').click()">Seleccionar Archivos</button>
     <div class="loader-files" id="loader-status"></div>
 
-    <!-- ── DB upload (persists to Supabase) ── -->
-    <div class="loader-divider"></div>
-    <div class="loader-section-label">Guardar en Base de Datos</div>
-    <div class="loader-sub">
-      Arrastre o seleccione un archivo para agregarlo a la base de datos permanente.<br>
-      <strong>WineXRay</strong> (.csv) — muestras de bayas y vino<br>
-      <strong>Recepción de Tanque</strong> (.xlsx) — recepciones y prefermentativos
+    <!-- ── DB upload (persists to Supabase) — lab role only ── -->
+    <div id="db-upload-section" style="display:none">
+      <div class="loader-divider"></div>
+      <div class="loader-section-label">Guardar en Base de Datos</div>
+      <div class="loader-sub">
+        Arrastre o seleccione un archivo para agregarlo a la base de datos permanente.<br>
+        <strong>WineXRay</strong> (.csv) — muestras de bayas y vino<br>
+        <strong>Recepción de Tanque</strong> (.xlsx) — recepciones y prefermentativos
+      </div>
+      <input type="file" id="db-file-input" accept=".xlsx,.xls,.csv" style="display:none" aria-label="Subir archivo a base de datos"
+        onchange="UploadManager.handleUpload(this.files[0], document.getElementById('db-upload-status')); this.value=''">
+      <button class="loader-btn loader-btn-db" id="db-upload-btn"
+        onclick="document.getElementById('db-file-input').click()">
+        Subir a Base de Datos
+      </button>
+      <div id="db-upload-status" class="loader-files"></div>
     </div>
-    <input type="file" id="db-file-input" accept=".xlsx,.xls,.csv" style="display:none" aria-label="Subir archivo a base de datos"
-      onchange="UploadManager.handleUpload(this.files[0], document.getElementById('db-upload-status')); this.value=''">
-    <button class="loader-btn loader-btn-db" id="db-upload-btn"
-      onclick="document.getElementById('db-file-input').click()">
-      Subir a Base de Datos
-    </button>
-    <div id="db-upload-status" class="loader-files"></div>
   </div>
 </div>
 
