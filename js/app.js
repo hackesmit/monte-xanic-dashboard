@@ -23,6 +23,8 @@ const App = {
       }).catch(err => console.error('Supabase init failed:', err));
     } else {
       // 2 — Try Supabase (first visit or stale cache)
+      // Show dashboard immediately with loading state
+      this.hideDataLoader();
       await DataStore.initSupabase();
       const supaLoaded = await DataStore.loadFromSupabase();
       this._updateDbStatus();
@@ -34,6 +36,7 @@ const App = {
         if (jsonLoaded) {
           this.onDataLoaded();
         } else {
+          // Only show upload screen if DB is truly unavailable
           this.showDataLoader();
         }
       }
