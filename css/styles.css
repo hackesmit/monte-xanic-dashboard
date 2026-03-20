@@ -240,6 +240,7 @@ header {
   color: var(--muted);
   background: transparent;
   border: none;
+  white-space: nowrap;
   border-right: 1px solid var(--border);
   letter-spacing: 0.10em;
   text-transform: uppercase;
@@ -1002,6 +1003,20 @@ canvas { max-width: 100%; }
   .charts-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 768px) {
+  .nav-tabs {
+    display: flex;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .nav-tabs::-webkit-scrollbar { display: none; }
+  .nav-tab {
+    flex: 0 0 auto;
+    padding: 11px 14px;
+    font-size: 9px;
+    min-height: 42px;
+    border-right: 1px solid var(--border-gold);
+  }
   .chart-export-btn { opacity: 0.7; font-size: 7px; padding: 2px 6px; }
   .layout { grid-template-columns: 1fr; }
   .sidebar {
