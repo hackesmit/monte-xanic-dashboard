@@ -83,6 +83,22 @@ const App = {
         this.handleFiles(e.dataTransfer.files);
       });
     }
+
+    // Mobile FAB + backdrop
+    const fab = document.getElementById('mobile-fab');
+    const backdrop = document.getElementById('mobile-backdrop');
+    if (fab) fab.addEventListener('click', () => this.openMobileFilters());
+    if (backdrop) backdrop.addEventListener('click', () => this.closeMobileFilters());
+
+    // Cleanup on resize (close sheet if going to desktop)
+    window.addEventListener('resize', () => {
+      if (!this._isMobile()) {
+        const sidebar = document.querySelector('.sidebar');
+        if (sidebar && sidebar.classList.contains('sheet-open')) {
+          this.closeMobileFilters();
+        }
+      }
+    });
   },
 
   async handleFiles(fileList) {
@@ -180,6 +196,14 @@ const App = {
   setView(view) {
     this.currentView = view;
 
+    // Close bottom sheet if open
+    if (this._isMobile()) {
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar && sidebar.classList.contains('sheet-open')) {
+        this.closeMobileFilters();
+      }
+    }
+
     // Sync dropdown
     const navSelect = document.getElementById('nav-select');
     if (navSelect && navSelect.value !== view) navSelect.value = view;
@@ -244,6 +268,8 @@ const App = {
         break;
     }
 
+    this._updateFilterFAB();
+    this._updateFilterSummary();
   },
 
   // ── Vintage UI helpers ──
@@ -479,14 +505,135 @@ const App = {
     }).join('');
   },
 
-  // ── Mobile Filter Toggle ──
+  // ── Mobile helpers ──
+  _isMobile() { return window.innerWidth <= 768; },
+  _savedScrollY: 0,
 
   toggleMobileFilters() {
+    // Legacy — now handled by FAB
+    this.openMobileFilters();
+  },
+
+  openMobileFilters() {
     const sidebar = document.querySelector('.sidebar');
-    const btn = document.getElementById('mobile-filter-toggle');
-    if (!sidebar || !btn) return;
-    const expanded = sidebar.classList.toggle('filters-expanded');
-    btn.textContent = expanded ? 'Filtros \u25B2' : 'Filtros \u25BC';
+    const backdrop = document.getElementById('mobile-backdrop');
+    if (!sidebar) return;
+
+    // Show correct filter section
+    const berryFilters = document.getElementById('berry-filters');
+    const wineFilters = document.getElementById('wine-filters');
+    if (berryFilters) berryFilters.style.display = (this.currentView === 'wine') ? 'none' : '';
+    if (wineFilters) wineFilters.style.display = (this.currentView === 'wine') ? '' : 'none';
+
+    sidebar.classList.add('sheet-open');
+    if (backdrop) backdrop.classList.add('open');
+
+    // Lock body scroll (iOS-safe)
+    this._savedScrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.width = '100%';
+    document.body.style.top = `-${this._savedScrollY}px`;
+  },
+
+  closeMobileFilters() {
+    const sidebar = document.querySelector('.sidebar');
+    const backdrop = document.getElementById('mobile-backdrop');
+    if (!sidebar) return;
+
+    sidebar.classList.remove('sheet-open');
+    if (backdrop) backdrop.classList.remove('open');
+
+    // Restore scroll
+    document.body.style.position = '';
+    document.body.style.width = '';
+    document.body.style.top = '';
+    window.scrollTo(0, this._savedScrollY);
+
+    this.refresh();
+  },
+
+  _updateFilterFAB() {
+    if (!this._isMobile()) return;
+    const badge = document.getElementById('fab-badge');
+    if (!badge) return;
+
+    let count = 0;
+    if (this.currentView === 'wine') {
+      count += Filters.wineState.varieties.size;
+      count += Filters.wineState.origins.size;
+      if (Filters.wineState.grapeType !== 'all') count++;
+    } else {
+      count += Filters.state.vintages.size;
+      count += Filters.state.varieties.size;
+      count += Filters.state.origins.size;
+      count += Filters.state.lots.size;
+      if (Filters.state.grapeType !== 'all') count++;
+    }
+    badge.textContent = count;
+    badge.style.display = count > 0 ? '' : 'none';
+  },
+
+  _updateFilterSummary() {
+    if (!this._isMobile()) return;
+
+    const isWine = this.currentView === 'wine';
+    const berrySum = document.getElementById('filter-summary-berry');
+    const wineSum = document.getElementById('filter-summary-wine');
+    const summaryEl = isWine ? wineSum : berrySum;
+    const textEl = isWine
+      ? document.getElementById('summary-text-wine')
+      : document.getElementById('summary-text-berry');
+
+    // Hide non-active summary
+    if (berrySum && !isWine) berrySum.style.display = '';
+    if (berrySum && isWine) berrySum.style.display = 'none';
+    if (wineSum && isWine) wineSum.style.display = '';
+    if (wineSum && !isWine) wineSum.style.display = 'none';
+
+    if (!summaryEl || !textEl) return;
+
+    const parts = [];
+    if (isWine) {
+      if (Filters.wineState.grapeType === 'red') parts.push('Tintas');
+      else if (Filters.wineState.grapeType === 'white') parts.push('Blancas');
+      Filters.wineState.varieties.forEach(v => parts.push(v.length > 12 ? v.slice(0, 10) + '…' : v));
+      Filters.wineState.origins.forEach(v => parts.push(v.length > 12 ? v.slice(0, 10) + '…' : v));
+    } else {
+      Filters.state.vintages.forEach(v => parts.push(String(v)));
+      if (Filters.state.grapeType === 'red') parts.push('Tintas');
+      else if (Filters.state.grapeType === 'white') parts.push('Blancas');
+      Filters.state.varieties.forEach(v => parts.push(v.length > 12 ? v.slice(0, 10) + '…' : v));
+      Filters.state.origins.forEach(v => parts.push(v.length > 12 ? v.slice(0, 10) + '…' : v));
+    }
+
+    if (parts.length === 0) {
+      textEl.textContent = 'Sin filtros activos';
+      summaryEl.querySelector('.summary-clear').style.display = 'none';
+    } else {
+      const maxShow = 3;
+      let text = parts.slice(0, maxShow).join(' · ');
+      if (parts.length > maxShow) text += ` + ${parts.length - maxShow} más`;
+      textEl.textContent = text;
+      summaryEl.querySelector('.summary-clear').style.display = '';
+    }
+  },
+
+  toggleMobileSection(groupId) {
+    const group = document.getElementById(groupId);
+    if (!group) return;
+    const wasExpanded = group.classList.contains('expanded');
+    group.classList.toggle('expanded');
+
+    // After expanding, re-trigger lazy observer for charts inside
+    if (!wasExpanded && Charts._lazyObserver) {
+      group.querySelectorAll('canvas').forEach(c => {
+        const job = Charts._lazyQueue.find(j => j.id === c.id);
+        if (job) {
+          Charts._lazyObserver.unobserve(c);
+          Charts._lazyObserver.observe(c);
+        }
+      });
+    }
   },
 
   // ── Theme Toggle ──

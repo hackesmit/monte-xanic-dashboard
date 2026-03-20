@@ -17,6 +17,16 @@ const Filters = {
     grapeType: 'all'
   },
 
+  _debounceTimer: null,
+  _debouncedRefresh() {
+    if (typeof App !== 'undefined' && App._isMobile && App._isMobile()) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = setTimeout(() => App.refresh(), 200);
+    } else {
+      App.refresh();
+    }
+  },
+
   init() {
     this.buildVintageChips();
     this.buildVarietyChips();
@@ -157,7 +167,7 @@ const Filters = {
       set.add(value);
       chipEl.classList.add('active');
     }
-    App.refresh();
+    this._debouncedRefresh();
   },
 
   toggleWineFilter(field, value, chipEl) {
@@ -169,7 +179,7 @@ const Filters = {
       set.add(value);
       chipEl.classList.add('active');
     }
-    App.refresh();
+    this._debouncedRefresh();
   },
 
   clearAll() {
@@ -273,7 +283,7 @@ const Filters = {
         if (!valid.includes(v)) { this.state.varieties.delete(v); }
       }
     }
-    App.refresh();
+    this._debouncedRefresh();
   },
 
   setWineGrapeType(type) {
@@ -304,7 +314,7 @@ const Filters = {
         if (!valid.includes(v)) { this.wineState.varieties.delete(v); }
       }
     }
-    App.refresh();
+    this._debouncedRefresh();
   },
 
   setColorBy(mode) {
