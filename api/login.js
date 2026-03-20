@@ -39,32 +39,46 @@ export default async function handler(req, res) {
     return;
   }
 
-  const expectedUser = process.env.AUTH_USERNAME;
-  const passwordHash = process.env.AUTH_PASSWORD_HASH;
   const sessionSecret = process.env.SESSION_SECRET;
-
-  if (!expectedUser || !passwordHash || !sessionSecret) {
+  if (!sessionSecret) {
     await delay(300);
     res.status(401).json({ ok: false, error: 'Credenciales incorrectas' });
     return;
   }
 
-  // Constant-time username comparison + bcrypt password check
-  const userMatch = crypto.timingSafeEqual(
-    Buffer.from(username.toLowerCase().padEnd(64, '\0')),
-    Buffer.from(expectedUser.toLowerCase().padEnd(64, '\0'))
-  );
-  const passMatch = await bcrypt.compare(password, passwordHash);
+  // Check credentials against both roles
+  const accounts = [
+    { user: process.env.AUTH_USERNAME, hash: process.env.AUTH_PASSWORD_HASH, role: 'admin' },
+    { user: process.env.LAB_USERNAME,  hash: process.env.LAB_PASSWORD_HASH,  role: 'lab' }
+  ].filter(a => a.user && a.hash);
 
-  if (!userMatch || !passMatch) {
+  if (!accounts.length) {
     await delay(300);
     res.status(401).json({ ok: false, error: 'Credenciales incorrectas' });
     return;
   }
 
-  // Create signed session token
+  let matchedRole = null;
+  for (const acct of accounts) {
+    const userMatch = crypto.timingSafeEqual(
+      Buffer.from(username.toLowerCase().padEnd(64, '\0')),
+      Buffer.from(acct.user.toLowerCase().padEnd(64, '\0'))
+    );
+    const passMatch = await bcrypt.compare(password, acct.hash);
+    if (userMatch && passMatch) { matchedRole = acct.role; break; }
+  }
+
+  if (!matchedRole) {
+    // Always check all accounts to avoid timing leaks
+    await delay(300);
+    res.status(401).json({ ok: false, error: 'Credenciales incorrectas' });
+    return;
+  }
+
+  // Create signed session token with role
   const payload = JSON.stringify({
     exp: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
+    role: matchedRole,
     nonce: crypto.randomBytes(16).toString('hex')
   });
 

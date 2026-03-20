@@ -36,17 +36,16 @@ export default function handler(req, res) {
     return;
   }
 
-  // Check expiry
+  // Check expiry and extract role
   try {
     const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
     if (!payload.exp || Date.now() > payload.exp) {
       res.status(401).json({ valid: false });
       return;
     }
+    res.status(200).json({ valid: true, role: payload.role || 'admin' });
   } catch {
     res.status(400).json({ valid: false });
     return;
   }
-
-  res.status(200).json({ valid: true });
 }

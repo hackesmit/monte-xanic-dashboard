@@ -2,6 +2,8 @@
 
 const Auth = {
   _tokenKey: 'xanic_session_token',
+  _roleKey: 'xanic_user_role',
+  role: 'admin',
 
   /**
    * Initialize auth — called on DOMContentLoaded before App.init()
@@ -27,12 +29,16 @@ const Auth = {
       const data = await resp.json();
 
       if (data.valid) {
+        this.role = data.role || localStorage.getItem(this._roleKey) || 'admin';
+        localStorage.setItem(this._roleKey, this.role);
         this.hideLoginScreen();
+        this.applyRole();
         return true;
       }
     } catch (_) {
       // Verify endpoint unreachable (local dev without Vercel)
-      // If dev bypass is not set, show login
+      // Restore cached role if available
+      this.role = localStorage.getItem(this._roleKey) || 'admin';
     }
 
     // Token invalid or expired
@@ -73,7 +79,14 @@ const Auth = {
 
       if (data.ok && data.token) {
         localStorage.setItem(this._tokenKey, data.token);
+        // Decode role from token payload
+        try {
+          const payload = JSON.parse(atob(data.token.split('.')[0].replace(/-/g,'+').replace(/_/g,'/')));
+          this.role = payload.role || 'admin';
+        } catch (_) { this.role = 'admin'; }
+        localStorage.setItem(this._roleKey, this.role);
         this.hideLoginScreen();
+        this.applyRole();
         App.init();
         return;
       }
@@ -89,6 +102,8 @@ const Auth = {
 
   logout() {
     localStorage.removeItem(this._tokenKey);
+    localStorage.removeItem(this._roleKey);
+    this.role = 'admin';
     DataStore.clearCache();
     App.initialized = false;
     const dashboard = document.getElementById('dashboard-content');
@@ -110,6 +125,15 @@ const Auth = {
     const username = document.getElementById('login-user').value.trim();
     const password = document.getElementById('login-pass').value;
     if (username && password) this.login(username, password);
+  },
+
+  canUpload() {
+    return this.role === 'lab';
+  },
+
+  applyRole() {
+    const uploadSection = document.getElementById('db-upload-section');
+    if (uploadSection) uploadSection.style.display = this.canUpload() ? '' : 'none';
   },
 
   bindForm() {
