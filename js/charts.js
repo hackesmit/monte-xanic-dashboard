@@ -1095,24 +1095,65 @@ const Charts = {
     });
   },
 
-  // Update all berry charts
+  // ── Lazy rendering: only create charts visible in viewport ──
+  _lazyQueue: [],
+  _lazyObserver: null,
+
+  _initLazyObserver() {
+    if (this._lazyObserver) return;
+    this._lazyObserver = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (!entry.isIntersecting) return;
+        const canvasId = entry.target.id;
+        const job = this._lazyQueue.find(j => j.id === canvasId);
+        if (job) {
+          job.fn();
+          this._lazyQueue = this._lazyQueue.filter(j => j.id !== canvasId);
+          this._lazyObserver.unobserve(entry.target);
+        }
+      });
+    }, { rootMargin: '200px' });
+  },
+
+  _lazyRender(canvasId, renderFn) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    // If already visible or no IntersectionObserver, render immediately
+    if (!('IntersectionObserver' in window)) { renderFn(); return; }
+    this._initLazyObserver();
+    // Remove any previous pending job for this canvas
+    this._lazyQueue = this._lazyQueue.filter(j => j.id !== canvasId);
+    this._lazyObserver.unobserve(canvas);
+    // Check if already in viewport
+    const rect = canvas.getBoundingClientRect();
+    if (rect.top < window.innerHeight + 200 && rect.bottom > -200) {
+      renderFn();
+    } else {
+      this._lazyQueue.push({ id: canvasId, fn: renderFn });
+      this._lazyObserver.observe(canvas);
+    }
+  },
+
+  // Update all berry charts (lazy — only renders visible ones immediately)
   updateBerryCharts(data) {
     const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
 
     this.updateLegend(data);
+    // Top charts render immediately
     this.createScatter('chartBrix', clean, 'daysPostCrush', 'brix', 'Días Post-Envero', 'Brix (°Bx)');
     this.createScatter('chartAnt', clean, 'daysPostCrush', 'tANT', 'Días Post-Envero', 'tANT (ppm ME)');
     this.createScatter('chartPH', clean, 'daysPostCrush', 'pH', 'Días Post-Envero', 'pH');
     this.createScatter('chartTA', clean, 'daysPostCrush', 'ta', 'Días Post-Envero', 'AT (g/L)');
-    this.createScatter('chartWeight', clean, 'daysPostCrush', 'berryFW', 'Días Post-Envero', 'Peso Baya (g)');
-    this.createPureScatter('chartScatter', clean, 'pH', 'brix', 'pH', 'Brix');
-    this.createBarChart('chartVarBrix', clean, 'brix', 'Brix Promedio');
-    this.createBarChart('chartVarAnt', clean, 'tANT', 'tANT Promedio');
-    this.createDoughnut('chartOrigen', data);
-    this.createOriginBarChart('chartOriginBrix', clean, 'brix', 'Brix Promedio');
-    this.createOriginBarChart('chartOriginAnt', clean, 'tANT', 'tANT Promedio');
-    this.createOriginBarChart('chartOriginPH', clean, 'pH', 'pH Promedio');
-    this.createOriginBarChart('chartOriginTA', clean, 'ta', 'AT Promedio');
+    // Below-fold charts lazy-render on scroll
+    this._lazyRender('chartWeight', () => this.createScatter('chartWeight', clean, 'daysPostCrush', 'berryFW', 'Días Post-Envero', 'Peso Baya (g)'));
+    this._lazyRender('chartScatter', () => this.createPureScatter('chartScatter', clean, 'pH', 'brix', 'pH', 'Brix'));
+    this._lazyRender('chartVarBrix', () => this.createBarChart('chartVarBrix', clean, 'brix', 'Brix Promedio'));
+    this._lazyRender('chartVarAnt', () => this.createBarChart('chartVarAnt', clean, 'tANT', 'tANT Promedio'));
+    this._lazyRender('chartOrigen', () => this.createDoughnut('chartOrigen', data));
+    this._lazyRender('chartOriginBrix', () => this.createOriginBarChart('chartOriginBrix', clean, 'brix', 'Brix Promedio'));
+    this._lazyRender('chartOriginAnt', () => this.createOriginBarChart('chartOriginAnt', clean, 'tANT', 'tANT Promedio'));
+    this._lazyRender('chartOriginPH', () => this.createOriginBarChart('chartOriginPH', clean, 'pH', 'pH Promedio'));
+    this._lazyRender('chartOriginTA', () => this.createOriginBarChart('chartOriginTA', clean, 'ta', 'AT Promedio'));
   },
 
   // ── Evolution Chart (WineXRay-style) ─────────────────────────

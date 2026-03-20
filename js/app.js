@@ -208,9 +208,9 @@ const App = {
         KPIs.updateBerryKPIs(filteredBerry);
         Charts.updateBerryCharts(filteredBerry);
         Tables.updateBerryTable(filteredBerry);
-        Charts.createTempCorrelation('chartBrixTemp', filteredBerry);
-        Charts.createRainCorrelation('chartTantRain', filteredBerry);
-        Charts.updateEvolutionChart();
+        Charts._lazyRender('chartBrixTemp', () => Charts.createTempCorrelation('chartBrixTemp', filteredBerry));
+        Charts._lazyRender('chartTantRain', () => Charts.createRainCorrelation('chartTantRain', filteredBerry));
+        Charts._lazyRender('chartEvolution', () => Charts.updateEvolutionChart());
         break;
 
       case 'wine':
