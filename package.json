@@ -1,5 +1,12 @@
 {
+  "name": "monte-xanic-dashboard",
+  "version": "1.0.0",
   "private": true,
+  "description": "Wine analytics dashboard for Monte Xanic winery",
+  "scripts": {
+    "start": "npx serve -l 8080 -s .",
+    "dev": "npx serve -l 8080 -s ."
+  },
   "dependencies": {
     "bcryptjs": "^2.4.3"
   }
