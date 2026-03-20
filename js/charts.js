@@ -38,19 +38,46 @@ const Charts = {
     Object.keys(this.instances).forEach(id => this.destroy(id));
   },
 
+  // Update theme colors on all existing charts in-place (no destroy/recreate)
+  _applyThemeToCharts() {
+    const gridColor = CONFIG.chartDefaults.gridColor;
+    const tickColor = CONFIG.chartDefaults.tickColor;
+    const titleColor = this._getThemeColor('--muted') || '#8A8A8A';
+    const tipBg = this._getThemeColor('--card2') || '#1C1C1C';
+    const tipTitle = this._getThemeColor('--gold-lt') || '#DDB96E';
+    const tipBody = this._getThemeColor('--text') || '#D8D0C4';
+
+    Object.values(this.instances).forEach(chart => {
+      const scales = chart.options.scales || {};
+      Object.values(scales).forEach(scale => {
+        if (scale.grid) scale.grid.color = gridColor;
+        if (scale.ticks) scale.ticks.color = tickColor;
+        if (scale.title) scale.title.color = titleColor;
+      });
+      const tip = chart.options.plugins?.tooltip;
+      if (tip) {
+        tip.backgroundColor = tipBg;
+        tip.titleColor = tipTitle;
+        tip.bodyColor = tipBody;
+      }
+      chart.update('none');
+    });
+  },
+
   axisOpts(xLabel, yLabel) {
     const mob = window.innerWidth <= 768;
     const tickSize = mob ? 7 : 9;
     const titleSize = mob ? 8 : 9;
     const maxTicks = mob ? 6 : undefined;
+    const titleColor = this._getThemeColor('--muted') || '#8A8A8A';
     return {
       x: {
-        title: { display: !!xLabel, text: xLabel, color: '#6B6B6B', font: { size: titleSize, family: 'Sackers Gothic Medium' } },
+        title: { display: !!xLabel, text: xLabel, color: titleColor, font: { size: titleSize, family: 'Sackers Gothic Medium' } },
         ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: tickSize, family: 'Sackers Gothic Medium' }, maxTicksLimit: maxTicks },
         grid: { color: CONFIG.chartDefaults.gridColor }
       },
       y: {
-        title: { display: !!yLabel, text: yLabel, color: '#6B6B6B', font: { size: titleSize, family: 'Sackers Gothic Medium' } },
+        title: { display: !!yLabel, text: yLabel, color: titleColor, font: { size: titleSize, family: 'Sackers Gothic Medium' } },
         ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: tickSize, family: 'Sackers Gothic Medium' }, maxTicksLimit: maxTicks },
         grid: { color: CONFIG.chartDefaults.gridColor }
       }

@@ -1042,7 +1042,14 @@ canvas { max-width: 100%; }
   .main { padding: 12px 10px; max-height: none; }
 
   /* ── Nav ── */
-  .nav-select { margin-bottom: 10px; padding: 9px 36px 9px 14px; }
+  .nav-select {
+    margin-bottom: 10px;
+    padding: 9px 36px 9px 14px;
+    font-size: 11px;
+    min-height: 44px;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
 
   /* ── Sidebar — collapsed by default, becomes bottom sheet ── */
   .sidebar {
@@ -1098,12 +1105,13 @@ canvas { max-width: 100%; }
   .chart-title { font-size: 12px; }
   .chart-sub { font-size: 8px; margin-bottom: 10px; }
   .chart-export-btn { opacity: 0.7; font-size: 7px; padding: 2px 6px; }
-  .charts-grid { grid-template-columns: 1fr 1fr; }
+  .charts-grid { grid-template-columns: 1fr; }
+  .chart-wide { grid-column: auto; }
 
-  /* Chart height overrides — .chart-h is on the div with inline height */
-  .chart-h.chart-h-sm { height: 180px !important; }
-  .chart-h.chart-h-md { height: 200px !important; }
-  .chart-h.chart-h-lg { height: 200px !important; }
+  /* Chart height overrides — single column = more room */
+  .chart-h.chart-h-sm { height: 220px !important; }
+  .chart-h.chart-h-md { height: 240px !important; }
+  .chart-h.chart-h-lg { height: 260px !important; }
 
   /* ── Legend ── */
   .legend-bar {
