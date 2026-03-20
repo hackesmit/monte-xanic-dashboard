@@ -8,6 +8,7 @@ const Auth = {
    * Returns true if authenticated, false if login screen shown
    */
   async init() {
+    this.bindForm();
     const token = this.getToken();
 
     // No token — show login immediately (no API call needed)
@@ -35,7 +36,7 @@ const Auth = {
     }
 
     // Token invalid or expired
-    sessionStorage.removeItem(this._tokenKey);
+    localStorage.removeItem(this._tokenKey);
     this.showLoginScreen();
     return false;
   },
@@ -71,7 +72,7 @@ const Auth = {
       const data = await resp.json();
 
       if (data.ok && data.token) {
-        sessionStorage.setItem(this._tokenKey, data.token);
+        localStorage.setItem(this._tokenKey, data.token);
         this.hideLoginScreen();
         App.init();
         return;
@@ -87,7 +88,7 @@ const Auth = {
   },
 
   logout() {
-    sessionStorage.removeItem(this._tokenKey);
+    localStorage.removeItem(this._tokenKey);
     DataStore.clearCache();
     App.initialized = false;
     const dashboard = document.getElementById('dashboard-content');
@@ -101,13 +102,20 @@ const Auth = {
   },
 
   getToken() {
-    return sessionStorage.getItem(this._tokenKey);
+    return localStorage.getItem(this._tokenKey);
   },
 
   handleSubmit(event) {
-    event.preventDefault();
+    if (event) event.preventDefault();
     const username = document.getElementById('login-user').value.trim();
     const password = document.getElementById('login-pass').value;
     if (username && password) this.login(username, password);
+  },
+
+  bindForm() {
+    const form = document.getElementById('login-form');
+    const btn = document.getElementById('login-btn');
+    if (form) form.addEventListener('submit', (e) => Auth.handleSubmit(e));
+    if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); Auth.handleSubmit(); });
   }
 };
