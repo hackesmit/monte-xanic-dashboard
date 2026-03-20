@@ -226,10 +226,9 @@ header {
 }
 .nav-tabs {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   border: 1px solid var(--border-gold);
   margin-bottom: 28px;
-  overflow: hidden;
 }
 .nav-tab {
   padding: 9px 4px;
@@ -247,7 +246,9 @@ header {
   text-align: center;
   transition: all 0.2s;
 }
+.nav-tab:nth-child(3n) { border-right: none; }
 .nav-tab:last-child { border-right: none; }
+.nav-tab:nth-child(n+4) { border-top: 1px solid var(--border); }
 .nav-tab:hover { color: var(--gold); }
 .nav-tab.active {
   background: var(--gold);
