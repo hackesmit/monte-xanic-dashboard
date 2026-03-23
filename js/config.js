@@ -239,10 +239,11 @@ const CONFIG = {
   // Samples to exclude from all views
   _excludedSamples: new Set(['24ROSEMX-5', '24CABERNETMERLOT-1', '25ROSEMX-1']),
   _excludeRe: /EXP|EXPERIMENTO|^NORMAL$/i,
+  _labTestRe: /\b(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)\b/i,
 
   isSampleExcluded(sampleId) {
     if (!sampleId) return false;
-    return this._excludedSamples.has(sampleId) || this._excludeRe.test(sampleId);
+    return this._excludedSamples.has(sampleId) || this._excludeRe.test(sampleId) || this._labTestRe.test(sampleId);
   },
 
   // Valley coordinates for weather
@@ -480,7 +481,8 @@ const CONFIG = {
     'color_t':         'colorT',
     'sample_type':     'sampleType',
     'vessel_id':       'tanque',
-    'notes':           'notes'
+    'notes':           'notes',
+    'below_detection': 'belowDetection'
   },
 
   // wine_samples Supabase columns → DataStore.wineRecepcion JS field names

@@ -12,6 +12,7 @@ const Filters = {
 
   // Wine-specific filter state
   wineState: {
+    vintages: new Set(),
     varieties: new Set(),
     origins: new Set(),
     grapeType: 'all'
@@ -32,6 +33,7 @@ const Filters = {
     this.buildVarietyChips();
     this.buildOriginChips();
     this.buildLotChips();
+    this.buildWineVintageChips();
     this.buildWineVarietyChips();
     this.buildWineOriginChips();
     this.bindEvents();
@@ -115,6 +117,23 @@ const Filters = {
   },
 
   // ── Wine-specific chip builders ──
+  buildWineVintageChips() {
+    const container = document.getElementById('wine-vintage-chips');
+    if (!container) return;
+    container.innerHTML = '';
+    const vintages = new Set();
+    DataStore.wineRecepcion.forEach(d => { if (d.vintage) vintages.add(d.vintage); });
+    DataStore.winePreferment.forEach(d => { if (d.vintage) vintages.add(d.vintage); });
+    [...vintages].sort().forEach(v => {
+      const chip = document.createElement('button');
+      chip.className = 'chip';
+      chip.textContent = v;
+      chip.dataset.value = v;
+      chip.onclick = () => this.toggleWineFilter('vintages', v, chip);
+      container.appendChild(chip);
+    });
+  },
+
   buildWineVarietyChips() {
     const container = document.getElementById('wine-variety-chips');
     if (!container) return;
@@ -201,14 +220,14 @@ const Filters = {
   },
 
   clearAllWine() {
-    ['varieties', 'origins'].forEach(f => this.wineState[f].clear());
+    ['vintages', 'varieties', 'origins'].forEach(f => this.wineState[f].clear());
     this.wineState.grapeType = 'all';
     ['btn-wine-type-all', 'btn-wine-type-red', 'btn-wine-type-white'].forEach(id => {
       document.getElementById(id)?.classList.remove('active-all', 'active-red', 'active-white');
     });
     document.getElementById('btn-wine-type-all')?.classList.add('active-all');
     document.querySelectorAll('#wine-variety-chips .variety-chip').forEach(c => { c.style.display = ''; });
-    document.querySelectorAll('#wine-variety-chips .chip, #wine-origin-chips .chip').forEach(c => c.classList.remove('active'));
+    document.querySelectorAll('#wine-vintage-chips .chip, #wine-variety-chips .chip, #wine-origin-chips .chip').forEach(c => c.classList.remove('active'));
     App.refresh();
   },
 
@@ -325,6 +344,20 @@ const Filters = {
   },
 
   getFiltered() {
+    // Validate lot selections against data filtered without lot filter
+    if (this.state.lots.size > 0) {
+      const withoutLots = { ...this.state, lots: new Set() };
+      const available = new Set(DataStore.getFilteredBerry(withoutLots).map(d => d.sampleId));
+      let cleared = false;
+      for (const lot of this.state.lots) {
+        if (!available.has(lot)) { this.state.lots.delete(lot); cleared = true; }
+      }
+      if (cleared) {
+        document.querySelectorAll('#lot-chips .chip').forEach(c => {
+          if (!this.state.lots.has(c.dataset.value)) c.classList.remove('active');
+        });
+      }
+    }
     return DataStore.getFilteredBerry(this.state);
   },
 
@@ -334,6 +367,22 @@ const Filters = {
 
   getFilteredPreferment() {
     return DataStore.getFilteredPrefermentAdvanced(this.wineState);
+  },
+
+  // Re-sync chip active classes with current filter state on view return
+  syncChipUI() {
+    const syncSet = (containerId, stateSet) => {
+      document.querySelectorAll(`#${containerId} .chip`).forEach(c => {
+        c.classList.toggle('active', stateSet.has(c.dataset.value));
+      });
+    };
+    syncSet('vintage-chips', this.state.vintages);
+    syncSet('variety-chips', this.state.varieties);
+    syncSet('origin-chips', this.state.origins);
+    syncSet('lot-chips', this.state.lots);
+    syncSet('wine-vintage-chips', this.wineState.vintages);
+    syncSet('wine-variety-chips', this.wineState.varieties);
+    syncSet('wine-origin-chips', this.wineState.origins);
   },
 
   filterLotSearch(query) {
