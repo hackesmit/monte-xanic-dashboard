@@ -1357,6 +1357,9 @@ canvas { max-width: 100%; }
   transition: transform 0.3s ease, opacity 0.3s ease;
   pointer-events: none;
   white-space: nowrap;
+  max-width: 90vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .offline-toast.show {
   transform: translateX(-50%) translateY(0);

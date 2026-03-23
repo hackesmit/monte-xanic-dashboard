@@ -80,7 +80,8 @@ const Charts = {
         tip.titleColor = tipTitle;
         tip.bodyColor = tipBody;
       }
-      chart.update({ duration: 400, easing: 'easeOutQuart' });
+      chart.options.animation = { duration: 400, easing: 'easeOutQuart' };
+      chart.update();
     });
   },
 

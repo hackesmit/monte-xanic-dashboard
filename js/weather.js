@@ -8,7 +8,7 @@ const WeatherStore = {
   _byDate: {},   // YYYY-MM-DD → { VDG: row, VON: row, SV: row }
   _gddCache: {},
 
-  _API_BASE: 'https://api.open-meteo.com/v1/archive',
+  _API_BASE: 'https://archive-api.open-meteo.com/v1/archive',
   _TZ:       'America/Tijuana',
   _VALLEYS:  ['VDG', 'VON', 'SV'],
 

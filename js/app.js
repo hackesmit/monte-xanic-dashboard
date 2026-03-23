@@ -269,6 +269,7 @@ const App = {
     if (!this.initialized) return;
     if (this._refreshInProgress) { this._refreshPending = true; return; }
     this._refreshInProgress = true;
+    try {
 
     const filteredBerry = Filters.getFiltered();
     // pH outlier filter applied consistently across KPIs, charts, and table
@@ -339,10 +340,12 @@ const App = {
     this._updateFilterFAB();
     this._updateFilterSummary();
 
-    this._refreshInProgress = false;
-    if (this._refreshPending) {
-      this._refreshPending = false;
-      this.refresh();
+    } finally {
+      this._refreshInProgress = false;
+      if (this._refreshPending) {
+        this._refreshPending = false;
+        this.refresh();
+      }
     }
   },
 
