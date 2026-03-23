@@ -38,7 +38,7 @@ const Auth = {
     } catch (_) {
       // Verify endpoint unreachable (local dev without Vercel)
       // Restore cached role if available
-      this.role = localStorage.getItem(this._roleKey) || 'admin';
+      this.role = localStorage.getItem(this._roleKey) || 'viewer';
     }
 
     // Token invalid or expired
@@ -82,8 +82,8 @@ const Auth = {
         // Decode role from token payload
         try {
           const payload = JSON.parse(atob(data.token.split('.')[0].replace(/-/g,'+').replace(/_/g,'/')));
-          this.role = payload.role || 'admin';
-        } catch (_) { this.role = 'admin'; }
+          this.role = payload.role || 'viewer';
+        } catch (_) { this.role = 'viewer'; }
         localStorage.setItem(this._roleKey, this.role);
         this.hideLoginScreen();
         this.applyRole();
