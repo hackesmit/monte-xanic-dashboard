@@ -116,6 +116,7 @@
       <option value="wine">Vino</option>
       <option value="extraction">Extracción</option>
       <option value="vintage">Vendimias</option>
+      <option value="map">Mapa</option>
       <option value="explorer">Explorador</option>
     </select>
 
@@ -595,6 +596,46 @@
       <button class="explorer-add-btn" onclick="Explorer.addChart()">+ Agregar Gráfica</button>
     </div>
 
+    <!-- ═══════ MAP VIEW ═══════ -->
+    <div id="view-map" class="view-panel">
+      <div class="section-label">Mapa de Calidad por Sección</div>
+      <div class="kpi-row" style="grid-template-columns:repeat(6,1fr)">
+        <div class="kpi-card"><div class="kpi-label">Muestras</div><div class="kpi-value" id="map-kpi-tonnage">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Secciones</div><div class="kpi-value" id="map-kpi-sections">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Brix Prom.</div><div class="kpi-value" id="map-kpi-brix">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">pH Prom.</div><div class="kpi-value" id="map-kpi-ph">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">AT Prom.</div><div class="kpi-value" id="map-kpi-ta">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">% Aceptadas</div><div class="kpi-value" id="map-kpi-acceptable">—</div></div>
+      </div>
+      <div class="map-controls">
+        <div class="ranch-tabs">
+          <button class="ranch-tab active" data-ranch="VDG" onclick="MapStore.setRanch('VDG')">Monte Xanic</button>
+          <button class="ranch-tab" data-ranch="KMP" onclick="MapStore.setRanch('KMP')">Kompali</button>
+          <button class="ranch-tab" data-ranch="VA" onclick="MapStore.setRanch('VA')">Viña Alta</button>
+          <button class="ranch-tab" data-ranch="ON" onclick="MapStore.setRanch('ON')">Ojos Negros</button>
+          <button class="ranch-tab" data-ranch="7L" onclick="MapStore.setRanch('7L')">Siete Leguas</button>
+          <button class="ranch-tab" data-ranch="OLE" onclick="MapStore.setRanch('OLE')">Olé</button>
+          <button class="ranch-tab" data-ranch="DUB" onclick="MapStore.setRanch('DUB')">Dubacano</button>
+          <button class="ranch-tab" data-ranch="DA" onclick="MapStore.setRanch('DA')">Dom. Abejas</button>
+        </div>
+        <div class="map-metric-wrap">
+          <label class="map-metric-label" for="map-metric-select">Métrica</label>
+          <select class="map-metric-select" id="map-metric-select" onchange="MapStore.setMetric(this.value)">
+            <option value="brix" selected>Brix</option>
+            <option value="pH">pH</option>
+            <option value="ta">Acidez Total</option>
+            <option value="tANT">tANT</option>
+            <option value="berryFW">Peso Baya</option>
+          </select>
+        </div>
+      </div>
+      <div class="map-container">
+        <div id="map-svg-container" class="map-svg-container"></div>
+        <div id="map-color-scale" class="map-color-scale"></div>
+      </div>
+      <div id="section-detail-panel" class="section-detail-panel"></div>
+    </div>
+
   </main>
 </div>
 
@@ -682,6 +723,7 @@
 <script src="js/charts.js"></script>
 <script src="js/explorer.js"></script>
 <script src="js/tables.js"></script>
+<script src="js/maps.js"></script>
 <script src="js/app.js"></script>
 
 </body>

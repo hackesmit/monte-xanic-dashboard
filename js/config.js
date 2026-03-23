@@ -586,5 +586,101 @@ const CONFIG = {
       { value: 'proveedor',   label: 'Origen' },
       { value: 'vintage',     label: 'Vendimia' }
     ]
-  }
+  },
+
+  // ── Map: Vineyard Quality Heatmap ─────────────────────────────
+
+  fieldLotToSection: {
+    'KCS-S8-1-CONT': 'K-S8', 'KCS-S8-1-ABA': 'K-S8',
+    'KCF-S1-PA': 'K-S1', 'KCF-S1-PB': 'K-S1',
+    'KMS-S5A+': 'K-S5', 'KMS-S5B-': 'K-S5', 'KMS-S5B-R': 'K-S5',
+    'KSY-S721': 'K-S7', 'KSY-S721-R': 'K-S7', 'KSY-S723': 'K-S7',
+    'KDU-S2B': 'K-S2B',
+    'SYVA-1D,2C,3C,4C': 'VA-1D', 'SYVA-1E,2D,3D,4D': 'VA-1E',
+    'SYDA-L13,14': 'DA-L13'
+  },
+
+  fieldLotRanchPatterns: [
+    { regex: /^K[A-Z]{2,3}-(.+)$/i, prefix: 'K' },
+    { regex: /^[A-Z]{2,4}MX-(.+)$/i, prefix: 'MX' },
+    { regex: /^[A-Z]{2,4}VA-(.+)$/i, prefix: 'VA' },
+    { regex: /^[A-Z]{2,4}ON-(.+)$/i, prefix: 'ON' },
+    { regex: /^[A-Z]{2,4}7L-(.+)$/i, prefix: '7L' },
+    { regex: /^[A-Z]{2,4}OLE-(.+)$/i, prefix: 'OLE' },
+    { regex: /^[A-Z]{2,4}DUB-(.+)$/i, prefix: 'DUB' },
+    { regex: /^[A-Z]{2,4}DA-(.+)$/i, prefix: 'DA' },
+    { regex: /^[A-Z]{2,4}LLC-(.+)$/i, prefix: 'LLC' },
+    { regex: /^[A-Z]{2,4}R14-(.+)$/i, prefix: 'R14' }
+  ],
+
+  mapMetrics: {
+    brix:    { label: 'Brix (°Bx)',       min: 18, max: 28,   stops: ['#2166AC','#67A9CF','#D1E5F0','#FDDBC7','#EF8A62','#B2182B'] },
+    pH:      { label: 'pH',               min: 3.0, max: 4.0, stops: ['#1B7837','#7FBC41','#D9F0D3','#F7F7F7','#E7D4E8','#762A83'] },
+    ta:      { label: 'Acidez Total (g/L)', min: 3, max: 12,  stops: ['#B2182B','#EF8A62','#FDDBC7','#D1E5F0','#67A9CF','#2166AC'] },
+    tANT:    { label: 'tANT (ppm ME)',     min: 0, max: 2500, stops: ['#F7F7F7','#FDD49E','#FDBB84','#FC8D59','#E34A33','#B30000'] },
+    berryFW: { label: 'Peso Baya (g)',     min: 0.5, max: 2.5, stops: ['#F7FCB1','#ADDD8E','#78C679','#31A354','#006837'] }
+  },
+
+  vineyardSections: [
+    // Monte Xanic (VDG)
+    { sectionId: 'MX-1A', ranchCode: 'VDG', sectionLabel: '1A', ranch: 'Monte Xanic', variety: 'SB' },
+    { sectionId: 'MX-1B', ranchCode: 'VDG', sectionLabel: '1B', ranch: 'Monte Xanic', variety: 'SB' },
+    { sectionId: 'MX-1C', ranchCode: 'VDG', sectionLabel: '1C', ranch: 'Monte Xanic', variety: 'SB' },
+    { sectionId: 'MX-1D', ranchCode: 'VDG', sectionLabel: '1D', ranch: 'Monte Xanic', variety: 'SB' },
+    { sectionId: 'MX-1E', ranchCode: 'VDG', sectionLabel: '1E', ranch: 'Monte Xanic', variety: 'CAL' },
+    { sectionId: 'MX-2A', ranchCode: 'VDG', sectionLabel: '2A', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-2B', ranchCode: 'VDG', sectionLabel: '2B', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-2C', ranchCode: 'VDG', sectionLabel: '2C', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-3A', ranchCode: 'VDG', sectionLabel: '3A', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-3B', ranchCode: 'VDG', sectionLabel: '3B', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-4A', ranchCode: 'VDG', sectionLabel: '4A', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-4B', ranchCode: 'VDG', sectionLabel: '4B', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-5A', ranchCode: 'VDG', sectionLabel: '5A', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-5B', ranchCode: 'VDG', sectionLabel: '5B', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-5C', ranchCode: 'VDG', sectionLabel: '5C', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-6',  ranchCode: 'VDG', sectionLabel: '6',  ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-7A', ranchCode: 'VDG', sectionLabel: '7A', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-7B', ranchCode: 'VDG', sectionLabel: '7B', ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-8',  ranchCode: 'VDG', sectionLabel: '8',  ranch: 'Monte Xanic', variety: 'ME' },
+    { sectionId: 'MX-9',  ranchCode: 'VDG', sectionLabel: '9',  ranch: 'Monte Xanic', variety: 'CH' },
+    { sectionId: 'MX-10', ranchCode: 'VDG', sectionLabel: '10', ranch: 'Monte Xanic', variety: 'ME' },
+    { sectionId: 'MX-11A',ranchCode: 'VDG', sectionLabel: '11A',ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-11B',ranchCode: 'VDG', sectionLabel: '11B',ranch: 'Monte Xanic', variety: 'CS' },
+    { sectionId: 'MX-12', ranchCode: 'VDG', sectionLabel: '12', ranch: 'Monte Xanic', variety: 'CS' },
+    // Kompali (VON)
+    { sectionId: 'K-S1',  ranchCode: 'KMP', sectionLabel: 'S1',  ranch: 'Kompali', variety: 'CF/TE' },
+    { sectionId: 'K-S2A', ranchCode: 'KMP', sectionLabel: 'S2A', ranch: 'Kompali', variety: 'CS/DU' },
+    { sectionId: 'K-S2B', ranchCode: 'KMP', sectionLabel: 'S2B', ranch: 'Kompali', variety: 'CS/DU' },
+    { sectionId: 'K-S3A', ranchCode: 'KMP', sectionLabel: 'S3A', ranch: 'Kompali', variety: 'PV/CA' },
+    { sectionId: 'K-S3B', ranchCode: 'KMP', sectionLabel: 'S3B', ranch: 'Kompali', variety: 'CA' },
+    { sectionId: 'K-S4',  ranchCode: 'KMP', sectionLabel: 'S4',  ranch: 'Kompali', variety: 'CA' },
+    { sectionId: 'K-S5',  ranchCode: 'KMP', sectionLabel: 'S5',  ranch: 'Kompali', variety: 'MS' },
+    { sectionId: 'K-S6',  ranchCode: 'KMP', sectionLabel: 'S6',  ranch: 'Kompali', variety: 'ME' },
+    { sectionId: 'K-S7',  ranchCode: 'KMP', sectionLabel: 'S7',  ranch: 'Kompali', variety: 'SY/MA' },
+    { sectionId: 'K-S8',  ranchCode: 'KMP', sectionLabel: 'S8',  ranch: 'Kompali', variety: 'CS' },
+    // Viña Alta (VON)
+    { sectionId: 'VA-1A', ranchCode: 'VA', sectionLabel: '1A', ranch: 'Viña Alta', variety: 'ME' },
+    { sectionId: 'VA-1B', ranchCode: 'VA', sectionLabel: '1B', ranch: 'Viña Alta', variety: 'SY' },
+    { sectionId: 'VA-2A', ranchCode: 'VA', sectionLabel: '2A', ranch: 'Viña Alta', variety: 'ME' },
+    { sectionId: 'VA-2B', ranchCode: 'VA', sectionLabel: '2B', ranch: 'Viña Alta', variety: 'CF' },
+    // Ojos Negros (VON)
+    { sectionId: 'ON-1', ranchCode: 'ON', sectionLabel: '1', ranch: 'Ojos Negros', variety: 'ME' },
+    { sectionId: 'ON-2', ranchCode: 'ON', sectionLabel: '2', ranch: 'Ojos Negros', variety: 'MA' },
+    { sectionId: 'ON-3', ranchCode: 'ON', sectionLabel: '3', ranch: 'Ojos Negros', variety: 'CS' },
+    { sectionId: 'ON-4', ranchCode: 'ON', sectionLabel: '4', ranch: 'Ojos Negros', variety: 'SY' },
+    { sectionId: 'ON-5', ranchCode: 'ON', sectionLabel: '5', ranch: 'Ojos Negros', variety: 'TE' },
+    { sectionId: 'ON-6', ranchCode: 'ON', sectionLabel: '6', ranch: 'Ojos Negros', variety: 'GRE' },
+    // Siete Leguas (VDG)
+    { sectionId: '7L-1', ranchCode: '7L', sectionLabel: '1', ranch: 'Siete Leguas', variety: 'SY' },
+    { sectionId: '7L-2', ranchCode: '7L', sectionLabel: '2', ranch: 'Siete Leguas', variety: 'SY' },
+    // Olé (VDG)
+    { sectionId: 'OLE-1', ranchCode: 'OLE', sectionLabel: '1', ranch: 'Olé', variety: 'CS' },
+    { sectionId: 'OLE-2', ranchCode: 'OLE', sectionLabel: '2', ranch: 'Olé', variety: 'CS' },
+    { sectionId: 'OLE-3', ranchCode: 'OLE', sectionLabel: '3', ranch: 'Olé', variety: 'CS' },
+    // Dubacano (SV)
+    { sectionId: 'DUB-1', ranchCode: 'DUB', sectionLabel: '1', ranch: 'Dubacano', variety: 'MA/SY' },
+    // Dominio de las Abejas (VON)
+    { sectionId: 'DA-L5',  ranchCode: 'DA', sectionLabel: 'L5',  ranch: 'Dominio de las Abejas', variety: 'SY' },
+    { sectionId: 'DA-L13', ranchCode: 'DA', sectionLabel: 'L13', ranch: 'Dominio de las Abejas', variety: 'SY' }
+  ]
 };
