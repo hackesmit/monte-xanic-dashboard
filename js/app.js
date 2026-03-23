@@ -254,7 +254,7 @@ const App = {
     // Show/hide relevant sidebar sections
     const berryFilters = document.getElementById('berry-filters');
     const wineFilters = document.getElementById('wine-filters');
-    if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer') ? '' : 'none';
+    if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer' || view === 'map') ? '' : 'none';
     if (wineFilters) wineFilters.style.display = (view === 'wine') ? '' : 'none';
 
     // Re-sync filter chip UI to reflect preserved state
@@ -308,6 +308,27 @@ const App = {
         Charts.createWeatherTimeSeries('chartWeatherTemp', WeatherStore.getVintagesFromData());
         Charts.createRainfallChart('chartWeatherRain', WeatherStore.getVintagesFromData());
         break;
+
+      case 'map': {
+        // Bridge berry data → MapStore format (latest measurement per lot)
+        const latestByLot = {};
+        for (const d of cleanBerry) {
+          if (!d.lotCode) continue;
+          const prev = latestByLot[d.lotCode];
+          if (!prev || (d.daysPostCrush || 0) > (prev.daysPostCrush || 0)) {
+            latestByLot[d.lotCode] = {
+              fieldLot: d.lotCode, vintageYear: d.vintage,
+              brix: d.brix, pH: d.pH, ta: d.ta, tANT: d.tANT,
+              berryAvgWeight: d.berryFW, berryFW: d.berryFW
+            };
+          }
+        }
+        const vintage = Filters.state.vintages.size === 1 ? [...Filters.state.vintages][0] : null;
+        MapStore.currentVintage = vintage;
+        MapStore.aggregateBySection(Object.values(latestByLot), vintage);
+        MapStore.render();
+        break;
+      }
 
       case 'explorer':
         Explorer.init();
