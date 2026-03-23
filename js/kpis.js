@@ -7,14 +7,11 @@ const KPIs = {
   },
 
   updateBerryKPIs(data) {
-    // Filter out pH outliers for clean averages
-    const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
-
-    const avgBrix = this.avg(clean.map(d => d.brix));
-    const avgPH = this.avg(clean.map(d => d.pH));
-    const avgTA = this.avg(clean.map(d => d.ta));
-    const avgTANT = this.avg(clean.map(d => d.tANT));
-    const avgFW = this.avg(clean.map(d => d.berryFW));
+    const avgBrix = this.avg(data.map(d => d.brix));
+    const avgPH = this.avg(data.map(d => d.pH));
+    const avgTA = this.avg(data.map(d => d.ta));
+    const avgTANT = this.avg(data.map(d => d.tANT));
+    const avgFW = this.avg(data.map(d => d.berryFW));
 
     this.setKPI('kpi-avg-brix', avgBrix, 1, '°Bx');
     this.setKPI('kpi-avg-ph', avgPH, 2, '');

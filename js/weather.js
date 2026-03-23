@@ -39,8 +39,15 @@ const WeatherStore = {
 
   // ── Sync ───────────────────────────────────────────────────────
 
+  _isSyncing: false,
+
   async sync(vintages) {
-    if (!DataStore.supabase) return;
+    if (!DataStore.supabase || this._isSyncing) return;
+    this._isSyncing = true;
+    try { await this._syncInner(vintages); } finally { this._isSyncing = false; }
+  },
+
+  async _syncInner(vintages) {
     const today = new Date().toISOString().split('T')[0];
     const coords = CONFIG.valleyCoordinates || { VDG: { lat: 32.08, lon: -116.62 } };
 
@@ -70,15 +77,16 @@ const WeatherStore = {
             const { error: upsertErr } = await DataStore.supabase
               .from('meteorology')
               .upsert(rows, { onConflict: 'date,location' });
-            if (upsertErr) console.warn(`[WeatherStore] upsert failed for ${valley}:`, upsertErr.message);
+            if (upsertErr) { console.warn(`[WeatherStore] upsert failed for ${valley}:`, upsertErr.message); continue; }
           } else {
             // Pre-migration: no location column, use old single-column conflict
             const { error: upsertErr } = await DataStore.supabase
               .from('meteorology')
               .upsert(rows, { onConflict: 'date' });
-            if (upsertErr) console.warn('[WeatherStore] upsert failed:', upsertErr.message);
+            if (upsertErr) { console.warn('[WeatherStore] upsert failed:', upsertErr.message); continue; }
           }
 
+          // Only update in-memory state after confirmed DB upsert
           rows.forEach(r => {
             if (!this._byDate[r.date]) this._byDate[r.date] = {};
             if (!this._byDate[r.date][valley]) this.data.push(r);
@@ -138,7 +146,10 @@ const WeatherStore = {
     if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
     const json = await res.json();
     const d    = json.daily;
-    if (!d || !d.time) return [];
+    if (!d || !Array.isArray(d.time)) {
+      console.error('[WeatherStore] Respuesta inesperada de Open-Meteo:', d);
+      return [];
+    }
 
     return d.time.map((date, i) => ({
       date,
@@ -188,7 +199,7 @@ const WeatherStore = {
       const d = cur.toISOString().split('T')[0];
       const dayData = this._byDate[d];
       const row = dayData ? (dayData[valley] || dayData['VDG']) : null;
-      if (row && row.rainfall_mm !== null) { total += row.rainfall_mm; hasAny = true; }
+      if (row && row.rainfall_mm !== null && row.rainfall_mm >= 0) { total += row.rainfall_mm; hasAny = true; }
       cur.setDate(cur.getDate() + 1);
     }
     return hasAny ? total : null;
@@ -204,19 +215,24 @@ const WeatherStore = {
     const start = `${year}-07-01`;
     const endD = new Date(iso);
     let total = 0;
-    let hasAny = false;
+    let totalDays = 0;
+    let missingDays = 0;
     const cur = new Date(start);
     while (cur <= endD) {
+      totalDays++;
       const d = cur.toISOString().split('T')[0];
       const dayData = this._byDate[d];
       const row = dayData ? (dayData[valley] || dayData['VDG']) : null;
       if (row && row.temp_avg !== null) {
         total += Math.max(0, row.temp_avg - 10);
-        hasAny = true;
+      } else {
+        missingDays++;
       }
       cur.setDate(cur.getDate() + 1);
     }
-    const result = hasAny ? Math.round(total * 10) / 10 : null;
+    // Return null if too many days missing (>3 or >10% of range)
+    const result = (totalDays === 0 || missingDays > 3 || missingDays / totalDays > 0.1)
+      ? null : Math.round(total * 10) / 10;
     this._gddCache[cacheKey] = result;
     return result;
   },

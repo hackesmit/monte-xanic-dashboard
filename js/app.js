@@ -22,8 +22,14 @@ const App = {
         DataStore.loadFromSupabase().then(loaded => {
           if (loaded && this.initialized) this.refresh();
           this._updateDbStatus();
-        }).catch(err => console.error('Supabase load failed:', err));
-      }).catch(err => console.error('Supabase init failed:', err));
+        }).catch(err => {
+          console.error('Supabase load failed:', err);
+          this._showOfflineToast();
+        });
+      }).catch(err => {
+        console.error('Supabase init failed:', err);
+        this._showOfflineToast();
+      });
     } else {
       // 2 — Try Supabase (first visit or stale cache)
       await DataStore.initSupabase();
@@ -170,8 +176,33 @@ const App = {
     document.getElementById('dashboard-content')?.style.removeProperty('display');
   },
 
+  _hideSpinner() {
+    const spinner = document.getElementById('loading-spinner');
+    if (spinner) spinner.style.display = 'none';
+  },
+
+  _showOfflineToast() {
+    const raw = localStorage.getItem('xanic_data_cache');
+    let ts = '';
+    if (raw) {
+      try {
+        const cache = JSON.parse(raw);
+        if (cache.ts) ts = new Date(cache.ts).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+      } catch (_) {}
+    }
+    const msg = ts
+      ? `Usando datos en caché (última actualización: ${ts})`
+      : 'Usando datos en caché';
+    const toast = document.getElementById('offline-toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 6000);
+  },
+
   onDataLoaded() {
     this.hideDataLoader();
+    this._hideSpinner();
     this.initialized = true;
     Filters.init();
     this.setView('berry');
@@ -204,6 +235,13 @@ const App = {
       }
     }
 
+    // Disconnect lazy observer from previous view to prevent stale renders
+    if (Charts._lazyObserver) {
+      Charts._lazyObserver.disconnect();
+      Charts._lazyQueue = [];
+    }
+    Charts._pruneOrphans();
+
     // Sync dropdown
     const navSelect = document.getElementById('nav-select');
     if (navSelect && navSelect.value !== view) navSelect.value = view;
@@ -219,21 +257,30 @@ const App = {
     if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer') ? '' : 'none';
     if (wineFilters) wineFilters.style.display = (view === 'wine') ? '' : 'none';
 
+    // Re-sync filter chip UI to reflect preserved state
+    Filters.syncChipUI();
+
     this.refresh();
   },
 
+  _refreshPending: false,
+
   refresh() {
     if (!this.initialized) return;
+    if (this._refreshInProgress) { this._refreshPending = true; return; }
+    this._refreshInProgress = true;
 
     const filteredBerry = Filters.getFiltered();
+    // pH outlier filter applied consistently across KPIs, charts, and table
+    const cleanBerry = filteredBerry.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
 
     switch (this.currentView) {
       case 'berry':
-        KPIs.updateBerryKPIs(filteredBerry);
-        Charts.updateBerryCharts(filteredBerry);
-        Tables.updateBerryTable(filteredBerry);
-        Charts._lazyRender('chartBrixTemp', () => Charts.createTempCorrelation('chartBrixTemp', filteredBerry));
-        Charts._lazyRender('chartTantRain', () => Charts.createRainCorrelation('chartTantRain', filteredBerry));
+        KPIs.updateBerryKPIs(cleanBerry);
+        Charts.updateBerryCharts(cleanBerry);
+        Tables.updateBerryTable(cleanBerry);
+        Charts._lazyRender('chartBrixTemp', () => Charts.createTempCorrelation('chartBrixTemp', cleanBerry));
+        Charts._lazyRender('chartTantRain', () => Charts.createRainCorrelation('chartTantRain', cleanBerry));
         Charts._lazyRender('chartEvolution', () => Charts.updateEvolutionChart());
         break;
 
@@ -246,18 +293,18 @@ const App = {
         break;
 
       case 'extraction':
-        Charts.createExtractionChart('chartExtraction', filteredBerry, Filters.getFilteredWine());
+        Charts.createExtractionChart('chartExtraction', cleanBerry, Filters.getFilteredWine());
         this.updateExtractionTable();
         break;
 
       case 'vintage':
-        this._updateVintageUI(filteredBerry);
-        Charts.createVintageComparison('chartVintageBrix', filteredBerry, 'brix', 'Brix (°Bx)');
-        Charts.createVintageComparison('chartVintageAnt', filteredBerry, 'tANT', 'tANT (ppm ME)');
-        Charts.createVintageComparison('chartVintagePH', filteredBerry, 'pH', 'pH');
-        Charts.createVintageComparison('chartVintageTA', filteredBerry, 'ta', 'AT (g/L)');
-        this.updateVintageSummary(filteredBerry);
-        this.updateVintageVarietalTable(filteredBerry);
+        this._updateVintageUI(cleanBerry);
+        Charts.createVintageComparison('chartVintageBrix', cleanBerry, 'brix', 'Brix (°Bx)');
+        Charts.createVintageComparison('chartVintageAnt', cleanBerry, 'tANT', 'tANT (ppm ME)');
+        Charts.createVintageComparison('chartVintagePH', cleanBerry, 'pH', 'pH');
+        Charts.createVintageComparison('chartVintageTA', cleanBerry, 'ta', 'AT (g/L)');
+        this.updateVintageSummary(cleanBerry);
+        this.updateVintageVarietalTable(cleanBerry);
         Charts.createWeatherTimeSeries('chartWeatherTemp', WeatherStore.getVintagesFromData());
         Charts.createRainfallChart('chartWeatherRain', WeatherStore.getVintagesFromData());
         break;
@@ -270,6 +317,12 @@ const App = {
 
     this._updateFilterFAB();
     this._updateFilterSummary();
+
+    this._refreshInProgress = false;
+    if (this._refreshPending) {
+      this._refreshPending = false;
+      this.refresh();
+    }
   },
 
   // ── Vintage UI helpers ──
@@ -277,16 +330,22 @@ const App = {
   _updateVintageUI(data) {
     const years = [...new Set(data.map(d => d.vintage).filter(Boolean))].map(Number).sort();
 
-    // Update section label
+    // Update section label with active filter context
     const sectionLabel = document.getElementById('vintage-section-label');
     if (sectionLabel) {
+      let label;
       if (years.length >= 2) {
-        sectionLabel.textContent = 'Comparación ' + years.join(' vs ');
+        label = 'Comparación ' + years.join(' vs ');
       } else if (years.length === 1) {
-        sectionLabel.textContent = 'Vendimia ' + years[0];
+        label = 'Vendimia ' + years[0];
       } else {
-        sectionLabel.textContent = 'Comparación entre Vendimias';
+        label = 'Comparación entre Vendimias';
       }
+      const filterParts = [];
+      if (Filters.state.varieties.size) filterParts.push(...Filters.state.varieties);
+      if (Filters.state.origins.size) filterParts.push(...Filters.state.origins);
+      if (filterParts.length) label += ` (filtrado: ${filterParts.join(', ')})`;
+      sectionLabel.textContent = label;
     }
 
     // Update legend dots

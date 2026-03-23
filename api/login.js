@@ -7,6 +7,10 @@ const MAX_ATTEMPTS = 10;
 
 function checkRateLimit(ip) {
   const now = Date.now();
+  // Sweep stale entries to prevent unbounded growth
+  for (const [key, rec] of attempts) {
+    if (now - rec.start > WINDOW_MS) attempts.delete(key);
+  }
   const record = attempts.get(ip);
   if (!record || now - record.start > WINDOW_MS) {
     attempts.set(ip, { start: now, count: 1 });
@@ -25,7 +29,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const clientIp = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || 'unknown';
+  const fwd = req.headers['x-forwarded-for'];
+  const clientIp = req.headers['x-real-ip'] || (fwd ? fwd.split(',')[0].trim() : null) || 'unknown';
   if (!checkRateLimit(clientIp)) {
     res.status(429).json({ ok: false, error: 'Demasiados intentos. Intente de nuevo en 15 minutos.' });
     return;

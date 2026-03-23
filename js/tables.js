@@ -17,6 +17,14 @@ const Tables = {
     const countEl = document.getElementById('berry-table-count');
     if (!container) return;
 
+    if (!data.length) {
+      container.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px;font-style:italic">No hay datos para los filtros seleccionados</td></tr>';
+      if (countEl) countEl.textContent = '0 registros';
+      const footnoteEl = document.getElementById('berry-table-footnote');
+      if (footnoteEl) footnoteEl.style.display = 'none';
+      return;
+    }
+
     // Sort
     let sorted = [...data];
     if (this.sortField) {
@@ -43,13 +51,16 @@ const Tables = {
       countEl.textContent = `${data.length} registros${data.length > 300 ? ' · mostrando 300' : ''}`;
     }
 
+    let hasBelowDetection = false;
     container.innerHTML = display.map(d => {
       const varColor = CONFIG.varietyColors[d.variety] || '#888';
       const origColor = CONFIG.resolveOriginColor(d.appellation);
+      const bdMark = d.belowDetection ? '<span title="Valores bajo límite de detección" style="color:var(--gold);cursor:help"> †</span>' : '';
+      if (d.belowDetection) hasBelowDetection = true;
       return `<tr>
-        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.sampleId) || '—'}</td>
-        <td>${d.sampleDate || '—'}</td>
-        <td>${d.vintage || '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.sampleId) || '—'}${bdMark}</td>
+        <td>${this._esc(d.sampleDate) || '—'}</td>
+        <td>${this._esc(d.vintage) || '—'}</td>
         <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variety) || '—'}</span></td>
         <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.appellation) || '—'}</span></td>
         <td ${this.brixStyle(d.brix)}>${d.brix !== null && d.brix !== undefined ? d.brix.toFixed(1) : '—'}</td>
@@ -60,6 +71,10 @@ const Tables = {
         <td>${d.daysPostCrush !== null && d.daysPostCrush !== undefined ? d.daysPostCrush : '—'}</td>
       </tr>`;
     }).join('');
+
+    // Below-detection footnote
+    const footnoteEl = document.getElementById('berry-table-footnote');
+    if (footnoteEl) footnoteEl.style.display = hasBelowDetection ? '' : 'none';
   },
 
   brixStyle(v) {
@@ -88,6 +103,12 @@ const Tables = {
     const countEl = document.getElementById('wine-table-count');
     if (!container) return;
 
+    if (!data.length) {
+      container.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--muted);padding:24px;font-style:italic">No hay datos para los filtros seleccionados</td></tr>';
+      if (countEl) countEl.textContent = '0 registros';
+      return;
+    }
+
     if (countEl) countEl.textContent = `${data.length} registros`;
 
     container.innerHTML = data.map(d => {
@@ -95,7 +116,7 @@ const Tables = {
       const origColor = CONFIG.resolveOriginColor(d.proveedor);
       return `<tr>
         <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}</td>
-        <td>${d.fecha || '—'}</td>
+        <td>${this._esc(d.fecha) || '—'}</td>
         <td>${this._esc(d.tanque) || '—'}</td>
         <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '—'}</span></td>
         <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.proveedor) || '—'}</span></td>
@@ -115,13 +136,19 @@ const Tables = {
     const countEl = document.getElementById('preferment-table-count');
     if (!container) return;
 
+    if (!data.length) {
+      container.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted);padding:24px;font-style:italic">No hay datos para los filtros seleccionados</td></tr>';
+      if (countEl) countEl.textContent = '0 registros';
+      return;
+    }
+
     if (countEl) countEl.textContent = `${data.length} registros`;
 
     container.innerHTML = data.map(d => {
       const varColor = CONFIG.varietyColors[d.variedad] || '#888';
       return `<tr>
         <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}</td>
-        <td>${d.fecha || '—'}</td>
+        <td>${this._esc(d.fecha) || '—'}</td>
         <td>${this._esc(d.tanque) || '—'}</td>
         <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '—'}</span></td>
         <td>${this._esc(d.proveedor) || '—'}</td>

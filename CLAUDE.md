@@ -131,6 +131,44 @@ rainfall_mm, humidity_pct, uv_index, wind_speed, uploaded_at
 - `location`: valley abbreviation — `'VDG'`, `'VON'`, or `'SV'` (default `'VDG'`)
 - Unique constraint: `(date, location)`
 
+### Table: `mediciones_tecnicas` *(RESERVED — Phase 7, not yet created)*
+Berry measurement records with linked photographic evidence
+```
+id                    -- auto
+medicion_code         -- 'MT-2025-001' (unique)
+medicion_date         -- date of measurement
+vintage_year          -- 2025, 2026, etc.
+variety               -- normalized (same values as wine_samples)
+appellation           -- ranch-first format (same as wine_samples)
+lot_code              -- berry lot code (soft link to wine_samples.sample_id)
+berry_count           -- number of berries in sample
+berry_weight_g        -- total weight (grams)
+berry_avg_weight      -- average weight per berry (g)
+berry_diameter_mm     -- average diameter (mm)
+brix                  -- °Bx
+ph                    -- pH
+ta                    -- titratable acidity (g/L)
+photo_count           -- denormalized count of linked photos
+notes                 -- free text
+measured_by           -- who performed the measurement
+uploaded_at           -- timestamp
+```
+
+### Table: `medicion_fotos` *(RESERVED — Phase 7, not yet created)*
+Photo evidence linked to mediciones, stored in Cloudflare R2
+```
+id                    -- auto
+medicion_id           -- FK → mediciones_tecnicas.id (CASCADE delete)
+photo_position        -- 1-20 ordering
+r2_key                -- R2 object key: '2025/MT-2025-001/01.jpg'
+caption               -- optional description
+file_size_bytes       -- file size
+uploaded_at           -- timestamp
+```
+- Unique constraint: `(medicion_id, photo_position)`
+- Photos stored in Cloudflare R2 bucket `montexanic-mediciones`, NOT in Supabase
+- R2 key structure: `{vintage_year}/{medicion_code}/{position}.jpg`
+
 ---
 
 ## Project Structure
@@ -156,10 +194,12 @@ monte-xanic-dashboard/
 │   ├── maps.js                 # Vineyard quality map (NOT YET ACTIVE)
 │   ├── weather.js              # Open-Meteo API + Supabase cache
 │   └── upload.js               # Excel/CSV → Supabase pipeline
+│   └── mediciones.js           # (Phase 7) Mediciones técnicas + photo upload/gallery
 ├── api/
 │   ├── config.js               # Vercel serverless: Supabase credentials (auth-gated)
 │   ├── login.js                # Vercel serverless: bcrypt login + HMAC token
-│   └── verify.js               # Vercel serverless: token verification
+│   ├── verify.js               # Vercel serverless: token verification
+│   └── photo-url.js            # (Phase 7) Presigned R2 upload URL generator
 ├── assets/
 │   ├── logo_montexanic.svg     # Brand logo
 │   ├── favicon.svg             # Favicon (logo symbol)
@@ -167,9 +207,10 @@ monte-xanic-dashboard/
 │   │   └── SackersGothicMedium.ttf  # Custom header font
 │   └── maps/                   # Reserved for Phase 5 vineyard map
 ├── sql/
-│   └── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
+│   ├── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
+│   └── migration_mediciones.sql # (Phase 7) mediciones_tecnicas + medicion_fotos tables
 ├── vercel.json                 # Vercel config + security headers
-└── package.json                # bcryptjs + npm scripts
+└── package.json                # bcryptjs + npm scripts (+ @aws-sdk/client-s3 in Phase 7)
 ```
 
 ---
@@ -245,6 +286,19 @@ monte-xanic-dashboard/
 - [ ] Multi-vintage trend lines (3+ years)
 - [ ] Per-origin chemistry comparison
 - [ ] Harvest calendar with weather overlays
+
+### Phase 7 — Mediciones Técnicas con Evidencia Fotográfica *(Priority: LOW — develop last)*
+- [ ] Cloudflare R2 bucket setup (`montexanic-mediciones`) + CORS config
+- [ ] Supabase tables: `mediciones_tecnicas`, `medicion_fotos` (see Reserved Schema below)
+- [ ] `api/photo-url.js` — presigned PUT URL generator (auth-gated, lab role only)
+- [ ] `js/mediciones.js` — measurement entry form + photo upload + gallery display
+- [ ] `view-mediciones` panel in `index.html` with sortable table + expandable detail + lightbox
+- [ ] Update `vercel.json` CSP: add R2 domain to `img-src` and `connect-src`
+- [ ] Add `@aws-sdk/client-s3` to `package.json` (server-side only, for presigned URLs)
+- [ ] Mobile responsive: thumbnail grid reflows, lightbox supports touch/swipe
+- **Prerequisites:** All REVIEW.md findings resolved, Workflow 3 complete, Phase 5/6 stable
+- **Scale:** ~110 mediciones, ~1,100 photos (~2-3GB in R2), ~1MB metadata in Supabase
+- **Key constraint:** Photos stored in R2 only (never in Supabase). Metadata in Supabase only.
 
 ---
 

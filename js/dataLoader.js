@@ -92,6 +92,11 @@ const DataStore = {
     obj.variedad   = CONFIG.normalizeVariety(obj.variedad);
     obj.sampleType = 'Must';
     obj.grapeType  = this.getGrapeType(obj.variedad);
+    // Extract vintage from batch_code if not mapped from DB
+    if (!obj.vintage && obj.codigoBodega) {
+      const vm = String(obj.codigoBodega).match(/^(\d{2})/);
+      if (vm) obj.vintage = 2000 + parseInt(vm[1], 10);
+    }
     return obj;
   },
 
@@ -445,6 +450,7 @@ const DataStore = {
   // Advanced wine filtering (varietal + origin/proveedor + grape type)
   getFilteredWineAdvanced(wineState) {
     return this.wineRecepcion.filter(d => {
+      if (wineState.vintages && wineState.vintages.size > 0 && !wineState.vintages.has(d.vintage)) return false;
       if (wineState.varieties && wineState.varieties.size > 0 && !wineState.varieties.has(d.variedad)) return false;
       if (wineState.origins && wineState.origins.size > 0 && !wineState.origins.has(d.proveedor)) return false;
       if (wineState.grapeType && wineState.grapeType !== 'all') {
@@ -457,6 +463,7 @@ const DataStore = {
 
   getFilteredPrefermentAdvanced(wineState) {
     return this.winePreferment.filter(d => {
+      if (wineState.vintages && wineState.vintages.size > 0 && !wineState.vintages.has(d.vintage)) return false;
       if (wineState.varieties && wineState.varieties.size > 0 && !wineState.varieties.has(d.variedad)) return false;
       if (wineState.grapeType && wineState.grapeType !== 'all') {
         const grapeType = this.getGrapeType(d.variedad);

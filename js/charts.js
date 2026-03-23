@@ -34,8 +34,28 @@ const Charts = {
     }
   },
 
+  // Safe Chart.js instantiation — one broken chart won't cascade-fail the view
+  _createChart(canvasId, canvas, config) {
+    try {
+      this.instances[canvasId] = new Chart(canvas, config);
+    } catch (err) {
+      console.error(`[Charts] Error creating ${canvasId}:`, err);
+      this._drawNoData(canvas, 'Error al renderizar gráfico');
+    }
+  },
+
   destroyAll() {
     Object.keys(this.instances).forEach(id => this.destroy(id));
+  },
+
+  // Remove orphaned chart instances whose canvas no longer exists in DOM
+  _pruneOrphans() {
+    for (const id of Object.keys(this.instances)) {
+      if (!document.getElementById(id)) {
+        this.instances[id].destroy();
+        delete this.instances[id];
+      }
+    }
   },
 
   // Update theme colors on all existing charts in-place (no destroy/recreate)
@@ -60,7 +80,7 @@ const Charts = {
         tip.titleColor = tipTitle;
         tip.bodyColor = tipBody;
       }
-      chart.update('none');
+      chart.update({ duration: 400, easing: 'easeOutQuart' });
     });
   },
 
@@ -170,6 +190,7 @@ const Charts = {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
 
     const colorBy = Filters.state.colorBy;
     const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
@@ -206,7 +227,7 @@ const Charts = {
       };
     });
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -227,6 +248,7 @@ const Charts = {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
 
     const colorBy = Filters.state.colorBy;
     const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
@@ -251,7 +273,7 @@ const Charts = {
       };
     });
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -272,6 +294,7 @@ const Charts = {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
 
     const byVar = {};
     data.forEach(d => {
@@ -289,7 +312,7 @@ const Charts = {
     const bgColors = labels.map(v => (CONFIG.varietyColors[v] || '#888') + '66');
     const bdColors = labels.map(v => CONFIG.varietyColors[v] || '#888');
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'bar',
       data: {
         labels,
@@ -338,6 +361,7 @@ const Charts = {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
 
     const byOrigin = {};
     data.forEach(d => {
@@ -356,7 +380,7 @@ const Charts = {
     const bgColors = origins.map(o => CONFIG.resolveOriginColor(o) + '66');
     const bdColors = origins.map(o => CONFIG.resolveOriginColor(o));
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'bar',
       data: {
         labels: shortLabels,
@@ -406,6 +430,7 @@ const Charts = {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
 
     const counts = {};
     data.forEach(d => {
@@ -418,7 +443,7 @@ const Charts = {
     const values = labels.map(l => counts[l]);
     const colors = labels.map(l => CONFIG.resolveOriginColor(l));
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'doughnut',
       data: {
         labels,
@@ -505,7 +530,7 @@ const Charts = {
       return;
     }
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -586,7 +611,7 @@ const Charts = {
     const berryVals = pairs.map(p => p.berryTANT);
     const wineVals = pairs.map(p => p.wineTANT);
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'bar',
       data: {
         labels,
@@ -691,19 +716,21 @@ const Charts = {
 
     let html = visible.map(item => {
       const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
-      return `<div class="legend-item${dimmed}" onclick="Charts.toggleSeries('${item.label.replace(/'/g, "\\'")}')" title="${item.label.replace(/"/g, '&quot;')}">
+      const safeLabel = item.label.replace(/'/g, "\\'");
+      return `<div class="legend-item${dimmed}" role="button" tabindex="0" onclick="Charts.toggleSeries('${safeLabel}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Charts.toggleSeries('${safeLabel}')}" title="${item.label.replace(/"/g, '&quot;')}">
         <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
         <span>${item.label}</span>
       </div>`;
     }).join('');
 
     if (hidden.length > 0) {
-      html += `<div class="legend-item legend-expand" onclick="this.parentElement.classList.toggle('legend-show-all')" style="cursor:pointer;color:var(--muted);font-style:italic">
+      html += `<div class="legend-item legend-expand" role="button" tabindex="0" onclick="this.parentElement.classList.toggle('legend-show-all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.parentElement.classList.toggle('legend-show-all')}" style="cursor:pointer;color:var(--muted);font-style:italic">
         <span>+ ${hidden.length} m\u00e1s</span>
       </div>`;
       html += hidden.map(item => {
         const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
-        return `<div class="legend-item legend-overflow${dimmed}" onclick="Charts.toggleSeries('${item.label.replace(/'/g, "\\'")}')" title="${item.label.replace(/"/g, '&quot;')}" style="display:none">
+        const safeLabel = item.label.replace(/'/g, "\\'");
+        return `<div class="legend-item legend-overflow${dimmed}" role="button" tabindex="0" onclick="Charts.toggleSeries('${safeLabel}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Charts.toggleSeries('${safeLabel}')}" title="${item.label.replace(/"/g, '&quot;')}" style="display:none">
           <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
           <span>${item.label}</span>
         </div>`;
@@ -763,7 +790,7 @@ const Charts = {
       return;
     }
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -832,7 +859,7 @@ const Charts = {
       return;
     }
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -907,7 +934,7 @@ const Charts = {
       return;
     }
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -957,7 +984,7 @@ const Charts = {
       return;
     }
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -1071,7 +1098,7 @@ const Charts = {
       };
     });
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {
@@ -1109,7 +1136,7 @@ const Charts = {
     const bgColors = labels.map(g => colorResolver(g) + '66');
     const bdColors = labels.map(g => colorResolver(g));
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'bar',
       data: {
         labels,
@@ -1165,6 +1192,13 @@ const Charts = {
         const canvasId = entry.target.id;
         const job = this._lazyQueue.find(j => j.id === canvasId);
         if (job) {
+          // Verify canvas is still in an active view panel before rendering
+          const panel = entry.target.closest('.view-panel');
+          if (panel && !panel.classList.contains('active')) {
+            this._lazyObserver.unobserve(entry.target);
+            this._lazyQueue = this._lazyQueue.filter(j => j.id !== canvasId);
+            return;
+          }
           job.fn();
           this._lazyQueue = this._lazyQueue.filter(j => j.id !== canvasId);
           this._lazyObserver.unobserve(entry.target);
@@ -1194,24 +1228,22 @@ const Charts = {
 
   // Update all berry charts (lazy — only renders visible ones immediately)
   updateBerryCharts(data) {
-    const clean = data.filter(d => !(typeof d.pH === 'number' && (d.pH < 2.5 || d.pH > 5.0)));
-
     this.updateLegend(data);
     // Top charts render immediately
-    this.createScatter('chartBrix', clean, 'daysPostCrush', 'brix', 'Días Post-Envero', 'Brix (°Bx)');
-    this.createScatter('chartAnt', clean, 'daysPostCrush', 'tANT', 'Días Post-Envero', 'tANT (ppm ME)');
-    this.createScatter('chartPH', clean, 'daysPostCrush', 'pH', 'Días Post-Envero', 'pH');
-    this.createScatter('chartTA', clean, 'daysPostCrush', 'ta', 'Días Post-Envero', 'AT (g/L)');
+    this.createScatter('chartBrix', data, 'daysPostCrush', 'brix', 'Días Post-Envero', 'Brix (°Bx)');
+    this.createScatter('chartAnt', data, 'daysPostCrush', 'tANT', 'Días Post-Envero', 'tANT (ppm ME)');
+    this.createScatter('chartPH', data, 'daysPostCrush', 'pH', 'Días Post-Envero', 'pH');
+    this.createScatter('chartTA', data, 'daysPostCrush', 'ta', 'Días Post-Envero', 'AT (g/L)');
     // Below-fold charts lazy-render on scroll
-    this._lazyRender('chartWeight', () => this.createScatter('chartWeight', clean, 'daysPostCrush', 'berryFW', 'Días Post-Envero', 'Peso Baya (g)'));
-    this._lazyRender('chartScatter', () => this.createPureScatter('chartScatter', clean, 'pH', 'brix', 'pH', 'Brix'));
-    this._lazyRender('chartVarBrix', () => this.createBarChart('chartVarBrix', clean, 'brix', 'Brix Promedio'));
-    this._lazyRender('chartVarAnt', () => this.createBarChart('chartVarAnt', clean, 'tANT', 'tANT Promedio'));
+    this._lazyRender('chartWeight', () => this.createScatter('chartWeight', data, 'daysPostCrush', 'berryFW', 'Días Post-Envero', 'Peso Baya (g)'));
+    this._lazyRender('chartScatter', () => this.createPureScatter('chartScatter', data, 'pH', 'brix', 'pH', 'Brix'));
+    this._lazyRender('chartVarBrix', () => this.createBarChart('chartVarBrix', data, 'brix', 'Brix Promedio'));
+    this._lazyRender('chartVarAnt', () => this.createBarChart('chartVarAnt', data, 'tANT', 'tANT Promedio'));
     this._lazyRender('chartOrigen', () => this.createDoughnut('chartOrigen', data));
-    this._lazyRender('chartOriginBrix', () => this.createOriginBarChart('chartOriginBrix', clean, 'brix', 'Brix Promedio'));
-    this._lazyRender('chartOriginAnt', () => this.createOriginBarChart('chartOriginAnt', clean, 'tANT', 'tANT Promedio'));
-    this._lazyRender('chartOriginPH', () => this.createOriginBarChart('chartOriginPH', clean, 'pH', 'pH Promedio'));
-    this._lazyRender('chartOriginTA', () => this.createOriginBarChart('chartOriginTA', clean, 'ta', 'AT Promedio'));
+    this._lazyRender('chartOriginBrix', () => this.createOriginBarChart('chartOriginBrix', data, 'brix', 'Brix Promedio'));
+    this._lazyRender('chartOriginAnt', () => this.createOriginBarChart('chartOriginAnt', data, 'tANT', 'tANT Promedio'));
+    this._lazyRender('chartOriginPH', () => this.createOriginBarChart('chartOriginPH', data, 'pH', 'pH Promedio'));
+    this._lazyRender('chartOriginTA', () => this.createOriginBarChart('chartOriginTA', data, 'ta', 'AT Promedio'));
   },
 
   // ── Evolution Chart (WineXRay-style) ─────────────────────────
@@ -1392,7 +1424,7 @@ const Charts = {
       chart.update();
     };
 
-    this.instances[canvasId] = new Chart(canvas, {
+    this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
       options: {

@@ -37,6 +37,10 @@ const UploadManager = {
   parseWineXRay(rows) {
     if (!rows || rows.length < 2) return [];
     const headers = rows[0].map(h => String(h || '').trim());
+    // Validate that headers match WineXRay format
+    const knownHeaders = Object.keys(CONFIG.wxToSupabase);
+    const matchCount = headers.filter(h => knownHeaders.includes(h)).length;
+    if (matchCount === 0) return { error: 'no_headers' };
     const typeIdx = headers.indexOf('Sample Type');
     const result = [];
 
@@ -81,7 +85,10 @@ const UploadManager = {
         if (obj.appellation === 'California') continue;
         if (!obj.vintage_year && obj.sample_id) {
           const vm = String(obj.sample_id).match(/^(\d{2})/);
-          if (vm) obj.vintage_year = 2000 + parseInt(vm[1], 10);
+          if (vm) {
+            const y = 2000 + parseInt(vm[1], 10);
+            obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
+          }
         }
         result.push(obj);
       }
@@ -120,7 +127,10 @@ const UploadManager = {
           if (hasData && obj.report_code) {
             if (obj.batch_code && !obj.vintage_year) {
               const vm = String(obj.batch_code).match(/^(\d{2})/);
-              if (vm) obj.vintage_year = 2000 + parseInt(vm[1], 10);
+              if (vm) {
+                const y = 2000 + parseInt(vm[1], 10);
+                obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
+              }
             }
             preferment.push(obj);
           }
@@ -145,7 +155,10 @@ const UploadManager = {
           // Extract vintage_year from batch_code prefix (25 → 2025)
           if (obj.batch_code) {
             const m = String(obj.batch_code).match(/^(\d{2})/);
-            if (m) obj.vintage_year = 2000 + parseInt(m[1], 10);
+            if (m) {
+              const y = 2000 + parseInt(m[1], 10);
+              obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
+            }
           }
 
           // Pull lot columns out before insert
@@ -167,6 +180,28 @@ const UploadManager = {
   },
 
   // Upsert rows to a Supabase table in batches of 500
+  // Check how many rows already exist in the DB (for new vs update preview)
+  async _detectDuplicates(table, rows, keyCol, keyCol2) {
+    if (!rows.length || !DataStore.supabase) return { updateCount: 0 };
+    try {
+      const keys = [...new Set(rows.map(r => r[keyCol]).filter(Boolean))];
+      if (!keys.length) return { updateCount: 0 };
+      // Query existing rows matching the primary key(s)
+      const { data, error } = await DataStore.supabase
+        .from(table)
+        .select(keyCol2 ? `${keyCol},${keyCol2}` : keyCol)
+        .in(keyCol, keys);
+      if (error || !data) return { updateCount: 0 };
+      if (!keyCol2) return { updateCount: data.length };
+      // Composite key — build set of "key1|key2" for matching
+      const existing = new Set(data.map(d => `${d[keyCol]}|${d[keyCol2]}`));
+      const matches = rows.filter(r => existing.has(`${r[keyCol]}|${r[keyCol2]}`));
+      return { updateCount: matches.length };
+    } catch (_) {
+      return { updateCount: 0 };
+    }
+  },
+
   async upsertRows(table, rows, conflictCol) {
     if (!rows.length) return { count: 0, error: null };
     const sb = DataStore.supabase;
@@ -218,14 +253,24 @@ const UploadManager = {
         const rows = DataStore.sheetToArray(wb, sheetName);
         const samples = this.parseWineXRay(rows);
 
-        if (!samples.length) {
+        if (samples && samples.error === 'no_headers') {
+          this._setStatus(statusEl, 'error', '✗ Archivo sin encabezados reconocidos. Verifique el formato WineXRay.');
+          return;
+        }
+
+        if (!samples || !samples.length) {
           this._setStatus(statusEl, 'error', '✗ No se encontraron muestras en el archivo.');
           return;
         }
 
         const berryCount = samples.filter(s => s.sample_type === 'Berries').length;
         const wineCount  = samples.length - berryCount;
-        this._setStatus(statusEl, 'pending', `⏳ ${samples.length} muestras (${berryCount} bayas, ${wineCount} vinos). Guardando...`);
+
+        // Detect duplicates before upsert
+        const dupInfo = await this._detectDuplicates('wine_samples', samples, 'sample_id', 'sample_date');
+        const newCount = samples.length - dupInfo.updateCount;
+        this._setStatus(statusEl, 'pending',
+          `⏳ ${samples.length} muestras (${newCount} nuevas, ${dupInfo.updateCount} actualizadas). Guardando...`);
 
         const { count, error } = await this.upsertRows('wine_samples', samples, 'sample_id,sample_date');
         if (error) {
@@ -234,7 +279,10 @@ const UploadManager = {
           return;
         }
 
-        this._setStatus(statusEl, 'success', `✓ ${count} muestras agregadas correctamente.`);
+        const successMsg = dupInfo.updateCount > 0
+          ? `✓ ${count} muestras procesadas (${newCount} nuevas, ${dupInfo.updateCount} actualizadas).`
+          : `✓ ${count} muestras agregadas correctamente.`;
+        this._setStatus(statusEl, 'success', successMsg);
         this._refreshDashboard();
 
       } else if (type === 'recepcion') {
@@ -246,8 +294,13 @@ const UploadManager = {
           return;
         }
 
+        // Detect duplicates
+        const recDup = await this._detectDuplicates('tank_receptions', receptions, 'report_code');
+        const prefDup = await this._detectDuplicates('prefermentativos', preferment, 'report_code', 'measurement_date');
+        const newRec = receptions.length - recDup.updateCount;
+        const newPref = preferment.length - prefDup.updateCount;
         this._setStatus(statusEl, 'pending',
-          `⏳ ${receptions.length} recepciones, ${preferment.length} prefermentativos. Guardando...`);
+          `⏳ ${receptions.length} recepciones (${newRec} nuevas), ${preferment.length} prefermentativos (${newPref} nuevos). Guardando...`);
 
         // 1 — Insert receptions
         const { count: rCount, error: rErr } = await this.upsertRows('tank_receptions', receptions, 'report_code');
@@ -293,7 +346,11 @@ const UploadManager = {
           return;
         }
 
-        this._setStatus(statusEl, 'success', `✓ ${rCount + pCount} registros agregados correctamente.`);
+        const totalUpdates = recDup.updateCount + prefDup.updateCount;
+        const recSuccessMsg = totalUpdates > 0
+          ? `✓ ${rCount + pCount} registros procesados (${newRec + newPref} nuevos, ${totalUpdates} actualizados).`
+          : `✓ ${rCount + pCount} registros agregados correctamente.`;
+        this._setStatus(statusEl, 'success', recSuccessMsg);
         this._refreshDashboard();
       }
 
@@ -318,17 +375,44 @@ const UploadManager = {
 
   async cleanupLabSamples() {
     if (!DataStore.supabase) { console.error('Supabase not connected'); return; }
-    const patterns = ['COLORPRO%', 'CRUSH%', 'WATER%', '%BLUEBERRY%', '%RASPBERRY%', '%RASBERRY%', '%BLACKBERRY%', '%BLKBERRY%'];
+    const sb = DataStore.supabase;
     let total = 0;
+
+    // 1 — Delete by sample_id ILIKE patterns (lab tests, non-grape fruit, test runs)
+    const patterns = [
+      'COLORPRO%', 'CRUSH%', 'WATER%',
+      '%BLUEBERRY%', '%RASPBERRY%', '%RASBERRY%', '%BLACKBERRY%', '%BLKBERRY%',
+      '%EXP%', '%EXPERIMENTO%', 'NORMAL%'
+    ];
     for (const p of patterns) {
-      const { data, error } = await DataStore.supabase
+      const { data, error } = await sb
         .from('wine_samples').delete()
         .ilike('sample_id', p)
         .select('id');
       if (error) { console.error(`Delete ${p} failed:`, error.message); continue; }
-      if (data) { total += data.length; console.log(`Deleted ${data.length} rows matching ${p}`); }
+      if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} rows matching sample_id ILIKE '${p}'`); }
     }
-    console.log(`Total deleted: ${total} lab/test samples`);
+
+    // 2 — Delete specifically excluded sample IDs
+    const excludedIds = [...CONFIG._excludedSamples];
+    if (excludedIds.length) {
+      const { data, error } = await sb
+        .from('wine_samples').delete()
+        .in('sample_id', excludedIds)
+        .select('id');
+      if (error) { console.error('Delete excluded IDs failed:', error.message); }
+      else if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} specifically excluded samples`); }
+    }
+
+    // 3 — Delete California appellation samples
+    const { data: caData, error: caErr } = await sb
+      .from('wine_samples').delete()
+      .eq('appellation', 'California')
+      .select('id');
+    if (caErr) { console.error('Delete California failed:', caErr.message); }
+    else if (caData && caData.length) { total += caData.length; console.log(`Deleted ${caData.length} California samples`); }
+
+    console.log(`Total deleted: ${total} lab/test/excluded samples`);
     if (total > 0) {
       DataStore.clearCache();
       await this._refreshDashboard();
