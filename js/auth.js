@@ -3,7 +3,7 @@
 const Auth = {
   _tokenKey: 'xanic_session_token',
   _roleKey: 'xanic_user_role',
-  role: 'admin',
+  role: 'viewer',
 
   /**
    * Initialize auth — called on DOMContentLoaded before App.init()
@@ -29,7 +29,7 @@ const Auth = {
       const data = await resp.json();
 
       if (data.valid) {
-        this.role = data.role || localStorage.getItem(this._roleKey) || 'admin';
+        this.role = data.role || localStorage.getItem(this._roleKey) || 'viewer';
         localStorage.setItem(this._roleKey, this.role);
         this.hideLoginScreen();
         this.applyRole();
@@ -103,7 +103,7 @@ const Auth = {
   logout() {
     localStorage.removeItem(this._tokenKey);
     localStorage.removeItem(this._roleKey);
-    this.role = 'admin';
+    this.role = 'viewer';
     DataStore.clearCache();
     App.initialized = false;
     const dashboard = document.getElementById('dashboard-content');
