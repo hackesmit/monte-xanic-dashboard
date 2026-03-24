@@ -374,49 +374,65 @@ const UploadManager = {
   },
 
   async cleanupLabSamples() {
+    if (this._uploading) { console.warn('Upload in progress — cleanup skipped'); return; }
     if (!DataStore.supabase) { console.error('Supabase not connected'); return; }
+    this._uploading = true;
     const sb = DataStore.supabase;
     let total = 0;
 
-    // 1 — Delete by sample_id ILIKE patterns (lab tests, non-grape fruit, test runs)
-    const patterns = [
-      'COLORPRO%', 'CRUSH%', 'WATER%',
-      '%BLUEBERRY%', '%RASPBERRY%', '%RASBERRY%', '%BLACKBERRY%', '%BLKBERRY%',
-      '%EXP%', '%EXPERIMENTO%', 'NORMAL%'
-    ];
-    for (const p of patterns) {
-      const { data, error } = await sb
+    try {
+      // 1 — Delete by sample_id ILIKE patterns (lab tests, non-grape fruit, test runs)
+      const patterns = [
+        'COLORPRO%', 'CRUSH%', 'WATER%',
+        '%BLUEBERRY%', '%RASPBERRY%', '%RASBERRY%', '%BLACKBERRY%', '%BLKBERRY%',
+        '%EXPERIMENT%', '%EXPERIMENTO%'
+      ];
+      for (const p of patterns) {
+        const { data, error } = await sb
+          .from('wine_samples').delete()
+          .ilike('sample_id', p)
+          .select('id');
+        if (error) { console.error(`Delete ${p} failed:`, error.message); continue; }
+        if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} rows matching sample_id ILIKE '${p}'`); }
+      }
+
+      // 1b — Delete exact-match 'NORMAL' sample_id
+      {
+        const { data, error } = await sb
+          .from('wine_samples').delete()
+          .eq('sample_id', 'NORMAL')
+          .select('id');
+        if (error) { console.error('Delete NORMAL failed:', error.message); }
+        else if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} rows with sample_id = 'NORMAL'`); }
+      }
+
+      // 2 — Delete specifically excluded sample IDs
+      const excludedIds = [...CONFIG._excludedSamples];
+      if (excludedIds.length) {
+        const { data, error } = await sb
+          .from('wine_samples').delete()
+          .in('sample_id', excludedIds)
+          .select('id');
+        if (error) { console.error('Delete excluded IDs failed:', error.message); }
+        else if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} specifically excluded samples`); }
+      }
+
+      // 3 — Delete California appellation samples
+      const { data: caData, error: caErr } = await sb
         .from('wine_samples').delete()
-        .ilike('sample_id', p)
+        .eq('appellation', 'California')
         .select('id');
-      if (error) { console.error(`Delete ${p} failed:`, error.message); continue; }
-      if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} rows matching sample_id ILIKE '${p}'`); }
-    }
+      if (caErr) { console.error('Delete California failed:', caErr.message); }
+      else if (caData && caData.length) { total += caData.length; console.log(`Deleted ${caData.length} California samples`); }
 
-    // 2 — Delete specifically excluded sample IDs
-    const excludedIds = [...CONFIG._excludedSamples];
-    if (excludedIds.length) {
-      const { data, error } = await sb
-        .from('wine_samples').delete()
-        .in('sample_id', excludedIds)
-        .select('id');
-      if (error) { console.error('Delete excluded IDs failed:', error.message); }
-      else if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} specifically excluded samples`); }
+      console.log(`Total deleted: ${total} lab/test/excluded samples`);
+      if (total > 0) {
+        DataStore.clearCache();
+        await this._refreshDashboard();
+      }
+      return total;
+    } finally {
+      this._uploading = false;
     }
-
-    // 3 — Delete California appellation samples
-    const { data: caData, error: caErr } = await sb
-      .from('wine_samples').delete()
-      .eq('appellation', 'California')
-      .select('id');
-    if (caErr) { console.error('Delete California failed:', caErr.message); }
-    else if (caData && caData.length) { total += caData.length; console.log(`Deleted ${caData.length} California samples`); }
-
-    console.log(`Total deleted: ${total} lab/test/excluded samples`);
-    if (total > 0) {
-      DataStore.clearCache();
-      await this._refreshDashboard();
-    }
-    return total;
   }
 };

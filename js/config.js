@@ -569,6 +569,253 @@ const CONFIG = {
     }
   },
 
+  // ── Map CONFIG ──────────────────────────────────────
+
+  // Explicit lot code → section ID (override pattern-based resolution)
+  fieldLotToSection: {
+    // Monte Xanic (MX) — known berry lot codes
+    'CALMX-1E':  'MX-1E',
+    'CSMX-5B':   'MX-5B',  'CSMX-7B':  'MX-7B',  'CSMX-11A': 'MX-11A',
+    // Kompali (K) — known berry lot codes
+    'KCA-S3B':       'K-S3B',  'KCA-S4':        'K-S4',
+    'KCF-S1-PA':     'K-S1',   'KCF-S1-PB':     'K-S1',
+    'KME-S6-1':      'K-S6',   'KME-S6-2':      'K-S6',
+    'KSY-S723':      'K-S7',   'KSY-S721':      'K-S7',   'KSY-S721-R': 'K-S7',
+    'KCS-S8-1-CONT': 'K-S8',   'KCS-S8-1':      'K-S8',
+    'KCS-S2A':       'K-S2A',  'KCS-S2B':       'K-S2B',
+    'KDU-S2B':       'K-S2B',  'KDU-S7':        'K-S7',
+    'KMA-S7':        'K-S7',
+    'KMS-S5A+':      'K-S5',   'KMS-S5B-':      'K-S5',   'KMS-S5B-R': 'K-S5',
+    'KTE-S1':        'K-S1',   'KTE-S1-R':      'K-S1',
+    'KPV-S3A':       'K-S3A',
+    // Viña Alta (VA)
+    'CFVA-2B':   'VA-2B',  'CFVA-5A':  'VA-5A',  'CFVA-5B': 'VA-5B',
+    'CFVA-2B-RALEO': 'VA-2B',
+    'MEVA-1A':   'VA-1A',  'MEVA-2A':  'VA-2A',
+    'SYVA-1D':   'VA-1D',  'SYVA-1E':  'VA-1E',  'SYVA-1B': 'VA-1B',
+    'PVVA-1C':   'VA-1C',
+    'GREVA-3B':  'VA-3B',  'GREVA-4A': 'VA-4A',  'GREVA-4B': 'VA-4B',
+    // Ojos Negros (ON)
+    'CSON-3':    'ON-3',   'SYON-4':   'ON-4',   'MEON-1':  'ON-1',
+    'MAON-2':    'ON-2',   'GREON-6':  'ON-6',   'TEON-5':  'ON-5',
+    // Siete Leguas (7L)
+    'SY7L-2':    '7L-2',
+    // Olé (OLE)
+    'CSOLE-1':   'OLE-1',  'CSOLE-2':  'OLE-2',  'CSOLE-3': 'OLE-3',
+    // Dubacano (DUB)
+    'MADUB-1':   'DUB-1',  'SYDUB-1':  'DUB-1',
+    // Dominio de las Abejas (DA)
+    'SYDA-L13,14': 'DA-L13', 'SYDA-L5': 'DA-L5'
+  },
+
+  // Pattern-based lot → section resolution (fallback)
+  fieldLotRanchPatterns: [
+    { regex: /^K[A-Z]{2,3}-(.+)$/i,           prefix: 'K' },
+    { regex: /^[A-Z]{2,4}MX-(.+)$/i,          prefix: 'MX' },
+    { regex: /^[A-Z]{2,4}VA-(.+)$/i,          prefix: 'VA' },
+    { regex: /^[A-Z]{2,4}ON-(.+)$/i,          prefix: 'ON' },
+    { regex: /^[A-Z]{2,4}OLE-(.+)$/i,         prefix: 'OLE' },
+    { regex: /^[A-Z]{2,4}7L-(.+)$/i,          prefix: '7L' },
+    { regex: /^[A-Z]{2,4}DUB-(.+)$/i,         prefix: 'DUB' },
+    { regex: /^[A-Z]{2,4}DA-(.+)$/i,          prefix: 'DA' },
+    { regex: /^[A-Z]{2,4}DLA-(.+)$/i,         prefix: 'DA' },
+    { regex: /^[A-Z]{2,4}KMP-(.+)$/i,         prefix: 'K' },
+    { regex: /^[A-Z]{2,4}R14-(.+)$/i,         prefix: 'R14' },
+    { regex: /^[A-Z]{2,4}LLC-(.+)$/i,         prefix: 'LLC' },
+    { regex: /^[A-Z]{2,4}SG-(.+)$/i,          prefix: 'SG' }
+  ],
+
+  // Color scale config per map metric
+  mapMetrics: {
+    brix: { label: 'Brix (°Bx)', min: 18, max: 28, stops: ['#2ecc71', '#f1c40f', '#e74c3c'] },
+    pH:   { label: 'pH',         min: 3.0, max: 4.0, stops: ['#3498db', '#2ecc71', '#e74c3c'] },
+    tANT: { label: 'tANT (ppm)', min: 0,   max: 2000, stops: ['#f0e68c', '#e74c3c', '#800020'] },
+    ta:   { label: 'A.T. (g/L)', min: 3.0, max: 9.0, stops: ['#e74c3c', '#2ecc71', '#3498db'] }
+  },
+
+  // SVG viewBox dimensions per ranch
+  ranchViewBoxes: {
+    MX:    { width: 600, height: 500 },
+    K:     { width: 460, height: 680 },
+    '7L':  { width: 400, height: 200 },
+    OLE:   { width: 400, height: 260 },
+    ON:    { width: 480, height: 420 },
+    VA:    { width: 500, height: 480 },
+    DUB:   { width: 200, height: 120 },
+    DA:    { width: 260, height: 200 }
+  },
+
+  // Vineyard section definitions (with polygon points for SVG rendering)
+  vineyardSections: [
+    // ── Monte Xanic (VDG) — MX ──
+    // Layout: CS sections on the left (irregular western hillside), SB sections on the right (grid)
+    // ViewBox: 600 × 500. West = CS irregular shapes, East = SB rectangular grid
+    { sectionId: 'MX-1A', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '1A', hectares: 2.02, ranch: 'Monte Xanic (VDG)',
+      points: [[460,410],[540,410],[540,480],[460,480]] },
+    { sectionId: 'MX-1B', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '1B', hectares: 2.0, ranch: 'Monte Xanic (VDG)',
+      points: [[460,330],[540,330],[540,405],[460,405]] },
+    { sectionId: 'MX-1C', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '1C', hectares: 2.02, ranch: 'Monte Xanic (VDG)',
+      points: [[460,250],[540,250],[540,325],[460,325]] },
+    { sectionId: 'MX-1D', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '1D', hectares: 2.02, ranch: 'Monte Xanic (VDG)',
+      points: [[460,170],[540,170],[540,245],[460,245]] },
+    { sectionId: 'MX-1E', ranchCode: 'MX', variety: 'Caladoc',         sectionLabel: '1E', hectares: null, ranch: 'Monte Xanic (VDG)',
+      points: [[460,60],[590,60],[590,165],[460,165]] },
+    { sectionId: 'MX-2A', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '2A', hectares: 2.17, ranch: 'Monte Xanic (VDG)',
+      points: [[370,410],[455,410],[455,480],[370,480]] },
+    { sectionId: 'MX-2B', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '2B', hectares: 2.42, ranch: 'Monte Xanic (VDG)',
+      points: [[370,330],[455,330],[455,405],[370,405]] },
+    { sectionId: 'MX-2C', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '2C', hectares: 2.01, ranch: 'Monte Xanic (VDG)',
+      points: [[370,250],[455,250],[455,325],[370,325]] },
+    { sectionId: 'MX-3A', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '3A', hectares: 2.17, ranch: 'Monte Xanic (VDG)',
+      points: [[290,410],[365,410],[365,480],[290,480]] },
+    { sectionId: 'MX-3B', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '3B', hectares: 1.56, ranch: 'Monte Xanic (VDG)',
+      points: [[290,330],[365,330],[365,405],[290,405]] },
+    { sectionId: 'MX-4A', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '4A', hectares: 1.37, ranch: 'Monte Xanic (VDG)',
+      points: [[290,268],[365,268],[365,325],[290,325]] },
+    { sectionId: 'MX-4B', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '4B', hectares: 1.73, ranch: 'Monte Xanic (VDG)',
+      points: [[290,200],[365,200],[365,263],[290,263]] },
+    { sectionId: 'MX-5A', ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '5A', hectares: 1.6, ranch: 'Monte Xanic (VDG)',
+      points: [[200,390],[285,390],[285,480],[200,480]] },
+    { sectionId: 'MX-5B', ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '5B', hectares: 1.99, ranch: 'Monte Xanic (VDG)',
+      points: [[200,300],[285,300],[285,385],[200,385]] },
+    { sectionId: 'MX-5C', ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '5C', hectares: 0.77, ranch: 'Monte Xanic (VDG)',
+      points: [[250,225],[325,225],[325,265],[250,265]] },
+    { sectionId: 'MX-6',  ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '6',  hectares: null, ranch: 'Monte Xanic (VDG)',
+      points: [[200,225],[245,225],[245,295],[200,295]] },
+    { sectionId: 'MX-7A', ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '7A', hectares: 1.94, ranch: 'Monte Xanic (VDG)',
+      points: [[120,340],[195,340],[195,420],[120,420]] },
+    { sectionId: 'MX-7B', ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '7B', hectares: 1.01, ranch: 'Monte Xanic (VDG)',
+      points: [[140,270],[195,270],[195,335],[140,335]] },
+    { sectionId: 'MX-8',  ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '8',  hectares: 1.01, ranch: 'Monte Xanic (VDG)',
+      points: [[100,190],[180,190],[195,265],[130,265]] },
+    { sectionId: 'MX-9',  ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '9',  hectares: 1.45, ranch: 'Monte Xanic (VDG)',
+      points: [[60,380],[115,370],[120,440],[50,460]] },
+    { sectionId: 'MX-10', ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '10', hectares: 1.49, ranch: 'Monte Xanic (VDG)',
+      points: [[10,420],[55,400],[60,480],[15,490]] },
+    { sectionId: 'MX-11A',ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '11A',hectares: 1.29, ranch: 'Monte Xanic (VDG)',
+      points: [[110,120],[195,120],[195,185],[100,185]] },
+    { sectionId: 'MX-11B',ranchCode: 'MX', variety: 'Cabernet Sauvignon', sectionLabel: '11B',hectares: 0.29, ranch: 'Monte Xanic (VDG)',
+      points: [[140,80],[195,80],[195,115],[120,115]] },
+    { sectionId: 'MX-12', ranchCode: 'MX', variety: 'Plantas Madre', sectionLabel: '12', hectares: null, ranch: 'Monte Xanic (VDG)',
+      points: [[80,30],[180,20],[190,75],[100,80]] },
+
+    // ── Kompali (VON) — K ──
+    // Layout: north-south strip, upper zone (S1-S4) and lower zone (S5-S8) split by arroyo
+    // ViewBox: 460 × 680
+    { sectionId: 'K-S1',  ranchCode: 'K', variety: 'Cab. Franc / Temp.', sectionLabel: 'S1',  hectares: null, ranch: 'Kompali (VON)',
+      points: [[20,10],[440,10],[440,80],[20,80]] },
+    { sectionId: 'K-S2A', ranchCode: 'K', variety: 'Cabernet Sauvignon', sectionLabel: 'S2A', hectares: null, ranch: 'Kompali (VON)',
+      points: [[230,85],[440,85],[440,175],[230,175]] },
+    { sectionId: 'K-S2B', ranchCode: 'K', variety: 'Cab. Sauv. / Durif', sectionLabel: 'S2B', hectares: null, ranch: 'Kompali (VON)',
+      points: [[20,85],[225,85],[225,175],[20,175]] },
+    { sectionId: 'K-S3A', ranchCode: 'K', variety: 'Petit Verdot / Chenin', sectionLabel: 'S3A', hectares: null, ranch: 'Kompali (VON)',
+      points: [[20,180],[440,180],[440,250],[20,250]] },
+    { sectionId: 'K-S3B', ranchCode: 'K', variety: 'Caladoc / Sauv. Blanc', sectionLabel: 'S3B', hectares: null, ranch: 'Kompali (VON)',
+      points: [[20,255],[440,255],[440,310],[20,310]] },
+    { sectionId: 'K-S4',  ranchCode: 'K', variety: 'Chardonnay',  sectionLabel: 'S4',  hectares: 6.33, ranch: 'Kompali (VON)',
+      points: [[20,315],[220,315],[220,410],[20,410]] },
+    { sectionId: 'K-S5',  ranchCode: 'K', variety: 'Marselan',           sectionLabel: 'S5',  hectares: null, ranch: 'Kompali (VON)',
+      points: [[225,315],[440,315],[440,410],[225,410]] },
+    { sectionId: 'K-S6',  ranchCode: 'K', variety: 'Merlot',             sectionLabel: 'S6',  hectares: null, ranch: 'Kompali (VON)',
+      points: [[225,415],[440,415],[440,490],[225,490]] },
+    { sectionId: 'K-S7',  ranchCode: 'K', variety: 'Syrah / Durif',      sectionLabel: 'S7',  hectares: null, ranch: 'Kompali (VON)',
+      points: [[20,445],[220,445],[220,580],[20,580]] },
+    { sectionId: 'K-S8',  ranchCode: 'K', variety: 'Cabernet Sauvignon', sectionLabel: 'S8',  hectares: null, ranch: 'Kompali (VON)',
+      points: [[225,495],[440,495],[440,580],[225,580]] },
+
+    // ── Viña Alta (VON) — VA ──
+    // Layout: 5 rows × 4 cols grid. Row 1 (bottom) → Row 5 (top).
+    // Cols: A(left), B(center-left), C(center-right), D(right)
+    // ViewBox: 500 × 480. Cell ~115w × 85h with 5px gaps
+    // Row 5 (top, y=10..90)
+    { sectionId: 'VA-5A', ranchCode: 'VA', variety: 'Cabernet Franc',   sectionLabel: '5A', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[10,10],[120,10],[120,90],[10,90]] },
+    { sectionId: 'VA-5B', ranchCode: 'VA', variety: 'Cabernet Franc',   sectionLabel: '5B', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[125,10],[240,10],[240,90],[125,90]] },
+    // Row 4 (y=95..175)
+    { sectionId: 'VA-4A', ranchCode: 'VA', variety: 'Grenache',         sectionLabel: '4A', hectares: 1.65, ranch: 'Viña Alta (VON)',
+      points: [[10,95],[120,95],[120,175],[10,175]] },
+    { sectionId: 'VA-4B', ranchCode: 'VA', variety: 'Grenache',         sectionLabel: '4B', hectares: 1.31, ranch: 'Viña Alta (VON)',
+      points: [[125,95],[240,95],[240,175],[125,175]] },
+    { sectionId: 'VA-4C', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '4C', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[245,95],[360,95],[360,175],[245,175]] },
+    { sectionId: 'VA-4D', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '4D', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[365,95],[480,95],[480,175],[365,175]] },
+    // Row 3 (y=180..260)
+    { sectionId: 'VA-3B', ranchCode: 'VA', variety: 'Grenache',         sectionLabel: '3B', hectares: 1.61, ranch: 'Viña Alta (VON)',
+      points: [[125,180],[240,180],[240,260],[125,260]] },
+    { sectionId: 'VA-3C', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '3C', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[245,180],[360,180],[360,260],[245,260]] },
+    { sectionId: 'VA-3D', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '3D', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[365,180],[480,180],[480,260],[365,260]] },
+    // Row 2 (y=265..345)
+    { sectionId: 'VA-2A', ranchCode: 'VA', variety: 'Merlot',           sectionLabel: '2A', hectares: 1.75, ranch: 'Viña Alta (VON)',
+      points: [[10,265],[120,265],[120,345],[10,345]] },
+    { sectionId: 'VA-2B', ranchCode: 'VA', variety: 'Cabernet Franc',   sectionLabel: '2B', hectares: 1.65, ranch: 'Viña Alta (VON)',
+      points: [[125,265],[240,265],[240,345],[125,345]] },
+    { sectionId: 'VA-2C', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '2C', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[245,265],[360,265],[360,345],[245,345]] },
+    { sectionId: 'VA-2D', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '2D', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[365,265],[480,265],[480,345],[365,345]] },
+    // Row 1 (bottom, y=350..430)
+    { sectionId: 'VA-1A', ranchCode: 'VA', variety: 'Merlot',           sectionLabel: '1A', hectares: 2.18, ranch: 'Viña Alta (VON)',
+      points: [[10,350],[120,350],[120,430],[10,430]] },
+    { sectionId: 'VA-1B', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '1B', hectares: 2.53, ranch: 'Viña Alta (VON)',
+      points: [[125,350],[240,350],[240,430],[125,430]] },
+    { sectionId: 'VA-1C', ranchCode: 'VA', variety: 'Petit Verdot',     sectionLabel: '1C', hectares: 2.13, ranch: 'Viña Alta (VON)',
+      points: [[245,350],[360,350],[360,430],[245,430]] },
+    { sectionId: 'VA-1D', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '1D', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[365,350],[480,350],[480,430],[365,430]] },
+    { sectionId: 'VA-1E', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '1E', hectares: null, ranch: 'Viña Alta (VON)',
+      points: [[10,435],[120,435],[120,470],[10,470]] },
+
+    // ── Ojos Negros (VON) — ON ──
+    // Layout: 6 diagonal parallelogram strips, NW→SE staircase
+    // ViewBox: 480 × 420. Strips tilted ~25° from horizontal
+    { sectionId: 'ON-1', ranchCode: 'ON', variety: 'Merlot',              sectionLabel: '1', hectares: 1.8,  ranch: 'Ojos Negros (VON)',
+      points: [[380,50],[460,20],[470,350],[390,380]] },
+    { sectionId: 'ON-2', ranchCode: 'ON', variety: 'Malbec',              sectionLabel: '2', hectares: 2.86, ranch: 'Ojos Negros (VON)',
+      points: [[300,75],[375,48],[385,378],[310,405]] },
+    { sectionId: 'ON-3', ranchCode: 'ON', variety: 'Cabernet Sauvignon',  sectionLabel: '3', hectares: 3.13, ranch: 'Ojos Negros (VON)',
+      points: [[220,98],[295,73],[305,403],[230,420]] },
+    { sectionId: 'ON-4', ranchCode: 'ON', variety: 'Syrah',               sectionLabel: '4', hectares: 2.55, ranch: 'Ojos Negros (VON)',
+      points: [[145,118],[215,96],[225,410],[155,410]] },
+    { sectionId: 'ON-5', ranchCode: 'ON', variety: 'Tempranillo',         sectionLabel: '5', hectares: 3.85, ranch: 'Ojos Negros (VON)',
+      points: [[60,140],[140,116],[150,410],[70,410]] },
+    { sectionId: 'ON-6', ranchCode: 'ON', variety: 'Grenache',            sectionLabel: '6', hectares: 1.11, ranch: 'Ojos Negros (VON)',
+      points: [[10,155],[55,142],[65,360],[15,370]] },
+
+    // ── Olé (VDG) — OLE ──
+    // Layout: 2 large CS blocks side-by-side + 2 small sections upper-right
+    // ViewBox: 400 × 260
+    { sectionId: 'OLE-1', ranchCode: 'OLE', variety: 'Cabernet Sauvignon', sectionLabel: '1', hectares: 4.04, ranch: 'Olé (VDG)',
+      points: [[10,50],[185,50],[185,250],[10,250]] },
+    { sectionId: 'OLE-2', ranchCode: 'OLE', variety: 'Cabernet Sauvignon', sectionLabel: '2', hectares: 4.81, ranch: 'Olé (VDG)',
+      points: [[190,50],[370,50],[370,250],[190,250]] },
+    { sectionId: 'OLE-3', ranchCode: 'OLE', variety: 'Viognier',           sectionLabel: '3', hectares: 0.44, ranch: 'Olé (VDG)',
+      points: [[300,5],[390,5],[390,45],[300,45]] },
+    { sectionId: 'OLE-4', ranchCode: 'OLE', variety: 'Syrah',              sectionLabel: '4', hectares: null, ranch: 'Olé (VDG)',
+      points: [[375,50],[390,50],[390,120],[375,120]] },
+
+    // ── Siete Leguas (VDG) — 7L ──
+    // Layout: 2 sections side-by-side, left is large trapezoid (CB), right is smaller rect (Syrah)
+    // ViewBox: 400 × 200
+    { sectionId: '7L-1', ranchCode: '7L', variety: 'Chenin Blanc', sectionLabel: '1', hectares: 5.48, ranch: 'Siete Leguas (VDG)',
+      points: [[10,30],[250,10],[250,190],[10,190]] },
+    { sectionId: '7L-2', ranchCode: '7L', variety: 'Syrah',        sectionLabel: '2', hectares: 1.70, ranch: 'Siete Leguas (VDG)',
+      points: [[255,10],[380,10],[380,190],[255,190]] },
+
+    // ── Dubacano (SV) — DUB ──
+    { sectionId: 'DUB-1', ranchCode: 'DUB', variety: 'Malbec / Syrah', sectionLabel: '1', hectares: null, ranch: 'Dubacano (SV)',
+      points: [[10,10],[190,10],[190,110],[10,110]] },
+
+    // ── Dominio de las Abejas (VON) — DA ──
+    { sectionId: 'DA-L5',  ranchCode: 'DA', variety: 'Syrah', sectionLabel: 'L5',  hectares: null, ranch: 'Dominio de las Abejas (VON)',
+      points: [[10,10],[120,10],[120,90],[10,90]] },
+    { sectionId: 'DA-L13', ranchCode: 'DA', variety: 'Syrah', sectionLabel: 'L13', hectares: null, ranch: 'Dominio de las Abejas (VON)',
+      points: [[130,10],[250,10],[250,90],[130,90]] }
+  ],
+
   explorerChartTypes: [
     { value: 'scatter',  label: 'Dispersión' },
     { value: 'bar',      label: 'Barras' },
