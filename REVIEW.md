@@ -40,12 +40,11 @@
 
 ## 2. RACE CONDITIONS
 
-### 2.1 Concurrent refresh from cache + Supabase load — PARTIALLY FIXED
-- **SEVERITY:** ~~High~~ Medium (guard added but incomplete)
+### 2.1 Concurrent refresh from cache + Supabase load — FIXED
+- **SEVERITY:** ~~High~~ Resolved
 - **CATEGORY:** Race Condition
-- **FILE:LINE:** `js/app.js:262-320`
-- **DESCRIPTION:** Guard flag `_refreshInProgress` + `_refreshPending` pattern added, preventing concurrent refreshes. **However, missing `try/finally`:** if any chart/table/KPI method throws during `refresh()`, the flag stays `true` permanently, silently blocking all future refreshes and freezing the dashboard. PLAN.md explicitly warned: "If `refresh()` throws, the guard flag could get stuck. Use try/finally."
-- **REMAINING FIX:** Wrap the body of `refresh()` in `try { ... } finally { this._refreshInProgress = false; }` and check `_refreshPending` inside the `finally` block.
+- **FILE:LINE:** `js/app.js:268-352`
+- **DESCRIPTION:** Guard flag `_refreshInProgress` + `_refreshPending` pattern with proper `try/finally` (line 272 try, line 340 finally). Guard reset and pending re-run both inside finally block.
 
 ### 2.2 IntersectionObserver not disconnected on view switch — FIXED
 - **SEVERITY:** ~~High~~ Resolved
@@ -53,13 +52,11 @@
 - **FILE:LINE:** `js/app.js:235-240`
 - **DESCRIPTION:** `setView()` now calls `Charts._lazyObserver.disconnect()`, clears `_lazyQueue`, and calls `Charts._pruneOrphans()` before rendering the new view.
 
-### 2.3 Weather sync partial failure + concurrent calls
-- **SEVERITY:** Medium
+### 2.3 Weather sync partial failure + concurrent calls — FIXED
+- **SEVERITY:** ~~Medium~~ Resolved
 - **CATEGORY:** Race Condition
-- **FILE:LINE:** `js/weather.js:42-93`
-- **DESCRIPTION:** `sync()` updates in-memory state (`_byDate`, `data`) regardless of whether the Supabase upsert succeeded. If upsert fails for one valley/year, in-memory cache diverges from DB. Two concurrent `sync()` calls can also race on the shared state.
-- **REPRODUCTION:** Network interruption during sync for VON/2024. In-memory cache shows data that isn't in DB. Cache clear forces refetch, data disappears.
-- **SUGGESTED FIX:** Only update `_byDate`/`data` after confirmed upsert success. Add a `_isSyncing` flag to prevent concurrent calls.
+- **FILE:LINE:** `js/weather.js:42-47`
+- **DESCRIPTION:** `_isSyncing` guard flag added with proper `try/finally` (line 47). In-memory state now only updates after confirmed DB upsert success. Concurrent calls return early.
 
 ### 2.4 Render fires after canvas hidden — FIXED
 - **SEVERITY:** ~~Medium~~ Resolved
@@ -67,13 +64,11 @@
 - **FILE:LINE:** `js/charts.js:1192-1203`
 - **DESCRIPTION:** Observer callback now checks `entry.target.closest('.view-panel')` for `active` class before calling `job.fn()`. Combined with 2.2 fix (disconnect on view switch), stale renders are fully prevented.
 
-### 2.5 Refresh during paginated Supabase load
-- **SEVERITY:** Medium
+### 2.5 Refresh during paginated Supabase load — FIXED
+- **SEVERITY:** ~~Medium~~ Resolved
 - **CATEGORY:** Race Condition
-- **FILE:LINE:** `js/app.js:21-26`
-- **DESCRIPTION:** When cache loads first, a background Supabase load starts. If `refresh()` is called while `_fetchAll()` is still paginating, `Filters.getFiltered()` operates on partially-loaded data.
-- **REPRODUCTION:** Cache hit + slow Supabase (2-3s latency). Second refresh fires mid-pagination, showing incomplete datasets.
-- **SUGGESTED FIX:** Only call `refresh()` after `loadFromSupabase()` has fully resolved (all pages fetched).
+- **FILE:LINE:** `js/app.js:17-32`
+- **DESCRIPTION:** Cache-hit path fires `refresh()` synchronously, then starts async Supabase load. The refresh guard (2.1) prevents overlapping refreshes with try/finally ensuring the flag always resets. `loadFromSupabase()` awaits all pages before returning, so the background refresh only fires with complete data.
 
 ---
 
@@ -85,13 +80,11 @@
 - **FILE:LINE:** `js/filters.js:347-358`
 - **DESCRIPTION:** `getFiltered()` now validates lot selections against data filtered without the lot filter. Stale lots are auto-removed from `state.lots` and their chip CSS class is cleared. Set deletion during `for...of` iteration is spec-safe.
 
-### 3.2 Filter state not visually confirmed on view return
-- **SEVERITY:** Medium
+### 3.2 Filter state not visually confirmed on view return — FIXED
+- **SEVERITY:** ~~Medium~~ Resolved
 - **CATEGORY:** Filter State / UX
-- **FILE:LINE:** `js/app.js:196-223`
-- **DESCRIPTION:** Berry and wine filters are independently maintained (`Filters.state` / `Filters.wineState`), which is by design (see 3.4). However, when returning to a view, filter chips and UI controls are not rebuilt to reflect the preserved state. Users may not realize previous filters are still active.
-- **REPRODUCTION:** Select Vintage 2024 + Syrah in Berry view. Switch to Wine view. Switch back to Berry. Filters are still active but the UI may not clearly indicate which ones.
-- **SUGGESTED FIX:** Rebuild filter chips UI in `setView()` when returning to a view, so preserved filters are visually confirmed.
+- **FILE:LINE:** `js/app.js:261`, `js/filters.js:373-386`
+- **DESCRIPTION:** `setView()` now calls `Filters.syncChipUI()` which toggles `.active` class on all chip containers (berry + wine) to match current filter state Sets. Also mitigates the pre-existing `clearAll()` broad `.chip` selector issue.
 
 ### 3.3 clearAll() resets grapeType and colorBy — NO BUG
 - **FILE:LINE:** `js/filters.js:185-201`
@@ -112,21 +105,17 @@
 - **REPRODUCTION:** Open DevTools. Run: `Auth.role = 'lab'; UploadManager.handleUpload(maliciousFile, document.getElementById('loader-status'))`.
 - **SUGGESTED FIX:** Create a server-side `/api/upload` endpoint that validates token role before allowing inserts. Update Supabase RLS policies to require authenticated claims.
 
-### 4.2 IP spoofing bypasses rate limiting
-- **SEVERITY:** High
+### 4.2 IP spoofing bypasses rate limiting — FIXED
+- **SEVERITY:** ~~High~~ Resolved
 - **CATEGORY:** Security / Rate Limit Bypass
-- **FILE:LINE:** `api/login.js:32`
-- **DESCRIPTION:** `x-forwarded-for` is used as-is for the rate-limit key, without splitting on commas. An attacker can vary the header value to get fresh rate-limit buckets.
-- **REPRODUCTION:** Send login attempts with different `x-forwarded-for` values: `192.168.1.100, proxy1`, then `192.168.1.101, proxy1`. Each gets 10 fresh attempts.
-- **SUGGESTED FIX:** Extract the leftmost IP: `req.headers['x-forwarded-for']?.split(',')[0].trim()`.
+- **FILE:LINE:** `api/login.js:32-33`
+- **DESCRIPTION:** IP extraction now prefers `x-real-ip` (set by Vercel), falls back to `x-forwarded-for` split on comma with `trim()`. Line 33: `req.headers['x-real-ip'] || (fwd ? fwd.split(',')[0].trim() : null) || 'unknown'`.
 
-### 4.3 Role fallback defaults to 'admin' on token decode failure
-- **SEVERITY:** Low
+### 4.3 Role fallback defaults to 'admin' — FIXED
+- **SEVERITY:** ~~Low~~ Resolved
 - **CATEGORY:** Security / Defense-in-Depth
-- **FILE:LINE:** `js/auth.js:85-86`
-- **DESCRIPTION:** During login, the role is extracted from the token payload (`payload.role`), not localStorage. The `|| 'admin'` fallback on line 85 and the `catch` on line 86 only activate if the server returns a malformed token without a role field. The `init()` catch path (line 41) also defaults to admin, but immediately shows the login screen (line 46), blocking any privilege escalation. Incognito mode does NOT trigger this — modern browsers support localStorage in private browsing.
-- **REPRODUCTION:** Server returns a token with no `role` in its payload. Client decodes it and defaults to admin. Unlikely without a server-side bug.
-- **SUGGESTED FIX:** Change default from `'admin'` to `'viewer'` (least privilege) in both `auth.js:85-86` and `auth.js:41`.
+- **FILE:LINE:** `js/auth.js`, `api/verify.js`
+- **DESCRIPTION:** All 6 `'admin'` fallback locations changed to `'viewer'` (least privilege): auth.js initial property, init catch, verify response chain, login decode, login decode catch, logout reset, and server-side verify.js fallback. Only legitimate `'admin'` reference is the account definition in `api/login.js:56`.
 
 ### 4.4 In-memory rate limit lost across serverless instances
 - **SEVERITY:** Medium
@@ -164,12 +153,11 @@
 - **FILE:LINE:** `js/charts.js:50-57`
 - **DESCRIPTION:** `_pruneOrphans()` method now checks all cached instances against DOM, destroying and removing entries whose canvas no longer exists. Called from `App.setView()` on every view switch.
 
-### 5.3 _applyThemeToCharts() — API MISMATCH
-- **SEVERITY:** Low
+### 5.3 _applyThemeToCharts() — FIXED
+- **SEVERITY:** ~~Low~~ Resolved
 - **CATEGORY:** UI
-- **FILE:LINE:** `js/charts.js:80`
-- **DESCRIPTION:** `chart.update('none')` was changed to `chart.update({ duration: 400, easing: 'easeOutQuart' })` for C2 (theme transition animation). However, Chart.js 4.4.1 `update()` accepts a string mode, not an object. The object is silently ignored and default animation plays instead. Functionally harmless but doesn't achieve the intended 400ms easeOutQuart.
-- **SUGGESTED FIX:** Set `chart.options.animation = { duration: 400, easing: 'easeOutQuart' }` before calling `chart.update()`, or simply use `chart.update()` for default animation.
+- **FILE:LINE:** `js/charts.js:83-84`
+- **DESCRIPTION:** Now correctly sets `chart.options.animation = { duration: 400, easing: 'easeOutQuart' }` before calling `chart.update()`, using the proper Chart.js 4.x API.
 
 ### 5.4 pH outlier filter inconsistent across views — FIXED
 - **SEVERITY:** ~~Medium~~ Resolved
@@ -230,15 +218,37 @@
 - **File:** `js/charts.js` (legend rendering)
 - All legend items have `role="button"`, `tabindex="0"`, and `onkeydown` handler for Enter/Space. Applied to visible items, overflow items, and expand/collapse toggle. `event.preventDefault()` prevents page scroll on Space.
 
-## 8. C-TIER IMPLEMENTATION REVIEW
+## 8. NEW FINDINGS (Code Sweep)
+
+### 8.1 Weather API base URL is wrong — FIXED
+- **SEVERITY:** ~~Critical~~ Resolved
+- **CATEGORY:** Data Integrity
+- **FILE:LINE:** `js/weather.js:11`
+- **DESCRIPTION:** `_API_BASE` corrected from `api.open-meteo.com` to `archive-api.open-meteo.com` in commit `accba51`.
+
+### 8.2 Offline toast may overflow on narrow mobile screens — FIXED
+- **SEVERITY:** Low
+- **CATEGORY:** UI / Mobile
+- **FILE:LINE:** `css/styles.css` (`.offline-toast`)
+- **DESCRIPTION:** `white-space: nowrap` with no `max-width` constraint. Long cache timestamp text like "Usando datos en caché (última actualización: 23 mar, 15:30)" can exceed viewport on screens < 360px.
+- ~~**SUGGESTED FIX:**~~ Fixed in commit `accba51` — `max-width: 90vw; overflow: hidden; text-overflow: ellipsis` added.
+
+### 8.2 clearAll() broad .chip selector — MITIGATED
+- **CATEGORY:** Filter State
+- **FILE:LINE:** `js/filters.js:213`
+- **DESCRIPTION:** `document.querySelectorAll('.chip')` clears active class on ALL chips including wine chips. Pre-existing issue, now **mitigated** by `syncChipUI()` (3.2 fix) which re-syncs chip states on view return. No functional impact remains.
+
+---
+
+## 9. C-TIER IMPLEMENTATION REVIEW
 
 ### C1 Offline fallback notification — VERIFIED CORRECT
 - **Files:** `js/app.js:186-202`, `index.html`, `css/styles.css`
 - Toast shows "Usando datos en caché (última actualización: X)" with `es-MX` locale when Supabase fails. 6-second auto-dismiss. `#offline-toast` inside `#dashboard-content`, styled with slide-up animation.
 
-### C2 Chart theme transition — API MISMATCH (see 5.3)
-- **File:** `js/charts.js:80`
-- `chart.update({ duration: 400, easing: 'easeOutQuart' })` — Chart.js 4.4.1 ignores object argument. Default animation plays instead. See finding 5.3 for fix.
+### C2 Chart theme transition — VERIFIED CORRECT (fixed in 5.3)
+- **File:** `js/charts.js:83-84`
+- Now sets `chart.options.animation` before calling `chart.update()`, using the correct Chart.js 4.x API. 400ms easeOutQuart transition on theme toggle.
 
 ### C3 Upload duplicate detection — VERIFIED CORRECT
 - **File:** `js/upload.js:183-204`
@@ -252,27 +262,29 @@
 
 | Priority | ID | Severity | Category | Fix Effort |
 |----------|----|----------|----------|------------|
-| 1 | 4.1 | Critical | Security | Medium |
-| 2 | 4.2 | High | Security | Low |
-| 3 | 2.1 | Medium | Race Condition (incomplete) | Low (add try/finally) |
-| 4 | 3.2 | Medium | Filter State / UX | Medium |
-| 5 | 2.3 | Medium | Race Condition | Medium |
-| 6 | 2.5 | Medium | Race Condition | Low |
-| 7 | 4.4 | Medium | Security | Medium |
-| 8 | 4.5 | Medium | Security | Medium |
-| 9 | 4.3 | Low | Security / Defense-in-Depth | Low |
-| 10 | 5.3 | Low | UI (Chart.js API mismatch) | Low |
+| 1 | 4.1 | Critical | Security (client-only upload auth) | Medium |
+| 2 | 4.4 | Medium | Security (ephemeral rate limit) | Medium |
+| 3 | 4.5 | Medium | Security (no token revocation) | Medium |
 
 ### Resolved Items
 
 | ID | Category | Resolution |
 |----|----------|------------|
-| 5.1 | XSS | FIXED (A-tier) |
-| 3.1 | Filter State | FIXED — stale lot auto-cleanup |
+| 8.1 | Data Integrity | FIXED (`accba51`) — weather API URL corrected |
+| 2.1 | Race Condition | FIXED (`accba51`) — refresh guard with try/finally |
+| 5.3 | UI | FIXED (`accba51`) — Chart.js animation API corrected |
+| 8.2 | UI / Mobile | FIXED (`accba51`) — toast max-width 90vw |
+| 5.1 | XSS | FIXED — `_esc()` on all fields |
+| 3.1 | Filter State | FIXED — stale lot auto-cleanup in `getFiltered()` |
+| 3.2 | Filter State / UX | FIXED — `syncChipUI()` on view switch |
 | 2.2 | Memory Leak | FIXED — observer disconnect on view switch |
-| 2.4 | Race Condition | FIXED — active panel check |
-| 5.2 | Memory Leak | FIXED — `_pruneOrphans()` |
+| 2.4 | Race Condition | FIXED — active panel check in observer |
+| 5.2 | Memory Leak | FIXED — `_pruneOrphans()` on view switch |
 | 5.4 | Data Integrity | FIXED — pH filter centralized in `app.js` |
+| 4.2 | Security | FIXED — IP extraction splits `x-forwarded-for` |
+| 2.3 | Race Condition | FIXED — `_isSyncing` guard with try/finally |
+| 2.5 | Race Condition | FIXED — refresh guard with try/finally prevents overlap |
+| 4.3 | Security | FIXED — all 'admin' fallbacks changed to 'viewer' |
 | 6.1 | Data Integrity | FIXED — API schema validation |
 | 6.2 | Data Integrity | FIXED — GDD missing day threshold |
 | 6.3 | Data Integrity | FIXED — negative rainfall guard |

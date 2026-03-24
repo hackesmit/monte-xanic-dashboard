@@ -43,7 +43,7 @@ export default function handler(req, res) {
       res.status(401).json({ valid: false });
       return;
     }
-    res.status(200).json({ valid: true, role: payload.role || 'admin' });
+    res.status(200).json({ valid: true, role: payload.role || 'viewer' });
   } catch {
     res.status(400).json({ valid: false });
     return;
