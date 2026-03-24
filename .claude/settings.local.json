@@ -61,7 +61,12 @@
       "Bash(git config:*)",
       "Bash(git push:*)",
       "Bash(gh auth:*)",
-      "Bash(git remote:*)"
+      "Bash(git remote:*)",
+      "Bash(node -c js/app.js)",
+      "Bash(node -c js/upload.js)",
+      "Bash(node -c js/maps.js)",
+      "Bash(node -c js/config.js)",
+      "Bash(GIT_EDITOR=true git rebase --continue)"
     ]
   }
 }

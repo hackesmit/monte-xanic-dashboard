@@ -26,6 +26,16 @@ const App = {
           console.error('Supabase load failed:', err);
           this._showOfflineToast();
         });
+
+        // Weather: load from Supabase meteorology table now that connection is ready
+        WeatherStore.load().then(hasCache => {
+          const vintages = WeatherStore.getVintagesFromData();
+          if (!vintages.length) return;
+          WeatherStore.sync(vintages).then(() => {
+            if (this.currentView === 'vintage') this.refresh();
+          });
+          if (hasCache && this.currentView === 'vintage') this.refresh();
+        });
       }).catch(err => {
         console.error('Supabase init failed:', err);
         this._showOfflineToast();
@@ -256,6 +266,11 @@ const App = {
     const wineFilters = document.getElementById('wine-filters');
     if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer' || view === 'map') ? '' : 'none';
     if (wineFilters) wineFilters.style.display = (view === 'wine') ? '' : 'none';
+    // Map view uses its own ranch/metric selectors — hide all filters
+    if (view === 'map') {
+      if (berryFilters) berryFilters.style.display = 'none';
+      if (wineFilters) wineFilters.style.display = 'none';
+    }
 
     // Re-sync filter chip UI to reflect preserved state
     Filters.syncChipUI();
@@ -335,6 +350,14 @@ const App = {
         Explorer.init();
         Explorer.refreshAll();
         break;
+
+      case 'map': {
+        const vintageSet = Filters.state.vintages;
+        const mapVintage = vintageSet.size === 1 ? [...vintageSet][0] : null;
+        MapStore.aggregateBySection(DataStore.berryData, mapVintage);
+        MapStore.render();
+        break;
+      }
     }
 
     this._updateFilterFAB();

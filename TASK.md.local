@@ -1,0 +1,33 @@
+# Goal
+
+Integrate the Vineyard Quality Map (Phase 5) into the dashboard. `maps.js` (473 lines) is fully implemented but completely orphaned — no DOM, no CONFIG, no nav entry, no script tag. Wire it up end-to-end so users can view color-coded vineyard section heatmaps by metric.
+
+# Constraints
+
+- Vanilla JS only — no npm packages or frameworks
+- Spanish labels only — "Mapa" for the nav tab
+- Mobile responsive before considered complete
+- CDN-only dependencies (Chart.js 4.4.1, SheetJS 0.18.5)
+- File responsibilities: CONFIG additions → `config.js`, DOM → `index.html`, routing → `app.js`
+- Do not restructure or refactor existing views
+
+# Files likely involved
+
+| File | Action |
+|---|---|
+| `js/config.js` | Add `fieldLotToSection`, `fieldLotRanchPatterns`, `mapMetrics`, `vineyardSections` |
+| `index.html` | Add `<option value="map">Mapa</option>`, `#view-map` panel with DOM elements maps.js expects, `<script src="js/maps.js">` |
+| `js/app.js` | Add `case 'map':` to `refresh()` switch, handle filter visibility for map view |
+| `css/styles.css` | Map panel layout, SVG container sizing, section detail panel, mobile responsive rules |
+| `js/maps.js` | Bug fixes only if integration reveals issues — do NOT rewrite |
+
+# Acceptance criteria
+
+1. "Mapa" appears as 6th option in `#nav-select` dropdown
+2. Clicking "Mapa" shows the SVG vineyard map with sections color-coded by default metric (Brix)
+3. Metric selector switches between Brix, pH, tANT, TA — map recolors
+4. Clicking a section opens the detail panel with per-section KPIs and lot breakdown
+5. Ranch selector switches between VDG (Monte Xanic), VON (Kompali), and other ranches
+6. Color scale legend renders below the map
+7. Layout is responsive — single column on mobile, side panel on desktop
+8. No console errors on load or interaction
