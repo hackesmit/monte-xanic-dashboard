@@ -118,7 +118,6 @@
       <option value="vintage">Vendimias</option>
       <option value="map">Mapa</option>
       <option value="explorer">Explorador</option>
-      <option value="map">Mapa</option>
     </select>
 
     <button class="mobile-filter-toggle" id="mobile-filter-toggle" onclick="App.toggleMobileFilters()">
@@ -303,7 +302,7 @@
         <div class="chart-card chart-wide">
           <button class="chart-export-btn" onclick="Charts.exportChart('chartOrigen', 'Muestras por Origen')" title="Exportar como PNG">&#x2913; PNG</button>
           <div class="chart-title">Muestras por Origen</div>
-          <div class="chart-sub">Distribución de muestras por viñedo</div>
+          <div class="chart-sub">Número de muestras por viñedo</div>
           <div class="chart-h chart-h-md" style="height:260px"><canvas id="chartOrigen"></canvas></div>
         </div>
       </div>
@@ -417,6 +416,16 @@
         <div class="kpi-card"><div class="kpi-label">Muestras</div><div class="kpi-value" id="wine-kpi-count">—</div></div>
       </div>
 
+      <div class="section-label">Fenólicos por Varietal</div>
+      <div class="charts-grid">
+        <div class="chart-card chart-wide">
+          <button class="chart-export-btn" onclick="Charts.exportChart('chartWinePhenolics', 'Fenolicos por Varietal')" title="Exportar como PNG">&#x2913; PNG</button>
+          <div class="chart-title">Fenólicos por Varietal</div>
+          <div class="chart-sub">Promedio de recepción por compuesto</div>
+          <div class="chart-h chart-h-lg" style="height:320px"><canvas id="chartWinePhenolics"></canvas></div>
+        </div>
+      </div>
+
       <div class="section-label">Recepción de Tanque · <span id="wine-table-count"></span></div>
       <div class="table-wrap">
         <div class="table-scroll">
@@ -479,6 +488,12 @@
           <div class="chart-title">tANT: Baya vs Vino</div>
           <div class="chart-sub">Antocianinas totales — porcentaje de extracción</div>
           <div class="chart-h chart-h-lg" style="height:320px"><canvas id="chartExtraction"></canvas></div>
+        </div>
+        <div class="chart-card chart-wide">
+          <button class="chart-export-btn" onclick="Charts.exportChart('chartExtractionPct', 'Tasa de Extraccion')" title="Exportar como PNG">&#x2913; PNG</button>
+          <div class="chart-title">Tasa de Extracción (%)</div>
+          <div class="chart-sub">Porcentaje de antocianinas extraídas por lote</div>
+          <div class="chart-h chart-h-lg" style="height:320px"><canvas id="chartExtractionPct"></canvas></div>
         </div>
       </div>
 
