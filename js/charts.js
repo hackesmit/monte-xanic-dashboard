@@ -309,6 +309,7 @@ const Charts = {
 
     const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     const labels = Object.keys(byVar).sort((a, b) => avg(byVar[b]) - avg(byVar[a]));
+    const displayLabels = labels.map(v => `${v} (n=${byVar[v].length})`);
     const values = labels.map(v => parseFloat(avg(byVar[v]).toFixed(2)));
     const bgColors = labels.map(v => (CONFIG.varietyColors[v] || '#888') + '66');
     const bdColors = labels.map(v => CONFIG.varietyColors[v] || '#888');
@@ -316,7 +317,7 @@ const Charts = {
     this._createChart(canvasId, canvas, {
       type: 'bar',
       data: {
-        labels,
+        labels: displayLabels,
         datasets: [{
           label,
           data: values,
@@ -338,7 +339,11 @@ const Charts = {
             titleColor: '#DDB96E',
             bodyColor: '#D8D0C4',
             callbacks: {
-              label: (ctx) => `${label}: ${ctx.parsed.x}`
+              label: (ctx) => {
+                const variety = labels[ctx.dataIndex];
+                const n = byVar[variety] ? byVar[variety].length : 0;
+                return `${label}: ${ctx.parsed.x} (n=${n})`;
+              }
             }
           }
         },
@@ -426,8 +431,8 @@ const Charts = {
     });
   },
 
-  // Create doughnut chart (origin distribution)
-  createDoughnut(canvasId, data) {
+  // Create horizontal bar chart (origin sample count, sorted descending)
+  createOriginCountBar(canvasId, data) {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -440,41 +445,50 @@ const Charts = {
       }
     });
 
-    const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    const values = labels.map(l => counts[l]);
-    const colors = labels.map(l => CONFIG.resolveOriginColor(l));
+    const origins = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const values = origins.map(o => counts[o]);
+    const shortLabels = origins.map(o => Filters.shortenOrigin(o));
+    const bgColors = origins.map(o => CONFIG.resolveOriginColor(o) + '66');
+    const bdColors = origins.map(o => CONFIG.resolveOriginColor(o));
 
     this._createChart(canvasId, canvas, {
-      type: 'doughnut',
+      type: 'bar',
       data: {
-        labels,
+        labels: shortLabels,
         datasets: [{
+          label: 'Muestras',
           data: values,
-          backgroundColor: colors.map(c => c + 'CC'),
-          borderColor: '#161616',
-          borderWidth: 2
+          backgroundColor: bgColors,
+          borderColor: bdColors,
+          borderWidth: 1
         }]
       },
       options: {
+        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: 'right',
-            labels: {
-              color: CONFIG.chartDefaults.tickColor,
-              font: { size: 9, family: 'Sackers Gothic Medium' },
-              boxWidth: 10,
-              padding: 10
-            }
-          },
+          legend: { display: false },
           tooltip: {
             backgroundColor: '#1C1C1C',
             borderColor: 'rgba(196,160,96,0.5)',
             borderWidth: 1,
             titleColor: '#DDB96E',
-            bodyColor: '#D8D0C4'
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => origins[items[0].dataIndex] || items[0].label,
+              label: (ctx) => `Muestras: ${ctx.parsed.x}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' }, stepSize: 1 },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
           }
         },
         animation: { duration: 300 }
@@ -823,6 +837,212 @@ const Charts = {
             title: { display: true, text: 'tANT (ppm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid: { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Extraction percentage horizontal bar — color-coded by quality band
+  createExtractionPctChart(canvasId, berryData, wineData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    // Reuse same pair-building logic from createExtractionChart
+    const pairs = [];
+    const mapping = CONFIG.berryToWine;
+    const berryByLot = {};
+    berryData.forEach(d => {
+      if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
+      const lotCode = d.lotCode;
+      if (!berryByLot[lotCode] || (d.daysPostCrush || 0) > (berryByLot[lotCode].daysPostCrush || 0)) {
+        berryByLot[lotCode] = d;
+      }
+    });
+    const wineByCodigo = {};
+    wineData.forEach(d => {
+      if (d.codigoBodega && d.antoWX !== null && typeof d.antoWX === 'number') {
+        wineByCodigo[d.codigoBodega] = d;
+      }
+    });
+    Object.entries(mapping).forEach(([berryLot, wineLots]) => {
+      const berry = berryByLot[berryLot];
+      if (!berry) return;
+      wineLots.forEach(wl => {
+        const wine = wineByCodigo[wl];
+        if (wine && berry.tANT > 0) {
+          const pct = (wine.antoWX / berry.tANT) * 100;
+          pairs.push({
+            berryLot, wineLot: wl,
+            berryTANT: berry.tANT, wineTANT: wine.antoWX,
+            variety: berry.variety, appellation: berry.appellation,
+            pct: parseFloat(pct.toFixed(1))
+          });
+        }
+      });
+    });
+
+    if (pairs.length === 0) {
+      this._drawNoData(canvas, 'Cargue ambos archivos para ver la extracción');
+      return;
+    }
+
+    // Sort descending by extraction %
+    pairs.sort((a, b) => b.pct - a.pct);
+    const labels = pairs.map(p => p.berryLot);
+    const values = pairs.map(p => p.pct);
+    const bgColors = pairs.map(p => {
+      if (p.pct > 50) return 'rgba(76,175,80,0.6)';
+      if (p.pct >= 30) return 'rgba(196,160,96,0.6)';
+      return 'rgba(220,53,69,0.6)';
+    });
+    const bdColors = pairs.map(p => {
+      if (p.pct > 50) return '#4CAF50';
+      if (p.pct >= 30) return '#C4A060';
+      return '#DC3545';
+    });
+
+    this._createChart(canvasId, canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Extracción %',
+          data: values,
+          backgroundColor: bgColors,
+          borderColor: bdColors,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => {
+                const p = pairs[items[0].dataIndex];
+                return p ? p.berryLot : '';
+              },
+              label: (ctx) => {
+                const p = pairs[ctx.dataIndex];
+                if (!p) return '';
+                return [
+                  `Varietal: ${p.variety}`,
+                  `Origen: ${p.appellation || '—'}`,
+                  `tANT Baya: ${p.berryTANT} ppm`,
+                  `tANT Vino: ${p.wineTANT} ppm`,
+                  `Extracción: ${p.pct}%`
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Extracción (%)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor },
+            min: 0,
+            max: 100
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 8, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Wine phenolics grouped bar: avg tANT, fANT, pTAN, IPT by variety
+  createWinePhenolicsChart(canvasId, wineData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (!wineData.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
+
+    const compounds = [
+      { key: 'antoWX', label: 'tANT', color: '#C4A060' },
+      { key: 'freeANT', label: 'fANT', color: '#9B59B6' },
+      { key: 'pTAN', label: 'pTAN', color: '#E07060' },
+      { key: 'iptSpica', label: 'IPT', color: '#60A8C0' }
+    ];
+
+    // Group by variety
+    const byVar = {};
+    wineData.forEach(d => {
+      const v = d.variety || d.variedad;
+      if (!v) return;
+      if (!byVar[v]) byVar[v] = { antoWX: [], freeANT: [], pTAN: [], iptSpica: [] };
+      compounds.forEach(c => {
+        const val = d[c.key];
+        if (typeof val === 'number' && !isNaN(val)) byVar[v][c.key].push(val);
+      });
+    });
+
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    // Sort varieties by total phenolic magnitude (tANT avg descending)
+    const varieties = Object.keys(byVar)
+      .filter(v => compounds.some(c => byVar[v][c.key].length > 0))
+      .sort((a, b) => avg(byVar[b].antoWX) - avg(byVar[a].antoWX));
+
+    if (!varieties.length) { this._drawNoData(canvas, 'No hay datos fenólicos disponibles'); return; }
+
+    const datasets = compounds.map(c => ({
+      label: c.label,
+      data: varieties.map(v => parseFloat(avg(byVar[v][c.key]).toFixed(1))),
+      backgroundColor: c.color + '88',
+      borderColor: c.color,
+      borderWidth: 1
+    }));
+
+    this._createChart(canvasId, canvas, {
+      type: 'bar',
+      data: { labels: varieties, datasets },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 9, family: 'Sackers Gothic Medium' },
+              boxWidth: 10,
+              padding: 10
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.x}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
           }
         },
         animation: { duration: 300 }
@@ -1485,7 +1705,7 @@ const Charts = {
     this._lazyRender('chartScatter', () => this.createPureScatter('chartScatter', data, 'pH', 'brix', 'pH', 'Brix'));
     this._lazyRender('chartVarBrix', () => this.createBarChart('chartVarBrix', data, 'brix', 'Brix Promedio'));
     this._lazyRender('chartVarAnt', () => this.createBarChart('chartVarAnt', data, 'tANT', 'tANT Promedio'));
-    this._lazyRender('chartOrigen', () => this.createDoughnut('chartOrigen', data));
+    this._lazyRender('chartOrigen', () => this.createOriginCountBar('chartOrigen', data));
     this._lazyRender('chartOriginBrix', () => this.createOriginBarChart('chartOriginBrix', data, 'brix', 'Brix Promedio'));
     this._lazyRender('chartOriginAnt', () => this.createOriginBarChart('chartOriginAnt', data, 'tANT', 'tANT Promedio'));
     this._lazyRender('chartOriginPH', () => this.createOriginBarChart('chartOriginPH', data, 'pH', 'pH Promedio'));
