@@ -204,15 +204,32 @@ const UploadManager = {
 
   async upsertRows(table, rows, conflictCol) {
     if (!rows.length) return { count: 0, error: null };
-    const sb = DataStore.supabase;
-    if (!sb) return { count: 0, error: 'Supabase no inicializado' };
+
+    // Route through server-side endpoint for role validation
+    const token = Auth.getToken();
+    if (!token) return { count: 0, error: 'No autorizado — inicie sesión' };
 
     let total = 0;
+    // Batch into chunks of 500
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
-      const { error } = await sb.from(table).upsert(chunk, { onConflict: conflictCol });
-      if (error) return { count: total, error: error.message };
-      total += chunk.length;
+      try {
+        const resp = await fetch('/api/upload', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-session-token': token
+          },
+          body: JSON.stringify({ table, rows: chunk, conflict: conflictCol })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          return { count: total, error: data.error || 'Error al insertar datos' };
+        }
+        total += data.count || chunk.length;
+      } catch (err) {
+        return { count: total, error: err.message };
+      }
     }
     return { count: total, error: null };
   },
@@ -221,6 +238,12 @@ const UploadManager = {
   async handleUpload(file, statusEl) {
     if (this._uploading) {
       this._setStatus(statusEl, 'error', 'Carga en progreso, espere...');
+      return;
+    }
+
+    // Server-side role check will enforce this, but fail fast on client
+    if (!Auth.canUpload()) {
+      this._setStatus(statusEl, 'error', '✗ Sin permisos para subir datos.');
       return;
     }
 
@@ -330,10 +353,8 @@ const UploadManager = {
               .filter(l => codeToId[l.report_code])
               .map(l => ({ reception_id: codeToId[l.report_code], lot_code: l.lot_code, lot_position: l.lot_position }));
             if (lotRows.length) {
-              const sb = DataStore.supabase;
-              for (let i = 0; i < lotRows.length; i += 500) {
-                await sb.from('reception_lots').insert(lotRows.slice(i, i + 500));
-              }
+              const { error: lotErr } = await this.upsertRows('reception_lots', lotRows, null);
+              if (lotErr) console.error('[upload] reception_lots error:', lotErr);
             }
           }
         }
