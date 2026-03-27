@@ -101,6 +101,15 @@ const Auth = {
   },
 
   logout() {
+    // Revoke token server-side before clearing locally
+    const token = localStorage.getItem(this._tokenKey);
+    if (token) {
+      fetch('/api/logout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token })
+      }).catch(() => {});
+    }
     localStorage.removeItem(this._tokenKey);
     localStorage.removeItem(this._roleKey);
     this.role = 'viewer';
