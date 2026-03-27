@@ -482,53 +482,205 @@ const Charts = {
     });
   },
 
+  // Radar chart: per-origin chemistry profile comparison
+  createOriginRadarChart(canvasId, data) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
+
+    const metrics = [
+      { key: 'brix', label: 'Brix' },
+      { key: 'pH', label: 'pH' },
+      { key: 'ta', label: 'AT' },
+      { key: 'tANT', label: 'tANT' },
+      { key: 'berryFW', label: 'Peso Baya' }
+    ];
+
+    // Compute averages per origin per metric
+    const byOrigin = {};
+    data.forEach(d => {
+      const o = d.appellation;
+      if (!o) return;
+      if (!byOrigin[o]) byOrigin[o] = {};
+      metrics.forEach(m => {
+        const val = d[m.key];
+        if (typeof val === 'number' && !isNaN(val)) {
+          if (!byOrigin[o][m.key]) byOrigin[o][m.key] = [];
+          byOrigin[o][m.key].push(val);
+        }
+      });
+    });
+
+    const origins = Object.keys(byOrigin).filter(o =>
+      metrics.some(m => byOrigin[o][m.key] && byOrigin[o][m.key].length > 0)
+    );
+    if (!origins.length) { this._drawNoData(canvas, 'No hay datos de origen disponibles'); return; }
+
+    const avg = arr => arr && arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+
+    // Compute raw averages
+    const rawAvgs = {};
+    origins.forEach(o => {
+      rawAvgs[o] = {};
+      metrics.forEach(m => { rawAvgs[o][m.key] = avg(byOrigin[o][m.key]); });
+    });
+
+    // Normalize each metric to 0-100 across origins
+    const mins = {}, maxs = {};
+    metrics.forEach(m => {
+      const vals = origins.map(o => rawAvgs[o][m.key]).filter(v => v !== null);
+      mins[m.key] = Math.min(...vals);
+      maxs[m.key] = Math.max(...vals);
+    });
+    const normalize = (val, key) => {
+      if (val === null) return 0;
+      const range = maxs[key] - mins[key];
+      return range > 0 ? ((val - mins[key]) / range) * 100 : 50;
+    };
+
+    const datasets = origins.map(o => {
+      const color = CONFIG.resolveOriginColor(o);
+      return {
+        label: Filters.shortenOrigin(o),
+        data: metrics.map(m => parseFloat(normalize(rawAvgs[o][m.key], m.key).toFixed(1))),
+        borderColor: color,
+        backgroundColor: color + '22',
+        pointBackgroundColor: color,
+        pointBorderColor: color,
+        pointRadius: 3,
+        borderWidth: 2,
+        fill: true
+      };
+    });
+
+    this._createChart(canvasId, canvas, {
+      type: 'radar',
+      data: {
+        labels: metrics.map(m => m.label),
+        datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top',
+            labels: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 9, family: 'Sackers Gothic Medium' },
+              boxWidth: 10,
+              padding: 8
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              label: (ctx) => {
+                const origin = origins[ctx.datasetIndex];
+                const metric = metrics[ctx.dataIndex];
+                const rawVal = rawAvgs[origin] ? rawAvgs[origin][metric.key] : null;
+                return `${Filters.shortenOrigin(origin)}: ${rawVal !== null ? rawVal.toFixed(2) : '—'}`;
+              }
+            }
+          }
+        },
+        scales: {
+          r: {
+            angleLines: { color: CONFIG.chartDefaults.gridColor },
+            grid: { color: CONFIG.chartDefaults.gridColor },
+            ticks: { display: false },
+            pointLabels: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 10, family: 'Sackers Gothic Medium' }
+            },
+            suggestedMin: 0,
+            suggestedMax: 100
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
   // Vintage comparison chart: overlay N vintages for same plots
   createVintageComparison(canvasId, data, yField, yLabel) {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
-    // Group by lot code and vintage
-    const byLot = {};
+    // Group ALL data by vintage for scatter + trend
+    const byVintage = {};
     data.forEach(d => {
-      const lot = d.lotCode;
       const v = d.vintage;
       const x = d.daysPostCrush;
       const y = d[yField];
-      if (!lot || !v || x === null || y === null || typeof x !== 'number' || typeof y !== 'number') return;
-      const key = lot;
-      if (!byLot[key]) byLot[key] = {};
-      if (!byLot[key][v]) byLot[key][v] = [];
-      byLot[key][v].push({ x, y, sampleId: d.sampleId, variety: d.variety, appellation: d.appellation, vintage: v });
+      if (!v || x === null || y === null || typeof x !== 'number' || typeof y !== 'number') return;
+      if (!byVintage[v]) byVintage[v] = [];
+      byVintage[v].push({ x, y, sampleId: d.sampleId, lotCode: d.lotCode, variety: d.variety, appellation: d.appellation, vintage: v });
     });
 
-    // Only keep lots that appear in 2+ vintages
+    const vintages = Object.keys(byVintage).map(Number).sort();
+    if (!vintages.length) {
+      this._drawNoData(canvas, 'No hay datos comparables entre vendimias');
+      return;
+    }
+
     const datasets = [];
 
-    Object.entries(byLot).forEach(([lot, vintages]) => {
-      const vkeys = Object.keys(vintages).sort();
-      if (vkeys.length < 2) return;
-      vkeys.forEach(v => {
-        const color = this._vintageColor(Number(v));
-        const pts = vintages[v].sort((a, b) => a.x - b.x);
-        datasets.push({
-          label: `${lot} (${v})`,
-          data: pts,
-          borderColor: color,
-          backgroundColor: color + '88',
-          pointRadius: CONFIG.chartDefaults.pointRadius,
-          pointHoverRadius: CONFIG.chartDefaults.pointHoverRadius,
-          borderWidth: this.showLines ? 2 : 0,
-          showLine: this.showLines,
-          tension: 0.3,
-          fill: false
-        });
+    // Scatter datasets per vintage (individual samples)
+    vintages.forEach(v => {
+      const color = this._vintageColor(v);
+      const pts = byVintage[v].sort((a, b) => a.x - b.x);
+      datasets.push({
+        label: String(v),
+        data: pts,
+        borderColor: color,
+        backgroundColor: color + '66',
+        pointRadius: this._mobileRadius(),
+        pointHoverRadius: CONFIG.chartDefaults.pointHoverRadius,
+        borderWidth: 0,
+        showLine: false,
+        fill: false
       });
     });
 
-    if (datasets.length === 0) {
-      this._drawNoData(canvas, 'No hay datos comparables entre vendimias');
-      return;
+    // Trend lines per vintage (binned moving average, 5-day bins)
+    if (vintages.length >= 2) {
+      vintages.forEach(v => {
+        const pts = byVintage[v];
+        if (pts.length < 4) return;
+        const binSize = 5;
+        const bins = {};
+        pts.forEach(p => {
+          const bin = Math.round(p.x / binSize) * binSize;
+          if (!bins[bin]) bins[bin] = [];
+          bins[bin].push(p.y);
+        });
+        const trendPts = Object.keys(bins).map(Number).sort((a, b) => a - b)
+          .filter(bin => bins[bin].length >= 2)
+          .map(bin => ({ x: bin, y: parseFloat((bins[bin].reduce((a, b) => a + b, 0) / bins[bin].length).toFixed(2)) }));
+        if (trendPts.length < 2) return;
+
+        const color = this._vintageColor(v);
+        datasets.push({
+          label: `${v} tendencia`,
+          data: trendPts,
+          borderColor: color,
+          backgroundColor: 'transparent',
+          pointRadius: 0,
+          borderWidth: 2.5,
+          borderDash: [6, 3],
+          showLine: true,
+          tension: 0.4,
+          fill: false
+        });
+      });
     }
 
     this._createChart(canvasId, canvas, {
@@ -545,7 +697,8 @@ const Charts = {
               color: CONFIG.chartDefaults.tickColor,
               font: { size: 9, family: 'Sackers Gothic Medium' },
               boxWidth: 10,
-              padding: 8
+              padding: 8,
+              filter: (item) => !item.text.includes('tendencia')
             }
           },
           tooltip: this.tooltipConfig()
@@ -1006,6 +1159,55 @@ const Charts = {
     ctx.fillText(msg, canvas.width / 2, canvas.height / 2);
   },
 
+  // Show export format menu (PNG / PDF) anchored to button
+  showExportMenu(canvasId, title, btn) {
+    // Close any existing menu and its listener
+    document.querySelectorAll('.chart-export-menu').forEach(m => m.remove());
+    if (this._exportMenuHandler) {
+      document.removeEventListener('click', this._exportMenuHandler);
+      this._exportMenuHandler = null;
+    }
+
+    const menu = document.createElement('div');
+    menu.className = 'chart-export-menu';
+    menu.innerHTML =
+      '<button data-fmt="png">PNG</button>' +
+      '<button data-fmt="pdf">PDF</button>';
+    menu.addEventListener('click', (e) => {
+      const fmt = e.target.getAttribute('data-fmt');
+      if (fmt === 'png') this.exportChart(canvasId, title);
+      if (fmt === 'pdf') this.exportChartPDF(canvasId, title);
+      menu.remove();
+      if (this._exportMenuHandler) {
+        document.removeEventListener('click', this._exportMenuHandler);
+        this._exportMenuHandler = null;
+      }
+    });
+
+    // Position relative to chart-card (which already has position: relative)
+    const card = btn.closest('.chart-card');
+    if (card) {
+      menu.style.top = (btn.offsetTop + btn.offsetHeight + 4) + 'px';
+      menu.style.right = '12px';
+      menu.style.position = 'absolute';
+      card.appendChild(menu);
+    } else {
+      btn.appendChild(menu);
+    }
+
+    // Close on outside click (next tick to avoid immediate close)
+    setTimeout(() => {
+      this._exportMenuHandler = (e) => {
+        if (!menu.contains(e.target) && e.target !== btn) {
+          menu.remove();
+          document.removeEventListener('click', this._exportMenuHandler);
+          this._exportMenuHandler = null;
+        }
+      };
+      document.addEventListener('click', this._exportMenuHandler);
+    }, 0);
+  },
+
   // Export a chart canvas as PNG with branded background and watermark
   exportChart(canvasId, title) {
     const chart = this.instances[canvasId];
@@ -1066,6 +1268,49 @@ const Charts = {
       document.body.removeChild(link);
     };
     chartImg.src = chart.toBase64Image('image/png', 1);
+  },
+
+  exportChartPDF(canvasId, title) {
+    if (typeof window.jspdf === 'undefined') {
+      console.error('[Charts] jsPDF no disponible');
+      return;
+    }
+    const chart = this.instances[canvasId];
+    const srcCanvas = document.getElementById(canvasId);
+    if (!srcCanvas || !chart) return;
+
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pw = pdf.internal.pageSize.getWidth();
+    const ph = pdf.internal.pageSize.getHeight();
+
+    // Dark background
+    pdf.setFillColor(22, 22, 22);
+    pdf.rect(0, 0, pw, ph, 'F');
+
+    // Title
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(14);
+    pdf.text(title, 15, 18);
+
+    // Gold separator
+    pdf.setDrawColor(196, 160, 96);
+    pdf.setLineWidth(0.3);
+    pdf.line(15, 22, pw - 15, 22);
+
+    // Chart image
+    const imgData = chart.toBase64Image('image/png', 1);
+    const chartW = pw - 30;
+    const chartH = ph - 50;
+    pdf.addImage(imgData, 'PNG', 15, 26, chartW, chartH);
+
+    // Watermark
+    pdf.setTextColor(196, 160, 96);
+    pdf.setFontSize(8);
+    pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
+
+    const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+    pdf.save(`monte-xanic-${safeName}.pdf`);
   },
 
   // ── Explorer Parameterized Charts ──────────────────────────────
@@ -1245,6 +1490,7 @@ const Charts = {
     this._lazyRender('chartOriginAnt', () => this.createOriginBarChart('chartOriginAnt', data, 'tANT', 'tANT Promedio'));
     this._lazyRender('chartOriginPH', () => this.createOriginBarChart('chartOriginPH', data, 'pH', 'pH Promedio'));
     this._lazyRender('chartOriginTA', () => this.createOriginBarChart('chartOriginTA', data, 'ta', 'AT Promedio'));
+    this._lazyRender('chartOriginRadar', () => this.createOriginRadarChart('chartOriginRadar', data));
   },
 
   // ── Evolution Chart (WineXRay-style) ─────────────────────────
