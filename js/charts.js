@@ -710,16 +710,10 @@ const Charts = {
   },
 
   // Extraction comparison: berry tANT vs wine tANT
-  createExtractionChart(canvasId, berryData, wineData) {
-    this.destroy(canvasId);
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-
-    // Build extraction pairs using berry→wine mapping
+  // Shared helper: build berry↔wine extraction pairs from berryToWine mapping
+  _buildExtractionPairs(berryData, wineData) {
     const pairs = [];
     const mapping = CONFIG.berryToWine;
-
-    // Group berry data by lot (last measurement before harvest)
     const berryByLot = {};
     berryData.forEach(d => {
       if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
@@ -728,33 +722,37 @@ const Charts = {
         berryByLot[lotCode] = d;
       }
     });
-
-    // Build wine lookup by code
     const wineByCodigo = {};
     wineData.forEach(d => {
       if (d.codigoBodega && d.antoWX !== null && typeof d.antoWX === 'number') {
         wineByCodigo[d.codigoBodega] = d;
       }
     });
-
-    // Match berry→wine
     Object.entries(mapping).forEach(([berryLot, wineLots]) => {
       const berry = berryByLot[berryLot];
-      if (!berry) return;
+      if (!berry || berry.tANT <= 0) return;
       wineLots.forEach(wl => {
         const wine = wineByCodigo[wl];
         if (wine) {
+          const pct = (wine.antoWX / berry.tANT) * 100;
           pairs.push({
-            berryLot,
-            wineLot: wl,
-            berryTANT: berry.tANT,
-            wineTANT: wine.antoWX,
-            variety: berry.variety,
-            extraction: wine.antoWX && berry.tANT ? ((wine.antoWX / berry.tANT) * 100).toFixed(1) : null
+            berryLot, wineLot: wl,
+            berryTANT: berry.tANT, wineTANT: wine.antoWX,
+            variety: berry.variety, appellation: berry.appellation,
+            pct: parseFloat(pct.toFixed(1))
           });
         }
       });
     });
+    return pairs;
+  },
+
+  createExtractionChart(canvasId, berryData, wineData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const pairs = this._buildExtractionPairs(berryData, wineData);
 
     if (pairs.length === 0) {
       this._drawNoData(canvas, 'Cargue ambos archivos para ver la comparación');
@@ -806,8 +804,8 @@ const Charts = {
             callbacks: {
               afterBody: (items) => {
                 const idx = items[0]?.dataIndex;
-                if (idx !== undefined && pairs[idx]?.extraction) {
-                  return [`Extracción: ${pairs[idx].extraction}%`];
+                if (idx !== undefined && pairs[idx]?.pct) {
+                  return [`Extracción: ${pairs[idx].pct}%`];
                 }
                 return [];
               }
@@ -1043,6 +1041,196 @@ const Charts = {
             title: { display: true, text: 'Precipitación (mm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid:  { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Harvest calendar: horizontal floating bars per variety + weather overlay
+  createHarvestCalendar(canvasId, berryData, wineData, vintage) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    if (!vintage) { this._drawNoData(canvas, 'Seleccione una vendimia para ver el calendario'); return; }
+
+    // Extract harvest events from berry data with crushDate
+    const events = [];
+    berryData.forEach(d => {
+      if (!d.crushDate || !d.variety) return;
+      const v = Number(d.vintage);
+      if (v !== Number(vintage)) return;
+      const day = typeof WeatherStore !== 'undefined' ? WeatherStore.dayOfSeason(d.crushDate) : null;
+      if (!day || day < 1 || day > 150) return;
+      events.push({ variety: d.variety, day, brix: d.brix, tANT: d.tANT, lotCode: d.lotCode, appellation: d.appellation });
+    });
+
+    if (!events.length) { this._drawNoData(canvas, 'Sin fechas de cosecha para esta vendimia'); return; }
+
+    // Group by variety → earliest/latest day, averages
+    const byVar = {};
+    events.forEach(e => {
+      if (!byVar[e.variety]) byVar[e.variety] = { days: [], brix: [], tANT: [], lots: new Set() };
+      byVar[e.variety].days.push(e.day);
+      if (typeof e.brix === 'number') byVar[e.variety].brix.push(e.brix);
+      if (typeof e.tANT === 'number') byVar[e.variety].tANT.push(e.tANT);
+      if (e.lotCode) byVar[e.variety].lots.add(e.lotCode);
+    });
+
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    const varieties = Object.keys(byVar).sort((a, b) => Math.min(...byVar[a].days) - Math.min(...byVar[b].days));
+    const harvestMeta = varieties.map(v => ({
+      variety: v,
+      start: Math.min(...byVar[v].days),
+      end: Math.max(...byVar[v].days),
+      avgBrix: avg(byVar[v].brix),
+      avgTANT: avg(byVar[v].tANT),
+      lotCount: byVar[v].lots.size
+    }));
+
+    // Harvest bar dataset (floating bars)
+    const harvestData = harvestMeta.map(h => [h.start, h.end]);
+    const bgColors = varieties.map(v => (CONFIG.varietyColors[v] || '#888') + 'AA');
+    const bdColors = varieties.map(v => CONFIG.varietyColors[v] || '#888');
+
+    const datasets = [{
+      label: 'Cosecha',
+      data: harvestData,
+      backgroundColor: bgColors,
+      borderColor: bdColors,
+      borderWidth: 1,
+      borderSkipped: false,
+      barPercentage: 0.7,
+      yAxisID: 'y'
+    }];
+
+    // Weather overlay on secondary axis
+    if (typeof WeatherStore !== 'undefined') {
+      const weatherRows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`);
+      if (weatherRows.length) {
+        // Temperature line
+        const tempPts = weatherRows
+          .filter(r => r.temp_avg !== null)
+          .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.temp_avg }));
+        if (tempPts.length) {
+          datasets.push({
+            type: 'line',
+            label: 'Temp (°C)',
+            data: tempPts,
+            borderColor: 'rgba(96,168,192,0.5)',
+            backgroundColor: 'transparent',
+            pointRadius: 0,
+            borderWidth: 1.5,
+            tension: 0.3,
+            yAxisID: 'y2',
+            xAxisID: 'x',
+            order: 1
+          });
+        }
+        // Rainfall bars
+        const rainPts = weatherRows
+          .filter(r => r.rainfall_mm > 0)
+          .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.rainfall_mm }));
+        if (rainPts.length) {
+          datasets.push({
+            type: 'bar',
+            label: 'Lluvia (mm)',
+            data: rainPts,
+            backgroundColor: 'rgba(96,168,192,0.15)',
+            borderColor: 'rgba(96,168,192,0.3)',
+            borderWidth: 1,
+            barPercentage: 1.0,
+            categoryPercentage: 1.0,
+            yAxisID: 'y2',
+            xAxisID: 'x',
+            order: 2
+          });
+        }
+      }
+    }
+
+    // Month label formatter for x-axis
+    const monthNames = ['Jul', 'Ago', 'Sep', 'Oct', 'Nov'];
+    const dayToLabel = (day) => {
+      const d = new Date(Date.UTC(vintage, 6, 1));
+      d.setUTCDate(d.getUTCDate() + day - 1);
+      return `${d.getUTCDate()} ${monthNames[d.getUTCMonth() - 6] || ''}`;
+    };
+
+    this._createChart(canvasId, canvas, {
+      type: 'bar',
+      data: { labels: varieties, datasets },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 9, family: 'Sackers Gothic Medium' },
+              boxWidth: 10, padding: 8,
+              filter: (item) => item.text !== 'Cosecha'
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => {
+                const idx = items[0].dataIndex;
+                if (idx !== undefined && harvestMeta[idx]) return harvestMeta[idx].variety;
+                return items[0].dataset.label || '';
+              },
+              label: (ctx) => {
+                if (ctx.dataset.label === 'Cosecha') {
+                  const h = harvestMeta[ctx.dataIndex];
+                  if (!h) return '';
+                  return [
+                    `Día ${h.start} → ${h.end} (${h.end - h.start + 1} días)`,
+                    `Lotes: ${h.lotCount}`,
+                    h.avgBrix !== null ? `Brix promedio: ${h.avgBrix.toFixed(1)}` : '',
+                    h.avgTANT !== null ? `tANT promedio: ${h.avgTANT.toFixed(0)} ppm` : ''
+                  ].filter(Boolean);
+                }
+                if (ctx.dataset.label === 'Temp (°C)') return `Temp: ${ctx.raw.y?.toFixed(1)}°C (Día ${ctx.raw.x})`;
+                if (ctx.dataset.label === 'Lluvia (mm)') return `Lluvia: ${ctx.raw.y?.toFixed(1)} mm (Día ${ctx.raw.x})`;
+                return '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom',
+            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 8, family: 'Sackers Gothic Medium' },
+              callback: (val) => dayToLabel(val),
+              stepSize: 15
+            },
+            grid: { color: CONFIG.chartDefaults.gridColor },
+            min: Math.max(1, Math.min(...harvestMeta.map(h => h.start)) - 10),
+            max: Math.max(...harvestMeta.map(h => h.end)) + 10
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
+          },
+          y2: {
+            position: 'right',
+            title: { display: true, text: '°C / mm', color: '#6B6B6B', font: { size: 8, family: 'Sackers Gothic Medium' } },
+            ticks: { color: 'rgba(96,168,192,0.6)', font: { size: 8, family: 'Sackers Gothic Medium' } },
+            grid: { display: false },
+            beginAtZero: true
           }
         },
         animation: { duration: 300 }
