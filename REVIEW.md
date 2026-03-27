@@ -265,6 +265,10 @@
 | 1 | 4.1 | Critical | Security (client-only upload auth) | Medium |
 | 2 | 4.4 | Medium | Security (ephemeral rate limit) | Medium |
 | 3 | 4.5 | Medium | Security (no token revocation) | Medium |
+| 4 | 11.1 | Medium | Duplicated extraction pair-building logic | Low |
+| 5 | 11.2 | Low | Extraction % bars clipped at 100% | Trivial |
+| 7 | 12.2 | Low | Login CSS selector highlights wrong label | Trivial |
+| 8 | 12.4 | Low | Export menu btn.style.position persists | Low |
 
 ### Resolved Items
 
@@ -291,6 +295,104 @@
 | 1.1 | Data Integrity | FIXED — header validation error |
 | 1.2 | Data Integrity | FIXED — vintage range guard |
 | B4 | Data Integrity | FIXED — preferment vintage from batch_code |
+| 10.1 | Map Rendering | FIXED — deleted stale duplicate `vineyardSections` |
+| 10.2 | UI | FIXED — removed duplicate Mapa nav option |
+| 10.3 | Dead Code | FIXED — removed unreachable duplicate `case 'map'` |
+| 11.3 | Repo Hygiene | FIXED — added test artifacts to `.gitignore` |
+| 12.1 | Map Bugs | FIXED — all Section 10 bugs resolved |
+| 12.2 | UI / CSS | FIXED — removed wrong adjacent sibling selector |
+| 12.3 | Memory Leak | FIXED — explicit handler cleanup in showExportMenu |
+| 12.4 | UI Side Effect | FIXED — menu appended to chart-card, no btn mutation |
+
+---
+
+## 10. MAP VIEW — FIXED
+
+### 10.1 Duplicate `vineyardSections` in config.js — FIXED
+- **SEVERITY:** ~~Critical~~ Resolved
+- **CATEGORY:** Map Rendering
+- **DESCRIPTION:** Stale second `vineyardSections` array (lines 871–932) deleted. First array (649–817) with correct `ranchCode`, polygon `points`, and full variety names is now the only one.
+
+### 10.2 Duplicate "Mapa" option in nav dropdown — FIXED
+- **SEVERITY:** ~~High~~ Resolved
+- **CATEGORY:** UI
+- **DESCRIPTION:** Second `<option value="map">Mapa</option>` removed from `index.html`.
+
+### 10.3 Duplicate `case 'map'` in refresh switch — FIXED
+- **SEVERITY:** ~~Medium~~ Resolved
+- **CATEGORY:** Dead Code
+- **DESCRIPTION:** Unreachable second `case 'map'` block removed from `app.js`.
+
+---
+
+## 11. NEW CHART FUNCTIONS — UNCOMMITTED CHANGES
+
+### 11.1 Duplicated extraction pair-building logic — divergence risk
+- **SEVERITY:** Medium
+- **CATEGORY:** Maintainability
+- **FILE:LINE:** `js/charts.js:695–732` (new `createExtractionPctChart`) vs `js/charts.js:580–618` (existing `createExtractionChart`)
+- **DESCRIPTION:** `createExtractionPctChart` copy-pastes ~40 lines of berry↔wine pair matching. The copies already diverge: the new one checks `berry.tANT > 0` (correct, prevents div-by-zero), the original does NOT — allowing `Infinity%` in tooltips when `berry.tANT === 0`.
+- **FIX:** Extract to a shared `_buildExtractionPairs(berryData, wineData)` helper. Add `berry.tANT > 0` guard to original chart too.
+
+### 11.2 Extraction % bars silently clipped at 100%
+- **SEVERITY:** Low
+- **CATEGORY:** Data Visualization
+- **FILE:LINE:** `js/charts.js:802–803`
+- **DESCRIPTION:** If wine tANT exceeds berry tANT (possible via measurement timing or concentration), `pct > 100`. X-axis `max: 100` clips bars without visual indication. Either remove `max: 100` or clamp with `Math.min(pct, 100)` + overflow marker.
+
+### 11.3 Untracked test artifacts should be gitignored — FIXED
+- **SEVERITY:** ~~Low~~ Resolved
+- **CATEGORY:** Repo Hygiene
+- **FILES:** `test-diag.js`, `test-results/`
+- **DESCRIPTION:** Added `test-results/` and `test-diag.js` to `.gitignore`.
+
+---
+
+---
+
+## 12. PHASE 6 POLISH — NEW FEATURES REVIEW (Round 3)
+
+> Builder is on branch `feature/phase6-polish`. 5 new features: login polish, PDF export, mobile filter improvements, multi-vintage trend lines, origin radar chart.
+
+### 12.1 MAP BUGS STILL UNFIXED — FIXED
+- **SEVERITY:** ~~Critical~~ Resolved
+- **STATUS:** All three map bugs (10.1, 10.2, 10.3) fixed on this branch.
+
+### 12.2 Login label CSS selector highlights wrong label — FIXED
+- **SEVERITY:** ~~Low~~ Resolved
+- **CATEGORY:** UI / CSS
+- **DESCRIPTION:** Removed `.login-input:focus + .login-label` selector (adjacent sibling, wrong direction). Kept only `:has()` selector which correctly targets the label before the focused input.
+
+### 12.3 Export menu event handler accumulates — FIXED
+- **SEVERITY:** ~~Low~~ Resolved
+- **CATEGORY:** Memory / Event Leak
+- **DESCRIPTION:** `showExportMenu` now stores handler ref in `this._exportMenuHandler` and explicitly removes it when replacing the menu or when a format is selected.
+
+### 12.4 `btn.style.position = 'relative'` persists after menu close — FIXED
+- **SEVERITY:** ~~Low~~ Resolved
+- **CATEGORY:** UI Side Effect
+- **DESCRIPTION:** Menu now appended to `.chart-card` parent (which already has `position: relative`) instead of the button. No inline style mutation on the button.
+
+### 12.5 jsPDF CDN dependency added
+- **SEVERITY:** Info
+- **CATEGORY:** Dependencies
+- **FILE:LINE:** `index.html:16`
+- **DESCRIPTION:** `jspdf/2.5.2` loaded via CDN (`cdnjs.cloudflare.com`). This is within the CDN-only constraint of CLAUDE.md. The `exportChartPDF()` function guards with `typeof window.jspdf === 'undefined'` so failure is graceful. Acceptable.
+
+### 12.6 Vintage comparison chart — behavior change
+- **SEVERITY:** Info
+- **CATEGORY:** Data Visualization
+- **FILE:LINE:** `js/charts.js` (createVintageComparison)
+- **DESCRIPTION:** Previously showed only lots appearing in 2+ vintages (strict comparison). Now shows ALL samples as scatter points with auto-generated 5-day-bin trend lines. This is a significant behavior change — the old chart was comparative (same lot across years), the new one is an aggregate overlay. The PLAN.md documents this as intentional ("Vintage comparison charts now show ALL data"). The trend line `filter: (item) => !item.text.includes('tendencia')` hides trend labels from legend, which is clean.
+- **NOTE:** No regression — the old behavior was limited by requiring the same lot code across vintages, which excluded most data.
+
+### 12.7 Radar chart normalization edge case
+- **SEVERITY:** Low
+- **CATEGORY:** Data Visualization
+- **FILE:LINE:** `js/charts.js` (createOriginRadarChart, near line 585-588)
+- **DESCRIPTION:** If all origins have the same value for a metric, `range = maxs[key] - mins[key]` is 0, and `normalize()` returns 50. This means all origins show 50% for that metric on the radar, which is visually correct (equal = same position) but the tooltip shows the raw value, so no data loss. Acceptable.
+
+---
 
 ### Rules for the Builder
 - All user-facing messages must be in Spanish
