@@ -44,6 +44,23 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, error: 'No autorizado' });
   }
 
+  // 1b. Check token blacklist
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+  if (supabaseUrl && serviceKey && token) {
+    try {
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const resp = await fetch(
+        `${supabaseUrl}/rest/v1/token_blacklist?token_hash=eq.${tokenHash}&select=token_hash`,
+        { headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` } }
+      );
+      const rows = await resp.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        return res.status(401).json({ ok: false, error: 'No autorizado' });
+      }
+    } catch (_) {}
+  }
+
   // 2. Check role — only lab and admin can upload
   const role = payload.role || 'viewer';
   if (role !== 'lab' && role !== 'admin') {

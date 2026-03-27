@@ -848,39 +848,7 @@ const Charts = {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
-    // Reuse same pair-building logic from createExtractionChart
-    const pairs = [];
-    const mapping = CONFIG.berryToWine;
-    const berryByLot = {};
-    berryData.forEach(d => {
-      if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
-      const lotCode = d.lotCode;
-      if (!berryByLot[lotCode] || (d.daysPostCrush || 0) > (berryByLot[lotCode].daysPostCrush || 0)) {
-        berryByLot[lotCode] = d;
-      }
-    });
-    const wineByCodigo = {};
-    wineData.forEach(d => {
-      if (d.codigoBodega && d.antoWX !== null && typeof d.antoWX === 'number') {
-        wineByCodigo[d.codigoBodega] = d;
-      }
-    });
-    Object.entries(mapping).forEach(([berryLot, wineLots]) => {
-      const berry = berryByLot[berryLot];
-      if (!berry) return;
-      wineLots.forEach(wl => {
-        const wine = wineByCodigo[wl];
-        if (wine && berry.tANT > 0) {
-          const pct = (wine.antoWX / berry.tANT) * 100;
-          pairs.push({
-            berryLot, wineLot: wl,
-            berryTANT: berry.tANT, wineTANT: wine.antoWX,
-            variety: berry.variety, appellation: berry.appellation,
-            pct: parseFloat(pct.toFixed(1))
-          });
-        }
-      });
-    });
+    const pairs = this._buildExtractionPairs(berryData, wineData);
 
     if (pairs.length === 0) {
       this._drawNoData(canvas, 'Cargue ambos archivos para ver la extracción');
@@ -950,8 +918,7 @@ const Charts = {
             title: { display: true, text: 'Extracción (%)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid: { color: CONFIG.chartDefaults.gridColor },
-            min: 0,
-            max: 100
+            min: 0
           },
           y: {
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 8, family: 'Sackers Gothic Medium' } },
