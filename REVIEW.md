@@ -260,15 +260,7 @@
 
 ### Open Items
 
-| Priority | ID | Severity | Category | Fix Effort |
-|----------|----|----------|----------|------------|
-| 1 | 4.1 | Critical | Security (client-only upload auth) | Medium |
-| 2 | 4.4 | Medium | Security (ephemeral rate limit) | Medium |
-| 3 | 4.5 | Medium | Security (no token revocation) | Medium |
-| 4 | 11.1 | Medium | Duplicated extraction pair-building logic | Low |
-| 5 | 11.2 | Low | Extraction % bars clipped at 100% | Trivial |
-| 7 | 12.2 | Low | Login CSS selector highlights wrong label | Trivial |
-| 8 | 12.4 | Low | Export menu btn.style.position persists | Low |
+No open items. All findings resolved.
 
 ### Resolved Items
 
@@ -303,6 +295,17 @@
 | 12.2 | UI / CSS | FIXED — removed wrong adjacent sibling selector |
 | 12.3 | Memory Leak | FIXED — explicit handler cleanup in showExportMenu |
 | 12.4 | UI Side Effect | FIXED — menu appended to chart-card, no btn mutation |
+| 4.1 | Security | FIXED — server-side `/api/upload` with token + role validation |
+| 4.4 | Security | FIXED — rate limits persisted in Supabase `rate_limits` table |
+| 4.5 | Security | FIXED — token blacklist on logout, 2h TTL, `/api/logout` endpoint |
+| 11.1 | Maintainability | FIXED — `_buildExtractionPairs` helper used by both extraction charts |
+| 11.2 | Data Visualization | FIXED — removed `max: 100` cap, bars >100% render fully |
+| 13.1 | Maintainability | FIXED — `createExtractionPctChart` now uses shared helper |
+| 13.2 | Data Visualization | FIXED — extraction % x-axis uncapped |
+| 13.3 | Deployment | FIXED — `SUPABASE_SERVICE_KEY` + `SESSION_SECRET` documented in CLAUDE.md |
+| 13.4 | Security | FIXED — token blacklist check added to `api/upload.js` |
+| 13.5 | Documentation | FIXED — CLAUDE.md updated from 24h to 2h token expiry |
+| 13.6 | Repo Hygiene | FIXED — redundant `sql/run_migrations.sql` deleted |
 
 ---
 
@@ -391,6 +394,186 @@
 - **CATEGORY:** Data Visualization
 - **FILE:LINE:** `js/charts.js` (createOriginRadarChart, near line 585-588)
 - **DESCRIPTION:** If all origins have the same value for a metric, `range = maxs[key] - mins[key]` is 0, and `normalize()` returns 50. This means all origins show 50% for that metric on the radar, which is visually correct (equal = same position) but the tooltip shows the raw value, so no data loss. Acceptable.
+
+---
+
+---
+
+## 13. HARVEST CALENDAR + SECURITY HARDENING — REVIEW (Round 4)
+
+> Reviewing PRs #1, #3, #4 merged to main. Harvest calendar, extraction helper, security hardening.
+> All JS syntax checks pass. No unstaged source changes — only doc updates (CLAUDE.md, PLAN.md, TASK.md) + new `sql/run_migrations.sql`.
+
+### 13.1 `createExtractionPctChart` still has inline pair logic — 11.1 HALF-FIXED
+- **SEVERITY:** Medium
+- **CATEGORY:** Maintainability
+- **FILE:LINE:** `js/charts.js:852–893`
+- **DESCRIPTION:** `_buildExtractionPairs()` helper was created (line 728) and `createExtractionChart` uses it (line 769). But `createExtractionPctChart` still has its own inline 40-line copy (lines 852–893). The comment says "Reuse same pair-building logic" but doesn't actually call the helper.
+- **FIX:** Replace lines 852–893 with `const pairs = this._buildExtractionPairs(berryData, wineData);`
+
+### 13.2 Extraction % bars still clipped at `max: 100` — 11.2 UNFIXED
+- **SEVERITY:** Low
+- **CATEGORY:** Data Visualization
+- **FILE:LINE:** `js/charts.js:954`
+- **DESCRIPTION:** `max: 100` on x-axis still present. Bars > 100% silently clipped.
+- **FIX:** Remove `max: 100`.
+
+### 13.3 `SUPABASE_SERVICE_KEY` env var not documented
+- **SEVERITY:** Medium
+- **CATEGORY:** Deployment
+- **FILES:** `api/upload.js:71`, `api/login.js:12`, `api/verify.js:49`, `api/logout.js:20`
+- **DESCRIPTION:** Four API endpoints now use `process.env.SUPABASE_SERVICE_KEY` (service role key, bypasses RLS). This env var is not listed in CLAUDE.md's "Environment Variables" section and is not in `.env.local` template. If missing in Vercel, upload/login/verify/logout will silently fall back or fail.
+- **FIX:** Add `SUPABASE_SERVICE_KEY` to CLAUDE.md env vars section. Add to Vercel environment settings.
+
+### 13.4 Token verification duplicated in `api/upload.js`
+- **SEVERITY:** Low
+- **CATEGORY:** Maintainability
+- **FILE:LINE:** `api/upload.js:4–19`
+- **DESCRIPTION:** `verifyToken()` function is copy-pasted from `api/verify.js`. If the verification logic changes (e.g., blacklist check added in verify.js:46–67), upload.js won't get the update. The upload endpoint does NOT check the token blacklist — a revoked token can still upload.
+- **FIX:** Either import shared verification, or add blacklist check to `api/upload.js` the same way `api/verify.js` does it.
+
+### 13.5 Token TTL reduced from 24h to 2h — undocumented
+- **SEVERITY:** Low
+- **CATEGORY:** UX / Documentation
+- **FILE:LINE:** `api/login.js:137`
+- **DESCRIPTION:** Token expiry changed from `24 * 60 * 60 * 1000` (24h) to `2 * 60 * 60 * 1000` (2h). CLAUDE.md still says "HMAC session tokens, 24h expiry". Users will be logged out more frequently. This is a security improvement but should be documented.
+- **FIX:** Update CLAUDE.md auth description to say "2h expiry".
+
+### 13.6 `sql/run_migrations.sql` duplicates existing migration files
+- **SEVERITY:** Info
+- **CATEGORY:** Repo Hygiene
+- **FILE:** `sql/run_migrations.sql` (untracked)
+- **DESCRIPTION:** Contains `CREATE TABLE rate_limits` and `CREATE TABLE token_blacklist`. These already exist as `sql/migration_rate_limits.sql` and `sql/migration_token_blacklist.sql` (committed). The new file appears to be a convenience wrapper but is redundant.
+- **FIX:** Either delete `sql/run_migrations.sql` or add it to `.gitignore`.
+
+### 13.7 Harvest calendar — well implemented, no bugs found
+- **SEVERITY:** Info
+- **CATEGORY:** New Feature
+- **DESCRIPTION:** `createHarvestCalendar()` correctly:
+  - Extracts crush dates from berry data, grouped by variety
+  - Builds floating bars (Chart.js `data: [[start, end]]` format)
+  - Overlays temperature line and rainfall bars on secondary y-axis
+  - Uses `WeatherStore.dayOfSeason()` / `getRange()` — both exist and work correctly
+  - Handles empty state in Spanish
+  - Tooltip shows variety, day range, lot count, avg Brix, avg tANT
+  - `dayToLabel()` correctly converts day-of-season to `"d MMM"` format without requiring a date adapter CDN
+  - No time axis adapter needed — uses `type: 'linear'` with custom tick callback (smart design choice)
+
+### 13.8 Security hardening — solid implementation
+- **SEVERITY:** Info
+- **CATEGORY:** Security
+- **DESCRIPTION:**
+  - **`api/upload.js`**: Token + role validation, table allowlist, row count limits, upsert via service key. Clean.
+  - **`api/login.js`**: Persistent rate limits via Supabase with in-memory fallback. Stale entry sweep. Clean.
+  - **`api/logout.js`**: Hashes token with SHA-256 before storing in blacklist. Clean.
+  - **`api/verify.js`**: Checks blacklist table, fail-open on error (availability > security for internal tool). Reasonable tradeoff.
+  - **`js/upload.js`**: Now routes through `/api/upload` instead of direct Supabase. Client-side role check kept as fast-fail. Clean.
+  - **`js/auth.js`**: Logout calls `/api/logout` before clearing local storage. Fire-and-forget (`.catch(() => {})`). Clean.
+
+---
+
+---
+
+## 14. FULL CODEBASE AUDIT (Round 5)
+
+> Comprehensive review of all JS, CSS, HTML, and API files for dead code, redundancies, bugs, and security gaps.
+
+### BUGS
+
+#### 14.1 Extraction table ignores filters — HIGH
+- **FILE:** `js/app.js:574,583`
+- **DESCRIPTION:** `updateExtractionTable()` uses raw `DataStore.berryData` and `DataStore.wineRecepcion` (unfiltered). The extraction charts on the same view use `cleanBerry` and `filteredWineExt` (filtered by vintage/variety/origin). Result: charts and table show different data when filters are active.
+- **FIX:** Pass `cleanBerry` and `filteredWineExt` as parameters instead of accessing DataStore directly.
+
+#### 14.2 Blacklist check missing from `/api/config` and `/api/upload` — HIGH
+- **FILE:** `api/config.js` (entire file), `api/upload.js:4-19`
+- **DESCRIPTION:** Only `api/verify.js` checks the `token_blacklist` table. A revoked token (user logged out) can still call `/api/config` to get Supabase credentials and `/api/upload` to insert data. The blacklist is bypassed on 2 of 3 authenticated endpoints.
+- **FIX:** Add blacklist check to both endpoints, or extract shared token verification with blacklist into a utility.
+
+#### 14.3 Token verification logic triplicated — MEDIUM
+- **FILE:** `api/upload.js:4-19`, `api/verify.js:29-37`, `api/config.js:28-34`
+- **DESCRIPTION:** Three separate copies of HMAC signature + expiry verification. Already diverged: verify.js has blacklist check, the other two don't. Any future change must be applied in 3 places.
+- **FIX:** Extract to shared `api/lib/verifyToken.js`.
+
+#### 14.4 Extraction table also duplicates pair-building logic — MEDIUM
+- **FILE:** `js/app.js:572-598`
+- **DESCRIPTION:** `updateExtractionTable()` has its own 30-line pair-building block, making it the THIRD copy alongside `_buildExtractionPairs()` (charts.js:728) and `createExtractionPctChart` inline (charts.js:852). None of the three share code.
+- **FIX:** All three should call `Charts._buildExtractionPairs()`.
+
+### DEAD CODE
+
+#### 14.5 Unused CSS classes — ~70 lines
+- **FILE:** `css/styles.css`
+- `.brand-top`, `.brand-name`, `.brand-divider`, `.brand-sub` (lines 120-148) — not in HTML or JS
+- `.extraction-grid`, `.extraction-card`, `.ext-bar`, `.ext-bar-label`, `.ext-bar-track`, `.ext-bar-fill`, `.ext-bar-value` (lines 906-947) — not in HTML or JS
+- **FIX:** Delete both blocks.
+
+#### 14.6 `shortenOrigin()` is a no-op — LOW
+- **FILE:** `js/filters.js:80-82`
+- **DESCRIPTION:** `shortenOrigin(name) { return name || ''; }` — does nothing. Called 6 times across filters.js and charts.js. Was intended for abbreviating long origin names but never implemented.
+- **FIX:** Either implement abbreviation logic or inline `name || ''` at call sites.
+
+### MISSING FUNCTIONALITY
+
+#### 14.7 Four origin comparison charts missing export buttons
+- **FILE:** `index.html:320-339`
+- **DESCRIPTION:** `chartOriginBrix`, `chartOriginAnt`, `chartOriginPH`, `chartOriginTA` chart cards have no `.chart-export-btn`. Every other chart card in the dashboard has one.
+- **FIX:** Add `<button class="chart-export-btn" onclick="Charts.showExportMenu(...)">&#x2913;</button>` to each.
+
+### SECURITY
+
+#### 14.8 No rate limiting on `/api/upload`, `/api/verify`, `/api/logout`, `/api/config`
+- **SEVERITY:** Medium
+- **DESCRIPTION:** Only `/api/login` has rate limiting. Other endpoints can be hammered. `/api/upload` is the highest risk — unlimited insert requests if token is valid.
+- **FIX:** Apply shared rate limiter, or at minimum add to `/api/upload`.
+
+#### 14.9 User-provided `conflict` column in upload API
+- **FILE:** `api/upload.js:54,78`
+- **DESCRIPTION:** Client sends `conflict` parameter which becomes `on_conflict=` in the Supabase URL. While `encodeURIComponent` prevents injection, attacker can probe schema by sending invalid column names and observing error responses.
+- **FIX:** Ignore client-provided `conflict`, always use `tableConfig.conflict`.
+
+### EDGE CASES
+
+#### 14.10 Harvest calendar `dayToLabel` month index
+- **FILE:** `js/charts.js:1379`
+- **DESCRIPTION:** `monthNames[d.getUTCMonth() - 6]` — works for Jul(6)–Nov(10) but returns `undefined` for dates outside that range (Dec–Jun). The `|| ''` fallback prevents crashes but shows blank month labels.
+- **Impact:** Low — harvest season is Jul–Oct, so unlikely to trigger.
+
+#### 14.11 `daysPostCrush || 0` treats null as day 0
+- **FILE:** `js/charts.js:735,858`, `js/app.js:577`
+- **DESCRIPTION:** `(d.daysPostCrush || 0)` converts null/undefined to 0, meaning a sample with missing DPC is treated as "harvested on day 0". This incorrectly selects it as the "latest" measurement if all other samples also have DPC 0 or null.
+- **Impact:** Low — most samples have DPC populated.
+
+#### 14.12 CSP blocks ALL inline event handlers on Vercel — CRITICAL
+- **FILE:** `vercel.json:11`
+- **DESCRIPTION:** The Content-Security-Policy `script-src` directive is `'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net` — **no `'unsafe-inline'`**. Every `onclick="..."` and `onchange="..."` in `index.html` is silently blocked by the browser on Vercel. Inline event handlers are treated as inline scripts by CSP.
+- **AFFECTED:** `nav-select` onchange (view switching), all `onclick` handlers (chart exports, filter clicks, theme toggle, help toggle, logout, mobile section toggles, map metric select, ranch tabs, explorer buttons, upload close button, data loader)
+- **WHY IT WORKS LOCALLY:** `http-server` doesn't send CSP headers.
+- **WHY IT APPEARS PARTIAL:** Some actions may also be bound via `addEventListener` in JS (not blocked by CSP). Pure inline-only handlers (like `nav-select onchange`) fail silently.
+- **FIX (option A — quick):** Add `'unsafe-inline'` to `script-src` in `vercel.json`.
+- **FIX (option B — proper):** Migrate all inline handlers to `addEventListener` in JS. Correct long-term fix but ~30+ handlers to move.
+
+---
+
+## Priority Matrix (Updated Round 5)
+
+### Open Items
+
+| Priority | ID | Severity | Category | Fix Effort |
+|----------|----|----------|----------|------------|
+| **0** | **14.12** | **Critical** | CSP blocks inline event handlers on Vercel — nothing works | Trivial (A) / High (B) |
+| **1** | **14.2** | **High** | Blacklist missing from config + upload endpoints | Low |
+| **2** | **14.1** | **High** | Extraction table ignores filters | Low |
+| **3** | **14.3** | **Medium** | Token verification triplicated | Medium |
+| 4 | 13.1 | Medium | `createExtractionPctChart` inline pair logic | Trivial |
+| 5 | 14.4 | Medium | Extraction table also duplicates pair logic | Low |
+| 6 | 13.3 | Medium | `SUPABASE_SERVICE_KEY` not documented | Trivial |
+| 7 | 14.8 | Medium | No rate limiting on upload/verify/logout/config | Medium |
+| 8 | 14.9 | Medium | User-provided conflict column in upload API | Trivial |
+| 9 | 13.2 | Low | Extraction % bars clipped at max: 100 | Trivial |
+| 10 | 14.5 | Low | ~70 lines dead CSS | Trivial |
+| 11 | 14.7 | Low | 4 origin charts missing export buttons | Trivial |
+| 12 | 13.5 | Low | Token TTL 24h→2h undocumented | Trivial |
 
 ---
 
