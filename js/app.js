@@ -318,7 +318,7 @@ const App = {
         break;
       }
 
-      case 'vintage':
+      case 'vintage': {
         this._updateVintageUI(cleanBerry);
         Charts.createVintageComparison('chartVintageBrix', cleanBerry, 'brix', 'Brix (°Bx)');
         Charts.createVintageComparison('chartVintageAnt', cleanBerry, 'tANT', 'tANT (ppm ME)');
@@ -326,9 +326,13 @@ const App = {
         Charts.createVintageComparison('chartVintageTA', cleanBerry, 'ta', 'AT (g/L)');
         this.updateVintageSummary(cleanBerry);
         this.updateVintageVarietalTable(cleanBerry);
+        const activeVintages = [...Filters.state.vintages];
+        const calVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : null);
+        Charts.createHarvestCalendar('chartHarvestCal', cleanBerry, Filters.getFilteredWine(), calVintage);
         Charts.createWeatherTimeSeries('chartWeatherTemp', WeatherStore.getVintagesFromData());
         Charts.createRainfallChart('chartWeatherRain', WeatherStore.getVintagesFromData());
         break;
+      }
 
       case 'map': {
         // Bridge berry data → MapStore format (latest measurement per lot)
