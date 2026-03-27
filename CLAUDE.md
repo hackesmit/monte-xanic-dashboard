@@ -256,7 +256,7 @@ monte-xanic-dashboard/
 
 ### Phase 4 — Authentication ✅ COMPLETE
 - [x] Login screen with username/password
-- [x] bcrypt password hashing + HMAC session tokens (24h expiry)
+- [x] bcrypt password hashing + HMAC session tokens (2h expiry)
 - [x] Auth-gated `/api/config` endpoint (Supabase credentials protected)
 - [x] Rate limiting on login (10 attempts / 15 min)
 - [ ] **Login screen UI polish** — moved to Phase 6
@@ -376,7 +376,11 @@ Sample code → ranch mapping: `MX`→Monte Xanic, `OLE`→Olé, `7L`→Siete Le
 ```
 SUPABASE_URL=your_supabase_project_url
 SUPABASE_ANON_KEY=your_supabase_anon_key
+SUPABASE_SERVICE_KEY=your_supabase_service_role_key
+SESSION_SECRET=your_hmac_session_secret
 ```
+- `SUPABASE_SERVICE_KEY` — service role key (bypasses RLS), used by server-side API endpoints (`/api/upload`, `/api/login`, `/api/verify`, `/api/logout`)
+- `SESSION_SECRET` — HMAC secret for signing session tokens
 - Store in `.env.local` locally — never commit
 - Add identical keys to Vercel → Settings → Environment Variables
 
