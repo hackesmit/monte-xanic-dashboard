@@ -309,6 +309,7 @@ const Charts = {
 
     const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
     const labels = Object.keys(byVar).sort((a, b) => avg(byVar[b]) - avg(byVar[a]));
+    const displayLabels = labels.map(v => `${v} (n=${byVar[v].length})`);
     const values = labels.map(v => parseFloat(avg(byVar[v]).toFixed(2)));
     const bgColors = labels.map(v => (CONFIG.varietyColors[v] || '#888') + '66');
     const bdColors = labels.map(v => CONFIG.varietyColors[v] || '#888');
@@ -316,7 +317,7 @@ const Charts = {
     this._createChart(canvasId, canvas, {
       type: 'bar',
       data: {
-        labels,
+        labels: displayLabels,
         datasets: [{
           label,
           data: values,
@@ -338,7 +339,11 @@ const Charts = {
             titleColor: '#DDB96E',
             bodyColor: '#D8D0C4',
             callbacks: {
-              label: (ctx) => `${label}: ${ctx.parsed.x}`
+              label: (ctx) => {
+                const variety = labels[ctx.dataIndex];
+                const n = byVar[variety] ? byVar[variety].length : 0;
+                return `${label}: ${ctx.parsed.x} (n=${n})`;
+              }
             }
           }
         },
@@ -426,8 +431,8 @@ const Charts = {
     });
   },
 
-  // Create doughnut chart (origin distribution)
-  createDoughnut(canvasId, data) {
+  // Create horizontal bar chart (origin sample count, sorted descending)
+  createOriginCountBar(canvasId, data) {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -440,41 +445,50 @@ const Charts = {
       }
     });
 
-    const labels = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
-    const values = labels.map(l => counts[l]);
-    const colors = labels.map(l => CONFIG.resolveOriginColor(l));
+    const origins = Object.keys(counts).sort((a, b) => counts[b] - counts[a]);
+    const values = origins.map(o => counts[o]);
+    const shortLabels = origins.map(o => Filters.shortenOrigin(o));
+    const bgColors = origins.map(o => CONFIG.resolveOriginColor(o) + '66');
+    const bdColors = origins.map(o => CONFIG.resolveOriginColor(o));
 
     this._createChart(canvasId, canvas, {
-      type: 'doughnut',
+      type: 'bar',
       data: {
-        labels,
+        labels: shortLabels,
         datasets: [{
+          label: 'Muestras',
           data: values,
-          backgroundColor: colors.map(c => c + 'CC'),
-          borderColor: '#161616',
-          borderWidth: 2
+          backgroundColor: bgColors,
+          borderColor: bdColors,
+          borderWidth: 1
         }]
       },
       options: {
+        indexAxis: 'y',
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: {
-            display: true,
-            position: 'right',
-            labels: {
-              color: CONFIG.chartDefaults.tickColor,
-              font: { size: 9, family: 'Sackers Gothic Medium' },
-              boxWidth: 10,
-              padding: 10
-            }
-          },
+          legend: { display: false },
           tooltip: {
             backgroundColor: '#1C1C1C',
             borderColor: 'rgba(196,160,96,0.5)',
             borderWidth: 1,
             titleColor: '#DDB96E',
-            bodyColor: '#D8D0C4'
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => origins[items[0].dataIndex] || items[0].label,
+              label: (ctx) => `Muestras: ${ctx.parsed.x}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' }, stepSize: 1 },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
           }
         },
         animation: { duration: 300 }
@@ -710,16 +724,10 @@ const Charts = {
   },
 
   // Extraction comparison: berry tANT vs wine tANT
-  createExtractionChart(canvasId, berryData, wineData) {
-    this.destroy(canvasId);
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return;
-
-    // Build extraction pairs using berry→wine mapping
+  // Shared helper: build berry↔wine extraction pairs from berryToWine mapping
+  _buildExtractionPairs(berryData, wineData) {
     const pairs = [];
     const mapping = CONFIG.berryToWine;
-
-    // Group berry data by lot (last measurement before harvest)
     const berryByLot = {};
     berryData.forEach(d => {
       if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
@@ -728,33 +736,37 @@ const Charts = {
         berryByLot[lotCode] = d;
       }
     });
-
-    // Build wine lookup by code
     const wineByCodigo = {};
     wineData.forEach(d => {
       if (d.codigoBodega && d.antoWX !== null && typeof d.antoWX === 'number') {
         wineByCodigo[d.codigoBodega] = d;
       }
     });
-
-    // Match berry→wine
     Object.entries(mapping).forEach(([berryLot, wineLots]) => {
       const berry = berryByLot[berryLot];
-      if (!berry) return;
+      if (!berry || berry.tANT <= 0) return;
       wineLots.forEach(wl => {
         const wine = wineByCodigo[wl];
         if (wine) {
+          const pct = (wine.antoWX / berry.tANT) * 100;
           pairs.push({
-            berryLot,
-            wineLot: wl,
-            berryTANT: berry.tANT,
-            wineTANT: wine.antoWX,
-            variety: berry.variety,
-            extraction: wine.antoWX && berry.tANT ? ((wine.antoWX / berry.tANT) * 100).toFixed(1) : null
+            berryLot, wineLot: wl,
+            berryTANT: berry.tANT, wineTANT: wine.antoWX,
+            variety: berry.variety, appellation: berry.appellation,
+            pct: parseFloat(pct.toFixed(1))
           });
         }
       });
     });
+    return pairs;
+  },
+
+  createExtractionChart(canvasId, berryData, wineData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const pairs = this._buildExtractionPairs(berryData, wineData);
 
     if (pairs.length === 0) {
       this._drawNoData(canvas, 'Cargue ambos archivos para ver la comparación');
@@ -806,8 +818,8 @@ const Charts = {
             callbacks: {
               afterBody: (items) => {
                 const idx = items[0]?.dataIndex;
-                if (idx !== undefined && pairs[idx]?.extraction) {
-                  return [`Extracción: ${pairs[idx].extraction}%`];
+                if (idx !== undefined && pairs[idx]?.pct) {
+                  return [`Extracción: ${pairs[idx].pct}%`];
                 }
                 return [];
               }
@@ -823,6 +835,212 @@ const Charts = {
             title: { display: true, text: 'tANT (ppm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid: { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Extraction percentage horizontal bar — color-coded by quality band
+  createExtractionPctChart(canvasId, berryData, wineData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    // Reuse same pair-building logic from createExtractionChart
+    const pairs = [];
+    const mapping = CONFIG.berryToWine;
+    const berryByLot = {};
+    berryData.forEach(d => {
+      if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
+      const lotCode = d.lotCode;
+      if (!berryByLot[lotCode] || (d.daysPostCrush || 0) > (berryByLot[lotCode].daysPostCrush || 0)) {
+        berryByLot[lotCode] = d;
+      }
+    });
+    const wineByCodigo = {};
+    wineData.forEach(d => {
+      if (d.codigoBodega && d.antoWX !== null && typeof d.antoWX === 'number') {
+        wineByCodigo[d.codigoBodega] = d;
+      }
+    });
+    Object.entries(mapping).forEach(([berryLot, wineLots]) => {
+      const berry = berryByLot[berryLot];
+      if (!berry) return;
+      wineLots.forEach(wl => {
+        const wine = wineByCodigo[wl];
+        if (wine && berry.tANT > 0) {
+          const pct = (wine.antoWX / berry.tANT) * 100;
+          pairs.push({
+            berryLot, wineLot: wl,
+            berryTANT: berry.tANT, wineTANT: wine.antoWX,
+            variety: berry.variety, appellation: berry.appellation,
+            pct: parseFloat(pct.toFixed(1))
+          });
+        }
+      });
+    });
+
+    if (pairs.length === 0) {
+      this._drawNoData(canvas, 'Cargue ambos archivos para ver la extracción');
+      return;
+    }
+
+    // Sort descending by extraction %
+    pairs.sort((a, b) => b.pct - a.pct);
+    const labels = pairs.map(p => p.berryLot);
+    const values = pairs.map(p => p.pct);
+    const bgColors = pairs.map(p => {
+      if (p.pct > 50) return 'rgba(76,175,80,0.6)';
+      if (p.pct >= 30) return 'rgba(196,160,96,0.6)';
+      return 'rgba(220,53,69,0.6)';
+    });
+    const bdColors = pairs.map(p => {
+      if (p.pct > 50) return '#4CAF50';
+      if (p.pct >= 30) return '#C4A060';
+      return '#DC3545';
+    });
+
+    this._createChart(canvasId, canvas, {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label: 'Extracción %',
+          data: values,
+          backgroundColor: bgColors,
+          borderColor: bdColors,
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => {
+                const p = pairs[items[0].dataIndex];
+                return p ? p.berryLot : '';
+              },
+              label: (ctx) => {
+                const p = pairs[ctx.dataIndex];
+                if (!p) return '';
+                return [
+                  `Varietal: ${p.variety}`,
+                  `Origen: ${p.appellation || '—'}`,
+                  `tANT Baya: ${p.berryTANT} ppm`,
+                  `tANT Vino: ${p.wineTANT} ppm`,
+                  `Extracción: ${p.pct}%`
+                ];
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Extracción (%)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor },
+            min: 0,
+            max: 100
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 8, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Wine phenolics grouped bar: avg tANT, fANT, pTAN, IPT by variety
+  createWinePhenolicsChart(canvasId, wineData) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (!wineData.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
+
+    const compounds = [
+      { key: 'antoWX', label: 'tANT', color: '#C4A060' },
+      { key: 'freeANT', label: 'fANT', color: '#9B59B6' },
+      { key: 'pTAN', label: 'pTAN', color: '#E07060' },
+      { key: 'iptSpica', label: 'IPT', color: '#60A8C0' }
+    ];
+
+    // Group by variety
+    const byVar = {};
+    wineData.forEach(d => {
+      const v = d.variety || d.variedad;
+      if (!v) return;
+      if (!byVar[v]) byVar[v] = { antoWX: [], freeANT: [], pTAN: [], iptSpica: [] };
+      compounds.forEach(c => {
+        const val = d[c.key];
+        if (typeof val === 'number' && !isNaN(val)) byVar[v][c.key].push(val);
+      });
+    });
+
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    // Sort varieties by total phenolic magnitude (tANT avg descending)
+    const varieties = Object.keys(byVar)
+      .filter(v => compounds.some(c => byVar[v][c.key].length > 0))
+      .sort((a, b) => avg(byVar[b].antoWX) - avg(byVar[a].antoWX));
+
+    if (!varieties.length) { this._drawNoData(canvas, 'No hay datos fenólicos disponibles'); return; }
+
+    const datasets = compounds.map(c => ({
+      label: c.label,
+      data: varieties.map(v => parseFloat(avg(byVar[v][c.key]).toFixed(1))),
+      backgroundColor: c.color + '88',
+      borderColor: c.color,
+      borderWidth: 1
+    }));
+
+    this._createChart(canvasId, canvas, {
+      type: 'bar',
+      data: { labels: varieties, datasets },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 9, family: 'Sackers Gothic Medium' },
+              boxWidth: 10,
+              padding: 10
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              label: (ctx) => `${ctx.dataset.label}: ${ctx.parsed.x}`
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
           }
         },
         animation: { duration: 300 }
@@ -1043,6 +1261,196 @@ const Charts = {
             title: { display: true, text: 'Precipitación (mm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid:  { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // Harvest calendar: horizontal floating bars per variety + weather overlay
+  createHarvestCalendar(canvasId, berryData, wineData, vintage) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    if (!vintage) { this._drawNoData(canvas, 'Seleccione una vendimia para ver el calendario'); return; }
+
+    // Extract harvest events from berry data with crushDate
+    const events = [];
+    berryData.forEach(d => {
+      if (!d.crushDate || !d.variety) return;
+      const v = Number(d.vintage);
+      if (v !== Number(vintage)) return;
+      const day = typeof WeatherStore !== 'undefined' ? WeatherStore.dayOfSeason(d.crushDate) : null;
+      if (!day || day < 1 || day > 150) return;
+      events.push({ variety: d.variety, day, brix: d.brix, tANT: d.tANT, lotCode: d.lotCode, appellation: d.appellation });
+    });
+
+    if (!events.length) { this._drawNoData(canvas, 'Sin fechas de cosecha para esta vendimia'); return; }
+
+    // Group by variety → earliest/latest day, averages
+    const byVar = {};
+    events.forEach(e => {
+      if (!byVar[e.variety]) byVar[e.variety] = { days: [], brix: [], tANT: [], lots: new Set() };
+      byVar[e.variety].days.push(e.day);
+      if (typeof e.brix === 'number') byVar[e.variety].brix.push(e.brix);
+      if (typeof e.tANT === 'number') byVar[e.variety].tANT.push(e.tANT);
+      if (e.lotCode) byVar[e.variety].lots.add(e.lotCode);
+    });
+
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    const varieties = Object.keys(byVar).sort((a, b) => Math.min(...byVar[a].days) - Math.min(...byVar[b].days));
+    const harvestMeta = varieties.map(v => ({
+      variety: v,
+      start: Math.min(...byVar[v].days),
+      end: Math.max(...byVar[v].days),
+      avgBrix: avg(byVar[v].brix),
+      avgTANT: avg(byVar[v].tANT),
+      lotCount: byVar[v].lots.size
+    }));
+
+    // Harvest bar dataset (floating bars)
+    const harvestData = harvestMeta.map(h => [h.start, h.end]);
+    const bgColors = varieties.map(v => (CONFIG.varietyColors[v] || '#888') + 'AA');
+    const bdColors = varieties.map(v => CONFIG.varietyColors[v] || '#888');
+
+    const datasets = [{
+      label: 'Cosecha',
+      data: harvestData,
+      backgroundColor: bgColors,
+      borderColor: bdColors,
+      borderWidth: 1,
+      borderSkipped: false,
+      barPercentage: 0.7,
+      yAxisID: 'y'
+    }];
+
+    // Weather overlay on secondary axis
+    if (typeof WeatherStore !== 'undefined') {
+      const weatherRows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`);
+      if (weatherRows.length) {
+        // Temperature line
+        const tempPts = weatherRows
+          .filter(r => r.temp_avg !== null)
+          .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.temp_avg }));
+        if (tempPts.length) {
+          datasets.push({
+            type: 'line',
+            label: 'Temp (°C)',
+            data: tempPts,
+            borderColor: 'rgba(96,168,192,0.5)',
+            backgroundColor: 'transparent',
+            pointRadius: 0,
+            borderWidth: 1.5,
+            tension: 0.3,
+            yAxisID: 'y2',
+            xAxisID: 'x',
+            order: 1
+          });
+        }
+        // Rainfall bars
+        const rainPts = weatherRows
+          .filter(r => r.rainfall_mm > 0)
+          .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.rainfall_mm }));
+        if (rainPts.length) {
+          datasets.push({
+            type: 'bar',
+            label: 'Lluvia (mm)',
+            data: rainPts,
+            backgroundColor: 'rgba(96,168,192,0.15)',
+            borderColor: 'rgba(96,168,192,0.3)',
+            borderWidth: 1,
+            barPercentage: 1.0,
+            categoryPercentage: 1.0,
+            yAxisID: 'y2',
+            xAxisID: 'x',
+            order: 2
+          });
+        }
+      }
+    }
+
+    // Month label formatter for x-axis
+    const monthNames = ['Jul', 'Ago', 'Sep', 'Oct', 'Nov'];
+    const dayToLabel = (day) => {
+      const d = new Date(Date.UTC(vintage, 6, 1));
+      d.setUTCDate(d.getUTCDate() + day - 1);
+      return `${d.getUTCDate()} ${monthNames[d.getUTCMonth() - 6] || ''}`;
+    };
+
+    this._createChart(canvasId, canvas, {
+      type: 'bar',
+      data: { labels: varieties, datasets },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 9, family: 'Sackers Gothic Medium' },
+              boxWidth: 10, padding: 8,
+              filter: (item) => item.text !== 'Cosecha'
+            }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C',
+            borderColor: 'rgba(196,160,96,0.5)',
+            borderWidth: 1,
+            titleColor: '#DDB96E',
+            bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => {
+                const idx = items[0].dataIndex;
+                if (idx !== undefined && harvestMeta[idx]) return harvestMeta[idx].variety;
+                return items[0].dataset.label || '';
+              },
+              label: (ctx) => {
+                if (ctx.dataset.label === 'Cosecha') {
+                  const h = harvestMeta[ctx.dataIndex];
+                  if (!h) return '';
+                  return [
+                    `Día ${h.start} → ${h.end} (${h.end - h.start + 1} días)`,
+                    `Lotes: ${h.lotCount}`,
+                    h.avgBrix !== null ? `Brix promedio: ${h.avgBrix.toFixed(1)}` : '',
+                    h.avgTANT !== null ? `tANT promedio: ${h.avgTANT.toFixed(0)} ppm` : ''
+                  ].filter(Boolean);
+                }
+                if (ctx.dataset.label === 'Temp (°C)') return `Temp: ${ctx.raw.y?.toFixed(1)}°C (Día ${ctx.raw.x})`;
+                if (ctx.dataset.label === 'Lluvia (mm)') return `Lluvia: ${ctx.raw.y?.toFixed(1)} mm (Día ${ctx.raw.x})`;
+                return '';
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom',
+            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: {
+              color: CONFIG.chartDefaults.tickColor,
+              font: { size: 8, family: 'Sackers Gothic Medium' },
+              callback: (val) => dayToLabel(val),
+              stepSize: 15
+            },
+            grid: { color: CONFIG.chartDefaults.gridColor },
+            min: Math.max(1, Math.min(...harvestMeta.map(h => h.start)) - 10),
+            max: Math.max(...harvestMeta.map(h => h.end)) + 10
+          },
+          y: {
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: 'transparent' }
+          },
+          y2: {
+            position: 'right',
+            title: { display: true, text: '°C / mm', color: '#6B6B6B', font: { size: 8, family: 'Sackers Gothic Medium' } },
+            ticks: { color: 'rgba(96,168,192,0.6)', font: { size: 8, family: 'Sackers Gothic Medium' } },
+            grid: { display: false },
+            beginAtZero: true
           }
         },
         animation: { duration: 300 }
@@ -1485,7 +1893,7 @@ const Charts = {
     this._lazyRender('chartScatter', () => this.createPureScatter('chartScatter', data, 'pH', 'brix', 'pH', 'Brix'));
     this._lazyRender('chartVarBrix', () => this.createBarChart('chartVarBrix', data, 'brix', 'Brix Promedio'));
     this._lazyRender('chartVarAnt', () => this.createBarChart('chartVarAnt', data, 'tANT', 'tANT Promedio'));
-    this._lazyRender('chartOrigen', () => this.createDoughnut('chartOrigen', data));
+    this._lazyRender('chartOrigen', () => this.createOriginCountBar('chartOrigen', data));
     this._lazyRender('chartOriginBrix', () => this.createOriginBarChart('chartOriginBrix', data, 'brix', 'Brix Promedio'));
     this._lazyRender('chartOriginAnt', () => this.createOriginBarChart('chartOriginAnt', data, 'tANT', 'tANT Promedio'));
     this._lazyRender('chartOriginPH', () => this.createOriginBarChart('chartOriginPH', data, 'pH', 'pH Promedio'));
