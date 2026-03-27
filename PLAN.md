@@ -1,57 +1,64 @@
-# Plan — Workflow 3: Visualization Improvements
+# Plan — Phase 6: Polish
 
-## Status: ALL ITEMS IMPLEMENTED
-
-All 4 visualization tasks (V1–V4) have been implemented. Two bugs (duplicate nav option, unreachable switch case) were found and fixed during verification.
+## Status: IN PROGRESS
 
 ---
 
 ## Implemented Items
 
-| Task | Description | Status |
-|------|-------------|--------|
-| V1 | Replace doughnut with horizontal bar (Muestras por Origen) | DONE — `charts.js:435` |
-| V2 | Extraction % chart with quality bands | DONE — `charts.js:695` |
-| V3 | Wine phenolics chart (Fenólicos por Varietal) | DONE — `charts.js:816` |
-| V4 | Sample count (n=) in varietal bar labels | DONE — `charts.js:312` |
+| # | Task | Status | Files |
+|---|------|--------|-------|
+| 1 | Login screen UI polish | DONE | `css/styles.css`, `index.html` |
+| 2 | Export charts as PDF | DONE | `js/charts.js`, `index.html`, `css/styles.css` |
+| 3 | Mobile filter panel improvements | DONE | `js/app.js`, `index.html`, `css/styles.css` |
+| 4 | Multi-vintage trend lines | DONE | `js/charts.js` |
+| 5 | Per-origin chemistry comparison (radar) | DONE | `js/charts.js`, `index.html` |
 
-## Bug Fixes (found during verification)
+### 1. Login Screen UI Polish
+- Radial gold glow background for atmospheric depth
+- Card: layered box-shadow, drop-shadow on logo, gradient gold divider
+- Inputs: gold outer glow on focus
+- Button: gold gradient background, hover glow
+- Staggered fade-in entrance animation (card → logo → divider → tagline → fields → button → footer)
+- All via CSS variables — light theme works automatically
 
-| Bug | Fix |
-|-----|-----|
-| Duplicate `<option value="map">Mapa</option>` in nav-select | Removed second duplicate in `index.html` |
-| Unreachable duplicate `case 'map':` in `App.refresh()` | Removed dead code block in `app.js` (first case uses filtered data correctly) |
+### 2. PDF Export
+- Added jsPDF 2.5.2 via CDN
+- `exportChartPDF()`: landscape A4, dark background, branded title + gold separator + watermark
+- Export buttons converted to dropdown menu (PNG / PDF) via `showExportMenu()`
+- `.chart-export-menu` dropdown styled to match dashboard design
+- All 19 export buttons updated from direct PNG to format menu
+
+### 3. Mobile Filter Panel
+- Bottom sheet: rounded top corners (14px border-radius), pull handle bar
+- Sheet header with "Filtros" title and close button (×)
+- Slide-down dismiss animation (`sheetSlideDown` keyframes)
+- Close button: 32px circular, gold hover state
+- Handle + header hidden on desktop via `@media (min-width: 769px)`
+
+### 4. Multi-Vintage Trend Lines
+- Vintage comparison charts now show ALL data (not just lots in 2+ vintages)
+- Scatter points per vintage with automatic binned trend lines
+- Trend lines: 5-day bins, dashed, only where bins have 2+ samples
+- Legend filters out "tendencia" entries to keep it clean
+- Works with any number of vintages
+
+### 5. Per-Origin Chemistry Radar
+- New `createOriginRadarChart()` — radar/spider chart
+- 5 axes: Brix, pH, AT, tANT, Peso Baya
+- Values normalized to 0-100 scale per metric
+- One polygon per origin with origin colors + transparent fill
+- Tooltip shows raw (non-normalized) values
+- Placed in "Comparativo por Origen" section, lazy-rendered
 
 ---
 
-## Acceptance Criteria (all met)
+## Remaining Phase 6 Items
+- [ ] Harvest calendar with weather overlays
 
-- [x] V1: Origin distribution shows as horizontal bar (not doughnut), sorted by count descending
-- [x] V2: Extraction view has a % bar chart color-coded by quality band
-- [x] V3: Wine view has at least one chart showing phenolics by variety
-- [x] V4: Varietal bar chart labels include sample count (n=)
-- [x] All new charts handle empty data with Spanish "Sin datos" message
-- [x] All new charts are mobile responsive (`maintainAspectRatio: false`)
-- [x] All new charts support PNG export (export buttons in index.html)
-- [x] All new charts respect dark/light theme via `_applyThemeToCharts()`
-
-## Files Modified (this session)
-
-| File | Changes |
-|------|---------|
-| `index.html` | Removed duplicate Mapa nav option |
-| `js/app.js` | Removed unreachable duplicate `case 'map':` block |
-
-## Open Items (REVIEW.md — not in scope)
-
+## Open Security Items (REVIEW.md)
 | ID | Severity | Category |
 |----|----------|----------|
-| 4.1 | Critical | Security (client-only upload auth) — needs server-side endpoint |
-| 4.4 | Medium | Security (ephemeral rate limit) — needs Supabase/KV |
-| 4.5 | Medium | Security (no token revocation) — needs token blacklist |
-
-## Remaining Work
-
-- [ ] Visual verification via browser
-- [ ] Commit Workflow 3 changes
-- [ ] Delete `test-diag.js` and `test-results/` (diagnostic artifacts)
+| 4.1 | Critical | Security (client-only upload auth) |
+| 4.4 | Medium | Security (ephemeral rate limit) |
+| 4.5 | Medium | Security (no token revocation) |
