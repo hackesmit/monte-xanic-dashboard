@@ -216,10 +216,10 @@ monte-xanic-dashboard/
 ---
 
 ## Existing Features
-- **Bayas (Berries):** Scatter plots, bar charts, KPIs for Brix / pH / tANT / TA / Weight. Last-point highlighting per lot (★ Punto final).
+- **Bayas (Berries):** Scatter plots, bar charts, KPIs for Brix / pH / tANT / TA / Weight. Last-point highlighting per lot (★ Punto final). Varietal bars show sample count (n=). Origin distribution as horizontal bar (sorted by count).
 - **Evolución Fenólica:** Interactive evolution chart — phenolic compounds (tANT, fANT, bANT, pTAN, iRPs, IPT) on left Y-axis + Brix on right Y-axis. Per-lot lines, click-to-highlight, berry→wine linking via `berryToWine` mapping.
-- **Vino (Wine):** Tank reception & pre-fermentation tables, phenolic KPIs
-- **Extracción:** Berry-to-wine tANT extraction % mapping (uses filtered data)
+- **Vino (Wine):** Tank reception & pre-fermentation tables, phenolic KPIs, grouped bar chart of avg tANT/fANT/pTAN/IPT by variety
+- **Extracción:** Berry-to-wine tANT extraction mapping (grouped bar) + extraction % horizontal bar color-coded by quality band (<30% red, 30–50% gold, >50% green)
 - **Vendimias:** Multi-vintage comparison with % change, weather overlays
 - **Weather:** Valley-specific weather (VDG, VON, SV). Temperature time series, rainfall scatter, Brix vs temp and tANT vs rain correlations per valley.
 - **Upload:** Drag & drop WineXRay CSV or Recepción Excel → Supabase (with validation, lab/EXP/California sample filtering). Composite key `(sample_id, sample_date)` preserves sample evolution.
@@ -259,7 +259,7 @@ monte-xanic-dashboard/
 - [x] bcrypt password hashing + HMAC session tokens (24h expiry)
 - [x] Auth-gated `/api/config` endpoint (Supabase credentials protected)
 - [x] Rate limiting on login (10 attempts / 15 min)
-- [ ] **Login screen UI polish** — style the login form to match dashboard design
+- [ ] **Login screen UI polish** — moved to Phase 6
 
 ### Phase 4b — Data & Visualization Overhaul ✅ COMPLETE
 - [x] Origin naming: ranch-first format — `Monte Xanic (VDG)`, `Kompali (VON)`, etc.
@@ -271,17 +271,36 @@ monte-xanic-dashboard/
 - [x] Evolution chart: toggleable phenolic compounds + Brix dual-axis, berry→wine linking
 - [x] Supabase migration script: `sql/migration_overhaul.sql`
 
-### Phase 5 — Vineyard Quality Map *(Priority: HIGH)*
-- [ ] Add `maps.js` CONFIG: `fieldLotToSection`, `fieldLotRanchPatterns`, `mapMetrics`, `vineyardSections`
-- [ ] Add map view DOM elements to `index.html` (SVG container, metric selector, detail panel, KPIs)
-- [ ] Load `maps.js` via `<script>` tag in `index.html`
-- [ ] Add "Mapa" nav tab to sidebar
-- [ ] SVG vineyard section map with color-coded quality metrics (Brix, pH, tANT, TA)
-- [ ] Section detail panel with per-section KPIs
-- [ ] Ranch-level tonnage-weighted aggregation
+### Phase 4c — Stability, Security & Visualization Improvements ✅ COMPLETE
+Workflow 2 (REVIEW.md findings) + Workflow 3 (visualization improvements):
+- [x] XSS escaping in table rendering
+- [x] Rate limit TTL cleanup + correct IP extraction
+- [x] Role fallback to 'viewer' (not 'admin')
+- [x] Concurrent refresh guard (`_refreshInProgress` / `_refreshPending`)
+- [x] IntersectionObserver disconnect + queue clear on view switch
+- [x] Weather sync guard + API response validation
+- [x] below_detection rows show † marker in tables
+- [x] Empty filter results show Spanish "Sin datos" messages
+- [x] All Chart.js constructors wrapped in try/catch
+- [x] Stale lot IDs auto-cleared
+- [x] V1: Origin doughnut → horizontal bar (sorted by count)
+- [x] V2: Extraction % chart with quality-band colors
+- [x] V3: Wine phenolics grouped bar (tANT/fANT/pTAN/IPT by variety)
+- [x] V4: Sample count (n=) in varietal bar labels
+
+### Phase 5 — Vineyard Quality Map ✅ COMPLETE
+- [x] Add `maps.js` CONFIG: `fieldLotToSection`, `fieldLotRanchPatterns`, `mapMetrics`, `vineyardSections`
+- [x] Add map view DOM elements to `index.html` (SVG container, metric selector, detail panel, KPIs)
+- [x] Load `maps.js` via `<script>` tag in `index.html`
+- [x] Add "Mapa" nav tab to sidebar
+- [x] SVG vineyard section map with color-coded quality metrics (Brix, pH, tANT, TA)
+- [x] Section detail panel with per-section KPIs
+- [x] Ranch-level tonnage-weighted aggregation
 
 ### Phase 6 — Polish *(Priority: MEDIUM)*
-- [ ] Export charts as PNG/PDF
+- [x] Export charts as PNG (per-chart export buttons)
+- [ ] Export charts as PDF
+- [ ] Login screen UI polish — style login form to match dashboard design
 - [ ] Mobile filter panel improvements
 - [ ] Multi-vintage trend lines (3+ years)
 - [ ] Per-origin chemistry comparison

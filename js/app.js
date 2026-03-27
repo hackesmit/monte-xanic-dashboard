@@ -643,16 +643,23 @@ const App = {
     const backdrop = document.getElementById('mobile-backdrop');
     if (!sidebar) return;
 
-    sidebar.classList.remove('sheet-open');
+    // Slide-down animation before removing
+    sidebar.classList.add('sheet-closing');
     if (backdrop) backdrop.classList.remove('open');
 
-    // Restore scroll
-    document.body.style.position = '';
-    document.body.style.width = '';
-    document.body.style.top = '';
-    window.scrollTo(0, this._savedScrollY);
+    const onEnd = () => {
+      sidebar.classList.remove('sheet-open', 'sheet-closing');
+      sidebar.removeEventListener('animationend', onEnd);
 
-    this.refresh();
+      // Restore scroll
+      document.body.style.position = '';
+      document.body.style.width = '';
+      document.body.style.top = '';
+      window.scrollTo(0, this._savedScrollY);
+
+      this.refresh();
+    };
+    sidebar.addEventListener('animationend', onEnd);
   },
 
   _updateFilterFAB() {
