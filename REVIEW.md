@@ -1,300 +1,94 @@
-# Code Review — Monte Xanic Dashboard
+# Code Review — Uncommitted Changes (Round 2)
 
-> Generated from Workflow 2 (Debugging Agent Review) in TASK.md.
-> Read `CLAUDE.md` first for full project context.
-> **Do NOT modify files outside the scope of each fix.**
-
----
-
-## 1. DATA INTEGRITY
-
-### 1.1 Silent failure on headerless CSV upload — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Data Integrity
-- **FILE:LINE:** `js/upload.js:40-43`
-- **DESCRIPTION:** `parseWineXRay()` now validates headers against `CONFIG.wxToSupabase` keys. Returns `{ error: 'no_headers' }` if zero match. `handleUpload()` shows: "Archivo sin encabezados reconocidos. Verifique el formato WineXRay."
-
-### 1.2 Fragile 2-digit vintage extraction — FIXED
-- **SEVERITY:** ~~Low~~ Resolved
-- **CATEGORY:** Data Integrity
-- **FILE:LINE:** `js/upload.js:88-91`, `js/upload.js:130-133`, `js/upload.js:158-161`
-- **DESCRIPTION:** All 3 vintage extraction sites now validate the computed year is in range `[2015, 2040]`. Out-of-range values set `vintage_year = null`.
-
-### 1.3 below_detection regex — NO BUG
-- **FILE:LINE:** `js/upload.js:8`
-- **DESCRIPTION:** `/^<\s*\d+(\.\d+)?$/` correctly matches both `< 50` (space) and `<50.5` (decimal). No fix needed.
-
-### 1.4 Pagination — NO BUG
-- **FILE:LINE:** `js/dataLoader.js:99-113`
-- **DESCRIPTION:** `range(from, from + PAGE - 1)` with `PAGE=1000` is correct (Supabase range is inclusive). When exactly 1000 rows are returned, it fetches the next page which returns 0 and breaks. No off-by-one.
-
-### 1.5 Cache TTL — NO BUG
-- **FILE:LINE:** `js/dataLoader.js:499`
-- **DESCRIPTION:** 7-day TTL check `Date.now() - cache.ts > 7 * 24 * 60 * 60 * 1000` works correctly.
-
-### 1.6 normalizeAppellation — NO BUG
-- **FILE:LINE:** `js/config.js:107-126`
-- **DESCRIPTION:** All ranches from CLAUDE.md are covered by `appellationFixes` + `_resolveRanchFromCode`. Includes K* prefix for Kompali, all code mappings (MX, OLE, 7L, R14, VA, ON, DA, DLA, DUB, LLC, SG, UC), and mojibake repair.
+> Reviewing diff: `index.html`, `js/app.js`, `js/charts.js`, `PLAN.md`, `package.json` (staged), `.claude/settings.local.json`
+> Scope: 3 new chart functions, 1 chart replacement (doughnut → bar), 2 duplicate removals, minor HTML additions
 
 ---
 
-## 2. RACE CONDITIONS
+## Priority 1 Issues
 
-### 2.1 Concurrent refresh from cache + Supabase load — FIXED
-- **SEVERITY:** ~~High~~ Resolved
-- **CATEGORY:** Race Condition
-- **FILE:LINE:** `js/app.js:268-352`
-- **DESCRIPTION:** Guard flag `_refreshInProgress` + `_refreshPending` pattern with proper `try/finally` (line 272 try, line 340 finally). Guard reset and pending re-run both inside finally block.
+### 1a. Duplicated extraction pair-building logic — divergence risk
+**Files:** `js/charts.js:695–732` (new) vs `js/charts.js:580–618` (existing)
 
-### 2.2 IntersectionObserver not disconnected on view switch — FIXED
-- **SEVERITY:** ~~High~~ Resolved
-- **CATEGORY:** Race Condition / Memory Leak
-- **FILE:LINE:** `js/app.js:235-240`
-- **DESCRIPTION:** `setView()` now calls `Charts._lazyObserver.disconnect()`, clears `_lazyQueue`, and calls `Charts._pruneOrphans()` before rendering the new view.
+`createExtractionPctChart` copy-pastes ~40 lines of berry↔wine pair matching from `createExtractionChart`. The two copies already differ:
+- **New** checks `berry.tANT > 0` before pushing a pair (line 722) — correct, prevents division by zero.
+- **Original** does NOT check `berry.tANT > 0` — so `berry.tANT === 0` gets through and produces `Infinity%` in the extraction tooltip (line 614: `((wine.antoWX / berry.tANT) * 100).toFixed(1)`).
 
-### 2.3 Weather sync partial failure + concurrent calls — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Race Condition
-- **FILE:LINE:** `js/weather.js:42-47`
-- **DESCRIPTION:** `_isSyncing` guard flag added with proper `try/finally` (line 47). In-memory state now only updates after confirmed DB upsert success. Concurrent calls return early.
+The original chart has a latent bug that the new chart avoids. Any future fix to one copy risks being missed in the other. Extract to a shared `_buildExtractionPairs(berryData, wineData)` helper.
 
-### 2.4 Render fires after canvas hidden — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Race Condition
-- **FILE:LINE:** `js/charts.js:1192-1203`
-- **DESCRIPTION:** Observer callback now checks `entry.target.closest('.view-panel')` for `active` class before calling `job.fn()`. Combined with 2.2 fix (disconnect on view switch), stale renders are fully prevented.
+### 1b. Extraction % values can exceed 100% — unclamped
+**File:** `js/charts.js:723`
 
-### 2.5 Refresh during paginated Supabase load — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Race Condition
-- **FILE:LINE:** `js/app.js:17-32`
-- **DESCRIPTION:** Cache-hit path fires `refresh()` synchronously, then starts async Supabase load. The refresh guard (2.1) prevents overlapping refreshes with try/finally ensuring the flag always resets. `loadFromSupabase()` awaits all pages before returning, so the background refresh only fires with complete data.
+```js
+const pct = (wine.antoWX / berry.tANT) * 100;
+```
+
+If wine tANT exceeds berry tANT (possible due to measurement timing or concentration), `pct` > 100. The chart x-axis is hard-capped at `max: 100` (line 803), so bars would be clipped without visual indication that data overflows. Consider either:
+- Removing `max: 100` to let Chart.js auto-scale, or
+- Clamping values with `Math.min(pct, 100)` and marking overflow visually.
 
 ---
 
-## 3. FILTER STATE CONSISTENCY
+## Priority 2 Improvements
 
-### 3.1 Stale lot IDs persist in Filters.state.lots — FIXED
-- **SEVERITY:** ~~Critical~~ Resolved
-- **CATEGORY:** Filter State
-- **FILE:LINE:** `js/filters.js:347-358`
-- **DESCRIPTION:** `getFiltered()` now validates lot selections against data filtered without the lot filter. Stale lots are auto-removed from `state.lots` and their chip CSS class is cleared. Set deletion during `for...of` iteration is spec-safe.
+### 2a. Good fix: duplicate `<option value="map">` removed
+**File:** `index.html:121` (deleted line)
 
-### 3.2 Filter state not visually confirmed on view return — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Filter State / UX
-- **FILE:LINE:** `js/app.js:261`, `js/filters.js:373-386`
-- **DESCRIPTION:** `setView()` now calls `Filters.syncChipUI()` which toggles `.active` class on all chip containers (berry + wine) to match current filter state Sets. Also mitigates the pre-existing `clearAll()` broad `.chip` selector issue.
+The committed code had two `<option value="map">Mapa</option>` entries (lines 119 and 121). The diff correctly removes the duplicate. This is a bug fix — the duplicate caused two "Mapa" entries in the mobile view selector.
 
-### 3.3 clearAll() resets grapeType and colorBy — NO BUG
-- **FILE:LINE:** `js/filters.js:185-201`
-- **DESCRIPTION:** `clearAll()` correctly resets `grapeType` to `'all'` and `colorBy` to `'variety'`. Working as intended.
+### 2b. Good fix: duplicate `case 'map'` block removed
+**File:** `js/app.js:358–364` (deleted block)
 
-### 3.4 Filter preservation across view switch — WORKS CORRECTLY
-- **DESCRIPTION:** Scenario (Vintage 2024 + Syrah -> Wine -> back to Berry) preserves both filters because `Filters.state` and `Filters.wineState` are independent objects. This is by design but contributes to 3.2.
+The committed code had two `case 'map'` blocks in the `refresh()` switch. The second (simpler) one at line 354 was unreachable because JS falls through to the first match. The retained block at line 333 has the full implementation with berry→MapStore bridging. Correct removal.
 
----
+### 2c. Wine phenolics chart: sparse data may produce misleading averages
+**File:** `js/charts.js:822–826`
 
-## 4. AUTH & SECURITY
+The compounds use keys `antoWX`, `freeANT`, `pTAN`, `iptSpica`. Data filtering is correct (only non-NaN numbers included). However, `freeANT` and `pTAN` may have very few measurements for some varieties. Consider showing `n=` in the tooltip like the berry bar charts already do, so users know when an average is based on 1–2 measurements.
 
-### 4.1 Client-only upload role check — no server-side validation
-- **SEVERITY:** Critical
-- **CATEGORY:** Security / Privilege Escalation
-- **FILE:LINE:** `js/auth.js:130-136`, `js/upload.js:186`
-- **DESCRIPTION:** Upload role is enforced only on the client. `Auth.canUpload()` hides the UI, but `UploadManager.handleUpload()` has no role check and makes direct Supabase calls. An attacker with DevTools can call `UploadManager.handleUpload(file, el)` directly, inserting arbitrary data.
-- **REPRODUCTION:** Open DevTools. Run: `Auth.role = 'lab'; UploadManager.handleUpload(maliciousFile, document.getElementById('loader-status'))`.
-- **SUGGESTED FIX:** Create a server-side `/api/upload` endpoint that validates token role before allowing inserts. Update Supabase RLS policies to require authenticated claims.
+### 2d. Untracked test artifacts should be gitignored
+**Files:** `test-diag.js`, `test-results/`
 
-### 4.2 IP spoofing bypasses rate limiting — FIXED
-- **SEVERITY:** ~~High~~ Resolved
-- **CATEGORY:** Security / Rate Limit Bypass
-- **FILE:LINE:** `api/login.js:32-33`
-- **DESCRIPTION:** IP extraction now prefers `x-real-ip` (set by Vercel), falls back to `x-forwarded-for` split on comma with `trim()`. Line 33: `req.headers['x-real-ip'] || (fwd ? fwd.split(',')[0].trim() : null) || 'unknown'`.
+Playwright test scripts and screenshots. Should be added to `.gitignore`:
+```
+test-diag.js
+test-results/
+```
 
-### 4.3 Role fallback defaults to 'admin' — FIXED
-- **SEVERITY:** ~~Low~~ Resolved
-- **CATEGORY:** Security / Defense-in-Depth
-- **FILE:LINE:** `js/auth.js`, `api/verify.js`
-- **DESCRIPTION:** All 6 `'admin'` fallback locations changed to `'viewer'` (least privilege): auth.js initial property, init catch, verify response chain, login decode, login decode catch, logout reset, and server-side verify.js fallback. Only legitimate `'admin'` reference is the account definition in `api/login.js:56`.
+### 2e. `stepSize: 1` on origin count chart x-axis
+**File:** `js/charts.js:459`
 
-### 4.4 In-memory rate limit lost across serverless instances
-- **SEVERITY:** Medium
-- **CATEGORY:** Security / Rate Limit Bypass
-- **FILE:LINE:** `api/login.js:4`
-- **DESCRIPTION:** Rate-limit Map exists only in the current Vercel function instance. Vercel routes requests to different containers, so the rate limit resets on each cold start or load-balanced instance.
-- **REPRODUCTION:** Attacker sends 5 attempts (hits limit on instance A). Request 6 routes to instance B with a fresh Map.
-- **SUGGESTED FIX:** Move rate-limit tracking to Supabase or Vercel KV with TTL.
+Forces integer tick marks. Works well for small counts, but if a vineyard has hundreds of samples, Chart.js will attempt to render every integer on the axis. Remove `stepSize: 1` and let Chart.js auto-scale.
 
-### 4.5 No token revocation mechanism
-- **SEVERITY:** Medium
-- **CATEGORY:** Security / Session Management
-- **FILE:LINE:** `api/verify.js` (entire file)
-- **DESCRIPTION:** Token verification relies only on HMAC signature + expiry. There's no revocation list. A leaked token remains valid for up to 24 hours even after the user logs out (client-side logout only clears localStorage).
-- **REPRODUCTION:** User logs in, copies token, logs out. Token still passes server-side verification.
-- **SUGGESTED FIX:** Implement a token blacklist in Supabase (`token_hash, invalidated_at`), checked in `/api/verify`.
+### 2f. `package.json` adds `@playwright/test` as devDependency (staged)
+**File:** `package.json`
 
-### 4.6 Expired token check — NO BUG
-- **FILE:LINE:** `api/verify.js:40-46`
-- **DESCRIPTION:** Expiry check `!payload.exp || Date.now() > payload.exp` correctly rejects expired and exp-missing tokens.
+Appropriate for testing. Note CLAUDE.md says "Never introduce npm packages or build tools" — this is dev-only and doesn't affect the CDN-only production build. Acceptable, but confirm intentional.
+
+### 2g. `createDoughnut` renamed — stale reference in TASK.md
+**File:** `TASK.md:65`
+
+`createDoughnut()` was renamed to `createOriginCountBar()`. No JS references remain, but TASK.md still mentions the old name.
 
 ---
 
-## 5. RENDERING BUGS
+## Missing Tests
 
-### 5.1 XSS: Unescaped date and vintage fields in tables — FIXED
-- **SEVERITY:** ~~High~~ Resolved
-- **CATEGORY:** Security / XSS
-- **FILE:LINE:** `js/tables.js:62-63,119,151`
-- **DESCRIPTION:** `sampleDate`, `vintage`, and `fecha` were rendered directly into HTML without `_esc()`. **Fixed:** all date/vintage fields now wrapped with `this._esc()` across berry table (lines 62-63), wine table (line 119), and preferment table (line 151).
+No automated tests for the new chart functions. Manual verification checklist:
 
-### 5.2 Chart instance cache — unbounded growth — FIXED
-- **SEVERITY:** ~~High~~ Resolved
-- **CATEGORY:** Performance / Memory Leak
-- **FILE:LINE:** `js/charts.js:50-57`
-- **DESCRIPTION:** `_pruneOrphans()` method now checks all cached instances against DOM, destroying and removing entries whose canvas no longer exists. Called from `App.setView()` on every view switch.
-
-### 5.3 _applyThemeToCharts() — FIXED
-- **SEVERITY:** ~~Low~~ Resolved
-- **CATEGORY:** UI
-- **FILE:LINE:** `js/charts.js:83-84`
-- **DESCRIPTION:** Now correctly sets `chart.options.animation = { duration: 400, easing: 'easeOutQuart' }` before calling `chart.update()`, using the proper Chart.js 4.x API.
-
-### 5.4 pH outlier filter inconsistent across views — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Data Integrity / UI
-- **FILE:LINE:** `js/app.js:83`
-- **DESCRIPTION:** pH filter moved from `kpis.js` and `charts.js` (where it was applied inconsistently) to `app.js:83` as `cleanBerry`. Now applied uniformly to KPIs, charts, tables, vintage view, and extraction view.
-
-### 5.5 Division by zero in KPIs — NO BUG
-- **FILE:LINE:** `js/kpis.js:4-6`
-- **DESCRIPTION:** `avg()` returns `null` for empty arrays. `setKPI()` checks for `null` before calling `.toFixed()`. Safe.
+1. **Bayas** → origin chart renders as horizontal bar (not doughnut), sorted descending
+2. **Vino** → "Fenólicos por Varietal" grouped bar shows tANT/fANT/pTAN/IPT per variety
+3. **Extracción** → both "tANT: Baya vs Vino" and "Tasa de Extracción (%)" charts render
+4. Filter by variety → all three new charts respond to filter changes
+5. Empty state → each chart shows Spanish "no data" message
+6. Mobile selector → only one "Mapa" option appears (duplicate removed)
 
 ---
 
-## 6. WEATHER MODULE
+## Notes
 
-### 6.1 No schema validation on Open-Meteo API response — FIXED
-- **SEVERITY:** ~~High~~ Resolved
-- **CATEGORY:** Data Integrity
-- **FILE:LINE:** `js/weather.js:141`
-- **DESCRIPTION:** Now validates `Array.isArray(d.time)` and logs `console.error('[WeatherStore] Respuesta inesperada de Open-Meteo:', d)` on schema mismatch.
-
-### 6.2 GDD calculation silently skips missing days — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Data Integrity
-- **FILE:LINE:** `js/weather.js:210-228`
-- **DESCRIPTION:** Now tracks `totalDays` and `missingDays` explicitly. Returns `null` if `missingDays > 3` or `missingDays / totalDays > 0.1` (10% threshold).
-
-### 6.3 Negative rainfall values not validated — FIXED
-- **SEVERITY:** ~~Medium~~ Resolved
-- **CATEGORY:** Data Integrity
-- **FILE:LINE:** `js/weather.js:194`
-- **DESCRIPTION:** `getCumulativeRainfall()` now checks `row.rainfall_mm >= 0` before summing. DB CHECK constraint not yet added (requires migration).
-
----
-
-## 7. B-TIER IMPLEMENTATION REVIEW
-
-### B1 Empty-state messaging — VERIFIED CORRECT
-- **Files:** `js/charts.js`, `js/tables.js`
-- Charts: `_drawNoData()` called for 5 chart types when `data.length === 0`. Message: "No hay datos para los filtros seleccionados".
-- Tables: Berry (`colspan="11"`), wine (`colspan="11"`), preferment (`colspan="10"`) — all colspans match actual column counts.
-
-### B2 Vintage context label — VERIFIED CORRECT
-- **File:** `js/app.js:283-300`
-- Appends "(filtrado: Syrah, Monte Xanic (VDG))" when `Filters.state.varieties` or `Filters.state.origins` are active. Only fires in vintage view via `_updateVintageUI()`.
-
-### B3 Loading spinner — VERIFIED CORRECT
-- **Files:** `index.html`, `css/styles.css`, `js/app.js:173-176`
-- Spinner visible by default, hidden via `_hideSpinner()` in `onDataLoaded()`. All code paths in `App.init()` (cache, Supabase, JSON fallback, empty dashboard) call `onDataLoaded()`. Login screen z-index (10001) covers spinner (9999) during auth.
-
-### B4 Wine vintage filter — BUG FOUND & FIXED
-- **SEVERITY:** ~~High~~ Resolved
-- **CATEGORY:** Data Integrity
-- **FILE:LINE:** `js/dataLoader.js:97-100`
-- **DESCRIPTION:** Prefermentativos-sourced rows had no `vintage` field because the `prefermentativos` table lacks a `vintage_year` column. **Fixed:** `_rowToPrefWine()` now extracts vintage from `batch_code` prefix (e.g., `25SBVDG-1` → 2025), consistent with how upload.js handles it. Note: the suggested fix of adding to `supabasePrefToWineJS` would not work since the DB table has no `vintage_year` column.
-
-### B5 Chart legend keyboard accessibility — VERIFIED CORRECT
-- **File:** `js/charts.js` (legend rendering)
-- All legend items have `role="button"`, `tabindex="0"`, and `onkeydown` handler for Enter/Space. Applied to visible items, overflow items, and expand/collapse toggle. `event.preventDefault()` prevents page scroll on Space.
-
-## 8. NEW FINDINGS (Code Sweep)
-
-### 8.1 Weather API base URL is wrong — FIXED
-- **SEVERITY:** ~~Critical~~ Resolved
-- **CATEGORY:** Data Integrity
-- **FILE:LINE:** `js/weather.js:11`
-- **DESCRIPTION:** `_API_BASE` corrected from `api.open-meteo.com` to `archive-api.open-meteo.com` in commit `accba51`.
-
-### 8.2 Offline toast may overflow on narrow mobile screens — FIXED
-- **SEVERITY:** Low
-- **CATEGORY:** UI / Mobile
-- **FILE:LINE:** `css/styles.css` (`.offline-toast`)
-- **DESCRIPTION:** `white-space: nowrap` with no `max-width` constraint. Long cache timestamp text like "Usando datos en caché (última actualización: 23 mar, 15:30)" can exceed viewport on screens < 360px.
-- ~~**SUGGESTED FIX:**~~ Fixed in commit `accba51` — `max-width: 90vw; overflow: hidden; text-overflow: ellipsis` added.
-
-### 8.2 clearAll() broad .chip selector — MITIGATED
-- **CATEGORY:** Filter State
-- **FILE:LINE:** `js/filters.js:213`
-- **DESCRIPTION:** `document.querySelectorAll('.chip')` clears active class on ALL chips including wine chips. Pre-existing issue, now **mitigated** by `syncChipUI()` (3.2 fix) which re-syncs chip states on view return. No functional impact remains.
-
----
-
-## 9. C-TIER IMPLEMENTATION REVIEW
-
-### C1 Offline fallback notification — VERIFIED CORRECT
-- **Files:** `js/app.js:186-202`, `index.html`, `css/styles.css`
-- Toast shows "Usando datos en caché (última actualización: X)" with `es-MX` locale when Supabase fails. 6-second auto-dismiss. `#offline-toast` inside `#dashboard-content`, styled with slide-up animation.
-
-### C2 Chart theme transition — VERIFIED CORRECT (fixed in 5.3)
-- **File:** `js/charts.js:83-84`
-- Now sets `chart.options.animation` before calling `chart.update()`, using the correct Chart.js 4.x API. 400ms easeOutQuart transition on theme toggle.
-
-### C3 Upload duplicate detection — VERIFIED CORRECT
-- **File:** `js/upload.js:183-204`
-- `_detectDuplicates()` queries existing rows by primary/composite key before upsert. Shows "X nuevas, Y actualizadas" in pending and success messages. Wrapped in try/catch, returns 0 on failure (non-blocking).
-
----
-
-## Priority Matrix
-
-### Open Items
-
-| Priority | ID | Severity | Category | Fix Effort |
-|----------|----|----------|----------|------------|
-| 1 | 4.1 | Critical | Security (client-only upload auth) | Medium |
-| 2 | 4.4 | Medium | Security (ephemeral rate limit) | Medium |
-| 3 | 4.5 | Medium | Security (no token revocation) | Medium |
-
-### Resolved Items
-
-| ID | Category | Resolution |
-|----|----------|------------|
-| 8.1 | Data Integrity | FIXED (`accba51`) — weather API URL corrected |
-| 2.1 | Race Condition | FIXED (`accba51`) — refresh guard with try/finally |
-| 5.3 | UI | FIXED (`accba51`) — Chart.js animation API corrected |
-| 8.2 | UI / Mobile | FIXED (`accba51`) — toast max-width 90vw |
-| 5.1 | XSS | FIXED — `_esc()` on all fields |
-| 3.1 | Filter State | FIXED — stale lot auto-cleanup in `getFiltered()` |
-| 3.2 | Filter State / UX | FIXED — `syncChipUI()` on view switch |
-| 2.2 | Memory Leak | FIXED — observer disconnect on view switch |
-| 2.4 | Race Condition | FIXED — active panel check in observer |
-| 5.2 | Memory Leak | FIXED — `_pruneOrphans()` on view switch |
-| 5.4 | Data Integrity | FIXED — pH filter centralized in `app.js` |
-| 4.2 | Security | FIXED — IP extraction splits `x-forwarded-for` |
-| 2.3 | Race Condition | FIXED — `_isSyncing` guard with try/finally |
-| 2.5 | Race Condition | FIXED — refresh guard with try/finally prevents overlap |
-| 4.3 | Security | FIXED — all 'admin' fallbacks changed to 'viewer' |
-| 6.1 | Data Integrity | FIXED — API schema validation |
-| 6.2 | Data Integrity | FIXED — GDD missing day threshold |
-| 6.3 | Data Integrity | FIXED — negative rainfall guard |
-| 1.1 | Data Integrity | FIXED — header validation error |
-| 1.2 | Data Integrity | FIXED — vintage range guard |
-| B4 | Data Integrity | FIXED — preferment vintage from batch_code |
-
-### Rules for the Builder
-- All user-facing messages must be in Spanish
-- Follow file responsibility rules from CLAUDE.md (KPIs in `kpis.js`, charts in `charts.js`, etc.)
-- Do not introduce npm packages or build tools
-- Every fix must be mobile responsive
-- Preserve existing Chart.js 4.4.1 and SheetJS 0.18.5 API compatibility
+- **Diff size:** ~443 insertions / 408 deletions across 6 files. Most additions are new chart code; deletions are PLAN.md simplification and REVIEW.md rewrite.
+- **Duplicate removals (2a, 2b):** Both are genuine bug fixes — duplicate nav option and unreachable switch case. No behavior change since JS used the first match anyway, but cleaner.
+- **No destructive changes:** The `createDoughnut` → `createOriginCountBar` rename removes the old method but nothing else called it.
+- **`.claude/settings.local.json`:** 77 new permission lines. Local editor config — no project impact.
+- **PLAN.md:** Detailed action plan replaced with completion summary. Appropriate since all items are resolved; old plan is in git history.

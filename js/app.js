@@ -300,18 +300,23 @@ const App = {
         Charts._lazyRender('chartEvolution', () => Charts.updateEvolutionChart());
         break;
 
-      case 'wine':
+      case 'wine': {
         const filteredWine = Filters.getFilteredWine();
         const filteredPreferment = Filters.getFilteredPreferment();
         KPIs.updateWineKPIs(filteredWine);
+        Charts.createWinePhenolicsChart('chartWinePhenolics', filteredWine);
         Tables.updateWineTable(filteredWine);
         Tables.updatePrefermentTable(filteredPreferment);
         break;
+      }
 
-      case 'extraction':
-        Charts.createExtractionChart('chartExtraction', cleanBerry, Filters.getFilteredWine());
+      case 'extraction': {
+        const filteredWineExt = Filters.getFilteredWine();
+        Charts.createExtractionChart('chartExtraction', cleanBerry, filteredWineExt);
+        Charts.createExtractionPctChart('chartExtractionPct', cleanBerry, filteredWineExt);
         this.updateExtractionTable();
         break;
+      }
 
       case 'vintage':
         this._updateVintageUI(cleanBerry);
@@ -350,14 +355,6 @@ const App = {
         Explorer.init();
         Explorer.refreshAll();
         break;
-
-      case 'map': {
-        const vintageSet = Filters.state.vintages;
-        const mapVintage = vintageSet.size === 1 ? [...vintageSet][0] : null;
-        MapStore.aggregateBySection(DataStore.berryData, mapVintage);
-        MapStore.render();
-        break;
-      }
     }
 
     this._updateFilterFAB();
