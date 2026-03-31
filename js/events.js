@@ -15,8 +15,11 @@ const Events = {
 
   // ── Navigation (2 handlers) ──
   _bindNavigation() {
-    const navSelect = document.getElementById('nav-select');
-    if (navSelect) navSelect.addEventListener('change', () => App.setView(navSelect.value));
+    const navTabs = document.getElementById('nav-tabs');
+    if (navTabs) navTabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('.nav-tab');
+      if (btn && btn.dataset.view) App.setView(btn.dataset.view);
+    });
 
     const mapMetric = document.getElementById('map-metric-select');
     if (mapMetric) mapMetric.addEventListener('change', () => MapStore.setMetric(mapMetric.value));

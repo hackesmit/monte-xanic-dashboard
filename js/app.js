@@ -254,9 +254,10 @@ const App = {
     }
     Charts._pruneOrphans();
 
-    // Sync dropdown
-    const navSelect = document.getElementById('nav-select');
-    if (navSelect && navSelect.value !== view) navSelect.value = view;
+    // Sync nav tabs
+    document.querySelectorAll('#nav-tabs .nav-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
 
     // Show/hide view panels
     document.querySelectorAll('.view-panel').forEach(panel => {
