@@ -77,7 +77,9 @@ const App = {
   },
 
   bindGlobalEvents() {
-    // File input handler
+    Events.bindAll();
+
+    // File input handler (legacy loader — upload panel handled by Events)
     const fileInput = document.getElementById('file-input');
     if (fileInput) {
       fileInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
