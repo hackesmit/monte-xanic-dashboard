@@ -77,7 +77,9 @@ const App = {
   },
 
   bindGlobalEvents() {
-    // File input handler
+    Events.bindAll();
+
+    // File input handler (legacy loader — upload panel handled by Events)
     const fileInput = document.getElementById('file-input');
     if (fileInput) {
       fileInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
@@ -252,9 +254,10 @@ const App = {
     }
     Charts._pruneOrphans();
 
-    // Sync dropdown
-    const navSelect = document.getElementById('nav-select');
-    if (navSelect && navSelect.value !== view) navSelect.value = view;
+    // Sync nav tabs
+    document.querySelectorAll('#nav-tabs .nav-tab').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === view);
+    });
 
     // Show/hide view panels
     document.querySelectorAll('.view-panel').forEach(panel => {
