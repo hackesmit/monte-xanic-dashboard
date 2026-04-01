@@ -583,3 +583,289 @@ No open items. All findings resolved.
 - Do not introduce npm packages or build tools
 - Every fix must be mobile responsive
 - Preserve existing Chart.js 4.4.1 and SheetJS 0.18.5 API compatibility
+
+---
+
+---
+
+## 15. DOCUMENTATION UPDATE REVIEW (Round 6)
+
+> Reviewing uncommitted changes: CLAUDE.md, PLAN.md, TASK.md, .claude/settings.local.json + new REPORTE_DASHBOARD.txt.
+> All changes are documentation/config — no source code modifications.
+
+### Priority 1 Issues
+
+#### 15.1 CSP `connect-src` blocks weather API on Vercel — HIGH
+- **FILE:** `vercel.json:11`
+- **DESCRIPTION:** `connect-src` allows `https://api.open-meteo.com` but `js/weather.js:11` uses `https://archive-api.open-meteo.com/v1/archive`. These are different origins — CSP exact-match does NOT wildcard subdomains. Weather fetch calls are blocked on Vercel.
+- **FIX:** Change `connect-src` to include `https://archive-api.open-meteo.com` (or use `https://*.open-meteo.com`).
+- **NOTE:** Compounds with 14.12 — the entire CSP needs a single pass fix.
+
+#### 15.2 REPORTE_DASHBOARD.txt exposes architecture on Vercel — MEDIUM
+- **FILE:** `REPORTE_DASHBOARD.txt`, `.vercelignore`
+- **DESCRIPTION:** 985-line Spanish report detailing API endpoints, auth flow, rate limit thresholds, table schemas, and security implementation specifics. Not in `.vercelignore` — if committed, deploys as publicly accessible `https://domain/REPORTE_DASHBOARD.txt`. No credentials, but exposes internal architecture to attackers.
+- **FIX:** Add `REPORTE_DASHBOARD.txt` to `.vercelignore`. Also add `PLAN.md`, `TASK.md`, `REVIEW.md` — all currently missing.
+
+### Priority 2 Improvements
+
+#### 15.3 Round 5 Priority Matrix is stale — 5 items silently resolved
+- **FILE:** `REVIEW.md:558-577`
+- **DESCRIPTION:** Priority Matrix lists 12 open items. Verified against committed code — 5 are already resolved:
+  - **13.1** (ExtractionPctChart inline pair logic) — FIXED: `charts.js:851` calls `_buildExtractionPairs()`
+  - **13.2** (Extraction % max: 100 cap) — FIXED: no `max: 100` found in charts.js
+  - **13.3** (SUPABASE_SERVICE_KEY undocumented) — FIXED: already in CLAUDE.md env vars section
+  - **13.5** (Token TTL 24h→2h undocumented) — FIXED in this diff: CLAUDE.md now says "2h expiry"
+  - **14.2** partially fixed: `api/upload.js` has blacklist check (line 47-54), `api/config.js` still lacks it
+- **FIX:** Update matrix below.
+
+#### 15.4 Docs missing from .vercelignore
+- **FILE:** `.vercelignore`
+- **DESCRIPTION:** Only `CLAUDE.md` is excluded. `PLAN.md`, `TASK.md`, `REVIEW.md` deploy to Vercel alongside the app. None contain secrets but are internal planning docs.
+- **FIX:** Add all 4 to `.vercelignore`.
+
+### Missing Tests
+
+No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, not introduced by these changes.
+
+---
+
+---
+
+## 16. USER TESTING FINDINGS (Round 7)
+
+> First real data update by winery staff. These are bugs and missing features reported from production usage.
+> Discovered: 2026-03-31
+
+### BUGS
+
+#### 16.1 PDF/PNG export not working — HIGH
+- **FILES:** `js/charts.js:1586-1689`, `index.html:16`
+- **DESCRIPTION:** Chart export (both PNG and PDF) is broken in production. Root causes likely compound:
+  1. **CSP blocks inline handlers (14.12):** Export buttons use `onclick` which is blocked by Vercel CSP. The delegated listener in `events.js` may not cover all export flows.
+  2. **jsPDF CDN race condition:** `jspdf.umd.min.js` loaded with `defer` — if user clicks export before library loads, `window.jspdf` is undefined and export silently fails (console error only, no user feedback).
+  3. **PNG Image load race:** `chartImg.onload` callback may not fire if base64 data URL is cached synchronously. No error handler on `chartImg.onerror`.
+  4. **Silent failures:** All error paths return silently with no user-facing message in Spanish.
+- **FIX:** Ensure export buttons work via delegated event binding (CSP fix). Add loading guard for jsPDF. Add Spanish error toast on failure. Add `onerror` handler on Image.
+
+#### 16.2 Same-lot data points not connected — last-point bug — HIGH
+- **FILES:** `js/charts.js:9-23` (`_identifyLastPoints`), `js/charts.js:168-229` (scatter rendering)
+- **DESCRIPTION:** After first data update, user reports "the program registers each node as if it's the last and gives it golden border, not allowing to connect the dots." Two related issues:
+  1. **No per-lot lines:** Scatter charts group data by variety or origin (`Filters.state.colorBy`), NOT by lotCode. Points from the same lot (e.g., '25CFCC-1' measured on 5 different dates) are mixed into a single variety dataset. There are no lines connecting same-lot measurements over time — each point floats independently.
+  2. **Golden border logic:** `_identifyLastPoints()` groups by `lotCode` and flags the point with max `daysPostCrush` per lot. But since scatter datasets are grouped by variety/origin, the golden borders appear scattered throughout the dataset with no visual context for WHY a point is "last" (no connecting line to preceding points).
+  3. **Lot identity:** The composite key `(sample_id, sample_date)` means the same `sample_id` appears multiple times with different dates. The grouping must treat all rows with the same `sample_id` as one lot's time series.
+- **FIX:** Add per-lot line segments within scatter datasets. When `showLines` is toggled, connect points sharing the same `lotCode` sorted by `daysPostCrush`. Ensure only the true final point per lot gets the golden border. Consider always showing lot lines (thin, semi-transparent) even when `showLines` is false.
+
+#### 16.3 Duplicate dates with different hours overwritten on upload — HIGH
+- **FILES:** `js/upload.js:26-29` (`_normalizeValue`), `api/upload.js:24` (conflict key), `js/charts.js` (display)
+- **DESCRIPTION:** Some vineyard lots are sampled twice on the same day at different hours. The upload pipeline strips time from dates (`val.toISOString().split('T')[0]`), and the upsert conflict key `(sample_id, sample_date)` treats both measurements as the same row — second upload overwrites the first.
+- **IMPACT:** Data loss — only one measurement per lot per day survives.
+- **DECISION (confirmed by user):** Option B — `sample_seq` integer column. Row-order-within-batch + deterministic sort.
+- **FIX — 3 files + 1 migration:**
+  1. **`sql/migration_sample_seq.sql`** — Add `sample_seq INTEGER NOT NULL DEFAULT 1` to `wine_samples`. Drop old unique constraint on `(sample_id, sample_date)`. Create new unique constraint on `(sample_id, sample_date, sample_seq)`. Set all existing rows to `sample_seq = 1`.
+  2. **`js/upload.js`** — In `parseWineXRay()` or before `upsertRows()`: group parsed rows by `(sample_id, sample_date)`. Within each group, sort deterministically (by source time if Date object had time component, else by value fingerprint: tANT → pH → berry_weight). Assign `sample_seq = 1, 2, 3...` per group position. This makes seq stable regardless of CSV row order.
+  3. **`api/upload.js`** — Change conflict key from `'sample_id,sample_date'` to `'sample_id,sample_date,sample_seq'` in `ALLOWED_TABLES.wine_samples.conflict`.
+  4. **`js/charts.js`** — When plotting `daysPostCrush`, add `+ (sample_seq - 1) * 0.15` day offset so same-day points spread apart visually. Tooltip still shows the real `daysPostCrush` value.
+- **IDEMPOTENCY:** Same CSV uploaded twice → same groups, same deterministic sort → same seqs → upsert overwrites with identical values. Safe.
+- **EDGE CASE (accepted):** Two separate CSVs each with 1 row for same `(sample_id, sample_date)` → both get seq=1 → second overwrites first. Acceptable because in practice each data source (WineXRay, Y15, etc.) exports all measurements at once. Future architecture: dedicated upload path per source eliminates this entirely.
+- **NOTE:** 16.4 (overlapping points jitter) is now a subset of this fix — the `sample_seq` offset handles same-lot same-day overlap. Cross-lot same-day overlap is a separate visual issue (lower priority, handled by deterministic hash jitter on `sampleId`).
+
+#### 16.4 No jitter for overlapping data points at same x-coordinate — LOW
+- **FILES:** `js/charts.js:168-229`
+- **DESCRIPTION:** Multiple points from DIFFERENT lots with identical `daysPostCrush` values plot at the exact same pixel. Points stack invisibly — only the top one is clickable/visible. (Same-lot same-day overlap is now handled by 16.3's `sample_seq` offset.)
+- **FIX:** Add small deterministic jitter based on hash of `sampleId` (±0.2 days) to `daysPostCrush` for display only. Tooltip still shows exact value.
+
+### MISSING FEATURES
+
+#### 16.5 No GDD (Growing Degree Days) visualization — HIGH
+- **FILES:** `js/weather.js:208-238` (calculation exists), `js/charts.js` (no GDD chart), `index.html` (no GDD container)
+- **DESCRIPTION:** `WeatherStore.getCumulativeGDD()` is fully implemented (base 10°C, cached, valley-aware, with data quality checks). But it is ONLY used in the explorer detail view (`explorer.js:144`). There is no GDD chart, no GDD time series, and no GDD overlay in the weather section.
+- **FIX:** Add a cumulative GDD chart to the weather view — line chart showing GDD accumulation from July 1 through harvest season, one line per valley. Add GDD column to berry scatter tooltips. Optionally add GDD as a secondary axis on the harvest calendar.
+
+#### 16.6 No weather location filter — HIGH
+- **FILES:** `js/weather.js` (API supports location param), `js/charts.js:1107,1178` (no location passed), `index.html:601` (hardcoded "Valle de Guadalupe"), `js/filters.js` (no location state)
+- **DESCRIPTION:** Weather data is fetched and cached for all 3 valleys (VDG, VON, SV). `WeatherStore.getRange(start, end, location)` accepts a location parameter. But:
+  1. **No UI dropdown** for users to select valley
+  2. **Chart functions** never pass the location param → always defaults to VDG
+  3. **Section header** is hardcoded to "Valle de Guadalupe"
+- **FIX:** Add valley selector dropdown (VDG/VON/SV) in the weather section header. Pass selected valley to `getRange()` in all weather chart calls. Update header text dynamically. Add to `Filters.state` so it persists across view switches.
+
+#### 16.7 Chart legends not visible in PNG/PDF exports — HIGH
+- **FILES:** `js/charts.js:238` (`legend: { display: false }`), `js/charts.js:1586-1689` (export functions)
+- **DESCRIPTION:** Scatter charts in Bayas view use `legend: { display: false }` and render a custom HTML `<div class="legend-bar">` outside the `<canvas>`. When exporting to PNG/PDF, only the canvas is captured — the HTML legend is NOT included. Exported files have no indication of what colors represent which variety/origin/lot.
+- **FIX:** Switch scatter charts to use Chart.js native `legend: { display: true }` so legends render inside the canvas and appear in exports. Or: render legend items onto the export canvas manually during PNG/PDF generation. Native legend is simpler and maintains export fidelity.
+
+#### 16.8 Varietal colors not distinct enough — MEDIUM
+- **FILE:** `js/config.js:13-30`
+- **DESCRIPTION:** Several varietal color pairs are too similar, especially on dark backgrounds and in exported images:
+  - **Cab Sauvignon (#DC143C)** vs **Cab Franc (#C41E3A)** — both dark reds, nearly identical
+  - **Cab Franc (#C41E3A)** vs **Tempranillo (#E74C3C)** — both red-adjacent
+  - **Marselan (#E91E63)** vs **Merlot (#E040A0)** — both pink/magenta
+  - **All whites** — Sauvignon Blanc (#F0E68C), Chardonnay (#F5E6A3), Viognier (#E8D5A0), Chenin Blanc (#D4E8B0) are all pale yellows, nearly indistinguishable
+- **FIX:** Redistribute reds across a wider hue range (blue, teal, orange). Make whites clearly distinct (one cool green, one warm gold, one coral, one ice blue). Maintain dark-theme contrast. Perceptual distance between any two colors should be ≥ 30 in CIELAB ΔE.
+
+### FUTURE IDEAS (noted, not prioritized)
+
+#### 16.9 Interactive data point inspection in exports
+- **DESCRIPTION:** User expressed interest in seeing data values at each point in exported images. Not immediately needed.
+- **NOTE:** Could be achieved by enabling Chart.js `datalabels` plugin (CDN) for export-only rendering, or by annotating the export canvas with point values during PNG/PDF generation.
+
+---
+
+## Priority Matrix (Updated Round 7)
+
+### Open Items
+
+| Priority | ID | Severity | Category | Fix Effort |
+|----------|----|----------|----------|------------|
+| **0** | **14.12** | **Critical** | CSP blocks inline event handlers on Vercel | High (proper fix) |
+| **1** | **16.1** | **High** | PDF/PNG export broken (compounds with CSP + race conditions) | Medium |
+| **2** | **16.2** | **High** | Same-lot points not connected, golden border on every point | Medium |
+| **3** | **16.5** | **High** | No GDD chart (calculation exists, no visualization) | Medium |
+| **4** | **16.6** | **High** | No weather location filter (API ready, no UI) | Medium |
+| **5** | **16.7** | **High** | Legends invisible in PNG/PDF exports | Low |
+| **6** | **16.3** | **Medium** | Same-day different-hour measurements overwritten | Medium (needs DB decision) |
+| **7** | **16.8** | **Medium** | Varietal colors too similar | Low |
+| **8** | **14.1** | **High** | Extraction table ignores filters | Low |
+| **9** | **14.2** | **High** | Blacklist missing from `api/config.js` | Low |
+| **10** | **14.3** | **Medium** | Token verification triplicated | Medium |
+| **11** | **14.8** | **Medium** | No rate limiting on upload/verify/logout/config | Medium |
+| **12** | **14.9** | **Medium** | User-provided conflict column in upload API | Trivial |
+| **13** | **15.2** | **Medium** | Docs deploy to Vercel | Trivial |
+| **14** | **16.4** | **Low** | Overlapping points need jitter | Low |
+| **15** | **14.5** | **Low** | ~70 lines dead CSS | Trivial |
+| **16** | **14.7** | **Low** | 4 origin charts missing export buttons | Trivial |
+
+### Rules for the Builder
+- All user-facing messages must be in Spanish
+- Follow file responsibility rules from CLAUDE.md (KPIs in `kpis.js`, charts in `charts.js`, etc.)
+- Do not introduce npm packages or build tools
+- Every fix must be mobile responsive
+- Preserve existing Chart.js 4.4.1 and SheetJS 0.18.5 API compatibility
+- Per-lot line connections in scatter charts are the top user priority — makes data legible
+- Export fidelity: what you see on screen should match what appears in PNG/PDF
+- Color changes must maintain ≥ 30 CIELAB ΔE between any two varietals
+
+### Notes
+
+- All CLAUDE.md documentation changes are accurate and match committed source code.
+- TASK.md Phase 7 implementation steps are well-structured and consistent with CLAUDE.md schema.
+- PLAN.md Phase 6 → Phase 7 transition is clean; Phase 6 details preserved in git history (`8906903`, `bb75fbc`).
+- `.claude/settings.local.json` is user-specific tool permissions — no impact on deployed code.
+- `REPORTE_DASHBOARD.txt` is a thorough feature catalog with no credential leaks.
+- CLAUDE.md Phase 4 login polish appears in both Phase 4 (`completed in Phase 6`) and Phase 6 (`Login screen UI polish — radial gold glow...`). Minor redundancy, not a bug.
+
+---
+
+## 17. DOC/CONFIG REVIEW — Post-CSP-Migration (Round 8)
+
+> Reviewing uncommitted changes on `feature/csp-inline-handler-migration` after commits `31a7062` (CSP handler migration) and `2287b96` (nav button tabs).
+> Changed files: `.claude/settings.local.json`, `CLAUDE.md`, `PLAN.md`, `REVIEW.md`, `TASK.md`
+> Untracked files: `REPORTE_DASHBOARD.txt`, `docs/`
+> **No source code changes** — all diffs are documentation/config updates.
+
+### Priority 1 Issues
+
+#### 17.1 `api/config.js` still missing token blacklist check — HIGH (SECURITY)
+- **FILE:** `api/config.js:1-51`
+- **DESCRIPTION:** Three of four authenticated API endpoints (`api/verify.js`, `api/upload.js`, `api/logout.js`) check the `token_blacklist` table before proceeding. `api/config.js` does NOT — it verifies HMAC signature and expiry but skips blacklist lookup. A revoked token (user logged out) can still fetch Supabase credentials from `/api/config` until it naturally expires (up to 2h).
+- **IMPACT:** After logout, a stolen/leaked token remains valid for credential retrieval for up to 2 hours.
+- **FIX:** Add blacklist check to `api/config.js` matching the pattern in `api/verify.js:47-62`.
+- **STATUS:** Carried forward from 14.2 — still open.
+
+#### 17.2 `js/filters.js` still uses inline `onclick` assignments — HIGH (CSP)
+- **FILE:** `js/filters.js:55,75,99,114,132,153,174`
+- **DESCRIPTION:** The CSP inline handler migration (commit `31a7062`) moved 71 handlers from `index.html` to `js/events.js`. However, `js/filters.js` dynamically creates filter chip elements and assigns `chip.onclick = () => ...` at 7 locations. These are **programmatic property assignments**, not HTML `onclick` attributes, so they are NOT blocked by CSP `script-src 'self'`. This is a **false alarm** — `element.onclick = fn` in JS is CSP-safe. No fix needed.
+- **STATUS:** NOT a bug. Documented for completeness — no action required.
+
+### Priority 2 Improvements
+
+#### 17.3 `.vercelignore` missing 4 doc files — MEDIUM (INFO DISCLOSURE)
+- **FILE:** `.vercelignore`
+- **CURRENT CONTENTS:** `sql/`, `CLAUDE.md`, `.claude/`, `.editorconfig`, `.nvmrc`
+- **MISSING:** `PLAN.md`, `TASK.md`, `REVIEW.md`, `REPORTE_DASHBOARD.txt`
+- **DESCRIPTION:** These files deploy as publicly accessible static assets on Vercel. `REPORTE_DASHBOARD.txt` (50KB) details API endpoints, auth flow, rate limit thresholds, and table schemas. No credentials, but exposes internal architecture.
+- **FIX:** Add to `.vercelignore`:
+  ```
+  PLAN.md
+  TASK.md
+  REVIEW.md
+  REPORTE_DASHBOARD.txt
+  ```
+- **STATUS:** Carried forward from 15.2/15.4 — still open. Trivial fix.
+
+#### 17.4 REVIEW.md contains two Priority Matrix sections — LOW (DOC HYGIENE)
+- **FILE:** `REVIEW.md:708-731` (Round 7 matrix) and `REVIEW.md:753-769` (Round 6 matrix)
+- **DESCRIPTION:** The uncommitted diff appends Round 7 findings and a new Priority Matrix but preserves the stale Round 6 matrix below it. The Round 6 matrix still lists `15.1` as open (now resolved — `archive-api.open-meteo.com` was added to `connect-src` in commit `31a7062`). Also lists `14.4` which is resolved.
+- **FIX:** Remove the Round 6 Priority Matrix section entirely — the Round 7 matrix supersedes it. Alternatively, move resolved items to a "Resolved Since Round 6" table.
+
+#### 17.5 PLAN.md references `15.1` as open in Wave 1 description — LOW
+- **FILE:** `PLAN.md` (uncommitted), Wave 1 task 1d
+- **DESCRIPTION:** Wave 1 task 1d says "Fix CSP `connect-src` to include `archive-api.open-meteo.com`". This was already fixed in commit `31a7062` (`vercel.json` line 11 now includes it). Task should be marked as done.
+- **FIX:** Mark task 1d as complete in PLAN.md, or note it's already resolved.
+
+#### 17.6 `docs/superpowers/` directory is untracked and likely unintentional — LOW
+- **PATH:** `docs/superpowers/` (untracked)
+- **DESCRIPTION:** Empty or near-empty directory that appears to be a Claude Code skills artifact, not project documentation. If committed, it would deploy to Vercel (not in `.vercelignore`).
+- **FIX:** Add `docs/` to `.gitignore` if it's a local artifact. Or add to `.vercelignore` if it should be tracked but not deployed.
+
+#### 17.7 `api/upload.js` had fatal SyntaxError — upload endpoint COMPLETELY BROKEN — CRITICAL ✅ FIXED
+- **FILE:** `api/upload.js:48,87`
+- **DESCRIPTION:** `const supabaseUrl` was declared twice in the same function scope. Line 48 (added for blacklist check) and line 87 (original insert logic) both declared `const supabaseUrl = process.env.SUPABASE_URL`. Node.js ESM throws `SyntaxError: Identifier 'supabaseUrl' has already been declared` at parse time. The entire `/api/upload` endpoint never loaded. Every POST returned a 500 error.
+- **IMPACT:** All data uploads to Supabase silently failed. Users saw the file parsed (row count displayed), but data never reached the database. On page refresh, all "uploaded" data disappeared.
+- **ROOT CAUSE:** Security Hardening added a blacklist check (lines 47-62) that introduced `const supabaseUrl` on line 48, colliding with the existing declaration on line 87.
+- **FIX APPLIED:** Removed duplicate declarations on lines 87-88. Reused `supabaseUrl` and `serviceKey` from lines 48-49 throughout. Verified: `node --input-type=module -e "await import('./api/upload.js')"` → no error.
+
+### Priority Matrix (Updated Round 8)
+
+#### Open Items
+
+| Priority | ID | Severity | Category | Fix Effort |
+|----------|----|----------|----------|------------|
+| **0** | **14.12** | **Critical** | CSP inline handlers on Vercel — `events.js` migration done, verify coverage | Verify |
+| **1** | **16.1** | **High** | PDF/PNG export (jsPDF race + silent failures) | Medium |
+| **2** | **16.2** | **High** | Same-lot points not connected, golden border scattered | Medium |
+| **3** | **16.3** | **High** | Same-day measurements overwritten — `sample_seq` fix (decision confirmed) | Medium |
+| **4** | **16.5** | **High** | No GDD chart (`getCumulativeGDD()` exists, no viz) | Medium |
+| **5** | **16.6** | **High** | No weather location filter (API ready, no UI) | Medium |
+| **6** | **16.7** | **High** | Legends invisible in PNG/PDF exports | Low |
+| **7** | **17.1** | **High** | Blacklist missing from `api/config.js` (security gap) | Low |
+| **8** | **16.8** | **Medium** | Varietal colors too similar | Low |
+| **9** | **14.1** | **High** | Extraction table ignores filters | Low |
+| **10** | **14.3** | **Medium** | Token verification triplicated | Medium |
+| **11** | **14.8** | **Medium** | No rate limiting on upload/verify/logout/config | Medium |
+| **12** | **14.9** | **Medium** | User-provided conflict column in upload API | Trivial |
+| **13** | **17.3** | **Medium** | Docs deploy to Vercel (.vercelignore) | Trivial |
+| **14** | **16.4** | **Low** | Cross-lot same-day jitter (same-lot handled by 16.3) | Low |
+| **15** | **14.5** | **Low** | ~70 lines dead CSS | Trivial |
+| **16** | **14.7** | **Low** | 4 origin charts missing export buttons | Trivial |
+
+#### Resolved Since Round 7
+
+| ID | Category | Resolution |
+|----|----------|------------|
+| 17.7 | Upload broken (SyntaxError) | FIXED — removed duplicate `const supabaseUrl` declaration, reused vars from blacklist block |
+| 15.1 | CSP connect-src | FIXED in commit `31a7062` — `archive-api.open-meteo.com` added to `connect-src` |
+| 14.4 | Extraction pair duplication | FIXED — `_buildExtractionPairs()` extracted as shared helper |
+| 14.12 | CSP inline handlers | PARTIALLY FIXED in commits `31a7062` + `2287b96` — 71 handlers migrated to `events.js`, nav converted to button tabs. Needs production verification. |
+
+### Missing Tests
+
+No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, not introduced by these changes.
+
+### Notes
+
+- **No source code in this diff** — all changes are doc/config updates. Risk is zero for regressions.
+- **`.claude/settings.local.json`** grew by 78 lines of tool permission entries. This is user-specific config, not deployed. No security concern — entries reflect debugging sessions (Playwright, bcrypt, curl). Does not affect production.
+- **CLAUDE.md updates are accurate.** Verified: project structure matches (new `api/logout.js`, `api/upload.js`, `sql/migration_rate_limits.sql`, `sql/migration_token_blacklist.sql` all exist). Feature descriptions match committed code. Roadmap correctly marks Phases 1–6 + Security Hardening as complete.
+- **PLAN.md refactored from Phase 6 to Round 7 bug fixes.** Wave structure is sound. Task 1d (CSP connect-src) is already resolved and should be marked done.
+- **TASK.md refactored to status dashboard format.** Item counts and priorities match REVIEW.md. Cross-references are consistent.
+- **Branch `feature/csp-inline-handler-migration`** has 2 commits ahead of `main` (`31a7062`, `2287b96`). These are source code changes already committed — not part of this review's uncommitted diff. The uncommitted changes are doc-only updates that should be committed and merged alongside the CSP migration branch.
+
+---
+
+### Rules for the Builder
+- All user-facing messages must be in Spanish
+- Follow file responsibility rules from CLAUDE.md (KPIs in `kpis.js`, charts in `charts.js`, etc.)
+- Do not introduce npm packages or build tools
+- Every fix must be mobile responsive
+- Preserve existing Chart.js 4.4.1 and SheetJS 0.18.5 API compatibility
