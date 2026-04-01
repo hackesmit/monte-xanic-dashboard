@@ -1055,21 +1055,21 @@ const Charts = {
 
     let html = visible.map(item => {
       const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
-      const safeLabel = item.label.replace(/'/g, "\\'");
-      return `<div class="legend-item${dimmed}" role="button" tabindex="0" onclick="Charts.toggleSeries('${safeLabel}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Charts.toggleSeries('${safeLabel}')}" title="${item.label.replace(/"/g, '&quot;')}">
+      const attrSafe = item.label.replace(/"/g, '&quot;');
+      return `<div class="legend-item${dimmed}" role="button" tabindex="0" data-series="${attrSafe}" title="${attrSafe}">
         <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
         <span>${item.label}</span>
       </div>`;
     }).join('');
 
     if (hidden.length > 0) {
-      html += `<div class="legend-item legend-expand" role="button" tabindex="0" onclick="this.parentElement.classList.toggle('legend-show-all')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.parentElement.classList.toggle('legend-show-all')}" style="cursor:pointer;color:var(--muted);font-style:italic">
+      html += `<div class="legend-item legend-expand" role="button" tabindex="0" data-action="legend-expand" style="cursor:pointer;color:var(--muted);font-style:italic">
         <span>+ ${hidden.length} m\u00e1s</span>
       </div>`;
       html += hidden.map(item => {
         const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
-        const safeLabel = item.label.replace(/'/g, "\\'");
-        return `<div class="legend-item legend-overflow${dimmed}" role="button" tabindex="0" onclick="Charts.toggleSeries('${safeLabel}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();Charts.toggleSeries('${safeLabel}')}" title="${item.label.replace(/"/g, '&quot;')}" style="display:none">
+        const attrSafe = item.label.replace(/"/g, '&quot;');
+        return `<div class="legend-item legend-overflow${dimmed}" role="button" tabindex="0" data-series="${attrSafe}" title="${attrSafe}" style="display:none">
           <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
           <span>${item.label}</span>
         </div>`;

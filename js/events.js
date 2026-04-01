@@ -11,6 +11,9 @@ const Events = {
     this._bindChartExports();
     this._bindTableSorting();
     this._bindEvolutionToggles();
+    this._bindMapDelegation();
+    this._bindExplorerDelegation();
+    this._bindLegendDelegation();
   },
 
   // ── Navigation (2 handlers) ──
@@ -162,5 +165,73 @@ const Events = {
         }
       });
     }
+  },
+
+  // ── Map Delegation (3 handlers — SVG sections, detail close, ranch tabs) ──
+  _bindMapDelegation() {
+    const mapContainer = document.getElementById('map-svg-container');
+    if (mapContainer) mapContainer.addEventListener('click', (e) => {
+      const section = e.target.closest('[data-section]');
+      if (section) MapStore.showDetail(section.dataset.section);
+    });
+
+    const detailPanel = document.getElementById('section-detail-panel');
+    if (detailPanel) detailPanel.addEventListener('click', (e) => {
+      if (e.target.closest('.detail-close')) MapStore.hideDetail();
+    });
+
+    const ranchTabs = document.getElementById('ranch-tabs');
+    if (ranchTabs) ranchTabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('[data-ranch]');
+      if (tab) MapStore.setRanch(tab.dataset.ranch);
+    });
+  },
+
+  // ── Explorer Delegation (5 handlers — toggle, remove, source, type, render) ──
+  _bindExplorerDelegation() {
+    const container = document.getElementById('explorer-charts');
+    if (!container) return;
+
+    container.addEventListener('click', (e) => {
+      const slot = e.target.closest('[data-slot]');
+      if (!slot) return;
+      const sid = parseInt(slot.dataset.slot);
+      if (isNaN(sid)) return;
+
+      if (e.target.closest('.explorer-toggle-btn')) Explorer.toggleConfig(sid);
+      else if (e.target.closest('.explorer-remove-btn')) Explorer.removeChart(sid);
+      else if (e.target.closest('.explorer-render-btn')) Explorer.renderSlot(sid);
+    });
+
+    container.addEventListener('change', (e) => {
+      const slot = e.target.closest('[data-slot]');
+      if (!slot) return;
+      const sid = parseInt(slot.dataset.slot);
+      if (isNaN(sid)) return;
+
+      if (e.target.closest('.explorer-source-select')) Explorer.onSourceChange(sid);
+      else if (e.target.closest('.explorer-type-select')) Explorer.onChartTypeChange(sid);
+    });
+  },
+
+  // ── Legend Delegation (click + keyboard on legend items) ──
+  _bindLegendDelegation() {
+    document.addEventListener('click', (e) => {
+      const item = e.target.closest('.legend-item[data-series]');
+      if (item) { Charts.toggleSeries(item.dataset.series); return; }
+
+      const expand = e.target.closest('[data-action="legend-expand"]');
+      if (expand) expand.parentElement.classList.toggle('legend-show-all');
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+
+      const item = e.target.closest('.legend-item[data-series]');
+      if (item) { e.preventDefault(); Charts.toggleSeries(item.dataset.series); return; }
+
+      const expand = e.target.closest('[data-action="legend-expand"]');
+      if (expand) { e.preventDefault(); expand.parentElement.classList.toggle('legend-show-all'); }
+    });
   }
 };
