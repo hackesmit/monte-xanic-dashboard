@@ -1,27 +1,9 @@
-import crypto from 'crypto';
-
-// Reusable token verification (same logic as verify.js)
-function verifyToken(token, secret) {
-  if (!token || !secret) return null;
-  const parts = token.split('.');
-  if (parts.length !== 2) return null;
-  const [payloadB64, sig] = parts;
-  const expectedSig = crypto.createHmac('sha256', secret).update(payloadB64).digest('base64url');
-  const sigBuf = Buffer.from(sig);
-  const expectedBuf = Buffer.from(expectedSig);
-  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) return null;
-  try {
-    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString());
-    if (!payload.exp || Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
+import { verifyToken } from './lib/verifyToken.js';
+import { rateLimit } from './lib/rateLimit.js';
 
 // Allowed tables and their conflict columns for upsert
 const ALLOWED_TABLES = {
-  wine_samples:      { conflict: 'sample_id,sample_date', maxRows: 500 },
+  wine_samples:      { conflict: 'sample_id,sample_date,sample_seq', maxRows: 500 },
   tank_receptions:   { conflict: 'report_code',           maxRows: 200 },
   reception_lots:    { conflict: null,                     maxRows: 2000 },
   prefermentativos:  { conflict: 'report_code,measurement_date', maxRows: 200 }
@@ -35,40 +17,23 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: 'Method not allowed' });
   }
 
-  // 1. Validate auth token
+  if (!rateLimit(req, res, { maxRequests: 30 })) return;
+
+  // 1. Validate auth token + blacklist
   const token = req.headers['x-session-token'];
-  const secret = process.env.SESSION_SECRET;
-  const payload = verifyToken(token, secret);
-
-  if (!payload) {
-    return res.status(401).json({ ok: false, error: 'No autorizado' });
-  }
-
-  // 1b. Check token blacklist
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
-  if (supabaseUrl && serviceKey && token) {
-    try {
-      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-      const resp = await fetch(
-        `${supabaseUrl}/rest/v1/token_blacklist?token_hash=eq.${tokenHash}&select=token_hash`,
-        { headers: { 'apikey': serviceKey, 'Authorization': `Bearer ${serviceKey}` } }
-      );
-      const rows = await resp.json();
-      if (Array.isArray(rows) && rows.length > 0) {
-        return res.status(401).json({ ok: false, error: 'No autorizado' });
-      }
-    } catch (_) {}
+  const result = await verifyToken(token, { checkBlacklist: true });
+  if (result.error) {
+    return res.status(result.status).json({ ok: false, error: 'No autorizado' });
   }
 
   // 2. Check role — only lab and admin can upload
-  const role = payload.role || 'viewer';
+  const role = result.payload.role || 'viewer';
   if (role !== 'lab' && role !== 'admin') {
     return res.status(403).json({ ok: false, error: 'Sin permisos para subir datos' });
   }
 
   // 3. Validate request body
-  const { table, rows, conflict } = req.body || {};
+  const { table, rows } = req.body || {};
 
   if (!table || !ALLOWED_TABLES[table]) {
     return res.status(400).json({ ok: false, error: 'Tabla no válida' });
@@ -84,12 +49,14 @@ export default async function handler(req, res) {
   }
 
   // 4. Insert via Supabase service key (server-side only)
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
   if (!supabaseUrl || !serviceKey) {
     return res.status(500).json({ ok: false, error: 'Configuración de base de datos incompleta' });
   }
 
   try {
-    const conflictCol = conflict || tableConfig.conflict;
+    const conflictCol = tableConfig.conflict;
     const headers = {
       'Content-Type': 'application/json',
       'apikey': serviceKey,

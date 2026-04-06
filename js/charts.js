@@ -190,11 +190,22 @@ const Charts = {
 
     const groups = {};
     data.forEach(d => {
-      const x = d[xField];
+      let x = d[xField];
       const y = d[yField];
       const g = d[groupField] || 'Unknown';
       if (x === null || y === null || x === undefined || y === undefined) return;
       if (typeof x !== 'number' || typeof y !== 'number') return;
+      if (xField === 'daysPostCrush') {
+        // Offset same-day duplicate measurements (same lot, same day)
+        if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
+        // Deterministic jitter for different lots on the same day
+        const lot = d.lotCode || d.sampleId;
+        if (lot) {
+          let hash = 0;
+          for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
+          x += ((hash % 41) - 20) * 0.01; // ±0.2 day
+        }
+      }
       if (!groups[g]) groups[g] = [];
       const lot = d.lotCode || d.sampleId;
       const dpc = d.daysPostCrush || 0;
@@ -680,9 +691,17 @@ const Charts = {
     const byVintage = {};
     data.forEach(d => {
       const v = d.vintage;
-      const x = d.daysPostCrush;
+      let x = d.daysPostCrush;
       const y = d[yField];
       if (!v || x === null || y === null || typeof x !== 'number' || typeof y !== 'number') return;
+      if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
+      // Cross-lot jitter
+      const lot = d.lotCode || d.sampleId;
+      if (lot) {
+        let hash = 0;
+        for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
+        x += ((hash % 41) - 20) * 0.01;
+      }
       if (!byVintage[v]) byVintage[v] = [];
       byVintage[v].push({ x, y, sampleId: d.sampleId, lotCode: d.lotCode, variety: d.variety, appellation: d.appellation, vintage: v });
     });
@@ -1144,15 +1163,16 @@ const Charts = {
   },
 
   // Temperature time series: daily mean °C, all vintages overlaid
-  createWeatherTimeSeries(canvasId, vintages) {
+  createWeatherTimeSeries(canvasId, vintages, location) {
     if (typeof WeatherStore === 'undefined') return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
+    const loc = location || 'VDG';
     const datasets = [];
     for (const year of vintages) {
-      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`);
+      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`, loc);
       if (!rows.length) continue;
       const color = this._vintageColor(year);
       const pts   = rows
@@ -1215,15 +1235,16 @@ const Charts = {
   },
 
   // Rainfall scatter: each rainy day as a dot (x = day-of-season, y = mm)
-  createRainfallChart(canvasId, vintages) {
+  createRainfallChart(canvasId, vintages, location) {
     if (typeof WeatherStore === 'undefined') return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
+    const loc = location || 'VDG';
     const datasets = [];
     for (const year of vintages) {
-      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`);
+      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`, loc);
       if (!rows.length) continue;
       const color = this._vintageColor(year);
       const pts   = rows
@@ -1276,6 +1297,97 @@ const Charts = {
             title: { display: true, text: 'Precipitación (mm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid:  { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
+  // GDD cumulative chart: accumulated growing degree days from Jul 1, per vintage
+  createGDDChart(canvasId, vintages, location) {
+    if (typeof WeatherStore === 'undefined') return;
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    const loc = location || 'VDG';
+    const datasets = [];
+
+    for (const year of vintages) {
+      const start = `${year}-07-01`;
+      const today = new Date().toISOString().split('T')[0];
+      const end = `${year}-10-31` <= today ? `${year}-10-31` : today;
+      if (start > today) continue;
+
+      const rows = WeatherStore.getRange(start, end, loc);
+      if (!rows.length) continue;
+
+      // Build cumulative GDD series
+      let cumGDD = 0;
+      const pts = [];
+      // Sort by date to accumulate correctly
+      const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
+      for (const r of sorted) {
+        if (r.temp_avg === null) continue;
+        cumGDD += Math.max(0, r.temp_avg - 10);
+        const day = WeatherStore.dayOfSeason(r.date);
+        if (day !== null && day >= 1) {
+          pts.push({ x: day, y: Math.round(cumGDD * 10) / 10 });
+        }
+      }
+      if (!pts.length) continue;
+
+      const color = this._vintageColor(year);
+      datasets.push({
+        label: String(year),
+        data: pts,
+        borderColor: color,
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        borderWidth: 2,
+        showLine: true,
+        tension: 0.3,
+        fill: false
+      });
+    }
+
+    if (!datasets.length) {
+      this._drawNoData(canvas, 'Sin datos de temperatura para calcular GDD');
+      return;
+    }
+
+    this._createChart(canvasId, canvas, {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' }, boxWidth: 12, padding: 10 }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
+            titleColor: '#DDB96E', bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => `Día ${items[0].raw.x} temporada ${items[0].dataset.label}`,
+              label: (ctx) => `GDD acum: ${ctx.raw.y?.toFixed(1)}°C`
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            title: { display: true, text: 'GDD acumulado (base 10°C)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
           }
         },
         animation: { duration: 300 }

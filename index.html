@@ -602,7 +602,14 @@
         </div>
       </div>
 
-      <div class="section-label" style="margin-top:24px">Clima durante la Vendimia — Valle de Guadalupe</div>
+      <div class="section-label" style="margin-top:24px;display:flex;align-items:center;gap:12px">
+        <span id="weather-section-title">Clima durante la Vendimia — Valle de Guadalupe</span>
+        <select id="weather-valley-select" class="nav-select" style="font-size:11px;padding:3px 8px;min-width:auto">
+          <option value="VDG">VDG</option>
+          <option value="VON">VON</option>
+          <option value="SV">SV</option>
+        </select>
+      </div>
 
       <div class="charts-grid">
         <div class="chart-card">
@@ -616,6 +623,12 @@
           <div class="chart-title">Eventos de Lluvia</div>
           <div class="chart-sub">Precipitación (mm) por día de temporada — comparativo entre vendimias</div>
           <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartWeatherRain"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <button class="chart-export-btn" data-chart-id="chartGDD" data-chart-title="Grados Día de Crecimiento (GDD)" title="Exportar gráfico">&#x2913;</button>
+          <div class="chart-title">Grados Día Acumulados (GDD)</div>
+          <div class="chart-sub">GDD acumulado desde 1 Jul (base 10°C) — comparativo entre vendimias</div>
+          <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartGDD"></canvas></div>
         </div>
       </div>
 

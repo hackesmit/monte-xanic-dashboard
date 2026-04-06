@@ -93,6 +93,15 @@ const UploadManager = {
         result.push(obj);
       }
     }
+
+    // Assign sample_seq: within each (sample_id, sample_date) group, order by row position
+    const seqCounters = {};
+    result.forEach(r => {
+      const key = `${r.sample_id}|${r.sample_date || ''}`;
+      seqCounters[key] = (seqCounters[key] || 0) + 1;
+      r.sample_seq = seqCounters[key];
+    });
+
     return result;
   },
 
@@ -220,7 +229,7 @@ const UploadManager = {
             'Content-Type': 'application/json',
             'x-session-token': token
           },
-          body: JSON.stringify({ table, rows: chunk, conflict: conflictCol })
+          body: JSON.stringify({ table, rows: chunk })
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {

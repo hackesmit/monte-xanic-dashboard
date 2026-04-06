@@ -26,13 +26,19 @@ const Events = {
 
     const mapMetric = document.getElementById('map-metric-select');
     if (mapMetric) mapMetric.addEventListener('change', () => MapStore.setMetric(mapMetric.value));
+
+    const weatherValley = document.getElementById('weather-valley-select');
+    if (weatherValley) weatherValley.addEventListener('change', () => {
+      Filters.state.weatherLocation = weatherValley.value;
+      const names = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
+      const title = document.getElementById('weather-section-title');
+      if (title) title.textContent = `Clima durante la Vendimia — ${names[weatherValley.value] || weatherValley.value}`;
+      App.refresh();
+    });
   },
 
-  // ── Auth (2 handlers) ──
+  // ── Auth (1 handler — login form handled by Auth.bindForm()) ──
   _bindAuth() {
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) loginForm.addEventListener('submit', (e) => Auth.handleSubmit(e));
-
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) logoutBtn.addEventListener('click', () => Auth.logout());
   },
