@@ -1162,6 +1162,83 @@ const Charts = {
     return map[year] || '#888';
   },
 
+  // Multi-valley temperature comparison: one line per valley for a single vintage
+  createValleyTempChart(canvasId, vintage) {
+    if (typeof WeatherStore === 'undefined') return;
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    if (!vintage) { this._drawNoData(canvas, 'Seleccione una vendimia para comparar valles'); return; }
+
+    const valleyColors = { VDG: '#C4A060', VON: '#60A8C0', SV: '#7EC87A' };
+    const valleyNames = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
+    const datasets = [];
+
+    for (const valley of ['VDG', 'VON', 'SV']) {
+      const rows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`, valley);
+      if (!rows.length) continue;
+      const color = valleyColors[valley];
+      const pts = rows
+        .filter(r => r.temp_avg !== null)
+        .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.temp_avg }));
+      if (!pts.length) continue;
+      datasets.push({
+        label: valleyNames[valley],
+        data: pts,
+        borderColor: color,
+        backgroundColor: 'transparent',
+        pointRadius: 0,
+        pointHoverRadius: 5,
+        borderWidth: 2,
+        showLine: true,
+        tension: 0.3,
+        fill: false
+      });
+    }
+
+    if (!datasets.length) {
+      this._drawNoData(canvas, 'Sin datos de temperatura para comparar valles');
+      return;
+    }
+
+    this._createChart(canvasId, canvas, {
+      type: 'scatter',
+      data: { datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            labels: { color: CONFIG.chartDefaults.tickColor, font: { size: 10, family: 'Sackers Gothic Medium' }, boxWidth: 14, padding: 12 }
+          },
+          tooltip: {
+            backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
+            titleColor: '#DDB96E', bodyColor: '#D8D0C4',
+            callbacks: {
+              title: (items) => `Día ${items[0].raw.x} — ${items[0].dataset.label}`,
+              label: (ctx) => `Temp: ${ctx.raw.y?.toFixed(1)}°C`
+            }
+          }
+        },
+        scales: {
+          x: {
+            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          },
+          y: {
+            title: { display: true, text: 'Temperatura media (°C)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          }
+        },
+        animation: { duration: 300 }
+      }
+    });
+  },
+
   // Temperature time series: daily mean °C, all vintages overlaid
   createWeatherTimeSeries(canvasId, vintages, location) {
     if (typeof WeatherStore === 'undefined') return;
