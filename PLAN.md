@@ -1,64 +1,114 @@
-# Plan — Phase 6: Polish
+# Plan — Round 7+ User-Testing Bug Fixes & Stabilization
 
-## Status: IN PROGRESS
+## Status: WAVES 1–2 COMPLETE (uncommitted) — WAVE 3 NEXT — 11 open items across Waves 3–5
 
----
-
-## Implemented Items
-
-| # | Task | Status | Files |
-|---|------|--------|-------|
-| 1 | Login screen UI polish | DONE | `css/styles.css`, `index.html` |
-| 2 | Export charts as PDF | DONE | `js/charts.js`, `index.html`, `css/styles.css` |
-| 3 | Mobile filter panel improvements | DONE | `js/app.js`, `index.html`, `css/styles.css` |
-| 4 | Multi-vintage trend lines | DONE | `js/charts.js` |
-| 5 | Per-origin chemistry comparison (radar) | DONE | `js/charts.js`, `index.html` |
-
-### 1. Login Screen UI Polish
-- Radial gold glow background for atmospheric depth
-- Card: layered box-shadow, drop-shadow on logo, gradient gold divider
-- Inputs: gold outer glow on focus
-- Button: gold gradient background, hover glow
-- Staggered fade-in entrance animation (card → logo → divider → tagline → fields → button → footer)
-- All via CSS variables — light theme works automatically
-
-### 2. PDF Export
-- Added jsPDF 2.5.2 via CDN
-- `exportChartPDF()`: landscape A4, dark background, branded title + gold separator + watermark
-- Export buttons converted to dropdown menu (PNG / PDF) via `showExportMenu()`
-- `.chart-export-menu` dropdown styled to match dashboard design
-- All 19 export buttons updated from direct PNG to format menu
-
-### 3. Mobile Filter Panel
-- Bottom sheet: rounded top corners (14px border-radius), pull handle bar
-- Sheet header with "Filtros" title and close button (×)
-- Slide-down dismiss animation (`sheetSlideDown` keyframes)
-- Close button: 32px circular, gold hover state
-- Handle + header hidden on desktop via `@media (min-width: 769px)`
-
-### 4. Multi-Vintage Trend Lines
-- Vintage comparison charts now show ALL data (not just lots in 2+ vintages)
-- Scatter points per vintage with automatic binned trend lines
-- Trend lines: 5-day bins, dashed, only where bins have 2+ samples
-- Legend filters out "tendencia" entries to keep it clean
-- Works with any number of vintages
-
-### 5. Per-Origin Chemistry Radar
-- New `createOriginRadarChart()` — radar/spider chart
-- 5 axes: Brix, pH, AT, tANT, Peso Baya
-- Values normalized to 0-100 scale per metric
-- One polygon per origin with origin colors + transparent fill
-- Tooltip shows raw (non-normalized) values
-- Placed in "Comparativo por Origen" section, lazy-rendered
+**Source:** First production data update by winery staff (2026-03-31). Nine issues + 1 critical SyntaxError discovered. Subsequent code reviews (Rounds 8–9) found additional items.
+**Diagnostics:** REVIEW.md Sections 14–18
+**Task tracking:** TASK.md
+**Branch:** `feature/csp-inline-handler-migration`
 
 ---
 
-## Remaining Phase 6 Items
-- [ ] Harvest calendar with weather overlays
+## Completed Work
 
-## Open Security Items (REVIEW.md)
-| ID | Severity | Category |
-|----|----------|----------|
-| 4.1 | Critical | Security (client-only upload auth) |
-| 4.4 | Medium | Security (ephemeral rate limit) |
-| 4.5 | Medium | Security (no token revocation) |
+### Wave 1 — CSP Fix + Export Repair ✅ COMMITTED (31a7062, 2287b96, bb288a5)
+- Created `js/events.js` — 237 lines, all event delegation
+- 71 static inline handlers migrated from `index.html`
+- 11 dynamic inline handlers migrated from `maps.js`, `explorer.js`, `charts.js`
+- Nav dropdown → tap-friendly button tabs
+- CSP `connect-src` updated for `archive-api.open-meteo.com`
+- Export fix: jsPDF guard, Image onerror, try/catch, 7 Spanish error toasts
+- `api/upload.js` duplicate `const supabaseUrl` SyntaxError fixed
+- **Zero inline handlers remain in codebase**
+
+### Wave 2 — Lot Connection + Legends + Colors ✅ CODE DONE — NOT YET COMMITTED
+- 2a: `_lotLinePlugin` Chart.js plugin draws thin semi-transparent lines connecting same-lot points. `_identifyLastPoints` returns `lotCode→maxDPC` map. Only true last point per lot gets golden border + larger radius.
+- 2b: Native Chart.js legends on scatter charts (bottom position, themed, onClick → `toggleSeries()`). Visible in PNG/PDF exports. HTML legend bar kept for mobile.
+- 2c: 10 varietal colors redistributed: Cab Franc→indigo, Tempranillo→orange, Marselan→deep rose, Grenache→true red, Caladoc→lavender, Malbec→blue, Petit Verdot→teal, whites→green/gold/coral/cyan.
+- 2d: 4 export buttons added to origin comparison charts with CSP-safe `data-*` attrs.
+
+**Files with uncommitted changes:** `index.html`, `js/charts.js`, `js/config.js`, `PLAN.md`, `REVIEW.md`, `TASK.md`
+
+---
+
+## Next Steps (in order)
+
+### Step 0 — Commit + Push Wave 2 (immediate)
+Commit uncommitted Wave 2 changes, push branch to remote.
+
+### Wave 3 — Weather: GDD Chart + Location Filter
+
+| Task | Files | Description |
+|------|-------|-------------|
+| 3a | `index.html` | Add valley selector dropdown (VDG / VON / SV) in weather section header. Add GDD chart container `<canvas id="chartGDD">` with export button. |
+| 3b | `js/filters.js` | Add `state.weatherLocation` (default `'VDG'`). Add change handler that triggers weather chart re-render. |
+| 3c | `js/charts.js` | **GDD cumulative chart:** Line chart showing GDD accumulation from Jul 1 through current date, one line per valley (or single line for selected valley). Uses `WeatherStore.getCumulativeGDD()`. X-axis: day of season. Y-axis: cumulative GDD (°C). |
+| 3d | `js/charts.js` | **Pass location to all weather charts:** `createWeatherTimeSeries()`, `createRainfallChart()`, harvest calendar overlay — all must pass `Filters.state.weatherLocation` to `WeatherStore.getRange()`. |
+| 3e | `js/charts.js` | Update weather section header text dynamically based on selected valley. |
+
+**Validation:** Switch valley dropdown → all weather charts update. GDD chart shows accumulation curve. Header reflects selected valley.
+
+### Wave 4 — Data Integrity + Quick Fixes
+
+| Task | Files | Description | Effort |
+|------|-------|-------------|--------|
+| 4a | `sql/migration_sample_seq.sql`, `js/upload.js`, `api/upload.js`, `js/charts.js` | **Same-day duplicate handling:** Add `sample_seq` column, new unique on `(sample_id, sample_date, sample_seq)`, deterministic seq assignment in upload, `+ (sample_seq - 1) * 0.15` day offset in charts. | Medium |
+| 4b | `js/charts.js` | **Cross-lot jitter:** ±0.2 day deterministic hash offset for different lots on same day. | Low |
+| 4c | `js/app.js` | **Extraction table respects filters** (14.1): Pass filtered data instead of raw DataStore. | Low |
+| 4d | `api/config.js` | **Add blacklist check** (17.1): Verify token against `token_blacklist` before returning Supabase credentials. | Low |
+| 4e | `.vercelignore` | Add `PLAN.md`, `TASK.md`, `REVIEW.md`, `REPORTE_DASHBOARD.txt` (17.3). | Trivial |
+| 4f | `js/events.js`, `js/auth.js` | **Fix duplicate login listener** (18.1+18.2): Remove `#login-form` submit from `Events._bindAuth()`. Remove `#login-btn` click from `Auth.bindForm()`. | Trivial |
+
+**Validation:** Upload CSV with same-day duplicates → both preserved. Filter variety → extraction table matches charts. Revoke token → `/api/config` returns 401. Logout → re-login → exactly 1x POST to `/api/login`.
+
+### Wave 5 — Security Hardening + Cleanup
+
+| Task | Files | Description | Effort |
+|------|-------|-------------|--------|
+| 5a | `api/lib/verifyToken.js` (new) | Extract shared token verification (HMAC + expiry + blacklist) used by all 4 API endpoints (14.3). | Medium |
+| 5b | `api/upload.js` | Use server-side `tableConfig.conflict` instead of client-provided value (14.9). | Trivial |
+| 5c | `api/upload.js`, `api/verify.js`, `api/logout.js`, `api/config.js` | Add rate limiting to all authenticated endpoints (14.8). | Medium |
+| 5d | `css/styles.css` | Delete ~70 lines dead CSS: `.brand-*` block, `.extraction-grid` block (14.5). | Trivial |
+
+---
+
+## Dependencies
+
+```
+Wave 1 ✅  ──► Wave 2 ✅  ──► Step 0 (commit + push)
+                                  │
+                          ┌───────┼───────┐
+                          ▼       ▼       ▼
+                       Wave 3  Wave 4  Wave 5
+                       (weather)(data)  (security)
+                          │       │       │
+                          └───────┼───────┘
+                                  ▼
+                            PR to main
+                                  │
+                                  ▼
+                         Phase 7 (Mediciones)
+```
+
+- **Waves 3, 4, 5 are independent** — can run in parallel or any order
+- Wave 4a (sample_seq) requires Supabase migration before upload testing
+- Wave 5a (shared verifyToken) should precede 5c (rate limiting on all endpoints)
+- PR to main after all waves complete and validated on Vercel preview
+
+---
+
+## User Decisions — Resolved
+
+**16.3 — Duplicate date handling:** ✅ DECIDED — Option B (`sample_seq` integer column).
+- Row-order-within-batch + deterministic sort. Idempotent on re-upload.
+- See REVIEW.md 16.3 for full edge case analysis.
+
+---
+
+## After This Branch
+
+**Phase 7 — Mediciones Técnicas con Evidencia Fotográfica** remains the next major feature.
+- Architecture designed in CLAUDE.md (reserved schema for `mediciones_tecnicas` + `medicion_fotos`)
+- Cloudflare R2 for photos, Supabase for metadata
+- Scope: ~110 mediciones, ~1,100 photos (~2-3GB in R2)
+- Blocked by: all Waves 3–5 complete + PR merged to main

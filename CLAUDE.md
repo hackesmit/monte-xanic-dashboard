@@ -197,8 +197,10 @@ monte-xanic-dashboard/
 │   └── mediciones.js           # (Phase 7) Mediciones técnicas + photo upload/gallery
 ├── api/
 │   ├── config.js               # Vercel serverless: Supabase credentials (auth-gated)
-│   ├── login.js                # Vercel serverless: bcrypt login + HMAC token
-│   ├── verify.js               # Vercel serverless: token verification
+│   ├── login.js                # Vercel serverless: bcrypt login + HMAC token + persistent rate limit
+│   ├── verify.js               # Vercel serverless: token verification + blacklist check
+│   ├── logout.js               # Vercel serverless: token revocation (blacklist)
+│   ├── upload.js               # Vercel serverless: auth-gated data upload (service key)
 │   └── photo-url.js            # (Phase 7) Presigned R2 upload URL generator
 ├── assets/
 │   ├── logo_montexanic.svg     # Brand logo
@@ -208,6 +210,8 @@ monte-xanic-dashboard/
 │   └── maps/                   # Reserved for Phase 5 vineyard map
 ├── sql/
 │   ├── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
+│   ├── migration_rate_limits.sql # Persistent rate limiting table
+│   ├── migration_token_blacklist.sql # Token revocation blacklist table
 │   └── migration_mediciones.sql # (Phase 7) mediciones_tecnicas + medicion_fotos tables
 ├── vercel.json                 # Vercel config + security headers
 └── package.json                # bcryptjs + npm scripts (+ @aws-sdk/client-s3 in Phase 7)
@@ -220,11 +224,12 @@ monte-xanic-dashboard/
 - **Evolución Fenólica:** Interactive evolution chart — phenolic compounds (tANT, fANT, bANT, pTAN, iRPs, IPT) on left Y-axis + Brix on right Y-axis. Per-lot lines, click-to-highlight, berry→wine linking via `berryToWine` mapping.
 - **Vino (Wine):** Tank reception & pre-fermentation tables, phenolic KPIs, grouped bar chart of avg tANT/fANT/pTAN/IPT by variety
 - **Extracción:** Berry-to-wine tANT extraction mapping (grouped bar) + extraction % horizontal bar color-coded by quality band (<30% red, 30–50% gold, >50% green)
-- **Vendimias:** Multi-vintage comparison with % change, weather overlays
+- **Vendimias:** Multi-vintage scatter with 5-day-bin trend lines per vintage, weather overlays
 - **Weather:** Valley-specific weather (VDG, VON, SV). Temperature time series, rainfall scatter, Brix vs temp and tANT vs rain correlations per valley.
 - **Upload:** Drag & drop WineXRay CSV or Recepción Excel → Supabase (with validation, lab/EXP/California sample filtering). Composite key `(sample_id, sample_date)` preserves sample evolution.
-- **Auth:** Login screen with bcrypt password, HMAC session tokens, rate limiting
-- **UI:** Dark/light theme toggle, interactive legends, color-by-variety/origin, responsive layout, "Limpiar Todo" filter reset
+- **Auth:** Login screen with bcrypt password, HMAC session tokens (2h expiry), persistent rate limiting, token revocation via blacklist, server-side upload validation
+- **Mapa:** SVG vineyard section map with color-coded quality metrics (Brix, pH, tANT, TA), section detail panel, ranch tabs
+- **UI:** Dark/light theme toggle, interactive legends, color-by-variety/origin, responsive layout, "Limpiar Todo" filter reset, mobile bottom-sheet filters, export menu (PNG/PDF)
 - **Security:** Auth-gated API, XSS escaping, CSP headers, no hardcoded credentials
 
 ---
@@ -259,7 +264,7 @@ monte-xanic-dashboard/
 - [x] bcrypt password hashing + HMAC session tokens (2h expiry)
 - [x] Auth-gated `/api/config` endpoint (Supabase credentials protected)
 - [x] Rate limiting on login (10 attempts / 15 min)
-- [ ] **Login screen UI polish** — moved to Phase 6
+- [x] **Login screen UI polish** — completed in Phase 6
 
 ### Phase 4b — Data & Visualization Overhaul ✅ COMPLETE
 - [x] Origin naming: ranch-first format — `Monte Xanic (VDG)`, `Kompali (VON)`, etc.
@@ -297,16 +302,24 @@ Workflow 2 (REVIEW.md findings) + Workflow 3 (visualization improvements):
 - [x] Section detail panel with per-section KPIs
 - [x] Ranch-level tonnage-weighted aggregation
 
-### Phase 6 — Polish *(Priority: MEDIUM)*
+### Phase 6 — Polish ✅ COMPLETE
 - [x] Export charts as PNG (per-chart export buttons)
-- [ ] Export charts as PDF
-- [ ] Login screen UI polish — style login form to match dashboard design
-- [ ] Mobile filter panel improvements
-- [ ] Multi-vintage trend lines (3+ years)
-- [ ] Per-origin chemistry comparison
-- [ ] Harvest calendar with weather overlays
+- [x] Export charts as PDF (jsPDF 2.5.2 CDN, export menu dropdown)
+- [x] Login screen UI polish — radial gold glow, layered shadows, gradient divider, staggered entrance animation
+- [x] Mobile filter panel — bottom sheet with rounded corners, pull handle, header with close button, slide-down dismiss
+- [x] Multi-vintage trend lines — all data as scatter + 5-day-bin dashed trend lines per vintage
+- [x] Per-origin chemistry comparison — normalized 5-axis radar chart (Brix, pH, AT, tANT, Peso Baya)
+- [x] Harvest calendar with weather overlays — floating bars per variety + temp/rain overlay
 
-### Phase 7 — Mediciones Técnicas con Evidencia Fotográfica *(Priority: LOW — develop last)*
+### Security Hardening ✅ COMPLETE
+- [x] Server-side upload endpoint (`api/upload.js`) — validates token + role before Supabase insert
+- [x] Persistent rate limiting (`rate_limits` table in Supabase with fallback in-memory)
+- [x] Token revocation (`token_blacklist` table + `api/logout.js` endpoint)
+- [x] Token expiry reduced from 24h to 2h
+- [x] Blacklist check in both `/api/verify` and `/api/upload`
+- [x] SQL migrations: `migration_rate_limits.sql`, `migration_token_blacklist.sql`
+
+### Phase 7 — Mediciones Técnicas con Evidencia Fotográfica *(Priority: NEXT)*
 - [ ] Cloudflare R2 bucket setup (`montexanic-mediciones`) + CORS config
 - [ ] Supabase tables: `mediciones_tecnicas`, `medicion_fotos` (see Reserved Schema below)
 - [ ] `api/photo-url.js` — presigned PUT URL generator (auth-gated, lab role only)
