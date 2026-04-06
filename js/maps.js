@@ -159,7 +159,7 @@ const MapStore = {
       const labelSize = Math.max(8, Math.min(14, Math.min(bw, bh) / 4));
       const varSize = Math.max(6, labelSize * 0.65);
 
-      svg += `<g class="map-section-group" data-section="${sectionId}" style="cursor:pointer" onclick="MapStore.showDetail('${sectionId}')">`;
+      svg += `<g class="map-section-group" data-section="${sectionId}" style="cursor:pointer">`;
       svg += `<polygon points="${pts}" fill="${fillColor}" stroke="var(--border-gold)" stroke-width="1.5" class="section-rect"/>`;
 
       // Section label at centroid
@@ -238,7 +238,7 @@ const MapStore = {
           <div class="detail-title">${section.sectionId}</div>
           <div class="detail-sub">${section.ranch} · ${section.variety}${section.hectares ? ' · ' + section.hectares + ' ha' : ''}</div>
         </div>
-        <button class="detail-close" onclick="MapStore.hideDetail()">&times;</button>
+        <button class="detail-close">&times;</button>
       </div>
       <div class="detail-body">
     `;
@@ -349,7 +349,7 @@ const MapStore = {
     container.innerHTML = codes.map(code => {
       const label = this._ranchLabels[code] || code;
       const active = code === this.currentRanch ? ' active' : '';
-      return `<button class="ranch-tab${active}" data-ranch="${code}" onclick="MapStore.setRanch('${code}')">${label}</button>`;
+      return `<button class="ranch-tab${active}" data-ranch="${code}">${label}</button>`;
     }).join('');
   },
 

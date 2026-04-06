@@ -84,10 +84,7 @@ export default async function handler(req, res) {
   }
 
   // 4. Insert via Supabase service key (server-side only)
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
-
-  if (!supabaseUrl || !supabaseServiceKey) {
+  if (!supabaseUrl || !serviceKey) {
     return res.status(500).json({ ok: false, error: 'Configuración de base de datos incompleta' });
   }
 
@@ -95,8 +92,8 @@ export default async function handler(req, res) {
     const conflictCol = conflict || tableConfig.conflict;
     const headers = {
       'Content-Type': 'application/json',
-      'apikey': supabaseServiceKey,
-      'Authorization': `Bearer ${supabaseServiceKey}`,
+      'apikey': serviceKey,
+      'Authorization': `Bearer ${serviceKey}`,
       'Prefer': conflictCol ? `resolution=merge-duplicates` : 'return=minimal'
     };
 

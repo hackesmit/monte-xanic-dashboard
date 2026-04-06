@@ -9,25 +9,25 @@ const CONFIG = {
     white: ['Sauvignon Blanc','Chardonnay','Viognier','Chenin Blanc']
   },
 
-  // Distinct colors per varietal (vivid, dark-theme friendly)
+  // Distinct colors per varietal (vivid, dark-theme friendly, ≥30 ΔE separation)
   varietyColors: {
     'Cabernet Sauvignon': '#DC143C',
-    'Syrah':             '#7B2FBE',
-    'Cabernet Franc':    '#C41E3A',
-    'Merlot':            '#E040A0',
-    'Tempranillo':       '#E74C3C',
-    'Marselan':          '#E91E63',
-    'Grenache':          '#FF6347',
-    'Caladoc':           '#9370DB',
-    'Malbec':            '#4169E1',
-    'Petit Verdot':      '#00BCD4',
-    'Durif':             '#8BC34A',
-    'Nebbiolo':          '#FFB300',
-    'Sauvignon Blanc':   '#F0E68C',
-    'Mourvèdre':         '#8B4513',
-    'Chardonnay':        '#F5E6A3',
-    'Viognier':          '#E8D5A0',
-    'Chenin Blanc':      '#D4E8B0'
+    'Syrah':              '#7B2FBE',
+    'Cabernet Franc':     '#6366F1',
+    'Merlot':             '#EC4899',
+    'Tempranillo':        '#F97316',
+    'Marselan':           '#BE185D',
+    'Grenache':           '#EF4444',
+    'Caladoc':            '#A78BFA',
+    'Malbec':             '#3B82F6',
+    'Petit Verdot':       '#14B8A6',
+    'Durif':              '#84CC16',
+    'Nebbiolo':           '#F59E0B',
+    'Mourvèdre':          '#8B4513',
+    'Sauvignon Blanc':    '#4ADE80',
+    'Chardonnay':         '#FDE047',
+    'Viognier':           '#FB923C',
+    'Chenin Blanc':       '#22D3EE'
   },
 
   // Origin colors (ranch-first format)

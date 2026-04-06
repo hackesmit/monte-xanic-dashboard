@@ -1,84 +1,105 @@
-# Task — Current State & Next Steps
+# Task — Current State
 
-## Completed Work
+## Project Status: Phases 1–6 Complete — Round 7+ Stabilization Active
 
-### Workflow 2 — Stability, Security & UX Fixes ✅ DONE
-All REVIEW.md findings implemented: XSS fix, rate limit cleanup, role fallback, refresh guard, observer disconnect, weather sync guard, below_detection markers, empty states, try/catch wrappers, API validation, stale lot clearing.
+All planned work through Phase 6 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–9 complete. **Waves 1–2 implemented (Wave 2 uncommitted). 11 open items remain across Waves 3–5.**
 
-### Workflow 3 — Visualization Improvements ✅ DONE
-All 4 items implemented + 2 bug fixes (duplicate nav option, unreachable switch case):
-- V1: Origin doughnut → horizontal bar (`createOriginCountBar`)
-- V2: Extraction % chart with quality bands (`createExtractionPctChart`)
-- V3: Wine phenolics grouped bar (`createWinePhenolicsChart`)
-- V4: Sample count (n=) in varietal bar labels
-
-### Phase 5 — Vineyard Quality Map ✅ DONE
-SVG polygon map with section detail, metric selector, ranch tabs, KPIs.
-
----
-
-## Immediate Actions (Builder)
-
-### 1. Commit Workflow 3 changes
-Uncommitted files: `index.html`, `js/app.js`, `js/charts.js`
-Staged (unrelated): `package.json` (Playwright devDep), `.claude/settings.local.json`
-
-### 2. Cleanup diagnostic artifacts
-Delete before committing:
-- `test-diag.js` — one-off diagnostic script
-- `test-results/` — Playwright screenshot artifacts
-
-### 3. Address REVIEW.md Round 2 findings
-Priority 1 (bugs in current uncommitted code):
-
-| ID | Issue | Action |
-|----|-------|--------|
-| 1a | Duplicated extraction pair-building logic | Extract `_buildExtractionPairs(berryData, wineData)` shared helper; also fixes latent `berry.tANT === 0` → `Infinity%` bug in original `createExtractionChart` |
-| 1b | Extraction % values can exceed 100% (clipped by `max: 100`) | Remove `max: 100` from x-axis to let Chart.js auto-scale, OR clamp with `Math.min(pct, 100)` and mark overflow |
-
-Priority 2 (improvements):
-
-| ID | Issue | Action |
-|----|-------|--------|
-| 2c | Wine phenolics chart: sparse compound data lacks n= context | Add `n=` to tooltip for each compound |
-| 2d | Test artifacts not gitignored | Add `test-diag.js` and `test-results/` to `.gitignore` |
-| 2e | `stepSize: 1` on origin chart x-axis | Remove — let Chart.js auto-scale for large counts |
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Deploy Online (Vercel) | Done |
+| 2 | Database Migration (Supabase) | Done |
+| 3 | Meteorology Integration | Done |
+| 4 | Authentication (bcrypt + HMAC, 2h tokens) | Done |
+| 4b | Data & Visualization Overhaul | Done |
+| 4c | Stability, Security & Viz Improvements | Done |
+| 5 | Vineyard Quality Map (SVG) | Done |
+| 6 | Polish (login, PDF, mobile, trends, radar, harvest calendar) | Done |
+| — | Security Hardening (server upload, rate limits, token blacklist) | Done |
+| — | Review Rounds 1–9 (all findings triaged) | Done |
+| — | **Wave 1 — CSP Migration** | **Done (committed)** |
+| — | **Wave 2 — Lot Lines + Legends + Colors** | **Done (uncommitted)** |
+| — | **Waves 3–5 — Weather, Data, Security** | **Not started** |
 
 ---
 
-## Open Security Items (from REVIEW.md — requires architecture decisions)
+## Immediate Next Action
 
-| ID | Severity | Issue | Blocker |
-|----|----------|-------|---------|
-| 4.1 | Critical | Upload auth is client-only (anon key) | Needs server-side upload endpoint |
-| 4.4 | Medium | Rate limit is ephemeral (in-memory) | Needs Supabase/KV persistent store |
-| 4.5 | Medium | No token revocation mechanism | Needs token blacklist or short-lived tokens |
+**Commit + push Wave 2 changes**, then proceed to Wave 3.
 
-These require design decisions before implementation — not simple code fixes.
-
----
-
-## Future Phases (not yet started)
-
-### Phase 6 — Polish *(Priority: MEDIUM)*
-- [ ] Export charts as PDF
-- [ ] Login screen UI polish
-- [ ] Mobile filter panel improvements
-- [ ] Multi-vintage trend lines (3+ years)
-- [ ] Per-origin chemistry comparison
-- [ ] Harvest calendar with weather overlays
-
-### Phase 7 — Mediciones Técnicas *(Priority: LOW — deferred)*
-- **Prerequisites:** Phase 6 stable, security items resolved
-- **Scope:** Cloudflare R2 photo storage, measurement entry form, gallery UI
-- **Architecture:** Designed in TASK.md (prior version) + CLAUDE.md schema reserved
-- **Scale:** ~110 mediciones, ~1,100 photos (~2-3 GB in R2)
+Uncommitted files:
+- `index.html` — 4 origin export buttons added
+- `js/charts.js` — lot-line plugin, last-point fix, native legends, export error toasts
+- `js/config.js` — 10 varietal colors redistributed
+- `PLAN.md`, `REVIEW.md`, `TASK.md` — doc updates
 
 ---
 
-## Constraints (apply to all work)
-- All user-facing text in Spanish
-- No npm packages or build tools — CDN only, Vanilla JS ES6
-- Every change must be mobile responsive
-- Preserve Chart.js 4.4.1 and SheetJS 0.18.5 compatibility
-- Follow CLAUDE.md file responsibility rules strictly
+## Open Items — 11 Remaining
+
+### High Priority (blocks production usability)
+
+| # | ID | Issue | Wave | Status |
+|---|-----|-------|------|--------|
+| 1 | 16.5 | No GDD chart (calculation exists, no visualization) | 3 | Not started |
+| 2 | 16.6 | No weather location filter (API ready, no UI selector) | 3 | Not started |
+| 3 | 16.3 | Same-day measurements overwritten — `sample_seq` fix | 4 | Not started |
+| 4 | 17.1 | Blacklist missing from `api/config.js` (security gap) | 4 | Not started |
+| 5 | 14.1 | Extraction table ignores filters | 4 | Not started |
+
+### Medium Priority (functional correctness + security)
+
+| # | ID | Issue | Wave | Status |
+|---|-----|-------|------|--------|
+| 6 | 18.1 | Duplicate login form listener — 2x `/api/login` requests | 4 | Not started |
+| 7 | 14.3 | Token verification triplicated across 3 API files | 5 | Not started |
+| 8 | 14.8 | No rate limiting on upload/verify/logout/config | 5 | Not started |
+| 9 | 14.9 | User-provided conflict column in upload API | 5 | Not started |
+
+### Low Priority (polish + cleanup)
+
+| # | ID | Issue | Wave | Status |
+|---|-----|-------|------|--------|
+| 10 | 16.4 | Cross-lot same-day jitter (overlapping points) | 4 | Not started |
+| 11 | 14.5 | ~70 lines dead CSS (.brand-*, .extraction-grid) | 5 | Not started |
+
+### Resolved This Branch (8 items)
+
+| ID | Issue | Resolution |
+|----|-------|------------|
+| 14.12 | CSP blocks inline handlers on Vercel | Wave 1: 71 static + 11 dynamic handlers → events.js |
+| 17.7 | api/upload.js SyntaxError | Removed duplicate `const supabaseUrl` |
+| 16.1 | PDF/PNG export broken | Wave 1f: error toasts, jsPDF guard, Image onerror |
+| 16.2 | Same-lot points not connected | Wave 2a: lot-line plugin + last-point fix |
+| 16.7 | Legends invisible in exports | Wave 2b: native Chart.js legends |
+| 16.8 | Varietal colors too similar | Wave 2c: 10 colors redistributed |
+| 14.7 | 4 origin charts missing export buttons | Wave 2d: export buttons added |
+| 15.1 | CSP connect-src blocks weather API | Wave 1d: archive-api.open-meteo.com added |
+
+### Also Resolved in Prior PRs
+
+| ID | Issue | Resolution |
+|----|-------|------------|
+| 17.3 | Docs deploy to Vercel (.vercelignore) | Queued in Wave 4e |
+
+---
+
+## User Decisions
+
+| Decision | Status |
+|----------|--------|
+| 16.3 — Same-day duplicates: `sample_seq` column | ✅ Confirmed |
+| 16.9 — Data labels in exports | Future feature, not blocking |
+
+---
+
+## Next Major Feature: Phase 7 — Mediciones Técnicas
+
+> **Status:** Architecture designed, NOT yet implemented.
+> **Blocked by:** All Waves 3–5 complete + PR merged to main.
+> **Full schema:** Reserved in CLAUDE.md Database Schema section.
+> **Scope:** ~110 mediciones, ~1,100 photos in Cloudflare R2, metadata in Supabase.
+
+---
+
+## Comprehensive Feature Report
+See `REPORTE_DASHBOARD.txt` for a full Spanish-language report of all 27 charts, KPIs, tables, filters, upload pipeline, weather, map, auth, and export features.

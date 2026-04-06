@@ -204,14 +204,14 @@ const Explorer = {
     const sid = slot.id;
     div.innerHTML = `
       <div class="explorer-slot-header">
-        <button class="explorer-toggle-btn" id="explorer-toggle-btn-${sid}" onclick="Explorer.toggleConfig(${sid})">\u25BC Configurar</button>
+        <button class="explorer-toggle-btn" id="explorer-toggle-btn-${sid}" data-slot="${sid}">\u25BC Configurar</button>
         <span class="explorer-summary" id="explorer-summary-${sid}"></span>
-        <button class="explorer-remove-btn" onclick="Explorer.removeChart(${sid})" title="Eliminar">\u00D7</button>
+        <button class="explorer-remove-btn" data-slot="${sid}" title="Eliminar">\u00D7</button>
       </div>
       <div class="explorer-config-panel" id="explorer-config-panel-${sid}" style="display:none">
         <div class="explorer-config-row">
           <label class="explorer-config-label">Fuente
-            <select id="explorer-source-${sid}" class="explorer-select" onchange="Explorer.onSourceChange(${sid})">
+            <select id="explorer-source-${sid}" class="explorer-select explorer-source-select" data-slot="${sid}">
               <option value="berry" ${slot.source === 'berry' ? 'selected' : ''}>Bayas</option>
               <option value="wine" ${slot.source === 'wine' ? 'selected' : ''}>Vino</option>
             </select>
@@ -227,7 +227,7 @@ const Explorer = {
             </select>
           </label>
           <label class="explorer-config-label">Tipo
-            <select id="explorer-type-${sid}" class="explorer-select" onchange="Explorer.onChartTypeChange(${sid})">
+            <select id="explorer-type-${sid}" class="explorer-select explorer-type-select" data-slot="${sid}">
               ${CONFIG.explorerChartTypes.map(t => `<option value="${t.value}" ${t.value === slot.chartType ? 'selected' : ''}>${t.label}</option>`).join('')}
             </select>
           </label>
@@ -236,7 +236,7 @@ const Explorer = {
               ${groups.map(g => `<option value="${g.value}" ${g.value === slot.groupBy ? 'selected' : ''}>${g.label}</option>`).join('')}
             </select>
           </label>
-          <button class="explorer-render-btn" onclick="Explorer.renderSlot(${sid})">Actualizar</button>
+          <button class="explorer-render-btn" data-slot="${sid}">Actualizar</button>
         </div>
       </div>
       <div class="explorer-canvas-wrap" style="height:280px">
