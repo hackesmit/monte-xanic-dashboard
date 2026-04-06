@@ -332,6 +332,8 @@ const App = {
         const activeVintages = [...Filters.state.vintages];
         const calVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : null);
         Charts.createHarvestCalendar('chartHarvestCal', cleanBerry, Filters.getFilteredWine(), calVintage);
+        const valleyVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : WeatherStore.getVintagesFromData().slice(-1)[0] || null);
+        Charts.createValleyTempChart('chartValleyTemp', valleyVintage);
         const weatherVintages = WeatherStore.getVintagesFromData();
         const weatherLoc = Filters.state.weatherLocation || 'VDG';
         Charts.createWeatherTimeSeries('chartWeatherTemp', weatherVintages, weatherLoc);
