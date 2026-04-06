@@ -332,8 +332,11 @@ const App = {
         const activeVintages = [...Filters.state.vintages];
         const calVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : null);
         Charts.createHarvestCalendar('chartHarvestCal', cleanBerry, Filters.getFilteredWine(), calVintage);
-        Charts.createWeatherTimeSeries('chartWeatherTemp', WeatherStore.getVintagesFromData());
-        Charts.createRainfallChart('chartWeatherRain', WeatherStore.getVintagesFromData());
+        const weatherVintages = WeatherStore.getVintagesFromData();
+        const weatherLoc = Filters.state.weatherLocation || 'VDG';
+        Charts.createWeatherTimeSeries('chartWeatherTemp', weatherVintages, weatherLoc);
+        Charts.createRainfallChart('chartWeatherRain', weatherVintages, weatherLoc);
+        Charts.createGDDChart('chartGDD', weatherVintages, weatherLoc);
         break;
       }
 
@@ -574,7 +577,8 @@ const App = {
 
     const mapping = CONFIG.berryToWine;
     const berryByLot = {};
-    DataStore.berryData.forEach(d => {
+    const filteredBerry = Filters.getFiltered();
+    filteredBerry.forEach(d => {
       if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
       const lotCode = d.lotCode;
       if (!berryByLot[lotCode] || (d.daysPostCrush || 0) > (berryByLot[lotCode].daysPostCrush || 0)) {
@@ -583,7 +587,8 @@ const App = {
     });
 
     const wineByCodigo = {};
-    DataStore.wineRecepcion.forEach(d => {
+    const filteredWineExt = Filters.getFilteredWine();
+    filteredWineExt.forEach(d => {
       if (d.codigoBodega) wineByCodigo[d.codigoBodega] = d;
     });
 

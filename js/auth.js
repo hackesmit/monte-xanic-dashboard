@@ -145,10 +145,11 @@ const Auth = {
     if (uploadSection) uploadSection.style.display = this.canUpload() ? '' : 'none';
   },
 
+  _formBound: false,
   bindForm() {
+    if (this._formBound) return;
+    this._formBound = true;
     const form = document.getElementById('login-form');
-    const btn = document.getElementById('login-btn');
     if (form) form.addEventListener('submit', (e) => Auth.handleSubmit(e));
-    if (btn) btn.addEventListener('click', (e) => { e.preventDefault(); Auth.handleSubmit(); });
   }
 };

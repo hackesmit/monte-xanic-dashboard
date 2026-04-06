@@ -482,7 +482,8 @@ const CONFIG = {
     'sample_type':     'sampleType',
     'vessel_id':       'tanque',
     'notes':           'notes',
-    'below_detection': 'belowDetection'
+    'below_detection': 'belowDetection',
+    'sample_seq':      'sampleSeq'
   },
 
   // wine_samples Supabase columns → DataStore.wineRecepcion JS field names

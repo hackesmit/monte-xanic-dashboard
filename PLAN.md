@@ -1,114 +1,242 @@
-# Plan — Round 7+ User-Testing Bug Fixes & Stabilization
+# Plan — Wave 3 + Wave 4 Implementation
 
-## Status: WAVES 1–2 COMPLETE (uncommitted) — WAVE 3 NEXT — 11 open items across Waves 3–5
-
-**Source:** First production data update by winery staff (2026-03-31). Nine issues + 1 critical SyntaxError discovered. Subsequent code reviews (Rounds 8–9) found additional items.
-**Diagnostics:** REVIEW.md Sections 14–18
-**Task tracking:** TASK.md
-**Branch:** `feature/csp-inline-handler-migration`
+## Branch: `feature/wave3-wave4-fixes`
+**Source:** REVIEW.md Rounds 7–9, TASK.md  
+**Prerequisite:** Waves 1–2 committed on main (cf25021)
 
 ---
 
-## Completed Work
+## Pre-flight: Commit Existing Changes (Step 0)
 
-### Wave 1 — CSP Fix + Export Repair ✅ COMMITTED (31a7062, 2287b96, bb288a5)
-- Created `js/events.js` — 237 lines, all event delegation
-- 71 static inline handlers migrated from `index.html`
-- 11 dynamic inline handlers migrated from `maps.js`, `explorer.js`, `charts.js`
-- Nav dropdown → tap-friendly button tabs
-- CSP `connect-src` updated for `archive-api.open-meteo.com`
-- Export fix: jsPDF guard, Image onerror, try/catch, 7 Spanish error toasts
-- `api/upload.js` duplicate `const supabaseUrl` SyntaxError fixed
-- **Zero inline handlers remain in codebase**
+Three files already have uncommitted fixes (4e + 4f). Commit these before starting new work.
 
-### Wave 2 — Lot Connection + Legends + Colors ✅ CODE DONE — NOT YET COMMITTED
-- 2a: `_lotLinePlugin` Chart.js plugin draws thin semi-transparent lines connecting same-lot points. `_identifyLastPoints` returns `lotCode→maxDPC` map. Only true last point per lot gets golden border + larger radius.
-- 2b: Native Chart.js legends on scatter charts (bottom position, themed, onClick → `toggleSeries()`). Visible in PNG/PDF exports. HTML legend bar kept for mobile.
-- 2c: 10 varietal colors redistributed: Cab Franc→indigo, Tempranillo→orange, Marselan→deep rose, Grenache→true red, Caladoc→lavender, Malbec→blue, Petit Verdot→teal, whites→green/gold/coral/cyan.
-- 2d: 4 export buttons added to origin comparison charts with CSP-safe `data-*` attrs.
-
-**Files with uncommitted changes:** `index.html`, `js/charts.js`, `js/config.js`, `PLAN.md`, `REVIEW.md`, `TASK.md`
+**Files:** `.vercelignore`, `js/auth.js`, `js/events.js`  
+**Commit message:** `fix: vercelignore docs exclusion + duplicate login listener guard`
 
 ---
 
-## Next Steps (in order)
+## Wave 3 — Weather: GDD Chart + Location Filter
 
-### Step 0 — Commit + Push Wave 2 (immediate)
-Commit uncommitted Wave 2 changes, push branch to remote.
+### 3a — HTML: Valley Selector + GDD Canvas
+**File:** `index.html`
 
-### Wave 3 — Weather: GDD Chart + Location Filter
+1. In the weather section header (currently Line ~605, hard-coded "Clima durante la Vendimia — Valle de Guadalupe"):
+   - Replace static text with a `<span id="weather-valley-label">Valle de Guadalupe</span>`
+   - Add 3 valley toggle buttons: `<button class="valley-btn active" data-valley="VDG">VDG</button>`, `VON`, `SV`
+   - Style as chip-style buttons matching existing filter chip aesthetic
+2. After `#chartWeatherRain` canvas (~Line 618), add:
+   ```html
+   <div class="chart-card">
+     <div class="chart-header"><h3>GDD Acumulados</h3><button class="export-btn" data-chart="chartGDD" data-title="GDD Acumulados">PNG</button></div>
+     <canvas id="chartGDD"></canvas>
+   </div>
+   ```
 
-| Task | Files | Description |
-|------|-------|-------------|
-| 3a | `index.html` | Add valley selector dropdown (VDG / VON / SV) in weather section header. Add GDD chart container `<canvas id="chartGDD">` with export button. |
-| 3b | `js/filters.js` | Add `state.weatherLocation` (default `'VDG'`). Add change handler that triggers weather chart re-render. |
-| 3c | `js/charts.js` | **GDD cumulative chart:** Line chart showing GDD accumulation from Jul 1 through current date, one line per valley (or single line for selected valley). Uses `WeatherStore.getCumulativeGDD()`. X-axis: day of season. Y-axis: cumulative GDD (°C). |
-| 3d | `js/charts.js` | **Pass location to all weather charts:** `createWeatherTimeSeries()`, `createRainfallChart()`, harvest calendar overlay — all must pass `Filters.state.weatherLocation` to `WeatherStore.getRange()`. |
-| 3e | `js/charts.js` | Update weather section header text dynamically based on selected valley. |
+### 3b — Filter State: `weatherLocation`
+**File:** `js/filters.js`
 
-**Validation:** Switch valley dropdown → all weather charts update. GDD chart shows accumulation curve. Header reflects selected valley.
+1. Add `weatherLocation: 'VDG'` to `Filters.state` (after `colorBy`)
+2. Add method `setWeatherLocation(loc)`:
+   ```javascript
+   setWeatherLocation(loc) {
+     this.state.weatherLocation = loc;
+     // Update button active states
+     document.querySelectorAll('.valley-btn').forEach(b => 
+       b.classList.toggle('active', b.dataset.valley === loc));
+     // Update header text
+     const label = document.getElementById('weather-valley-label');
+     if (label) label.textContent = CONFIG.VALLEY_NAMES[loc] || loc;
+     App.refresh();
+   }
+   ```
+3. Add `VALLEY_NAMES` to `js/config.js`: `{ VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' }`
 
-### Wave 4 — Data Integrity + Quick Fixes
+**File:** `js/events.js`
 
-| Task | Files | Description | Effort |
-|------|-------|-------------|--------|
-| 4a | `sql/migration_sample_seq.sql`, `js/upload.js`, `api/upload.js`, `js/charts.js` | **Same-day duplicate handling:** Add `sample_seq` column, new unique on `(sample_id, sample_date, sample_seq)`, deterministic seq assignment in upload, `+ (sample_seq - 1) * 0.15` day offset in charts. | Medium |
-| 4b | `js/charts.js` | **Cross-lot jitter:** ±0.2 day deterministic hash offset for different lots on same day. | Low |
-| 4c | `js/app.js` | **Extraction table respects filters** (14.1): Pass filtered data instead of raw DataStore. | Low |
-| 4d | `api/config.js` | **Add blacklist check** (17.1): Verify token against `token_blacklist` before returning Supabase credentials. | Low |
-| 4e | `.vercelignore` | Add `PLAN.md`, `TASK.md`, `REVIEW.md`, `REPORTE_DASHBOARD.txt` (17.3). | Trivial |
-| 4f | `js/events.js`, `js/auth.js` | **Fix duplicate login listener** (18.1+18.2): Remove `#login-form` submit from `Events._bindAuth()`. Remove `#login-btn` click from `Auth.bindForm()`. | Trivial |
+4. In `_bindFilters()`, add delegation for `.valley-btn` click → `Filters.setWeatherLocation(btn.dataset.valley)`
 
-**Validation:** Upload CSV with same-day duplicates → both preserved. Filter variety → extraction table matches charts. Revoke token → `/api/config` returns 401. Logout → re-login → exactly 1x POST to `/api/login`.
+### 3c — GDD Cumulative Chart
+**File:** `js/charts.js`
 
-### Wave 5 — Security Hardening + Cleanup
+Add `createGDDChart(canvasId, berryData, location)`:
+- **Type:** Line chart
+- **X-axis:** Day of season (1 = Jul 1, labels: Jul, Aug, Sep, Oct)
+- **Y-axis:** Cumulative GDD (°C·days)
+- **Data source:** `WeatherStore.getRange(julFirst, octEnd, location)` → accumulate `max(0, (temp_max + temp_min)/2 - 10)` per day
+- **Lines:** One line per vintage year (from `WeatherStore.getVintagesFromData()`) so user can compare seasons
+- **Colors:** Vintage-based palette (current year bold, prior years muted)
+- **Tooltip:** "Día X — GDD: Y.Y°C·días"
 
-| Task | Files | Description | Effort |
-|------|-------|-------------|--------|
-| 5a | `api/lib/verifyToken.js` (new) | Extract shared token verification (HMAC + expiry + blacklist) used by all 4 API endpoints (14.3). | Medium |
-| 5b | `api/upload.js` | Use server-side `tableConfig.conflict` instead of client-provided value (14.9). | Trivial |
-| 5c | `api/upload.js`, `api/verify.js`, `api/logout.js`, `api/config.js` | Add rate limiting to all authenticated endpoints (14.8). | Medium |
-| 5d | `css/styles.css` | Delete ~70 lines dead CSS: `.brand-*` block, `.extraction-grid` block (14.5). | Trivial |
+### 3d — Pass Location to All Weather Charts
+**File:** `js/app.js` (vintage view rendering, ~Line 335)
 
----
-
-## Dependencies
-
-```
-Wave 1 ✅  ──► Wave 2 ✅  ──► Step 0 (commit + push)
-                                  │
-                          ┌───────┼───────┐
-                          ▼       ▼       ▼
-                       Wave 3  Wave 4  Wave 5
-                       (weather)(data)  (security)
-                          │       │       │
-                          └───────┼───────┘
-                                  ▼
-                            PR to main
-                                  │
-                                  ▼
-                         Phase 7 (Mediciones)
+Update the vintage/weather view render calls:
+```javascript
+const loc = Filters.state.weatherLocation;
+Charts.createWeatherTimeSeries('chartWeatherTemp', vintages, loc);
+Charts.createRainfallChart('chartWeatherRain', vintages, loc);
+Charts.createGDDChart('chartGDD', cleanBerry, loc);
 ```
 
-- **Waves 3, 4, 5 are independent** — can run in parallel or any order
-- Wave 4a (sample_seq) requires Supabase migration before upload testing
-- Wave 5a (shared verifyToken) should precede 5c (rate limiting on all endpoints)
-- PR to main after all waves complete and validated on Vercel preview
+**File:** `js/charts.js`
+
+Update signatures:
+- `createWeatherTimeSeries(canvasId, vintages, location = 'VDG')` — pass `location` to `WeatherStore.getRange()`
+- `createRainfallChart(canvasId, vintages, location = 'VDG')` — same
+- Harvest calendar weather overlay — pass location if applicable
+
+### 3e — Dynamic Header Text
+Handled within 3b (`setWeatherLocation` updates `#weather-valley-label`). Initial render in `App.refresh()` should also set the label based on `Filters.state.weatherLocation`.
+
+### Wave 3 Validation
+- Switch valley dropdown → all 3 weather charts + GDD chart update
+- GDD chart shows accumulation curve starting Jul 1
+- Header reflects selected valley name in Spanish
+- Export buttons work on GDD chart
+- Mobile: valley buttons wrap cleanly
 
 ---
 
-## User Decisions — Resolved
+## Wave 4 — Data Integrity + Quick Fixes
 
-**16.3 — Duplicate date handling:** ✅ DECIDED — Option B (`sample_seq` integer column).
-- Row-order-within-batch + deterministic sort. Idempotent on re-upload.
-- See REVIEW.md 16.3 for full edge case analysis.
+### 4a — Same-Day Duplicate Handling (`sample_seq`)
+**Effort:** Medium — 4 files + 1 new SQL migration
+
+**Step 1: SQL Migration**
+**File:** `sql/migration_sample_seq.sql` (new)
+```sql
+-- Add sample_seq column
+ALTER TABLE wine_samples ADD COLUMN sample_seq INTEGER NOT NULL DEFAULT 1;
+
+-- Drop old unique constraint
+ALTER TABLE wine_samples DROP CONSTRAINT IF EXISTS wine_samples_sample_id_sample_date_key;
+
+-- Create new composite unique constraint
+ALTER TABLE wine_samples ADD CONSTRAINT wine_samples_sample_id_date_seq_key 
+  UNIQUE (sample_id, sample_date, sample_seq);
+```
+
+**Step 2: Client Upload**
+**File:** `js/upload.js`
+
+In `parseWineXRay()` (or before `upsertRows()` call):
+1. Group parsed rows by `(sample_id, sample_date)`
+2. Within each group, sort deterministically by value fingerprint: `tANT` → `pH` → `berry_weight` (nulls last)
+3. Assign `sample_seq = 1, 2, 3...` per group position
+4. Add `sample_seq` to each row object sent to API
+
+**Step 3: Server Upload**
+**File:** `api/upload.js`
+
+Change `ALLOWED_TABLES.wine_samples.conflict` from `'sample_id,sample_date'` to `'sample_id,sample_date,sample_seq'`
+
+**Step 4: Chart Display Offset**
+**File:** `js/charts.js`
+
+Where `daysPostCrush` is used for x-axis positioning (scatter charts in berry/evolution views):
+- Compute display value: `daysPostCrush + ((d.sample_seq || 1) - 1) * 0.15`
+- Tooltip still shows raw `daysPostCrush`
+- Only affects visual spread, not data
+
+### 4b — Cross-Lot Same-Day Jitter
+**File:** `js/charts.js`
+
+Add deterministic jitter for points from different lots on the same day:
+```javascript
+function _hashJitter(sampleId) {
+  let hash = 0;
+  for (let i = 0; i < sampleId.length; i++) 
+    hash = ((hash << 5) - hash) + sampleId.charCodeAt(i);
+  return ((hash % 40) - 20) / 100;  // ±0.2 days
+}
+```
+Apply to display `daysPostCrush` (additive with 4a's `sample_seq` offset). Tooltip shows raw value.
+
+### 4c — Extraction Table Respects Filters
+**File:** `js/app.js` — `updateExtractionTable()` (~Line 571)
+
+Current bug: uses `DataStore.berryData` and `DataStore.wineRecepcion` (raw, unfiltered).
+
+Fix:
+1. Accept filtered data as parameters: `updateExtractionTable(filteredBerry, filteredWine)`
+2. In the extraction view case (~Line 316), pass the already-filtered data:
+   ```javascript
+   this.updateExtractionTable(cleanBerry, filteredWineExt);
+   ```
+3. Inside the function, iterate `filteredBerry` instead of `DataStore.berryData`, and `filteredWine` instead of `DataStore.wineRecepcion`
+4. Keep `CONFIG.berryToWine` mapping logic — just filter the data sources
+
+### 4d — Blacklist Check in `api/config.js`
+**File:** `api/config.js`
+
+After HMAC signature verification and expiry check, add blacklist lookup matching `api/verify.js:47-62`:
+```javascript
+// Check token blacklist
+const { createClient } = require('@supabase/supabase-js');
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
+const { data } = await supabase
+  .from('token_blacklist')
+  .select('token_hash')
+  .eq('token_hash', tokenHash)
+  .maybeSingle();
+if (data) return res.status(401).json({ error: 'Token revoked' });
+```
+Must also make handler `async` and compute `tokenHash` from the token (SHA-256 or match existing pattern in `api/logout.js`).
+
+### Wave 4 Validation
+- Upload CSV with same-day duplicates → both rows preserved with seq 1, 2
+- Re-upload same CSV → upsert overwrites identically (idempotent)
+- Overlapping cross-lot points visually separated
+- Filter variety in extraction view → table shows only matching pairs
+- Logout → try `/api/config` with old token → 401
+- All existing functionality unchanged
+
+---
+
+## Implementation Order
+
+```
+Step 0: Commit existing 4e+4f changes
+         │
+    ┌────┴────┐
+    ▼         ▼
+ Wave 3    Wave 4
+ (3a→3b    (4d→4c→4a→4b)
+  →3c→3d)
+    │         │
+    └────┬────┘
+         ▼
+   Final commit + push
+```
+
+### Recommended sequence within waves:
+
+**Wave 3:** 3a → 3b → 3c → 3d/3e (sequential — each step builds on prior)
+
+**Wave 4 (can parallelize some):**
+- 4d (blacklist) — independent, do first (security)
+- 4c (extraction filter) — independent, small change
+- 4a (sample_seq) — medium effort, requires migration then code
+- 4b (jitter) — depends on 4a's offset logic being in place
+
+**Wave 3 and Wave 4 are independent** — can be worked in parallel by separate agents.
+
+---
+
+## Risk Assessment
+
+| Risk | Mitigation |
+|------|------------|
+| `sample_seq` migration breaks existing data | Default to 1, additive only, no data modification |
+| Weather charts break when switching valley | Defensive: `getRange()` already handles unknown locations gracefully |
+| Extraction table filter changes hide valid data | Keep `CONFIG.berryToWine` pairing, only filter input data |
+| GDD calculation edge cases (missing weather days) | `getCumulativeGDD()` already has >3-day gap guard, returns null |
+| Blacklist check adds latency to `/api/config` | Single indexed lookup, same pattern as 3 other endpoints |
 
 ---
 
 ## After This Branch
 
-**Phase 7 — Mediciones Técnicas con Evidencia Fotográfica** remains the next major feature.
-- Architecture designed in CLAUDE.md (reserved schema for `mediciones_tecnicas` + `medicion_fotos`)
-- Cloudflare R2 for photos, Supabase for metadata
-- Scope: ~110 mediciones, ~1,100 photos (~2-3GB in R2)
-- Blocked by: all Waves 3–5 complete + PR merged to main
+- Wave 5 (security hardening, dead CSS) → separate branch
+- PR to main after Waves 3+4 validated
+- Phase 7 (Mediciones) blocked until all waves merged

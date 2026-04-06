@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { rateLimit } from './lib/rateLimit.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -7,6 +8,8 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ ok: false });
   }
+
+  if (!rateLimit(req, res)) return;
 
   const { token } = req.body || {};
   if (!token) {

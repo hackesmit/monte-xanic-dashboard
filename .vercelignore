@@ -1,5 +1,9 @@
 sql/
 CLAUDE.md
+PLAN.md
+TASK.md
+REVIEW.md
+REPORTE_DASHBOARD.txt
 .claude/
 .editorconfig
 .nvmrc
