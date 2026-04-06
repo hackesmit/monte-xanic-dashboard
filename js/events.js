@@ -29,11 +29,24 @@ const Events = {
 
     const weatherValley = document.getElementById('weather-valley-select');
     if (weatherValley) weatherValley.addEventListener('change', () => {
-      Filters.state.weatherLocation = weatherValley.value;
+      const loc = weatherValley.value;
+      Filters.state.weatherLocation = loc;
       const names = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
       const title = document.getElementById('weather-section-title');
-      if (title) title.textContent = `Clima durante la Vendimia — ${names[weatherValley.value] || weatherValley.value}`;
-      App.refresh();
+      if (title) title.textContent = `Clima durante la Vendimia — ${names[loc] || loc}`;
+      // Directly re-render only the weather charts (skip full App.refresh)
+      const vintages = WeatherStore.getVintagesFromData();
+      const renderWeather = () => {
+        Charts.createWeatherTimeSeries('chartWeatherTemp', vintages, loc);
+        Charts.createRainfallChart('chartWeatherRain', vintages, loc);
+        Charts.createGDDChart('chartGDD', vintages, loc);
+      };
+      renderWeather();
+      // If no data for this valley, trigger a sync then re-render
+      const hasData = vintages.some(y => WeatherStore.getRange(`${y}-07-01`, `${y}-10-31`, loc).length > 0);
+      if (!hasData && vintages.length) {
+        WeatherStore.sync(vintages).then(renderWeather);
+      }
     });
   },
 
