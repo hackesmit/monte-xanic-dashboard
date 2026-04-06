@@ -6,21 +6,62 @@ const Charts = {
   hiddenSeries: new Set(),
 
   // Identify the last (most recent) data point per lot code (only for lots with 2+ points)
+  // Returns a Map of lotCode → maxDaysPostCrush (not sampleId, to avoid flagging all lot points)
   _identifyLastPoints(data) {
     const lotCounts = {};
     const lastByLot = {};
     data.forEach(d => {
-      if (!d.lotCode || d.daysPostCrush === null || d.daysPostCrush === undefined) return;
-      lotCounts[d.lotCode] = (lotCounts[d.lotCode] || 0) + 1;
-      if (!lastByLot[d.lotCode] || d.daysPostCrush > lastByLot[d.lotCode].daysPostCrush) {
-        lastByLot[d.lotCode] = d;
+      const lot = d.lotCode || d.sampleId;
+      if (!lot || d.daysPostCrush === null || d.daysPostCrush === undefined) return;
+      lotCounts[lot] = (lotCounts[lot] || 0) + 1;
+      if (lastByLot[lot] === undefined || d.daysPostCrush > lastByLot[lot]) {
+        lastByLot[lot] = d.daysPostCrush;
       }
     });
-    return new Set(
-      Object.entries(lastByLot)
-        .filter(([lot]) => (lotCounts[lot] || 0) >= 2)
-        .map(([, d]) => d.sampleId)
-    );
+    const result = {};
+    for (const [lot, maxDpc] of Object.entries(lastByLot)) {
+      if ((lotCounts[lot] || 0) >= 2) result[lot] = maxDpc;
+    }
+    return result;
+  },
+
+  // Chart.js per-chart plugin: draw thin lines connecting same-lot points within each dataset
+  _lotLinePlugin: {
+    id: 'lotLines',
+    afterDatasetsDraw(chart) {
+      const ctx = chart.ctx;
+      chart.data.datasets.forEach((dataset, i) => {
+        const meta = chart.getDatasetMeta(i);
+        if (meta.hidden) return;
+        // Group visible points by lotCode
+        const byLot = {};
+        dataset.data.forEach((pt, j) => {
+          const lot = pt.lotCode || pt.sampleId;
+          if (!lot) return;
+          const el = meta.data[j];
+          if (!el) return;
+          if (!byLot[lot]) byLot[lot] = [];
+          byLot[lot].push({ px: el.x, py: el.y, rawX: pt.x });
+        });
+        // Draw lines for lots with 2+ points
+        const baseColor = dataset.borderColor || '#888888';
+        ctx.save();
+        ctx.strokeStyle = (typeof baseColor === 'string' ? baseColor : '#888888') + '55';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        for (const pts of Object.values(byLot)) {
+          if (pts.length < 2) continue;
+          pts.sort((a, b) => a.rawX - b.rawX);
+          ctx.beginPath();
+          ctx.moveTo(pts[0].px, pts[0].py);
+          for (let k = 1; k < pts.length; k++) {
+            ctx.lineTo(pts[k].px, pts[k].py);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      });
+    }
   },
 
   _getThemeColor(varName) {
@@ -145,25 +186,7 @@ const Charts = {
   // Group data by a field and return datasets
   groupScatterData(data, xField, yField, groupField) {
     // Pre-compute last points — only for lots with 2+ measurements
-    const lotCounts = {};
-    const lastByLot = {};
-    data.forEach(d => {
-      const x = d[xField]; const y = d[yField];
-      if (x === null || y === null || x === undefined || y === undefined) return;
-      if (typeof x !== 'number' || typeof y !== 'number') return;
-      const lot = d.lotCode || d.sampleId;
-      if (!lot) return;
-      lotCounts[lot] = (lotCounts[lot] || 0) + 1;
-      if (!lastByLot[lot] || (d.daysPostCrush || 0) > (lastByLot[lot].dpc || 0)) {
-        lastByLot[lot] = { sid: d.sampleId, dpc: d.daysPostCrush || 0 };
-      }
-    });
-    // Only flag last point if lot has multiple measurements
-    const lastSids = new Set(
-      Object.entries(lastByLot)
-        .filter(([lot]) => (lotCounts[lot] || 0) >= 2)
-        .map(([, v]) => v.sid)
-    );
+    const lastPointMap = this._identifyLastPoints(data);
 
     const groups = {};
     data.forEach(d => {
@@ -173,6 +196,9 @@ const Charts = {
       if (x === null || y === null || x === undefined || y === undefined) return;
       if (typeof x !== 'number' || typeof y !== 'number') return;
       if (!groups[g]) groups[g] = [];
+      const lot = d.lotCode || d.sampleId;
+      const dpc = d.daysPostCrush || 0;
+      const isLast = lastPointMap[lot] !== undefined && dpc === lastPointMap[lot];
       groups[g].push({
         x, y,
         sampleId: d.sampleId,
@@ -180,7 +206,7 @@ const Charts = {
         variety: d.variety,
         appellation: d.appellation,
         vintage: d.vintage,
-        _isLastPoint: lastSids.has(d.sampleId)
+        _isLastPoint: isLast
       });
     });
     return groups;
@@ -199,17 +225,16 @@ const Charts = {
       ? (n) => CONFIG.resolveOriginColor(n)
       : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n);
     const groups = this.groupScatterData(data, xField, yField, groupField);
-    const lastPoints = this._identifyLastPoints(data);
 
     const datasets = Object.entries(groups).map(([name, pts]) => {
       const color = resolveColor(name);
       const sorted = [...pts].sort((a, b) => a.x - b.x);
-      // Per-point styling for last points
+      // Per-point styling: only the true last point per lot (with 2+ measurements) gets golden border
       const r = this._mobileRadius();
-      const radii = sorted.map(() => r);
-      const bgColors = sorted.map(p => lastPoints.has(p.sampleId) ? color : color + '99');
-      const bdColors = sorted.map(p => lastPoints.has(p.sampleId) ? '#DDB96E' : color);
-      const bdWidths = sorted.map(p => lastPoints.has(p.sampleId) ? 3 : 0.5);
+      const radii = sorted.map(p => p._isLastPoint ? r + 2 : r);
+      const bgColors = sorted.map(p => p._isLastPoint ? color : color + '99');
+      const bdColors = sorted.map(p => p._isLastPoint ? '#DDB96E' : color);
+      const bdWidths = sorted.map(p => p._isLastPoint ? 3 : 0.5);
       return {
         label: name,
         data: sorted,
@@ -228,6 +253,7 @@ const Charts = {
       };
     });
 
+    const legendColor = this._getThemeColor('--text') || '#D8D0C4';
     this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
@@ -235,12 +261,23 @@ const Charts = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              color: legendColor,
+              font: { size: 10, family: 'Sackers Gothic Medium' },
+              boxWidth: 10, padding: 6,
+              usePointStyle: true, pointStyle: 'circle'
+            },
+            onClick: (e, legendItem) => { this.toggleSeries(legendItem.text); }
+          },
           tooltip: this.tooltipConfig()
         },
         scales: this.axisOpts(xLabel, yLabel),
         animation: { duration: 300 }
-      }
+      },
+      plugins: [this._lotLinePlugin]
     });
   },
 
@@ -274,6 +311,7 @@ const Charts = {
       };
     });
 
+    const legendColor = this._getThemeColor('--text') || '#D8D0C4';
     this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
@@ -281,7 +319,17 @@ const Charts = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          legend: { display: false },
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              color: legendColor,
+              font: { size: 10, family: 'Sackers Gothic Medium' },
+              boxWidth: 10, padding: 6,
+              usePointStyle: true, pointStyle: 'circle'
+            },
+            onClick: (e, legendItem) => { this.toggleSeries(legendItem.text); }
+          },
           tooltip: this.tooltipConfig()
         },
         scales: this.axisOpts(xLabel, yLabel),
@@ -1534,6 +1582,15 @@ const Charts = {
     ctx.fillText(msg, canvas.width / 2, canvas.height / 2);
   },
 
+  // Show a toast message for export status (reuses #offline-toast)
+  _showExportToast(msg) {
+    const toast = document.getElementById('offline-toast');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(() => toast.classList.remove('show'), 6000);
+  },
+
   // Show export format menu (PNG / PDF) anchored to button
   showExportMenu(canvasId, title, btn) {
     // Close any existing menu and its listener
@@ -1587,14 +1644,20 @@ const Charts = {
   exportChart(canvasId, title) {
     const chart = this.instances[canvasId];
     const srcCanvas = document.getElementById(canvasId);
-    if (!srcCanvas || !chart) return;
+    if (!srcCanvas || !chart) {
+      this._showExportToast('✗ Gráfico no disponible para exportar');
+      return;
+    }
 
     const pad = 40;
     const titleH = 44;
     const watermarkH = 30;
     const w = srcCanvas.width;
     const h = srcCanvas.height;
-    if (!w || !h) return;
+    if (!w || !h) {
+      this._showExportToast('✗ El gráfico no tiene contenido para exportar');
+      return;
+    }
 
     const totalW = w + pad * 2;
     const totalH = h + titleH + watermarkH + pad;
@@ -1623,7 +1686,20 @@ const Charts = {
     ctx.stroke();
 
     // Draw chart via Chart.js native toBase64Image
+    let imgSrc;
+    try {
+      imgSrc = chart.toBase64Image('image/png', 1);
+    } catch (err) {
+      console.error('[Charts] Error generando imagen del gráfico:', err);
+      this._showExportToast('✗ Error al generar imagen del gráfico');
+      return;
+    }
+
     const chartImg = new Image();
+    chartImg.onerror = () => {
+      console.error('[Charts] Error cargando imagen para exportar PNG');
+      this._showExportToast('✗ Error al cargar imagen del gráfico');
+    };
     chartImg.onload = () => {
       ctx.drawImage(chartImg, pad, titleH + 8, w, h);
 
@@ -1642,50 +1718,59 @@ const Charts = {
       link.click();
       document.body.removeChild(link);
     };
-    chartImg.src = chart.toBase64Image('image/png', 1);
+    chartImg.src = imgSrc;
   },
 
   exportChartPDF(canvasId, title) {
     if (typeof window.jspdf === 'undefined') {
-      console.error('[Charts] jsPDF no disponible');
+      console.error('[Charts] jsPDF no disponible — librería aún no cargada');
+      this._showExportToast('✗ PDF no disponible — la librería jsPDF aún no se ha cargado. Intente de nuevo en unos segundos.');
       return;
     }
     const chart = this.instances[canvasId];
     const srcCanvas = document.getElementById(canvasId);
-    if (!srcCanvas || !chart) return;
+    if (!srcCanvas || !chart) {
+      this._showExportToast('✗ Gráfico no disponible para exportar como PDF');
+      return;
+    }
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const pw = pdf.internal.pageSize.getWidth();
-    const ph = pdf.internal.pageSize.getHeight();
+    try {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
 
-    // Dark background
-    pdf.setFillColor(22, 22, 22);
-    pdf.rect(0, 0, pw, ph, 'F');
+      // Dark background
+      pdf.setFillColor(22, 22, 22);
+      pdf.rect(0, 0, pw, ph, 'F');
 
-    // Title
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(14);
-    pdf.text(title, 15, 18);
+      // Title
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(14);
+      pdf.text(title, 15, 18);
 
-    // Gold separator
-    pdf.setDrawColor(196, 160, 96);
-    pdf.setLineWidth(0.3);
-    pdf.line(15, 22, pw - 15, 22);
+      // Gold separator
+      pdf.setDrawColor(196, 160, 96);
+      pdf.setLineWidth(0.3);
+      pdf.line(15, 22, pw - 15, 22);
 
-    // Chart image
-    const imgData = chart.toBase64Image('image/png', 1);
-    const chartW = pw - 30;
-    const chartH = ph - 50;
-    pdf.addImage(imgData, 'PNG', 15, 26, chartW, chartH);
+      // Chart image
+      const imgData = chart.toBase64Image('image/png', 1);
+      const chartW = pw - 30;
+      const chartH = ph - 50;
+      pdf.addImage(imgData, 'PNG', 15, 26, chartW, chartH);
 
-    // Watermark
-    pdf.setTextColor(196, 160, 96);
-    pdf.setFontSize(8);
-    pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
+      // Watermark
+      pdf.setTextColor(196, 160, 96);
+      pdf.setFontSize(8);
+      pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
 
-    const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
-    pdf.save(`monte-xanic-${safeName}.pdf`);
+      const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+      pdf.save(`monte-xanic-${safeName}.pdf`);
+    } catch (err) {
+      console.error('[Charts] Error generando PDF:', err);
+      this._showExportToast('✗ Error al generar el archivo PDF');
+    }
   },
 
   // ── Explorer Parameterized Charts ──────────────────────────────

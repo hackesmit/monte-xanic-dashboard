@@ -638,22 +638,15 @@ No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, 
 
 ### BUGS
 
-#### 16.1 PDF/PNG export not working — HIGH
-- **FILES:** `js/charts.js:1586-1689`, `index.html:16`
-- **DESCRIPTION:** Chart export (both PNG and PDF) is broken in production. Root causes likely compound:
-  1. **CSP blocks inline handlers (14.12):** Export buttons use `onclick` which is blocked by Vercel CSP. The delegated listener in `events.js` may not cover all export flows.
-  2. **jsPDF CDN race condition:** `jspdf.umd.min.js` loaded with `defer` — if user clicks export before library loads, `window.jspdf` is undefined and export silently fails (console error only, no user feedback).
-  3. **PNG Image load race:** `chartImg.onload` callback may not fire if base64 data URL is cached synchronously. No error handler on `chartImg.onerror`.
-  4. **Silent failures:** All error paths return silently with no user-facing message in Spanish.
-- **FIX:** Ensure export buttons work via delegated event binding (CSP fix). Add loading guard for jsPDF. Add Spanish error toast on failure. Add `onerror` handler on Image.
+#### 16.1 PDF/PNG export not working — HIGH — ✅ RESOLVED
+- **FILES:** `js/charts.js`
+- **DESCRIPTION:** Chart export (both PNG and PDF) was broken in production due to CSP inline handlers, jsPDF race condition, missing Image onerror, and silent failures.
+- **FIX APPLIED:** (1) CSP inline handlers resolved in Wave 1a–e (events.js delegation). (2) jsPDF undefined guard now shows Spanish toast. (3) `onerror` handler added on `new Image()`. (4) try/catch on `toBase64Image()` and entire PDF generation. (5) All 7 failure paths now show user-facing Spanish messages via `_showExportToast()`.
 
-#### 16.2 Same-lot data points not connected — last-point bug — HIGH
-- **FILES:** `js/charts.js:9-23` (`_identifyLastPoints`), `js/charts.js:168-229` (scatter rendering)
-- **DESCRIPTION:** After first data update, user reports "the program registers each node as if it's the last and gives it golden border, not allowing to connect the dots." Two related issues:
-  1. **No per-lot lines:** Scatter charts group data by variety or origin (`Filters.state.colorBy`), NOT by lotCode. Points from the same lot (e.g., '25CFCC-1' measured on 5 different dates) are mixed into a single variety dataset. There are no lines connecting same-lot measurements over time — each point floats independently.
-  2. **Golden border logic:** `_identifyLastPoints()` groups by `lotCode` and flags the point with max `daysPostCrush` per lot. But since scatter datasets are grouped by variety/origin, the golden borders appear scattered throughout the dataset with no visual context for WHY a point is "last" (no connecting line to preceding points).
-  3. **Lot identity:** The composite key `(sample_id, sample_date)` means the same `sample_id` appears multiple times with different dates. The grouping must treat all rows with the same `sample_id` as one lot's time series.
-- **FIX:** Add per-lot line segments within scatter datasets. When `showLines` is toggled, connect points sharing the same `lotCode` sorted by `daysPostCrush`. Ensure only the true final point per lot gets the golden border. Consider always showing lot lines (thin, semi-transparent) even when `showLines` is false.
+#### 16.2 Same-lot data points not connected — last-point bug — HIGH — ✅ RESOLVED
+- **FILES:** `js/charts.js`
+- **DESCRIPTION:** Scatter charts had no per-lot lines, and golden border appeared on ALL points in a lot (not just the last) because `_identifyLastPoints()` returned a sampleId Set shared by all lot points.
+- **FIX APPLIED:** (1) `_identifyLastPoints()` now returns `lotCode→maxDaysPostCrush` map — only the single point matching max DPC gets golden border. (2) Per-chart `_lotLinePlugin` (Chart.js plugin) draws thin semi-transparent lines connecting same-lot points sorted by x-value. Lines always visible (not gated by `showLines` toggle). (3) Last points also get slightly larger radius (+2px).
 
 #### 16.3 Duplicate dates with different hours overwritten on upload — HIGH
 - **FILES:** `js/upload.js:26-29` (`_normalizeValue`), `api/upload.js:24` (conflict key), `js/charts.js` (display)
@@ -689,19 +682,15 @@ No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, 
   3. **Section header** is hardcoded to "Valle de Guadalupe"
 - **FIX:** Add valley selector dropdown (VDG/VON/SV) in the weather section header. Pass selected valley to `getRange()` in all weather chart calls. Update header text dynamically. Add to `Filters.state` so it persists across view switches.
 
-#### 16.7 Chart legends not visible in PNG/PDF exports — HIGH
-- **FILES:** `js/charts.js:238` (`legend: { display: false }`), `js/charts.js:1586-1689` (export functions)
-- **DESCRIPTION:** Scatter charts in Bayas view use `legend: { display: false }` and render a custom HTML `<div class="legend-bar">` outside the `<canvas>`. When exporting to PNG/PDF, only the canvas is captured — the HTML legend is NOT included. Exported files have no indication of what colors represent which variety/origin/lot.
-- **FIX:** Switch scatter charts to use Chart.js native `legend: { display: true }` so legends render inside the canvas and appear in exports. Or: render legend items onto the export canvas manually during PNG/PDF generation. Native legend is simpler and maintains export fidelity.
+#### 16.7 Chart legends not visible in PNG/PDF exports — HIGH — ✅ RESOLVED
+- **FILES:** `js/charts.js`
+- **DESCRIPTION:** Scatter charts used `legend: { display: false }` with external HTML legend bar — not captured in canvas exports.
+- **FIX APPLIED:** Native Chart.js legends enabled on `createScatter` and `createPureScatter` (bottom position, point-style circles, themed colors, onClick wired to `toggleSeries()`). Legends render inside canvas → visible in PNG/PDF exports. HTML legend bar kept for mobile expand/collapse interaction.
 
-#### 16.8 Varietal colors not distinct enough — MEDIUM
-- **FILE:** `js/config.js:13-30`
-- **DESCRIPTION:** Several varietal color pairs are too similar, especially on dark backgrounds and in exported images:
-  - **Cab Sauvignon (#DC143C)** vs **Cab Franc (#C41E3A)** — both dark reds, nearly identical
-  - **Cab Franc (#C41E3A)** vs **Tempranillo (#E74C3C)** — both red-adjacent
-  - **Marselan (#E91E63)** vs **Merlot (#E040A0)** — both pink/magenta
-  - **All whites** — Sauvignon Blanc (#F0E68C), Chardonnay (#F5E6A3), Viognier (#E8D5A0), Chenin Blanc (#D4E8B0) are all pale yellows, nearly indistinguishable
-- **FIX:** Redistribute reds across a wider hue range (blue, teal, orange). Make whites clearly distinct (one cool green, one warm gold, one coral, one ice blue). Maintain dark-theme contrast. Perceptual distance between any two colors should be ≥ 30 in CIELAB ΔE.
+#### 16.8 Varietal colors not distinct enough — MEDIUM — ✅ RESOLVED
+- **FILE:** `js/config.js`
+- **DESCRIPTION:** Multiple varietal color pairs were nearly identical (Cab Sauv/Cab Franc, Tempranillo/Grenache, all 4 whites as pale yellows).
+- **FIX APPLIED:** 10 colors redistributed across wider hue range. Key changes: Cab Franc→#6366F1 (indigo), Tempranillo→#F97316 (orange), Marselan→#BE185D (deep rose), Grenache→#EF4444 (true red), Caladoc→#A78BFA (lavender). Whites spread to green (#4ADE80)/gold (#FDE047)/coral (#FB923C)/cyan (#22D3EE).
 
 ### FUTURE IDEAS (noted, not prioritized)
 
@@ -717,14 +706,14 @@ No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, 
 
 | Priority | ID | Severity | Category | Fix Effort |
 |----------|----|----------|----------|------------|
-| **0** | **14.12** | **Critical** | CSP blocks inline event handlers on Vercel | High (proper fix) |
-| **1** | **16.1** | **High** | PDF/PNG export broken (compounds with CSP + race conditions) | Medium |
-| **2** | **16.2** | **High** | Same-lot points not connected, golden border on every point | Medium |
+| ~~0~~ | ~~14.12~~ | ~~Critical~~ | ~~CSP blocks inline event handlers on Vercel~~ — **RESOLVED** (commits 31a7062, 2287b96, bb288a5) | ~~High~~ |
+| ~~1~~ | ~~16.1~~ | ~~High~~ | ~~PDF/PNG export broken~~ — **RESOLVED** (Wave 1f: toast errors, jsPDF guard, Image onerror) | ~~Medium~~ |
+| ~~2~~ | ~~16.2~~ | ~~High~~ | ~~Same-lot points not connected, golden border on every point~~ — **RESOLVED** (Wave 2a: lot-line plugin + last-point fix) | ~~Medium~~ |
 | **3** | **16.5** | **High** | No GDD chart (calculation exists, no visualization) | Medium |
 | **4** | **16.6** | **High** | No weather location filter (API ready, no UI) | Medium |
-| **5** | **16.7** | **High** | Legends invisible in PNG/PDF exports | Low |
-| **6** | **16.3** | **Medium** | Same-day different-hour measurements overwritten | Medium (needs DB decision) |
-| **7** | **16.8** | **Medium** | Varietal colors too similar | Low |
+| ~~5~~ | ~~16.7~~ | ~~High~~ | ~~Legends invisible in PNG/PDF exports~~ — **RESOLVED** (Wave 2b: native Chart.js legends) | ~~Low~~ |
+| **6** | **16.3** | **Medium** | Same-day different-hour measurements overwritten (decision confirmed: sample_seq) | Medium |
+| ~~7~~ | ~~16.8~~ | ~~Medium~~ | ~~Varietal colors too similar~~ — **RESOLVED** (Wave 2c: 10 colors redistributed) | ~~Low~~ |
 | **8** | **14.1** | **High** | Extraction table ignores filters | Low |
 | **9** | **14.2** | **High** | Blacklist missing from `api/config.js` | Low |
 | **10** | **14.3** | **Medium** | Token verification triplicated | Medium |
@@ -733,7 +722,7 @@ No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, 
 | **13** | **15.2** | **Medium** | Docs deploy to Vercel | Trivial |
 | **14** | **16.4** | **Low** | Overlapping points need jitter | Low |
 | **15** | **14.5** | **Low** | ~70 lines dead CSS | Trivial |
-| **16** | **14.7** | **Low** | 4 origin charts missing export buttons | Trivial |
+| ~~16~~ | ~~14.7~~ | ~~Low~~ | ~~4 origin charts missing export buttons~~ — **RESOLVED** (Wave 2d) | ~~Trivial~~ |
 
 ### Rules for the Builder
 - All user-facing messages must be in Spanish
@@ -821,15 +810,15 @@ No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, 
 
 | Priority | ID | Severity | Category | Fix Effort |
 |----------|----|----------|----------|------------|
-| **0** | **14.12** | **Critical** | CSP inline handlers on Vercel — `events.js` migration done, verify coverage | Verify |
-| **1** | **16.1** | **High** | PDF/PNG export (jsPDF race + silent failures) | Medium |
-| **2** | **16.2** | **High** | Same-lot points not connected, golden border scattered | Medium |
+| ~~0~~ | ~~14.12~~ | ~~Critical~~ | ~~CSP inline handlers~~ — **RESOLVED** (Wave 1a–e) | ~~High~~ |
+| ~~1~~ | ~~16.1~~ | ~~High~~ | ~~PDF/PNG export~~ — **RESOLVED** (Wave 1f) | ~~Medium~~ |
+| ~~2~~ | ~~16.2~~ | ~~High~~ | ~~Same-lot points not connected~~ — **RESOLVED** (Wave 2a) | ~~Medium~~ |
 | **3** | **16.3** | **High** | Same-day measurements overwritten — `sample_seq` fix (decision confirmed) | Medium |
 | **4** | **16.5** | **High** | No GDD chart (`getCumulativeGDD()` exists, no viz) | Medium |
 | **5** | **16.6** | **High** | No weather location filter (API ready, no UI) | Medium |
-| **6** | **16.7** | **High** | Legends invisible in PNG/PDF exports | Low |
+| ~~6~~ | ~~16.7~~ | ~~High~~ | ~~Legends invisible in exports~~ — **RESOLVED** (Wave 2b) | ~~Low~~ |
 | **7** | **17.1** | **High** | Blacklist missing from `api/config.js` (security gap) | Low |
-| **8** | **16.8** | **Medium** | Varietal colors too similar | Low |
+| ~~8~~ | ~~16.8~~ | ~~Medium~~ | ~~Varietal colors too similar~~ — **RESOLVED** (Wave 2c) | ~~Low~~ |
 | **9** | **14.1** | **High** | Extraction table ignores filters | Low |
 | **10** | **14.3** | **Medium** | Token verification triplicated | Medium |
 | **11** | **14.8** | **Medium** | No rate limiting on upload/verify/logout/config | Medium |
@@ -837,16 +826,22 @@ No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, 
 | **13** | **17.3** | **Medium** | Docs deploy to Vercel (.vercelignore) | Trivial |
 | **14** | **16.4** | **Low** | Cross-lot same-day jitter (same-lot handled by 16.3) | Low |
 | **15** | **14.5** | **Low** | ~70 lines dead CSS | Trivial |
-| **16** | **14.7** | **Low** | 4 origin charts missing export buttons | Trivial |
+| ~~16~~ | ~~14.7~~ | ~~Low~~ | ~~4 origin charts missing export buttons~~ — **RESOLVED** (Wave 2d) | ~~Trivial~~ |
+| **17** | **18.1** | **Medium** | Duplicate login form listener — 2x `/api/login` requests after logout/re-login (`auth.js:151` + `events.js:36`) | Trivial |
 
 #### Resolved Since Round 7
 
 | ID | Category | Resolution |
 |----|----------|------------|
+| 14.12 | CSP inline handlers | FIXED — Wave 1a–e: 71 static + 11 dynamic handlers migrated to `events.js` delegation (commits 31a7062, 2287b96, bb288a5) |
 | 17.7 | Upload broken (SyntaxError) | FIXED — removed duplicate `const supabaseUrl` declaration, reused vars from blacklist block |
 | 15.1 | CSP connect-src | FIXED in commit `31a7062` — `archive-api.open-meteo.com` added to `connect-src` |
+| 16.1 | PDF/PNG export broken | FIXED — Wave 1f: jsPDF load guard, Image onerror, try/catch on toBase64Image, 7 Spanish error toasts |
+| 16.2 | Same-lot points not connected | FIXED — Wave 2a: `_lotLinePlugin` draws lot lines, `_identifyLastPoints` returns lotCode→maxDPC map (was sampleId Set) |
+| 16.7 | Legends invisible in exports | FIXED — Wave 2b: native Chart.js legends on scatter charts (bottom, point-style, themed) |
+| 16.8 | Varietal colors too similar | FIXED — Wave 2c: 10 colors redistributed (Cab Franc→indigo, Tempranillo→orange, whites→green/gold/coral/cyan) |
+| 14.7 | 4 origin charts missing export buttons | FIXED — Wave 2d: export buttons added with CSP-safe `data-chart-id`/`data-chart-title` attrs |
 | 14.4 | Extraction pair duplication | FIXED — `_buildExtractionPairs()` extracted as shared helper |
-| 14.12 | CSP inline handlers | PARTIALLY FIXED in commits `31a7062` + `2287b96` — 71 handlers migrated to `events.js`, nav converted to button tabs. Needs production verification. |
 
 ### Missing Tests
 
@@ -862,6 +857,72 @@ No tests exist in this project (vanilla JS, CDN-only). This is an existing gap, 
 - **Branch `feature/csp-inline-handler-migration`** has 2 commits ahead of `main` (`31a7062`, `2287b96`). These are source code changes already committed — not part of this review's uncommitted diff. The uncommitted changes are doc-only updates that should be committed and merged alongside the CSP migration branch.
 
 ---
+
+## 18. FULL BRANCH REVIEW — CSP Inline Handler Migration (Round 9)
+
+> Full review of all source code changes on `feature/csp-inline-handler-migration` vs `main`.
+> 4 commits: `31a7062`, `2287b96`, `bb288a5`, `af801fa`
+> 16 files changed: +2751 / -260 lines (mostly new `events.js` + `REPORTE_DASHBOARD.txt` + docs)
+> Source files: `js/events.js` (new, 237 lines), `index.html` (171 lines changed), `js/app.js`, `js/charts.js`, `js/explorer.js`, `js/maps.js`, `api/upload.js`, `css/styles.css`, `vercel.json`
+
+### Verification Summary
+
+- **Zero inline handlers remain** — Confirmed: `grep -rn 'onclick=\|onchange=\|onkeydown=' js/ index.html` → 0 matches
+- **events.js binds 71+ handlers** via 12 methods in `bindAll()` — all DOM container IDs verified in `index.html`
+- **CSP `connect-src`** correctly updated: only `archive-api.open-meteo.com` is used (`weather.js:11`)
+- **Script load order** correct: `events.js` loaded after all dependencies, before `app.js`
+- **`data-*` attribute routing** verified for: filters (`data-clear`), exports (`data-chart-id`/`data-chart-title`/`data-export-direct`), explorer (`data-slot`), maps (`data-section`/`data-ranch`), legends (`data-series`/`data-action`), nav (`data-view`), grape types (`data-grape-type`/`data-wine-grape-type`), color mode (`data-mode`)
+- **api/upload.js** duplicate variable fix verified: `supabaseUrl` (line 48) and `serviceKey` (line 49) are the only declarations, reused throughout
+
+### Priority 1 Issues
+
+#### 18.1 Duplicate login form listener — causes 2x `/api/login` requests
+- **SEVERITY:** Medium (functional bug, affects rate limiting)
+- **FILES:** `js/auth.js:13,151` + `js/events.js:36-37`
+- **DESCRIPTION:** `Auth.init()` (line 13) calls `Auth.bindForm()` which adds a submit listener on `#login-form` (auth.js:151). After successful auth, `App.init()` → `Events.bindAll()` → `Events._bindAuth()` adds a SECOND submit listener on `#login-form` (events.js:36-37). On subsequent login (after logout + re-login), both listeners fire, calling `Auth.handleSubmit()` twice, which fires two parallel `fetch('/api/login')` requests. Each counts against the 10-attempt rate limit.
+- **REPRODUCTION:** Login successfully → logout → login again → network tab shows 2x POST to `/api/login`.
+- **FIX:** Remove the `#login-form` submit binding from `Events._bindAuth()`. `Auth.bindForm()` already handles it. Keep only the `#logout-btn` click binding in `Events._bindAuth()`:
+  ```js
+  _bindAuth() {
+    const logoutBtn = document.getElementById('logout-btn');
+    if (logoutBtn) logoutBtn.addEventListener('click', () => Auth.logout());
+  },
+  ```
+
+#### 18.2 `Auth.bindForm()` also duplicates the login button click handler
+- **SEVERITY:** Low (same root cause as 18.1)
+- **FILES:** `js/auth.js:152`
+- **DESCRIPTION:** `Auth.bindForm()` binds both `form.submit` AND `btn.click` on `#login-btn`. The button is type="submit" inside the form, so its click already triggers the form submit event. This means even without the Events duplication, a button click fires `handleSubmit` twice (once from click listener, once from submit listener). But `event.preventDefault()` is called in the submit handler, so the form doesn't actually submit twice — both listeners call `login()` in parallel though.
+- **FIX:** Remove the `btn.click` listener in `Auth.bindForm()` — the form submit handler is sufficient.
+
+### Priority 2 Improvements
+
+#### 18.3 Round 8 "Resolved" table had stale duplicate 14.12 "PARTIALLY FIXED" entry — FIXED
+- **FILE:** `REVIEW.md` (Resolved Since Round 7 table)
+- **DESCRIPTION:** Had two 14.12 entries — one correct FIXED and one stale PARTIALLY FIXED. Removed the stale duplicate. Round 8 Open Items matrix was already correctly struck through.
+
+#### 18.5 `.nav-select` lost `margin-bottom: 28px` — minor map view spacing change
+- **FILE:** `css/styles.css:269` (diff)
+- **DESCRIPTION:** The old `.nav-select` had `margin-bottom: 28px`. This was removed because the new `.nav-tabs` has its own 28px margin. But `#map-metric-select` still uses the `.nav-select` class and lost the bottom margin. The `#map-metric-select` is inside `.map-header` (which has `margin-bottom: 16px`), so the visual impact is minimal — but spacing may differ slightly from before.
+- **FIX:** Not urgent. If map metric select spacing looks off, add `#map-metric-select { margin-bottom: 0; }` explicitly to make the intent clear.
+
+#### 18.6 Branch 2 commits ahead of remote — needs push before PR
+- **DESCRIPTION:** `git status` shows branch ahead of remote by 2 commits (`af801fa`, `bb288a5`).
+
+### Missing Tests
+
+No tests exist (vanilla JS, CDN-only). Existing gap, not introduced by these changes.
+
+### Notes
+
+- **Overall code quality is good.** The migration approach (data-* attributes + event delegation) is the correct CSP-compliant pattern. Delegation methods use proper null-guarding, `closest()` traversal, and `isNaN()` validation.
+- **Nav dropdown → button tabs** is a UX improvement — tap-friendly on mobile, eliminates select element quirks. CSS is responsive with 50% width on desktop, 33% on mobile.
+- **Export delegation** correctly preserves the `btn` reference for menu positioning (`showExportMenu(chartId, chartTitle, btn)` where `btn = e.target.closest('.chart-export-btn')`). The `data-export-direct` flag for direct PNG export is handled correctly.
+- **Legend `data-series` attribute** correctly uses `replace(/"/g, '&quot;')` for HTML-safe encoding. The browser decodes it back to the original string in `dataset.series`.
+- **Explorer `data-slot` + class selectors** cleanly separate click vs change delegation and route to the correct Explorer method.
+- **`api/upload.js` fix** was correct and necessary — the duplicate `const` declarations caused a SyntaxError that broke the entire upload endpoint.
+- **No unrelated scope expansion.** All changes serve the CSP migration goal. The nav tab change (commit `2287b96`) was needed because the select element's `onchange` was an inline handler.
+- **18.1 is the only functional bug** found in the entire branch. Fix is a 3-line deletion.
 
 ### Rules for the Builder
 - All user-facing messages must be in Spanish
