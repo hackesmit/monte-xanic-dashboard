@@ -7,7 +7,8 @@ const Filters = {
     origins: new Set(),
     lots: new Set(),
     grapeType: 'all',  // 'all', 'red', 'white'
-    colorBy: 'variety'  // 'variety', 'origin'
+    colorBy: 'variety',  // 'variety', 'origin'
+    weatherLocation: 'VDG'  // 'VDG', 'VON', 'SV'
   },
 
   // Wine-specific filter state
