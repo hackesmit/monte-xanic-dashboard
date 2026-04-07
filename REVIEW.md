@@ -1,42 +1,7 @@
 # Code Review — Monte Xanic Dashboard
 
----
-
-## Review: `feature/wave3-wave4-fixes` uncommitted changes (2026-04-06)
-
-**Files changed:** 3 (`.vercelignore`, `js/auth.js`, `js/events.js`)
-**Diff size:** +8 / -6 lines — clean and minimal
-
-### Priority 1 Issues
-
-**None.** All three changes are correct and low-risk.
-
-### Priority 2 Improvements
-
-**2.1 — `_formBound` guard is safe but only one call path exists**
-`js/auth.js:148-151` — `Auth.bindForm()` is called exclusively from `Auth.init()` (line 13), which runs once from `DOMContentLoaded` in `app.js:817`. The idempotency guard is defensive programming, not fixing an observed double-call. Fine to keep — no action needed.
-
-**2.2 — `login-btn` click handler removal is correct**
-`js/auth.js:153` (removed) — The button is `<button type="submit">` inside `<form>` (`index.html:38`), so click already triggers `submit`. Removing the redundant click listener eliminates the double-fire path. The `#login-btn` reference in `Auth.login()` (line 67) for disable/enable is unaffected.
-
-**2.3 — `Events._bindAuth()` login form removal is consistent**
-`js/events.js:31-34` — Login form `submit` listener removed from `Events` because `Auth.bindForm()` handles it (called earlier in init). Comment correctly updated. Logout binding remains. Clean consolidation.
-
-### .vercelignore
-
-Adds `PLAN.md`, `TASK.md`, `REVIEW.md`, `REPORTE_DASHBOARD.txt` to deploy exclusions. All dev artifacts, consistent with existing `CLAUDE.md` and `sql/` exclusions. No production files affected.
-
-### Missing Tests
-
-No automated test suite exists (vanilla JS, CDN-only). **Manual verification recommended:** confirm login works on both desktop (Enter key) and mobile (tap button) after deploy. Low risk since `type="submit"` inside `<form>` is standard browser behavior.
-
-### Verdict
-
-Scope is tight — all changes address the duplicate login listener (PLAN.md task 4f). No secrets, no DB changes, no dependency changes, no unrelated edits. **Ready to commit.**
-
----
-
-> Prior review generated from Workflow 2 (Debugging Agent Review) in TASK.md.
+> All findings from Rounds 1–9 have been resolved. Waves 1–5 merged to main as of 2026-04-06.
+> See TASK.md for the complete resolution table.
 > Read `CLAUDE.md` first for full project context.
 > **Do NOT modify files outside the scope of each fix.**
 
