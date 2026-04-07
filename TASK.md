@@ -1,63 +1,65 @@
-# Task — Wave 3 + Wave 4 Implementation
+# Task — Current State
 
-## Branch: `feature/wave3-wave4-fixes`
+## Project Status: Phases 1–6 Complete — All Waves Merged
 
-## Goal
-Implement the remaining high-priority bug fixes and missing features from REVIEW.md Rounds 7–9. This branch covers **Wave 3** (weather improvements) and **Wave 4** (data integrity + quick fixes).
+All planned work through Phase 6 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–9 complete. **Waves 1–5 all implemented and merged.**
 
-## Constraints
-- Vanilla JS only — no npm packages, no frameworks, CDN libs only
-- Spanish labels throughout
-- Mobile responsive
-- No breaking changes to existing Supabase schema (additive migration only)
-- Must preserve existing chart/filter/upload behavior
-- Do not touch Wave 5 items (security hardening, dead CSS) — separate branch
+| Phase | Description | Status |
+|-------|-------------|--------|
+| 1 | Deploy Online (Vercel) | Done |
+| 2 | Database Migration (Supabase) | Done |
+| 3 | Meteorology Integration | Done |
+| 4 | Authentication (bcrypt + HMAC, 2h tokens) | Done |
+| 4b | Data & Visualization Overhaul | Done |
+| 4c | Stability, Security & Viz Improvements | Done |
+| 5 | Vineyard Quality Map (SVG) | Done |
+| 6 | Polish (login, PDF, mobile, trends, radar, harvest calendar) | Done |
+| — | Security Hardening (server upload, rate limits, token blacklist) | Done |
+| — | Review Rounds 1–9 (all findings triaged) | Done |
+| — | Wave 1 — CSP Migration | Done |
+| — | Wave 2 — Lot Lines + Legends + Colors | Done |
+| — | Wave 3 — Weather GDD + Valley Filter | Done |
+| — | Wave 4 — Data Integrity + Quick Fixes | Done |
+| — | Wave 5 — Security Hardening + Cleanup | Done |
 
-## Already Done on This Branch (uncommitted)
-| Task | Files | Status |
-|------|-------|--------|
-| 4e — `.vercelignore` docs exclusion | `.vercelignore` | Done |
-| 4f — Duplicate login listener fix | `js/auth.js`, `js/events.js` | Done |
+---
 
-## Remaining Work
+## All Items Resolved
 
-### Wave 3 — Weather: GDD Chart + Location Filter (5 tasks)
-| Task | REVIEW ID | Description |
-|------|-----------|-------------|
-| 3a | 16.5, 16.6 | Add valley selector UI + GDD chart canvas to `index.html` |
-| 3b | 16.6 | Add `weatherLocation` to `Filters.state` + change handler |
-| 3c | 16.5 | Create `createGDDChart()` — cumulative GDD line chart |
-| 3d | 16.6 | Pass location param to all weather chart functions |
-| 3e | 16.6 | Dynamic weather section header text |
+### Resolved in Waves 3–5 (2026-04-06)
 
-### Wave 4 — Data Integrity + Quick Fixes (4 remaining tasks)
-| Task | REVIEW ID | Description |
-|------|-----------|-------------|
-| 4a | 16.3 | `sample_seq` column — SQL migration + upload + chart offset |
-| 4b | 16.4 | Cross-lot same-day jitter (±0.2 day hash offset) |
-| 4c | 14.1 | Extraction table respects active filters |
-| 4d | 17.1 | Add blacklist check to `api/config.js` |
+| ID | Issue | Resolution |
+|----|-------|------------|
+| 16.5 | No GDD chart | Wave 3: cumulative GDD chart + multi-valley temp comparison |
+| 16.6 | No weather location filter | Wave 3: valley selector (VDG/VON/SV) + dynamic header |
+| 16.3 | Same-day measurements overwritten | Wave 4a: `sample_seq` column + SQL migration |
+| 17.1 | Blacklist missing from `api/config.js` | Wave 4d: blacklist check added via shared `verifyToken` |
+| 14.1 | Extraction table ignores filters | Wave 4c: uses `Filters.getFiltered()` + `getFilteredWine()` |
+| 18.1 | Duplicate login form listener | Wave 4f: removed from `Events._bindAuth()`, `_formBound` guard |
+| 14.3 | Token verification triplicated | Wave 5a: `api/lib/verifyToken.js` shared module |
+| 14.8 | No rate limiting on upload/verify/logout/config | Wave 5c: `api/lib/rateLimit.js` on all endpoints |
+| 14.9 | User-provided conflict column in upload API | Wave 5b: server-side `tableConfig.conflict` only |
+| 14.5 | ~70 lines dead CSS | Wave 5d: removed `.brand-top/name/divider/sub`, `.extraction-grid/*` |
+| 16.4 | Cross-lot same-day jitter | Wave 4b: deterministic hash offset ±0.2 day |
+| 17.3 | Docs deploy to Vercel | Wave 4e: `.vercelignore` updated |
 
-## Files Likely Involved
-| File | Wave 3 | Wave 4 |
-|------|--------|--------|
-| `index.html` | 3a | — |
-| `js/filters.js` | 3b | — |
-| `js/charts.js` | 3c, 3d | 4a, 4b |
-| `js/app.js` | 3d, 3e | 4c |
-| `js/weather.js` | 3c (read only) | — |
-| `js/events.js` | 3a (bind selector) | — |
-| `js/upload.js` | — | 4a |
-| `api/upload.js` | — | 4a |
-| `api/config.js` | — | 4d |
-| `sql/migration_sample_seq.sql` | — | 4a (new) |
+### Resolved in Waves 1–2 (prior PRs)
 
-## Acceptance Criteria
-1. Valley selector (VDG/VON/SV) in weather section — switching updates all weather charts + header text
-2. GDD cumulative chart renders in vintage view with accumulation curve from Jul 1
-3. Same-day duplicate uploads preserved (not overwritten) via `sample_seq`
-4. Cross-lot overlapping points visually separated with deterministic jitter
-5. Extraction table respects vintage/variety/origin filters
-6. Revoked tokens rejected by `/api/config` (blacklist check)
-7. All existing charts/filters/upload continue to work unchanged
-8. Mobile responsive
+| ID | Issue | Resolution |
+|----|-------|------------|
+| 14.12 | CSP blocks inline handlers | Wave 1: 71 static + 11 dynamic handlers → events.js |
+| 17.7 | api/upload.js SyntaxError | Removed duplicate `const supabaseUrl` |
+| 16.1 | PDF/PNG export broken | Wave 1f: error toasts, jsPDF guard, Image onerror |
+| 16.2 | Same-lot points not connected | Wave 2a: lot-line plugin + last-point fix |
+| 16.7 | Legends invisible in exports | Wave 2b: native Chart.js legends |
+| 16.8 | Varietal colors too similar | Wave 2c: 10 colors redistributed |
+| 14.7 | Origin charts missing export buttons | Wave 2d: export buttons added |
+| 15.1 | CSP connect-src blocks weather API | Wave 1d: archive-api.open-meteo.com added |
+
+---
+
+## Next Major Feature: Phase 7 — Mediciones Técnicas
+
+> **Status:** Architecture designed, NOT yet implemented.
+> **Full schema:** Reserved in CLAUDE.md Database Schema section.
+> **Scope:** ~110 mediciones, ~1,100 photos in Cloudflare R2, metadata in Supabase.
