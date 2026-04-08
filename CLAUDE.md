@@ -131,8 +131,8 @@ rainfall_mm, humidity_pct, uv_index, wind_speed, uploaded_at
 - `location`: valley abbreviation — `'VDG'`, `'VON'`, or `'SV'` (default `'VDG'`)
 - Unique constraint: `(date, location)`
 
-### Table: `mediciones_tecnicas` *(RESERVED — Phase 7, not yet created)*
-Berry measurement records with linked photographic evidence
+### Table: `mediciones_tecnicas`
+Physical berry field measurements — tonnage, berry size/weight, 200-berry health sort
 ```
 id                    -- auto
 medicion_code         -- 'MT-2025-001' (unique)
@@ -140,34 +140,22 @@ medicion_date         -- date of measurement
 vintage_year          -- 2025, 2026, etc.
 variety               -- normalized (same values as wine_samples)
 appellation           -- ranch-first format (same as wine_samples)
-lot_code              -- berry lot code (soft link to wine_samples.sample_id)
-berry_count           -- number of berries in sample
-berry_weight_g        -- total weight (grams)
-berry_avg_weight      -- average weight per berry (g)
-berry_diameter_mm     -- average diameter (mm)
-brix                  -- °Bx
-ph                    -- pH
-ta                    -- titratable acidity (g/L)
-photo_count           -- denormalized count of linked photos
-notes                 -- free text
+lot_code              -- soft link to wine_samples.sample_id (not enforced FK)
+tons_received         -- tonnage received for this lot (numeric 8,2)
+berry_count_sample    -- number of berries in health sort sample
+berry_avg_weight_g    -- average weight per berry (g, numeric 6,2)
+berry_diameter_mm     -- average diameter (mm, numeric 5,2)
+health_grade          -- 'Excelente', 'Bueno', 'Regular', 'Malo'
+health_madura         -- count of mature berries in sort
+health_inmadura       -- count of immature berries
+health_sobremadura    -- count of overripe berries
+health_picadura       -- count of insect-damaged berries
+health_enfermedad     -- count of diseased berries
+health_quemadura      -- count of sunburned berries
 measured_by           -- who performed the measurement
+notes                 -- free text
 uploaded_at           -- timestamp
 ```
-
-### Table: `medicion_fotos` *(RESERVED — Phase 7, not yet created)*
-Photo evidence linked to mediciones, stored in Cloudflare R2
-```
-id                    -- auto
-medicion_id           -- FK → mediciones_tecnicas.id (CASCADE delete)
-photo_position        -- 1-20 ordering
-r2_key                -- R2 object key: '2025/MT-2025-001/01.jpg'
-caption               -- optional description
-file_size_bytes       -- file size
-uploaded_at           -- timestamp
-```
-- Unique constraint: `(medicion_id, photo_position)`
-- Photos stored in Cloudflare R2 bucket `montexanic-mediciones`, NOT in Supabase
-- R2 key structure: `{vintage_year}/{medicion_code}/{position}.jpg`
 
 ---
 
@@ -193,15 +181,15 @@ monte-xanic-dashboard/
 │   ├── kpis.js                 # KPI calculations
 │   ├── maps.js                 # Vineyard quality map (NOT YET ACTIVE)
 │   ├── weather.js              # Open-Meteo API + Supabase cache
-│   └── upload.js               # Excel/CSV → Supabase pipeline
-│   └── mediciones.js           # (Phase 7) Mediciones técnicas + photo upload/gallery
+│   ├── upload.js               # Excel/CSV → Supabase pipeline
+│   └── mediciones.js           # Mediciones técnicas — form, table, charts
 ├── api/
 │   ├── config.js               # Vercel serverless: Supabase credentials (auth-gated)
 │   ├── login.js                # Vercel serverless: bcrypt login + HMAC token + persistent rate limit
 │   ├── verify.js               # Vercel serverless: token verification + blacklist check
 │   ├── logout.js               # Vercel serverless: token revocation (blacklist)
 │   ├── upload.js               # Vercel serverless: auth-gated data upload (service key)
-│   └── photo-url.js            # (Phase 7) Presigned R2 upload URL generator
+│   └── photo-url.js            # (Phase 7b) Presigned R2 upload URL generator (not yet implemented)
 ├── assets/
 │   ├── logo_montexanic.svg     # Brand logo
 │   ├── favicon.svg             # Favicon (logo symbol)
@@ -212,7 +200,7 @@ monte-xanic-dashboard/
 │   ├── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
 │   ├── migration_rate_limits.sql # Persistent rate limiting table
 │   ├── migration_token_blacklist.sql # Token revocation blacklist table
-│   └── migration_mediciones.sql # (Phase 7) mediciones_tecnicas + medicion_fotos tables
+│   └── migration_mediciones.sql # Phase 7: mediciones_tecnicas table
 ├── vercel.json                 # Vercel config + security headers
 └── package.json                # bcryptjs + npm scripts (+ @aws-sdk/client-s3 in Phase 7)
 ```
@@ -230,6 +218,7 @@ monte-xanic-dashboard/
 - **Auth:** Login screen with bcrypt password, HMAC session tokens (2h expiry), persistent rate limiting, token revocation via blacklist, server-side upload validation
 - **Mapa:** SVG vineyard section map with color-coded quality metrics (Brix, pH, tANT, TA), section detail panel, ranch tabs
 - **UI:** Dark/light theme toggle, interactive legends, color-by-variety/origin, responsive layout, "Limpiar Todo" filter reset, mobile bottom-sheet filters, export menu (PNG/PDF)
+- **Mediciones:** Manual entry form for physical berry field measurements (tonnage, berry weight/diameter, 200-berry health sort). Sortable table with colored health mini-bars. KPIs (count, tons, avg weight, avg % madura). Charts: tonnage by variety, berry weight timeline, health distribution by variety.
 - **Security:** Auth-gated API, XSS escaping, CSP headers, no hardcoded credentials
 
 ---
@@ -319,18 +308,22 @@ Workflow 2 (REVIEW.md findings) + Workflow 3 (visualization improvements):
 - [x] Blacklist check in both `/api/verify` and `/api/upload`
 - [x] SQL migrations: `migration_rate_limits.sql`, `migration_token_blacklist.sql`
 
-### Phase 7 — Mediciones Técnicas con Evidencia Fotográfica *(Priority: NEXT)*
+### Phase 7 — Mediciones Técnicas ✅ COMPLETE
+- [x] Supabase table: `mediciones_tecnicas` (migration script + upload allowlist)
+- [x] `js/mediciones.js` — form, table, KPIs, 3 charts (tonnage, weight timeline, health distribution)
+- [x] `view-mediciones` panel in `index.html` with sortable table + health mini-bars
+- [x] `DataStore.loadMediciones()` + `_rowToMedicion` mapper in `dataLoader.js`
+- [x] Nav tab, routing, event bindings in `app.js` / `events.js`
+- [x] Form + health bar CSS styles
+
+### Phase 7b — Evidencia Fotográfica *(deferred)*
 - [ ] Cloudflare R2 bucket setup (`montexanic-mediciones`) + CORS config
-- [ ] Supabase tables: `mediciones_tecnicas`, `medicion_fotos` (see Reserved Schema below)
+- [ ] `medicion_fotos` Supabase table
 - [ ] `api/photo-url.js` — presigned PUT URL generator (auth-gated, lab role only)
-- [ ] `js/mediciones.js` — measurement entry form + photo upload + gallery display
-- [ ] `view-mediciones` panel in `index.html` with sortable table + expandable detail + lightbox
+- [ ] Photo upload + gallery display in `js/mediciones.js`
 - [ ] Update `vercel.json` CSP: add R2 domain to `img-src` and `connect-src`
 - [ ] Add `@aws-sdk/client-s3` to `package.json` (server-side only, for presigned URLs)
 - [ ] Mobile responsive: thumbnail grid reflows, lightbox supports touch/swipe
-- **Prerequisites:** All REVIEW.md findings resolved, Workflow 3 complete, Phase 5/6 stable
-- **Scale:** ~110 mediciones, ~1,100 photos (~2-3GB in R2), ~1MB metadata in Supabase
-- **Key constraint:** Photos stored in R2 only (never in Supabase). Metadata in Supabase only.
 
 ---
 

@@ -1,8 +1,8 @@
 # Task — Current State
 
-## Project Status: Phases 1–6 Complete — All Waves Merged (including Round 10)
+## Project Status: Phases 1–7 Complete
 
-All planned work through Phase 6 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–10 complete. **Waves 1–7 all implemented and merged.**
+All planned work through Phase 7 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–10 complete. **Waves 1–7 all implemented and merged.** Phase 7 (Mediciones Tecnicas) implemented 2026-04-08.
 
 | Phase | Description | Status |
 |-------|-------------|--------|
@@ -16,8 +16,8 @@ All planned work through Phase 6 is committed on `main`. Security hardening done
 | 6 | Polish (login, PDF, mobile, trends, radar, harvest calendar) | Done |
 | — | Security Hardening (server upload, rate limits, token blacklist) | Done |
 | — | Review Rounds 1–10 (all findings triaged) | Done |
-| — | Waves 1–5 (CSP, lots, weather, integrity, security) | Done |
-| — | Waves 6–7 (Round 10 P1 + P2 fixes) | Done |
+| — | Waves 1–7 (all review findings resolved) | Done |
+| 7 | Mediciones Tecnicas (form, table, charts) | Done |
 
 ---
 
@@ -91,8 +91,19 @@ Run: `npm test` or `node --test tests/*.test.mjs`
 
 ---
 
-## Next Major Feature: Phase 7 — Mediciones Técnicas
+## Phase 7 — Mediciones Tecnicas ✅ (2026-04-08)
 
-> **Status:** Architecture designed, NOT yet implemented.
-> **Full schema:** Reserved in CLAUDE.md Database Schema section.
-> **Scope:** ~110 mediciones, ~1,100 photos in Cloudflare R2, metadata in Supabase.
+| Item | Description | Status |
+|------|-------------|--------|
+| SQL | `mediciones_tecnicas` table migration | Done (run in Supabase) |
+| API | `mediciones_tecnicas` added to upload allowlist | Done |
+| Data | `DataStore.medicionesData` + `_rowToMedicion` + `loadMediciones()` | Done |
+| Form | Manual entry form (variety, origin, tonnage, berry, health sort) | Done |
+| Table | Sortable table with health mini-bars | Done |
+| KPIs | Count, total tons, avg weight, avg % madura | Done |
+| Charts | Tonnage by variety, weight timeline, health distribution | Done |
+| Routing | Nav tab, view panel, event bindings | Done |
+
+**Scope:** Physical berry field measurements — tonnage received, berry size/weight, 200-berry health sort (madura, inmadura, sobremadura, picadura, enfermedad, quemadura). No photos (deferred).
+
+**Prerequisite:** Run `sql/migration_mediciones.sql` in Supabase SQL editor.

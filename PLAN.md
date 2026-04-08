@@ -1,8 +1,8 @@
 # Plan — Stabilization Complete
 
-## Status: ALL WAVES MERGED (1–7) — Phase 7 Next
+## Status: ALL PHASES COMPLETE (1–7)
 
-**Waves 1–7** fully implemented and merged to `main`. Round 10 review findings (P1 + P2) resolved in Waves 6–7.
+**Waves 1–7** fully implemented and merged to `main`. Round 10 review findings (P1 + P2) resolved in Waves 6–7. **Phase 7 (Mediciones Tecnicas) implemented 2026-04-08.**
 
 ---
 
@@ -70,8 +70,22 @@
 
 ---
 
-## Next: Phase 7 — Mediciones Técnicas con Evidencia Fotográfica
+## Phase 7 — Mediciones Tecnicas ✅ (2026-04-08)
 
-Architecture designed in CLAUDE.md (reserved schema for `mediciones_tecnicas` + `medicion_fotos`).
-- Cloudflare R2 for photos, Supabase for metadata
-- Scope: ~110 mediciones, ~1,100 photos (~2-3GB in R2)
+Simplified from original design (no photos/R2). Physical berry field measurements only.
+
+**New files:**
+| File | Purpose |
+|------|---------|
+| `js/mediciones.js` | Form handling, table rendering, KPIs, 3 charts |
+| `sql/migration_mediciones.sql` | `mediciones_tecnicas` table creation |
+
+**Modified files:** `api/upload.js`, `js/dataLoader.js`, `js/app.js`, `js/events.js`, `index.html`, `css/styles.css`
+
+**Features:**
+- Manual entry form (variety, origin, tonnage, berry weight/diameter, 200-berry health sort, health grade)
+- Sortable table with colored health mini-bars
+- 4 KPI cards (count, total tons, avg berry weight, avg % madura)
+- 3 charts: tonnage by variety (horizontal bar), berry weight timeline (scatter), health distribution by variety (stacked bar)
+
+**Deferred:** Photo evidence (Cloudflare R2, presigned URLs, lightbox). Can be added later as Phase 7b.
