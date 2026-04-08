@@ -1,6 +1,6 @@
 # Code Review — Monte Xanic Dashboard
 
-> All findings from Rounds 1–9 have been resolved. Waves 1–5 merged to main as of 2026-04-06.
+> All findings from Rounds 1–10 have been resolved. Waves 1–7 merged to main. Phase 7 implemented 2026-04-08.
 > See TASK.md for the complete resolution table.
 > Read `CLAUDE.md` first for full project context.
 
