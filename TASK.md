@@ -1,8 +1,8 @@
 # Task — Current State
 
-## Project Status: Phases 1–6 Complete — Round 10 Fixes Done
+## Project Status: Phases 1–6 Complete — All Waves Merged (including Round 10)
 
-Phases 1–6 and Waves 1–5 are implemented on branch `feature/wave3-wave4-fixes` (5 commits ahead of `main`). Round 10 code review identified **4 P1 issues** and **6 P2 improvements** that should be addressed before merging.
+All planned work through Phase 6 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–10 complete. **Waves 1–7 all implemented and merged.**
 
 | Phase | Description | Status |
 |-------|-------------|--------|
@@ -15,36 +15,37 @@ Phases 1–6 and Waves 1–5 are implemented on branch `feature/wave3-wave4-fixe
 | 5 | Vineyard Quality Map (SVG) | Done |
 | 6 | Polish (login, PDF, mobile, trends, radar, harvest calendar) | Done |
 | — | Security Hardening (server upload, rate limits, token blacklist) | Done |
-| — | Review Rounds 1–9 (all findings triaged) | Done |
+| — | Review Rounds 1–10 (all findings triaged) | Done |
 | — | Waves 1–5 (CSP, lots, weather, integrity, security) | Done |
-| — | Round 10 review findings (Waves 6–7) | **Done** |
-| — | Merge `feature/wave3-wave4-fixes` → `main` | **Pending** |
+| — | Waves 6–7 (Round 10 P1 + P2 fixes) | Done |
 
 ---
 
-## Open Items — Round 10 (REVIEW.md)
+## All Items Resolved
 
-### Priority 1 — Must Fix Before Merge
+### Round 10 — Resolved in Waves 6–7
+
+#### Priority 1
 
 | ID | Issue | File | Status |
 |----|-------|------|--------|
-| P1.1 | Harvest calendar ignores valley selector | `js/charts.js:1409` | **Done** |
-| P1.2 | `clearAll()` doesn't reset `weatherLocation` or valley UI | `js/filters.js:205-221` | **Done** |
-| P1.3 | `logout.js` blacklists any token without HMAC verification | `api/logout.js:14-16` | **Done** |
+| P1.1 | Harvest calendar ignores valley selector | `js/charts.js` | **Done** |
+| P1.2 | `clearAll()` doesn't reset `weatherLocation` or valley UI | `js/filters.js` | **Done** |
+| P1.3 | `logout.js` blacklists any token without HMAC verification | `api/logout.js` | **Done** |
 | P1.4 | `RESUMEN_2026-04-06.txt` not in `.gitignore` | root | **Done** |
 
-### Priority 2 — Should Fix
+#### Priority 2
 
 | ID | Issue | File | Status |
 |----|-------|------|--------|
-| P2.1 | Jitter logic duplicated in two chart locations | `js/charts.js:198-208, 567-577` | **Done** |
-| P2.2 | Rate limit runs before auth on `api/config.js` | `api/config.js:12` | **Done** |
-| P2.3 | In-memory rate limiter never evicts below 500 buckets | `api/lib/rateLimit.js:19` | **Done** |
-| P2.4 | Valley change handler re-renders even when sync finds nothing | `js/events.js:46-49` | **Done** |
-| P2.5 | `valleyVintage` fallback uses weather vintage, not berry vintage | `js/app.js:335` | **Done** |
-| P2.6 | `.vercelignore` missing `RESUMEN*.txt` pattern | `.vercelignore:6` | **Done** |
+| P2.1 | Jitter logic duplicated in two chart locations | `js/charts.js` | **Done** |
+| P2.2 | Rate limit runs before auth on `api/config.js` | `api/config.js` | **Done** |
+| P2.3 | In-memory rate limiter never evicts below 500 buckets | `api/lib/rateLimit.js` | **Done** |
+| P2.4 | Valley change handler re-renders even when sync finds nothing | `js/events.js` | **Done** |
+| P2.5 | `valleyVintage` fallback uses weather vintage, not berry vintage | `js/app.js` | **Done** |
+| P2.6 | `.vercelignore` missing `RESUMEN*.txt` pattern | `.vercelignore` | **Done** |
 
-### Missing Tests
+### Missing Tests (not yet addressed)
 
 | ID | Scope |
 |----|-------|
@@ -54,12 +55,7 @@ Phases 1–6 and Waves 1–5 are implemented on branch `feature/wave3-wave4-fixe
 | MT.4 | `rateLimit()` (within window, exceeded → 429) |
 | MT.5 | Valley selector flow (state update, chart re-render, sync) |
 
----
-
-## Resolved Items (Waves 1–5)
-
-<details>
-<summary>Click to expand — 20 items resolved across 5 waves</summary>
+### Resolved in Waves 3–5 (2026-04-06)
 
 | ID | Issue | Resolution |
 |----|-------|------------|
@@ -75,6 +71,11 @@ Phases 1–6 and Waves 1–5 are implemented on branch `feature/wave3-wave4-fixe
 | 14.5 | ~70 lines dead CSS | Wave 5d: removed `.brand-top/name/divider/sub`, `.extraction-grid/*` |
 | 16.4 | Cross-lot same-day jitter | Wave 4b: deterministic hash offset ±0.2 day |
 | 17.3 | Docs deploy to Vercel | Wave 4e: `.vercelignore` updated |
+
+### Resolved in Waves 1–2 (prior PRs)
+
+| ID | Issue | Resolution |
+|----|-------|------------|
 | 14.12 | CSP blocks inline handlers | Wave 1: 71 static + 11 dynamic handlers → events.js |
 | 17.7 | api/upload.js SyntaxError | Removed duplicate `const supabaseUrl` |
 | 16.1 | PDF/PNG export broken | Wave 1f: error toasts, jsPDF guard, Image onerror |
@@ -84,18 +85,10 @@ Phases 1–6 and Waves 1–5 are implemented on branch `feature/wave3-wave4-fixe
 | 14.7 | Origin charts missing export buttons | Wave 2d: export buttons added |
 | 15.1 | CSP connect-src blocks weather API | Wave 1d: archive-api.open-meteo.com added |
 
-</details>
-
 ---
 
-## Next Stages
+## Next Major Feature: Phase 7 — Mediciones Técnicas
 
-### Stage 1 — Round 10 Fixes (current branch) — PLAN READY
-Address P1.1–P1.4 and P2.1–P2.6 on `feature/wave3-wave4-fixes`, then merge to `main`.
-**Plan:** See PLAN.md for detailed Wave 6 (P1) + Wave 7 (P2) implementation steps.
-
-### Stage 2 — Phase 7 — Mediciones Técnicas con Evidencia Fotográfica
 > **Status:** Architecture designed, NOT yet implemented.
 > **Full schema:** Reserved in CLAUDE.md Database Schema section.
 > **Scope:** ~110 mediciones, ~1,100 photos in Cloudflare R2, metadata in Supabase.
-> **Prerequisites:** Round 10 findings resolved, branch merged to `main`.
