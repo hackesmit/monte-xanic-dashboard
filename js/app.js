@@ -331,8 +331,9 @@ const App = {
         this.updateVintageVarietalTable(cleanBerry);
         const activeVintages = [...Filters.state.vintages];
         const calVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : null);
-        Charts.createHarvestCalendar('chartHarvestCal', cleanBerry, Filters.getFilteredWine(), calVintage);
-        const valleyVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : WeatherStore.getVintagesFromData().slice(-1)[0] || null);
+        Charts.createHarvestCalendar('chartHarvestCal', cleanBerry, Filters.getFilteredWine(), calVintage, Filters.state.weatherLocation || 'VDG');
+        const latestBerryVintage = cleanBerry.length ? Math.max(...new Set(cleanBerry.map(d => d.vintage).filter(Boolean))) : null;
+        const valleyVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : latestBerryVintage);
         Charts.createValleyTempChart('chartValleyTemp', valleyVintage);
         const weatherVintages = WeatherStore.getVintagesFromData();
         const weatherLoc = Filters.state.weatherLocation || 'VDG';

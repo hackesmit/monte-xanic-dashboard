@@ -49,6 +49,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# Internal work summaries
+RESUMEN*.txt
+PROJECT_SUMMARY.md
+
 # Claude Code
 .claude/
 
