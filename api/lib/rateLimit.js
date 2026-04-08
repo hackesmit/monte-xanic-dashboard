@@ -2,6 +2,7 @@
 // Resets on cold start (acceptable for Vercel serverless).
 
 const buckets = new Map();
+let _insertCount = 0;
 
 const DEFAULTS = {
   windowMs: 15 * 60 * 1000,  // 15 minutes
@@ -15,8 +16,10 @@ export function rateLimit(req, res, opts = {}) {
   const key = `${req.url}:${ip}`;
   const now = Date.now();
 
-  // Sweep stale entries periodically
-  if (buckets.size > 500) {
+  // Sweep stale entries every 100 inserts
+  _insertCount++;
+  if (_insertCount >= 100) {
+    _insertCount = 0;
     for (const [k, v] of buckets) {
       if (now - v.start > windowMs) buckets.delete(k);
     }

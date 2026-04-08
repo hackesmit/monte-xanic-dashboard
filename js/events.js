@@ -42,10 +42,13 @@ const Events = {
         Charts.createGDDChart('chartGDD', vintages, loc);
       };
       renderWeather();
-      // If no data for this valley, trigger a sync then re-render
+      // If no data for this valley, trigger a sync then re-render only if new data arrived
       const hasData = vintages.some(y => WeatherStore.getRange(`${y}-07-01`, `${y}-10-31`, loc).length > 0);
       if (!hasData && vintages.length) {
-        WeatherStore.sync(vintages).then(renderWeather);
+        WeatherStore.sync(vintages).then(() => {
+          const nowHasData = vintages.some(y => WeatherStore.getRange(`${y}-07-01`, `${y}-10-31`, loc).length > 0);
+          if (nowHasData) renderWeather();
+        });
       }
     });
   },

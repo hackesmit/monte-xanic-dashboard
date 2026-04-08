@@ -1,5 +1,17 @@
 // ── Chart Rendering ──
 
+// Shared jitter helper: offsets x by sample_seq + deterministic lot hash
+function _applyDaysJitter(x, d) {
+  if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
+  const lot = d.lotCode || d.sampleId;
+  if (lot) {
+    let hash = 0;
+    for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
+    x += ((hash % 41) - 20) * 0.01; // ±0.2 day
+  }
+  return x;
+}
+
 const Charts = {
   instances: {},
   showLines: false,
@@ -196,15 +208,7 @@ const Charts = {
       if (x === null || y === null || x === undefined || y === undefined) return;
       if (typeof x !== 'number' || typeof y !== 'number') return;
       if (xField === 'daysPostCrush') {
-        // Offset same-day duplicate measurements (same lot, same day)
-        if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
-        // Deterministic jitter for different lots on the same day
-        const lot = d.lotCode || d.sampleId;
-        if (lot) {
-          let hash = 0;
-          for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
-          x += ((hash % 41) - 20) * 0.01; // ±0.2 day
-        }
+        x = _applyDaysJitter(x, d);
       }
       if (!groups[g]) groups[g] = [];
       const lot = d.lotCode || d.sampleId;
@@ -568,14 +572,7 @@ const Charts = {
       let x = d.daysPostCrush;
       const y = d[yField];
       if (!v || x === null || y === null || typeof x !== 'number' || typeof y !== 'number') return;
-      if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
-      // Cross-lot jitter
-      const lot = d.lotCode || d.sampleId;
-      if (lot) {
-        let hash = 0;
-        for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
-        x += ((hash % 41) - 20) * 0.01;
-      }
+      x = _applyDaysJitter(x, d);
       if (!byVintage[v]) byVintage[v] = [];
       byVintage[v].push({ x, y, sampleId: d.sampleId, lotCode: d.lotCode, variety: d.variety, appellation: d.appellation, vintage: v });
     });
@@ -1347,7 +1344,7 @@ const Charts = {
   },
 
   // Harvest calendar: horizontal floating bars per variety + weather overlay
-  createHarvestCalendar(canvasId, berryData, wineData, vintage) {
+  createHarvestCalendar(canvasId, berryData, wineData, vintage, location) {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1406,7 +1403,7 @@ const Charts = {
 
     // Weather overlay on secondary axis
     if (typeof WeatherStore !== 'undefined') {
-      const weatherRows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`);
+      const weatherRows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`, location);
       if (weatherRows.length) {
         // Temperature line
         const tempPts = weatherRows
