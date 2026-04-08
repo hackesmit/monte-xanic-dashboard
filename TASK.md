@@ -1,8 +1,8 @@
 # Task — Current State
 
-## Project Status: Phases 1–6 Complete — All Waves Merged
+## Project Status: Phases 1–6 Complete — All Waves Merged (including Round 10)
 
-All planned work through Phase 6 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–9 complete. **Waves 1–5 all implemented and merged.**
+All planned work through Phase 6 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–10 complete. **Waves 1–7 all implemented and merged.**
 
 | Phase | Description | Status |
 |-------|-------------|--------|
@@ -15,16 +15,45 @@ All planned work through Phase 6 is committed on `main`. Security hardening done
 | 5 | Vineyard Quality Map (SVG) | Done |
 | 6 | Polish (login, PDF, mobile, trends, radar, harvest calendar) | Done |
 | — | Security Hardening (server upload, rate limits, token blacklist) | Done |
-| — | Review Rounds 1–9 (all findings triaged) | Done |
-| — | Wave 1 — CSP Migration | Done |
-| — | Wave 2 — Lot Lines + Legends + Colors | Done |
-| — | Wave 3 — Weather GDD + Valley Filter | Done |
-| — | Wave 4 — Data Integrity + Quick Fixes | Done |
-| — | Wave 5 — Security Hardening + Cleanup | Done |
+| — | Review Rounds 1–10 (all findings triaged) | Done |
+| — | Waves 1–5 (CSP, lots, weather, integrity, security) | Done |
+| — | Waves 6–7 (Round 10 P1 + P2 fixes) | Done |
 
 ---
 
 ## All Items Resolved
+
+### Round 10 — Resolved in Waves 6–7
+
+#### Priority 1
+
+| ID | Issue | File | Status |
+|----|-------|------|--------|
+| P1.1 | Harvest calendar ignores valley selector | `js/charts.js` | **Done** |
+| P1.2 | `clearAll()` doesn't reset `weatherLocation` or valley UI | `js/filters.js` | **Done** |
+| P1.3 | `logout.js` blacklists any token without HMAC verification | `api/logout.js` | **Done** |
+| P1.4 | `RESUMEN_2026-04-06.txt` not in `.gitignore` | root | **Done** |
+
+#### Priority 2
+
+| ID | Issue | File | Status |
+|----|-------|------|--------|
+| P2.1 | Jitter logic duplicated in two chart locations | `js/charts.js` | **Done** |
+| P2.2 | Rate limit runs before auth on `api/config.js` | `api/config.js` | **Done** |
+| P2.3 | In-memory rate limiter never evicts below 500 buckets | `api/lib/rateLimit.js` | **Done** |
+| P2.4 | Valley change handler re-renders even when sync finds nothing | `js/events.js` | **Done** |
+| P2.5 | `valleyVintage` fallback uses weather vintage, not berry vintage | `js/app.js` | **Done** |
+| P2.6 | `.vercelignore` missing `RESUMEN*.txt` pattern | `.vercelignore` | **Done** |
+
+### Missing Tests (not yet addressed)
+
+| ID | Scope |
+|----|-------|
+| MT.1 | `sample_seq` assignment in `upload.js` |
+| MT.2 | Deterministic jitter function in `charts.js` |
+| MT.3 | `verifyToken()` shared module (valid, expired, invalid, blacklisted) |
+| MT.4 | `rateLimit()` (within window, exceeded → 429) |
+| MT.5 | Valley selector flow (state update, chart re-render, sync) |
 
 ### Resolved in Waves 3–5 (2026-04-06)
 

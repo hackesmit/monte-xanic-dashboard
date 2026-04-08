@@ -1,8 +1,8 @@
 # Plan — Stabilization Complete
 
-## Status: ALL WAVES MERGED — Phase 7 Next
+## Status: ALL WAVES MERGED (1–7) — Phase 7 Next
 
-**Waves 1–5** fully implemented and merged to `main` as of 2026-04-06.
+**Waves 1–7** fully implemented and merged to `main`. Round 10 review findings (P1 + P2) resolved in Waves 6–7.
 
 ---
 
@@ -44,6 +44,19 @@
 - Server-side conflict column (client-provided value ignored)
 - ~72 lines dead CSS removed (`.brand-top/name/divider/sub`, `.extraction-grid/*`)
 - Perfil Químico por Origen radar chart removed
+
+### Wave 6 — Round 10 P1 Fixes ✅
+- Harvest calendar weather overlay respects valley selector
+- `clearAll()` resets `weatherLocation` + valley selector UI to VDG
+- `logout.js` verifies HMAC signature before blacklisting tokens
+- `RESUMEN*.txt` + `PROJECT_SUMMARY.md` added to `.gitignore` + `.vercelignore`
+
+### Wave 7 — Round 10 P2 Improvements ✅
+- Shared `_applyDaysJitter()` helper (replaced 2 duplicated jitter blocks)
+- Auth-before-rate-limit order on `api/config.js`
+- Periodic rate-limit eviction (every 100 inserts instead of 500+ buckets)
+- Valley change handler skips re-render when sync finds no new data
+- `valleyVintage` fallback uses berry vintage instead of weather vintage
 
 ---
 

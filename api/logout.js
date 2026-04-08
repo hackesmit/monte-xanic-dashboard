@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 
 export default async function handler(req, res) {
@@ -14,6 +15,12 @@ export default async function handler(req, res) {
   const { token } = req.body || {};
   if (!token) {
     return res.status(400).json({ ok: false });
+  }
+
+  // Verify HMAC signature before blacklisting — prevents forged token spam
+  const result = await verifyToken(token, { checkBlacklist: false });
+  if (result.error) {
+    return res.status(result.status).json({ ok: false });
   }
 
   // Hash the token for storage (don't store raw tokens)
