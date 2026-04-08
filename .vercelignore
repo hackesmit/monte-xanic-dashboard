@@ -6,6 +6,7 @@ REVIEW.md
 REPORTE_DASHBOARD.txt
 RESUMEN*.txt
 PROJECT_SUMMARY.md
+tests/
 .claude/
 .editorconfig
 .nvmrc

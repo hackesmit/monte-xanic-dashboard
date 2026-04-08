@@ -45,15 +45,19 @@ All planned work through Phase 6 is committed on `main`. Security hardening done
 | P2.5 | `valleyVintage` fallback uses weather vintage, not berry vintage | `js/app.js` | **Done** |
 | P2.6 | `.vercelignore` missing `RESUMEN*.txt` pattern | `.vercelignore` | **Done** |
 
-### Missing Tests (not yet addressed)
+### Tests — Written & Passing (47/47)
 
-| ID | Scope |
-|----|-------|
-| MT.1 | `sample_seq` assignment in `upload.js` |
-| MT.2 | Deterministic jitter function in `charts.js` |
-| MT.3 | `verifyToken()` shared module (valid, expired, invalid, blacklisted) |
-| MT.4 | `rateLimit()` (within window, exceeded → 429) |
-| MT.5 | Valley selector flow (state update, chart re-render, sync) |
+| ID | Scope | Tests | Status |
+|----|-------|-------|--------|
+| MT.1 | `sample_seq` assignment in `upload.js` | 7 | **Pass** |
+| MT.2 | Deterministic jitter function in `charts.js` | 8 | **Pass** (found jitter asymmetry bug) |
+| MT.3 | `verifyToken()` shared module | 13 | **Pass** |
+| MT.4 | `rateLimit()` | 9 | **Pass** |
+| MT.5 | Valley selector flow | 10 | **Pass** |
+
+Run: `npm test` or `node --test tests/*.test.mjs`
+
+**Bug found & fixed by MT.2:** `_applyDaysJitter` jitter asymmetry (JS negative modulo) — fixed with `(((hash % 41) + 41) % 41 - 20) * 0.01`.
 
 ### Resolved in Waves 3–5 (2026-04-06)
 
