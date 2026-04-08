@@ -214,6 +214,11 @@ const Filters = {
     document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
     document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.color-mode-btn[data-mode="variety"]')?.classList.add('active');
+    this.state.weatherLocation = 'VDG';
+    const valleySelect = document.getElementById('weather-valley-select');
+    if (valleySelect) valleySelect.value = 'VDG';
+    const sectionTitle = document.getElementById('weather-section-title');
+    if (sectionTitle) sectionTitle.textContent = 'Clima durante la Vendimia — Valle de Guadalupe';
     const lotSearch = document.getElementById('lot-search');
     if (lotSearch) lotSearch.value = '';
     this.filterLotSearch('');
