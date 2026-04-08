@@ -14,6 +14,7 @@ const Events = {
     this._bindMapDelegation();
     this._bindExplorerDelegation();
     this._bindLegendDelegation();
+    this._bindMediciones();
   },
 
   // ── Navigation (2 handlers) ──
@@ -254,6 +255,20 @@ const Events = {
 
       const expand = e.target.closest('[data-action="legend-expand"]');
       if (expand) { e.preventDefault(); expand.parentElement.classList.toggle('legend-show-all'); }
+    });
+  },
+
+  _bindMediciones() {
+    const form = document.getElementById('medicion-form');
+    if (form) form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      Mediciones.submitForm();
+    });
+
+    const table = document.getElementById('mediciones-table');
+    if (table) table.addEventListener('click', (e) => {
+      const th = e.target.closest('th[data-sort]');
+      if (th) Mediciones.sortBy(th.dataset.sort);
     });
   }
 };

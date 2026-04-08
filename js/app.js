@@ -44,6 +44,7 @@ const App = {
       // 2 — Try Supabase (first visit or stale cache)
       await DataStore.initSupabase();
       const supaLoaded = await DataStore.loadFromSupabase();
+      DataStore.loadMediciones();
       this._updateDbStatus();
       if (supaLoaded) {
         this.onDataLoaded();
@@ -267,10 +268,10 @@ const App = {
     // Show/hide relevant sidebar sections
     const berryFilters = document.getElementById('berry-filters');
     const wineFilters = document.getElementById('wine-filters');
-    if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer' || view === 'map') ? '' : 'none';
+    if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer' || view === 'map' || view === 'mediciones') ? '' : 'none';
     if (wineFilters) wineFilters.style.display = (view === 'wine') ? '' : 'none';
     // Map view uses its own ranch/metric selectors — hide all filters
-    if (view === 'map') {
+    if (view === 'map' || view === 'mediciones') {
       if (berryFilters) berryFilters.style.display = 'none';
       if (wineFilters) wineFilters.style.display = 'none';
     }
@@ -367,6 +368,11 @@ const App = {
       case 'explorer':
         Explorer.init();
         Explorer.refreshAll();
+        break;
+
+      case 'mediciones':
+        Mediciones.initDropdowns();
+        Mediciones.refresh();
         break;
     }
 
