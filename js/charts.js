@@ -7,7 +7,7 @@ function _applyDaysJitter(x, d) {
   if (lot) {
     let hash = 0;
     for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
-    x += ((hash % 41) - 20) * 0.01; // ±0.2 day
+    x += ((((hash % 41) + 41) % 41) - 20) * 0.01; // ±0.2 day
   }
   return x;
 }

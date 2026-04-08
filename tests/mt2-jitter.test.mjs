@@ -15,7 +15,7 @@ function _applyDaysJitter(x, d) {
   if (lot) {
     let hash = 0;
     for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
-    x += ((hash % 41) - 20) * 0.01; // ±0.2 day
+    x += ((((hash % 41) + 41) % 41) - 20) * 0.01; // ±0.2 day
   }
   return x;
 }
@@ -36,31 +36,16 @@ describe('MT.2 — deterministic jitter', () => {
     assert.notEqual(r1, r2);
   });
 
-  it('BUG: jitter range is asymmetric due to JS negative modulo', () => {
-    // The comment says ±0.2 day, but JS `%` on negative ints returns negative values.
-    // `hash % 41` ranges from -40..+40 (not 0..40), so `(hash%41 - 20) * 0.01`
-    // gives -0.60..+0.20 instead of the intended ±0.20.
-    // Fix: use `(((hash % 41) + 41) % 41 - 20) * 0.01` to normalize to 0..40.
+  it('jitter range is symmetric ±0.2 day', () => {
     const lots = [
       'A', 'BB', 'CCC', '25CSMX-1', '25SYON-3', 'KOMPALI-2',
       'TEST-LONG-LOT-CODE-12345', 'X', '25NBMX-4', '24CFVA-2'
     ];
-    let min = Infinity, max = -Infinity;
     for (const lotCode of lots) {
       const d = { sampleSeq: 1, lotCode };
       const result = _applyDaysJitter(0, d);
-      if (result < min) min = result;
-      if (result > max) max = result;
-    }
-    // Document actual range (wider than ±0.2 due to bug)
-    assert.ok(min < -0.20, `Min jitter ${min} should exceed -0.20 (proving the bug)`);
-    assert.ok(max <= 0.21, `Max jitter ${max} should be within +0.21`);
-    // Regardless, all values should be within the wider -0.60..+0.20 theoretical bounds
-    for (const lotCode of lots) {
-      const d = { sampleSeq: 1, lotCode };
-      const result = _applyDaysJitter(0, d);
-      assert.ok(result >= -0.61 && result <= 0.21,
-        `Jitter for "${lotCode}" = ${result}, expected within theoretical bounds`);
+      assert.ok(result >= -0.21 && result <= 0.21,
+        `Jitter for "${lotCode}" = ${result}, expected within ±0.2`);
     }
   });
 
