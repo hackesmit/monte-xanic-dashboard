@@ -6,7 +6,8 @@ const ALLOWED_TABLES = {
   wine_samples:      { conflict: 'sample_id,sample_date,sample_seq', maxRows: 500 },
   tank_receptions:   { conflict: 'report_code',           maxRows: 200 },
   reception_lots:    { conflict: null,                     maxRows: 2000 },
-  prefermentativos:  { conflict: 'report_code,measurement_date', maxRows: 200 }
+  prefermentativos:  { conflict: 'report_code,measurement_date', maxRows: 200 },
+  mediciones_tecnicas: { conflict: 'medicion_code', maxRows: 200 }
 };
 
 export default async function handler(req, res) {

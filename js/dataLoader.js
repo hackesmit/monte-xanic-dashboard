@@ -4,6 +4,7 @@ const DataStore = {
   berryData: [],
   wineRecepcion: [],
   winePreferment: [],
+  medicionesData: [],
   loaded: { berry: false, wine: false },
   supabase: null,        // Supabase client instance (set by initSupabase)
   _supabaseReady: false, // true once credentials have been fetched
@@ -100,6 +101,31 @@ const DataStore = {
     return obj;
   },
 
+  _rowToMedicion(row) {
+    return {
+      id: row.id,
+      code: row.medicion_code,
+      date: row.medicion_date,
+      vintage: row.vintage_year,
+      variety: row.variety,
+      appellation: row.appellation,
+      lotCode: row.lot_code,
+      tons: row.tons_received ? parseFloat(row.tons_received) : null,
+      berryCount: row.berry_count_sample,
+      berryWeight: row.berry_avg_weight_g ? parseFloat(row.berry_avg_weight_g) : null,
+      berryDiameter: row.berry_diameter_mm ? parseFloat(row.berry_diameter_mm) : null,
+      healthGrade: row.health_grade,
+      healthMadura: row.health_madura || 0,
+      healthInmadura: row.health_inmadura || 0,
+      healthSobremadura: row.health_sobremadura || 0,
+      healthPicadura: row.health_picadura || 0,
+      healthEnfermedad: row.health_enfermedad || 0,
+      healthQuemadura: row.health_quemadura || 0,
+      measuredBy: row.measured_by,
+      notes: row.notes
+    };
+  },
+
   // Paginated fetch — Supabase defaults to 1000 rows max per query
   async _fetchAll(table, orderCol = 'id') {
     const PAGE = 1000;
@@ -150,6 +176,16 @@ const DataStore = {
     } catch (e) {
       console.warn('[DataStore] loadFromSupabase error:', e);
       return false;
+    }
+  },
+
+  async loadMediciones() {
+    if (!this.supabase) return;
+    try {
+      const rows = await this._fetchAll('mediciones_tecnicas', 'medicion_date');
+      this.medicionesData = (rows || []).map(r => this._rowToMedicion(r));
+    } catch (e) {
+      console.error('[DataStore] loadMediciones failed:', e);
     }
   },
 

@@ -1931,3 +1931,35 @@ canvas { max-width: 100%; }
     flex: 1 1 70px;
   }
 }
+
+/* ══ MEDICIONES FORM ══ */
+.medicion-form { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.form-row { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.form-group { flex: 1; min-width: 140px; }
+.form-group label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; font-family: 'Sackers Gothic Medium', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input, .form-group select { width: 100%; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 13px; font-family: 'Jost', sans-serif; box-sizing: border-box; }
+.form-group input:focus, .form-group select:focus { border-color: var(--gold); outline: none; }
+.form-group-sm { min-width: 80px; flex: 0 1 100px; }
+.health-row { background: var(--surface); border-radius: 6px; padding: 10px 12px; }
+.form-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+.btn-gold { padding: 8px 20px; background: var(--gold); color: var(--black); border: none; border-radius: 4px; font-family: 'Sackers Gothic Medium', sans-serif; font-size: 11px; letter-spacing: 0.5px; cursor: pointer; text-transform: uppercase; }
+.btn-gold:hover { background: var(--gold-lt); }
+.btn-gold:disabled { opacity: 0.5; cursor: not-allowed; }
+.form-status { font-size: 12px; color: var(--muted); }
+.form-status.success { color: var(--success-color); }
+.form-status.error { color: var(--flag-error); }
+
+/* Health mini-bar in table */
+.health-mini-bar { display: flex; height: 14px; border-radius: 3px; overflow: hidden; min-width: 80px; }
+.health-mini-bar span { display: block; height: 100%; }
+.hb-madura { background: #7EC87A; }
+.hb-inmadura { background: #60A8C0; }
+.hb-sobremadura { background: #F5C542; }
+.hb-picadura { background: #E07060; }
+.hb-enfermedad { background: #9B59B6; }
+.hb-quemadura { background: #E67E22; }
+
+@media (max-width: 600px) {
+  .form-group { min-width: 100%; }
+  .form-group-sm { min-width: 45%; flex: 0 1 45%; }
+}
