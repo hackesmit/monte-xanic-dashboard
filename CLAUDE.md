@@ -430,6 +430,10 @@ SESSION_SECRET=your_hmac_session_secret
 - New data fields → add to both Supabase schema AND `config.js` column mappings
 - `vintage_year` always extracted from batch code prefix (25 → 2025, 24 → 2024)
 
+### Git Workflow
+- Always push changes to remote after fixing bugs or completing features
+- Do not tell the user something is fixed until `git push` succeeds
+
 ### Deployment
 - Test locally with `npm start` before pushing
 - Never commit `.env.local`
