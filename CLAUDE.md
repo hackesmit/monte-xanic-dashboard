@@ -392,6 +392,18 @@ SESSION_SECRET=your_hmac_session_secret
 
 ---
 
+## Agent Roles
+- When acting as PLANNER/REVIEWER agent, NEVER edit source code directly. Only produce markdown documentation (PLAN.md, REVIEW.md, TASK.md). Only BUILDER agents edit code.
+- Do not write to PLAN.md, TASK.md, or REVIEW.md unless explicitly asked. These are structured project docs managed by specific agent roles.
+
+---
+
+## Debugging Guidelines
+- When debugging, always identify and fix the root cause before applying surface-level patches
+- Check for: schema drift, missing DB columns, incorrect query filters, and CSP violations before assuming application logic bugs
+
+---
+
 ## Claude Code Instructions
 
 ### General
