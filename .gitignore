@@ -51,7 +51,11 @@ Thumbs.db
 
 # Internal work summaries
 RESUMEN*.txt
+REPORTE_DASHBOARD.txt
 PROJECT_SUMMARY.md
+
+# Local scratch/backup files
+*.local
 
 # Claude Code
 .claude/
