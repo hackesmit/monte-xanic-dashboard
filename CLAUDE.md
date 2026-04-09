@@ -401,6 +401,7 @@ SESSION_SECRET=your_hmac_session_secret
 ## Debugging Guidelines
 - When debugging, always identify and fix the root cause before applying surface-level patches
 - Check for: schema drift, missing DB columns, incorrect query filters, and CSP violations before assuming application logic bugs
+- Before writing any code to fix a bug: read the error, trace it to the root cause, and explain the diagnosis. List 2-3 possible causes ranked by likelihood. Wait for user confirmation before starting the fix.
 
 ---
 
@@ -445,6 +446,13 @@ SESSION_SECRET=your_hmac_session_secret
 ### Git Workflow
 - Always push changes to remote after fixing bugs or completing features
 - Do not tell the user something is fixed until `git push` succeeds
+
+### Completion Checklist
+Before telling the user work is done:
+1. Run the relevant tests — show output
+2. Verify the fix works by testing the actual user flow — show output
+3. `git push` — show output
+All three steps must succeed and their output must be shown to the user.
 
 ### Deployment
 - Test locally with `npm start` before pushing
