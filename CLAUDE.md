@@ -454,6 +454,17 @@ Before telling the user work is done:
 3. `git push` — show output
 All three steps must succeed and their output must be shown to the user.
 
+### Feature Implementation Workflow
+When implementing a feature end-to-end, follow this exact sequence:
+1. Create a feature branch
+2. Implement backend changes with tests
+3. Implement frontend changes
+4. Run the full test suite and fix any failures
+5. Run the production build and fix any build errors
+6. Commit with a descriptive message
+7. Push and create a PR
+After each step, verify success before proceeding. If any step fails, diagnose and fix before moving on. Do not skip verification steps. Give a final summary of what shipped and any known limitations.
+
 ### Deployment
 - Test locally with `npm start` before pushing
 - Never commit `.env.local`
