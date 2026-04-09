@@ -42,8 +42,8 @@
 | Tonnage | tons_received | Toneladas | t | Weight of grape lot received |
 | Berry Avg Weight | berry_avg_weight_g | Peso Prom. Baya | g | Average weight per berry in sample |
 | Berry Diameter | berry_diameter_mm | Diametro Prom. | mm | Average berry diameter |
-| Berry Count | berry_count_sample | (computed) | count | Total berries in health sort sample |
-| Health Grade | health_grade | Grado Sanitario | (category) | Excelente, Bueno, Regular, Malo |
+| Berry Count | berry_count_sample | (computed) | count | Total berries in health sort sample. Default 200 but varies. |
+| Health Grade | health_grade | Grado Sanitario | (category) | Excelente, Bueno, Regular, Malo. Manually selected by operator (not auto-derived from sort counts). |
 
 ## Health Sort Categories (200-berry sort)
 
