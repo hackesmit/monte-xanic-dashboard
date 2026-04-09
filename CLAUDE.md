@@ -396,6 +396,15 @@ SESSION_SECRET=your_hmac_session_secret
 - When acting as PLANNER/REVIEWER agent, NEVER edit source code directly. Only produce markdown documentation (PLAN.md, REVIEW.md, TASK.md). Only BUILDER agents edit code.
 - Do not write to PLAN.md, TASK.md, or REVIEW.md unless explicitly asked. These are structured project docs managed by specific agent roles.
 
+### Parallel Builder/Reviewer Pipeline
+When implementing a task list, run two agents in parallel:
+- **Agent 1 (Builder):** Implement each task, commit to a feature branch after each one, update TASK.md status.
+- **Agent 2 (Reviewer):** After each commit, review the diff against TASK.md requirements and REVIEW.md criteria, run existing tests, log issues to REVIEW.md with severity ratings.
+- Builder must address any **critical** findings before moving to the next task.
+- Continue until all tasks are done and all reviews pass.
+
+**Why:** Planner/reviewer/builder roles already run across sessions, but sequentially with friction (planners editing code, reviewers missing root causes). A formalized parallel pipeline where a reviewer agent audits changes in real-time while a builder agent implements catches CSP violations, duplicate configs, and selector mismatches before they compound into multi-session debugging.
+
 ---
 
 ## Debugging Guidelines
