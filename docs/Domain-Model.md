@@ -29,6 +29,8 @@ Berry measurements and wine measurements both live in `wine_samples`, differenti
 
 **Example:** Berry lot `25CSMX-1` (Cabernet Sauvignon, Monte Xanic) maps to wine lot `25CSMX` by stripping the trailing sequence number.
 
+This mapping works well enough for current needs. Formalizing it into a standardized lookup was evaluated and deemed unnecessary overhead for the benefit it would provide.
+
 ### Medicion to Wine Sample (soft link)
 `mediciones_tecnicas.lot_code` can reference a `wine_samples.sample_id`, but this is not an enforced foreign key. The field is optional and used for cross-referencing only. No join queries depend on it.
 
