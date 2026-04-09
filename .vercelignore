@@ -7,6 +7,7 @@ REPORTE_DASHBOARD.txt
 RESUMEN*.txt
 PROJECT_SUMMARY.md
 tests/
+docs/
 .claude/
 .editorconfig
 .nvmrc

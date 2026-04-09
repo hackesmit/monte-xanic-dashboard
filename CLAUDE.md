@@ -188,21 +188,35 @@ monte-xanic-dashboard/
 │   ├── login.js                # Vercel serverless: bcrypt login + HMAC token + persistent rate limit
 │   ├── verify.js               # Vercel serverless: token verification + blacklist check
 │   ├── logout.js               # Vercel serverless: token revocation (blacklist)
-│   ├── upload.js               # Vercel serverless: auth-gated data upload (service key)
-│   └── photo-url.js            # (Phase 7b) Presigned R2 upload URL generator (not yet implemented)
+│   └── upload.js               # Vercel serverless: auth-gated data upload (service key)
 ├── assets/
 │   ├── logo_montexanic.svg     # Brand logo
 │   ├── favicon.svg             # Favicon (logo symbol)
+│   ├── favicon.ico             # Favicon fallback
+│   ├── favicon-32.png          # 32px favicon
+│   ├── apple-touch-icon.png    # iOS home screen icon
+│   ├── icon-192.png            # PWA icon 192px
+│   ├── icon-512.png            # PWA icon 512px
 │   ├── fonts/
 │   │   └── SackersGothicMedium.ttf  # Custom header font
-│   └── maps/                   # Reserved for Phase 5 vineyard map
+│   └── maps/                   # Reserved for vineyard map assets
 ├── sql/
+│   ├── schema.sql              # Full table definitions
 │   ├── migration_overhaul.sql  # Origin rename, Durif, composite key, meteorology location
+│   ├── migration_sample_seq.sql # sample_seq column + composite unique constraint
 │   ├── migration_rate_limits.sql # Persistent rate limiting table
 │   ├── migration_token_blacklist.sql # Token revocation blacklist table
-│   └── migration_mediciones.sql # Phase 7: mediciones_tecnicas table
+│   ├── migration_mediciones.sql # Phase 7: mediciones_tecnicas table
+│   └── cleanup_lab_samples.sql # Lab/control sample cleanup
+├── tests/
+│   ├── mt1-sample-seq.test.mjs # sample_seq assignment (7 tests)
+│   ├── mt2-jitter.test.mjs     # Deterministic jitter (8 tests)
+│   ├── mt3-verify-token.test.mjs # verifyToken module (13 tests)
+│   ├── mt4-rate-limit.test.mjs # rateLimit module (9 tests)
+│   └── mt5-valley-selector.test.mjs # Valley selector flow (10 tests)
+├── manifest.json               # PWA manifest
 ├── vercel.json                 # Vercel config + security headers
-└── package.json                # bcryptjs + npm scripts (+ @aws-sdk/client-s3 in Phase 7)
+└── package.json                # bcryptjs + npm scripts
 ```
 
 ---
