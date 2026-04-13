@@ -29,7 +29,7 @@ const UploadManager = {
     if (typeof val === 'number') return val;
     const str = String(val).trim();
     if (str === '' || str === '-' || str === '—' || str === 'NA' || str === 'N/A') return null;
-    const n = parseFloat(str);
+    const n = Number(str);
     return isNaN(n) ? str : n;
   },
 
