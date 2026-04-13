@@ -61,6 +61,13 @@ const DataStore = {
     // Filter California
     if (obj.appellation === 'California') return null;
     obj.lotCode      = this.extractLotCode(obj.sampleId);
+    // For weak sample_ids (e.g. '25'), derive lot code from variety + appellation
+    if (!obj.lotCode && Identity.isWeakSampleId(obj.sampleId)) {
+      const parts = [];
+      if (obj.variety) parts.push(obj.variety.replace(/\s+/g, ''));
+      if (obj.appellation) parts.push(obj.appellation.replace(/\s+/g, ''));
+      obj.lotCode = parts.join('-') || obj.sampleId;
+    }
     obj.grapeType    = this.getGrapeType(obj.variety);
     return obj;
   },
@@ -237,6 +244,12 @@ const DataStore = {
       if (hasData && obj.sampleId) {
         // Extract lot code (strip vintage prefix for matching)
         obj.lotCode = this.extractLotCode(obj.sampleId);
+        if (!obj.lotCode && Identity.isWeakSampleId(obj.sampleId)) {
+          const parts = [];
+          if (obj.variety) parts.push(obj.variety.replace(/\s+/g, ''));
+          if (obj.appellation) parts.push(obj.appellation.replace(/\s+/g, ''));
+          obj.lotCode = parts.join('-') || obj.sampleId;
+        }
         // Determine grape type
         obj.grapeType = this.getGrapeType(obj.variety);
         data.push(obj);
@@ -506,7 +519,15 @@ const DataStore = {
   // Enrich loaded data with computed fields (lotCode, grapeType)
   _enrichData() {
     this.berryData.forEach(d => {
-      if (d.sampleId && !d.lotCode) d.lotCode = this.extractLotCode(d.sampleId);
+      if (d.sampleId && !d.lotCode) {
+        d.lotCode = this.extractLotCode(d.sampleId);
+        if (!d.lotCode && Identity.isWeakSampleId(d.sampleId)) {
+          const parts = [];
+          if (d.variety) parts.push(d.variety.replace(/\s+/g, ''));
+          if (d.appellation) parts.push(d.appellation.replace(/\s+/g, ''));
+          d.lotCode = parts.join('-') || d.sampleId;
+        }
+      }
       if (d.variety && !d.grapeType) d.grapeType = this.getGrapeType(d.variety);
     });
   },
