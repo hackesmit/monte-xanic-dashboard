@@ -7,7 +7,9 @@ ALTER TABLE wine_samples
 ADD COLUMN IF NOT EXISTS sample_seq INTEGER NOT NULL DEFAULT 1;
 
 -- 2. Drop old unique constraint if it exists
--- (constraint name may vary — this covers the common patterns)
+-- Note: migration_overhaul.sql named this wine_samples_sample_id_date_key
+ALTER TABLE wine_samples
+DROP CONSTRAINT IF EXISTS wine_samples_sample_id_date_key;
 ALTER TABLE wine_samples
 DROP CONSTRAINT IF EXISTS wine_samples_sample_id_sample_date_key;
 
