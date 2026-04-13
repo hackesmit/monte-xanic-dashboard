@@ -37,45 +37,6 @@ const Charts = {
     return result;
   },
 
-  // Chart.js per-chart plugin: draw thin lines connecting same-lot points within each dataset
-  _lotLinePlugin: {
-    id: 'lotLines',
-    afterDatasetsDraw(chart) {
-      const ctx = chart.ctx;
-      chart.data.datasets.forEach((dataset, i) => {
-        const meta = chart.getDatasetMeta(i);
-        if (meta.hidden) return;
-        // Group visible points by lotCode
-        const byLot = {};
-        dataset.data.forEach((pt, j) => {
-          const lot = pt.lotCode || pt.sampleId;
-          if (!lot) return;
-          const el = meta.data[j];
-          if (!el) return;
-          if (!byLot[lot]) byLot[lot] = [];
-          byLot[lot].push({ px: el.x, py: el.y, rawX: pt.x });
-        });
-        // Draw lines for lots with 2+ points
-        const baseColor = dataset.borderColor || '#888888';
-        ctx.save();
-        ctx.strokeStyle = (typeof baseColor === 'string' ? baseColor : '#888888') + '55';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([]);
-        for (const pts of Object.values(byLot)) {
-          if (pts.length < 2) continue;
-          pts.sort((a, b) => a.rawX - b.rawX);
-          ctx.beginPath();
-          ctx.moveTo(pts[0].px, pts[0].py);
-          for (let k = 1; k < pts.length; k++) {
-            ctx.lineTo(pts[k].px, pts[k].py);
-          }
-          ctx.stroke();
-        }
-        ctx.restore();
-      });
-    }
-  },
-
   _getThemeColor(varName) {
     return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
   },
@@ -292,7 +253,7 @@ const Charts = {
         scales: this.axisOpts(xLabel, yLabel),
         animation: { duration: 300 }
       },
-      plugins: [this._lotLinePlugin]
+      plugins: []
     });
   },
 
