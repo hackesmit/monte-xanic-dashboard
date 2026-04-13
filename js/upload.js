@@ -90,11 +90,6 @@ const UploadManager = {
             obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
           }
         }
-        // For weak sample_ids (e.g. '25'), construct composite ID from available fields
-        if (Identity.isWeakSampleId(obj.sample_id)) {
-          obj.sample_id = Identity.buildCompositeSampleId(obj);
-          if (Identity.isWeakSampleId(obj.sample_id)) continue; // still weak after construction — skip
-        }
         result.push(obj);
       }
     }
