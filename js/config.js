@@ -403,11 +403,16 @@ const CONFIG = {
     'T':                      'color_t',
     'Berry Fresh Weight (gr)': 'berry_weight',
     'Berry Extractable Anthocyanins (mg/100b)': 'berry_anthocyanins',
+    'Berry (extractable) Anthocyanins (mg/100b me)': 'berry_anthocyanins',
     'Berry Sugars (mg/b)':    'berry_sugars_mg',
     'Alcohol (% vol)':        'alcohol',
+    'Alcohol (% v/v)':        'alcohol',
     'Volatile Acidity (g/L)': 'va',
+    'Volatile Acidity (VA gr/l)': 'va',
     'Malic Acid (g/L)':       'malic_acid',
+    'Malic Acid (TM gr/l)':   'malic_acid',
     'Residual Sugars (g/L)':  'rs',
+    'Residual Sugars (RS gr/l)': 'rs',
     'Notes...':               'notes'
   },
 

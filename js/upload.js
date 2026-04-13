@@ -262,7 +262,6 @@ const UploadManager = {
       return;
     }
 
-    this._uploading = true;
     const type = this.getFileType(file);
 
     if (type === 'unknown') {
@@ -274,6 +273,8 @@ const UploadManager = {
       this._setStatus(statusEl, 'error', '✗ Base de datos no disponible. Verifique la configuración de Supabase.');
       return;
     }
+
+    this._uploading = true;
 
     this._setStatus(statusEl, 'pending', `⏳ Leyendo ${this._esc(file.name)}...`);
 
