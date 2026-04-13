@@ -195,11 +195,14 @@ const Charts = {
     if (!canvas) return;
     if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
 
+    const lotsSelected = Filters.state.lots && Filters.state.lots.size > 0;
     const colorBy = Filters.state.colorBy;
-    const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
-    const resolveColor = colorBy === 'origin'
-      ? (n) => CONFIG.resolveOriginColor(n)
-      : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n);
+    const groupField = lotsSelected ? 'sampleId' : (colorBy === 'origin' ? 'appellation' : 'variety');
+    const resolveColor = lotsSelected
+      ? (n) => CONFIG.varietyColors[data.find(d => d.sampleId === n)?.variety] || CONFIG._hashColor(n)
+      : (colorBy === 'origin'
+        ? (n) => CONFIG.resolveOriginColor(n)
+        : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n));
     const groups = this.groupScatterData(data, xField, yField, groupField);
 
     const datasets = Object.entries(groups).map(([name, pts]) => {
@@ -264,11 +267,14 @@ const Charts = {
     if (!canvas) return;
     if (!data.length) { this._drawNoData(canvas, 'No hay datos para los filtros seleccionados'); return; }
 
+    const lotsSelected = Filters.state.lots && Filters.state.lots.size > 0;
     const colorBy = Filters.state.colorBy;
-    const groupField = colorBy === 'origin' ? 'appellation' : 'variety';
-    const resolveColor = colorBy === 'origin'
-      ? (n) => CONFIG.resolveOriginColor(n)
-      : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n);
+    const groupField = lotsSelected ? 'sampleId' : (colorBy === 'origin' ? 'appellation' : 'variety');
+    const resolveColor = lotsSelected
+      ? (n) => CONFIG.varietyColors[data.find(d => d.sampleId === n)?.variety] || CONFIG._hashColor(n)
+      : (colorBy === 'origin'
+        ? (n) => CONFIG.resolveOriginColor(n)
+        : (n) => CONFIG.varietyColors[n] || CONFIG._hashColor(n));
     const groups = this.groupScatterData(data, xField, yField, groupField);
 
     const datasets = Object.entries(groups).map(([name, pts]) => {
