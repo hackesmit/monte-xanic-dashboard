@@ -37,30 +37,5 @@ const Identity = {
     // Remove _BERRIES, _RECEPCION suffixes
     code = code.replace(/_(BERRIES|RECEPCION)$/i, '');
     return code;
-  },
-
-  // For weak sample_ids (e.g. bare '25'), construct a composite ID from
-  // available row fields so berry rows retain meaningful identity.
-  // Format: {vintage_prefix}{variety}-{appellation}-{vessel_id}
-  buildCompositeSampleId(row) {
-    const prefix = row.sample_id || '';
-    const parts = [prefix];
-    if (row.variety) parts.push(row.variety.replace(/\s+/g, ''));
-    if (row.appellation) parts.push(row.appellation.replace(/\s+/g, ''));
-    if (row.vessel_id) parts.push(String(row.vessel_id).replace(/\s+/g, ''));
-    return parts.join('-');
-  },
-
-  // Returns true if sample_id is too weak to produce meaningful identity
-  // (purely numeric, or shorter than 3 characters)
-  isWeakSampleId(id) {
-    if (!id) return true;
-    const s = String(id).trim();
-    return s.length < 3 || /^\d+$/.test(s);
-  },
-
-  // Stable composite key for dedup matching (mirrors the DB conflict key)
-  stableRowKey(row) {
-    return `${row.sample_id || ''}|${row.sample_date || ''}|${row.sample_seq || ''}`;
   }
 };

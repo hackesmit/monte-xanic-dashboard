@@ -1,6 +1,5 @@
-// MT.6 — Deterministic canonical seq, weak ID guard, composite ID builder
-// Tests Identity.canonicalSeqAssign, Identity.extractLotCode, Identity.isWeakSampleId,
-// Identity.buildCompositeSampleId, Identity.stableRowKey
+// MT.6 — Deterministic canonical seq + extractLotCode
+// Tests Identity.canonicalSeqAssign and Identity.extractLotCode
 // Logic extracted from js/identity.js (runs in browser context as global).
 
 import { describe, it } from 'node:test';
@@ -37,25 +36,6 @@ const Identity = {
     code = code.replace(/^\d{2}/, '');
     code = code.replace(/_(BERRIES|RECEPCION)$/i, '');
     return code;
-  },
-
-  buildCompositeSampleId(row) {
-    const prefix = row.sample_id || '';
-    const parts = [prefix];
-    if (row.variety) parts.push(row.variety.replace(/\s+/g, ''));
-    if (row.appellation) parts.push(row.appellation.replace(/\s+/g, ''));
-    if (row.vessel_id) parts.push(String(row.vessel_id).replace(/\s+/g, ''));
-    return parts.join('-');
-  },
-
-  isWeakSampleId(id) {
-    if (!id) return true;
-    const s = String(id).trim();
-    return s.length < 3 || /^\d+$/.test(s);
-  },
-
-  stableRowKey(row) {
-    return `${row.sample_id || ''}|${row.sample_date || ''}|${row.sample_seq || ''}`;
   }
 };
 
@@ -63,23 +43,20 @@ const Identity = {
 
 describe('MT.6 — canonicalSeqAssign (deterministic)', () => {
   it('same rows in different order produce identical sample_seq', () => {
-    const rowsA = [
+    const make = () => [
       { sample_id: '25CSMX-1', sample_date: '2025-08-15', sample_type: 'Wine', vessel_id: 'T1', brix: 24.5, ph: 3.5, ta: 6.0 },
       { sample_id: '25CSMX-1', sample_date: '2025-08-15', sample_type: 'Wine', vessel_id: 'T2', brix: 23.0, ph: 3.6, ta: 5.8 },
       { sample_id: '25CSMX-1', sample_date: '2025-08-15', sample_type: 'Berries', vessel_id: '', brix: 22.0, ph: 3.4, ta: 7.0 },
     ];
-    const rowsB = [
-      { sample_id: '25CSMX-1', sample_date: '2025-08-15', sample_type: 'Berries', vessel_id: '', brix: 22.0, ph: 3.4, ta: 7.0 },
-      { sample_id: '25CSMX-1', sample_date: '2025-08-15', sample_type: 'Wine', vessel_id: 'T2', brix: 23.0, ph: 3.6, ta: 5.8 },
-      { sample_id: '25CSMX-1', sample_date: '2025-08-15', sample_type: 'Wine', vessel_id: 'T1', brix: 24.5, ph: 3.5, ta: 6.0 },
-    ];
+    const rowsA = make();
+    const rowsB = [make()[2], make()[1], make()[0]]; // reversed
 
     Identity.canonicalSeqAssign(rowsA);
     Identity.canonicalSeqAssign(rowsB);
 
-    // Both should produce same mapping regardless of input order
-    const keyA = rowsA.map(r => Identity.stableRowKey(r)).sort();
-    const keyB = rowsB.map(r => Identity.stableRowKey(r)).sort();
+    const toKey = r => `${r.sample_type}|${r.vessel_id}|${r.sample_seq}`;
+    const keyA = rowsA.map(toKey).sort();
+    const keyB = rowsB.map(toKey).sort();
     assert.deepEqual(keyA, keyB);
   });
 
@@ -124,7 +101,7 @@ describe('MT.6 — canonicalSeqAssign (deterministic)', () => {
     Identity.canonicalSeqAssign(rows);
 
     const sorted = [...rows].sort((a, b) => a.sample_seq - b.sample_seq);
-    assert.equal(sorted[0].berry_weight, 1.2); // lower berry_weight first
+    assert.equal(sorted[0].berry_weight, 1.2);
     assert.equal(sorted[1].berry_weight, 1.5);
   });
 
@@ -135,16 +112,15 @@ describe('MT.6 — canonicalSeqAssign (deterministic)', () => {
     ];
     Identity.canonicalSeqAssign(rows);
 
-    // Run again with reversed input to confirm determinism
     const rows2 = [
       { sample_id: 'W', sample_date: '2025-01-01', brix: 24, ph: 3.5, ta: 6.0, notes: 'A' },
       { sample_id: 'W', sample_date: '2025-01-01', brix: 24, ph: 3.5, ta: 6.0, notes: 'B' },
     ];
     Identity.canonicalSeqAssign(rows2);
 
-    const keyA = rows.map(r => Identity.stableRowKey(r)).sort();
-    const keyB = rows2.map(r => Identity.stableRowKey(r)).sort();
-    assert.deepEqual(keyA, keyB);
+    const seqA = rows.map(r => `${r.notes}:${r.sample_seq}`).sort();
+    const seqB = rows2.map(r => `${r.notes}:${r.sample_seq}`).sort();
+    assert.deepEqual(seqA, seqB);
   });
 
   it('handles null/missing sort fields gracefully', () => {
@@ -178,35 +154,6 @@ describe('MT.6 — canonicalSeqAssign (deterministic)', () => {
   });
 });
 
-describe('MT.6 — buildCompositeSampleId', () => {
-  it('constructs composite from vintage prefix + variety + appellation', () => {
-    const row = { sample_id: '25', variety: 'Cabernet Sauvignon', appellation: 'VDG-Rancho1' };
-    const result = Identity.buildCompositeSampleId(row);
-    assert.equal(result, '25-CabernetSauvignon-VDG-Rancho1');
-  });
-
-  it('includes vessel_id when present', () => {
-    const row = { sample_id: '25', variety: 'Merlot', appellation: 'VON', vessel_id: 'T5' };
-    assert.equal(Identity.buildCompositeSampleId(row), '25-Merlot-VON-T5');
-  });
-
-  it('handles missing fields gracefully', () => {
-    const row = { sample_id: '25' };
-    assert.equal(Identity.buildCompositeSampleId(row), '25');
-  });
-
-  it('strips whitespace from field values', () => {
-    const row = { sample_id: '25', variety: 'Petit Verdot', appellation: 'San Vicente' };
-    assert.equal(Identity.buildCompositeSampleId(row), '25-PetitVerdot-SanVicente');
-  });
-
-  it('result is not a weak ID when variety is present', () => {
-    const row = { sample_id: '25', variety: 'Durif' };
-    const composite = Identity.buildCompositeSampleId(row);
-    assert.equal(Identity.isWeakSampleId(composite), false);
-  });
-});
-
 describe('MT.6 — extractLotCode', () => {
   it('strips vintage prefix from standard lot codes', () => {
     assert.equal(Identity.extractLotCode('25CSMX-1'), 'CSMX-1');
@@ -229,51 +176,5 @@ describe('MT.6 — extractLotCode', () => {
 
   it('returns empty string for weak numeric-only IDs after prefix strip', () => {
     assert.equal(Identity.extractLotCode('25'), '');
-  });
-
-  it('extracts meaningful lot from composite IDs', () => {
-    // Composite IDs built by buildCompositeSampleId
-    assert.equal(Identity.extractLotCode('25-CabernetSauvignon-VDG'), '-CabernetSauvignon-VDG');
-  });
-});
-
-describe('MT.6 — isWeakSampleId', () => {
-  it('detects purely numeric IDs as weak', () => {
-    assert.equal(Identity.isWeakSampleId('25'), true);
-    assert.equal(Identity.isWeakSampleId('1'), true);
-    assert.equal(Identity.isWeakSampleId('123'), true);
-  });
-
-  it('detects short IDs (< 3 chars) as weak', () => {
-    assert.equal(Identity.isWeakSampleId('AB'), true);
-    assert.equal(Identity.isWeakSampleId('X'), true);
-  });
-
-  it('accepts valid lot-style IDs', () => {
-    assert.equal(Identity.isWeakSampleId('25CSMX-1'), false);
-    assert.equal(Identity.isWeakSampleId('24NEBBIOLO'), false);
-    assert.equal(Identity.isWeakSampleId('ABC'), false);
-  });
-
-  it('treats null/undefined/empty as weak', () => {
-    assert.equal(Identity.isWeakSampleId(null), true);
-    assert.equal(Identity.isWeakSampleId(undefined), true);
-    assert.equal(Identity.isWeakSampleId(''), true);
-  });
-
-  it('treats whitespace-only as weak', () => {
-    assert.equal(Identity.isWeakSampleId('  '), true);
-  });
-});
-
-describe('MT.6 — stableRowKey', () => {
-  it('builds composite key from row fields', () => {
-    const row = { sample_id: '25CSMX-1', sample_date: '2025-08-15', sample_seq: 2 };
-    assert.equal(Identity.stableRowKey(row), '25CSMX-1|2025-08-15|2');
-  });
-
-  it('handles missing fields with empty strings', () => {
-    const row = { sample_id: '25CSMX-1' };
-    assert.equal(Identity.stableRowKey(row), '25CSMX-1||');
   });
 });

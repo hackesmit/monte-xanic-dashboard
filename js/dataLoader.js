@@ -275,10 +275,6 @@ const DataStore = {
     return data;
   },
 
-  extractLotCode(sampleId) {
-    return Identity.extractLotCode(sampleId);
-  },
-
   getGrapeType(variety) {
     if (!variety) return 'unknown';
     if (CONFIG.grapeTypes.white.includes(variety)) return 'white';
