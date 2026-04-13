@@ -277,13 +277,7 @@ const DataStore = {
   },
 
   extractLotCode(sampleId) {
-    if (!sampleId) return '';
-    let code = String(sampleId);
-    // Remove vintage prefix (24 or 25)
-    code = code.replace(/^\d{2}/, '');
-    // Remove _BERRIES, _RECEPCION suffixes
-    code = code.replace(/_(BERRIES|RECEPCION)$/i, '');
-    return code;
+    return Identity.extractLotCode(sampleId);
   },
 
   getGrapeType(variety) {

@@ -1,13 +1,60 @@
 import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 
-// Allowed tables and their conflict columns for upsert
+// Allowed tables: conflict columns, max rows, column whitelist, required fields
 const ALLOWED_TABLES = {
-  wine_samples:      { conflict: 'sample_id,sample_date,sample_seq', maxRows: 500 },
-  tank_receptions:   { conflict: 'report_code',           maxRows: 200 },
-  reception_lots:    { conflict: null,                     maxRows: 2000 },
-  prefermentativos:  { conflict: 'report_code,measurement_date', maxRows: 200 },
-  mediciones_tecnicas: { conflict: 'medicion_code', maxRows: 200 }
+  wine_samples: {
+    conflict: 'sample_id,sample_date,sample_seq',
+    maxRows: 500,
+    required: ['sample_id'],
+    columns: new Set([
+      'sample_id','vessel_id','sample_type','sample_date',
+      'crush_date','days_post_crush','vintage_year','variety','appellation',
+      'tant','fant','bant','ptan','irps','ipt','ph','ta','brix',
+      'l_star','a_star','b_star','color_i','color_t','berry_weight',
+      'berry_anthocyanins','berry_sugars_mg','alcohol','va','malic_acid',
+      'rs','below_detection','notes','sample_seq'
+    ])
+  },
+  tank_receptions: {
+    conflict: 'report_code',
+    maxRows: 200,
+    required: ['report_code'],
+    columns: new Set([
+      'report_code','reception_date','batch_code','tank_id','supplier',
+      'variety','brix','ph','ta','ag','am','av','so2','nfa',
+      'temperature','solidos_pct','polifenoles_wx','antocianinas_wx',
+      'poli_spica','anto_spica','ipt_spica','acidificado','p010_kg',
+      'vintage_year'
+    ])
+  },
+  reception_lots: {
+    conflict: null,
+    maxRows: 2000,
+    required: ['reception_id','lot_code'],
+    columns: new Set(['reception_id','lot_code','lot_position'])
+  },
+  prefermentativos: {
+    conflict: 'report_code,measurement_date',
+    maxRows: 200,
+    required: ['report_code'],
+    columns: new Set([
+      'report_code','measurement_date','batch_code','tank_id','variety',
+      'brix','ph','ta','temperature','tant','notes','vintage_year'
+    ])
+  },
+  mediciones_tecnicas: {
+    conflict: 'medicion_code',
+    maxRows: 200,
+    required: ['medicion_code'],
+    columns: new Set([
+      'medicion_code','medicion_date','vintage_year','variety','appellation',
+      'lot_code','tons_received','berry_count_sample','berry_avg_weight_g',
+      'berry_diameter_mm','health_grade','health_madura','health_inmadura',
+      'health_sobremadura','health_picadura','health_enfermedad',
+      'health_quemadura','measured_by','notes'
+    ])
+  }
 };
 
 export default async function handler(req, res) {
@@ -49,7 +96,29 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: `Máximo ${tableConfig.maxRows} filas por solicitud` });
   }
 
-  // 4. Insert via Supabase service key (server-side only)
+  // 4. Strip unknown columns and validate required fields
+  const { columns, required } = tableConfig;
+  if (columns) {
+    for (const row of rows) {
+      for (const key of Object.keys(row)) {
+        if (!columns.has(key)) delete row[key];
+      }
+    }
+  }
+  if (required && required.length) {
+    for (let i = 0; i < rows.length; i++) {
+      for (const field of required) {
+        if (rows[i][field] === undefined || rows[i][field] === null || rows[i][field] === '') {
+          return res.status(400).json({
+            ok: false,
+            error: `Fila ${i + 1}: campo requerido '${field}' falta o está vacío`
+          });
+        }
+      }
+    }
+  }
+
+  // 5. Insert via Supabase service key (server-side only)
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_KEY;
   if (!supabaseUrl || !serviceKey) {

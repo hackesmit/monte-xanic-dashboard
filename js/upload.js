@@ -90,17 +90,17 @@ const UploadManager = {
             obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
           }
         }
+        // For weak sample_ids (e.g. '25'), construct composite ID from available fields
+        if (Identity.isWeakSampleId(obj.sample_id)) {
+          obj.sample_id = Identity.buildCompositeSampleId(obj);
+          if (Identity.isWeakSampleId(obj.sample_id)) continue; // still weak after construction — skip
+        }
         result.push(obj);
       }
     }
 
-    // Assign sample_seq: within each (sample_id, sample_date) group, order by row position
-    const seqCounters = {};
-    result.forEach(r => {
-      const key = `${r.sample_id}|${r.sample_date || ''}`;
-      seqCounters[key] = (seqCounters[key] || 0) + 1;
-      r.sample_seq = seqCounters[key];
-    });
+    // Assign sample_seq deterministically via shared Identity module
+    Identity.canonicalSeqAssign(result);
 
     return result;
   },
@@ -190,28 +190,32 @@ const UploadManager = {
 
   // Upsert rows to a Supabase table in batches of 500
   // Check how many rows already exist in the DB (for new vs update preview)
-  async _detectDuplicates(table, rows, keyCol, keyCol2) {
+  // keyCols: array of column names forming the composite conflict key
+  async _detectDuplicates(table, rows, keyCols) {
     if (!rows.length || !DataStore.supabase) return { updateCount: 0 };
+    if (!Array.isArray(keyCols)) keyCols = [keyCols];
     try {
-      const keys = [...new Set(rows.map(r => r[keyCol]).filter(Boolean))];
+      const primaryCol = keyCols[0];
+      const keys = [...new Set(rows.map(r => r[primaryCol]).filter(Boolean))];
       if (!keys.length) return { updateCount: 0 };
-      // Query existing rows matching the primary key(s)
+      // Query existing rows matching the primary key column, then composite-match locally
       const { data, error } = await DataStore.supabase
         .from(table)
-        .select(keyCol2 ? `${keyCol},${keyCol2}` : keyCol)
-        .in(keyCol, keys);
+        .select(keyCols.join(','))
+        .in(primaryCol, keys);
       if (error || !data) return { updateCount: 0 };
-      if (!keyCol2) return { updateCount: data.length };
-      // Composite key — build set of "key1|key2" for matching
-      const existing = new Set(data.map(d => `${d[keyCol]}|${d[keyCol2]}`));
-      const matches = rows.filter(r => existing.has(`${r[keyCol]}|${r[keyCol2]}`));
+      if (keyCols.length === 1) return { updateCount: data.length };
+      // Composite key — build set of "col1|col2|..." for matching
+      const toKey = r => keyCols.map(c => r[c] ?? '').join('|');
+      const existing = new Set(data.map(toKey));
+      const matches = rows.filter(r => existing.has(toKey(r)));
       return { updateCount: matches.length };
     } catch (_) {
       return { updateCount: 0 };
     }
   },
 
-  async upsertRows(table, rows, conflictCol) {
+  async upsertRows(table, rows) {
     if (!rows.length) return { count: 0, error: null };
 
     // Route through server-side endpoint for role validation
@@ -300,12 +304,12 @@ const UploadManager = {
         const wineCount  = samples.length - berryCount;
 
         // Detect duplicates before upsert
-        const dupInfo = await this._detectDuplicates('wine_samples', samples, 'sample_id', 'sample_date');
+        const dupInfo = await this._detectDuplicates('wine_samples', samples, ['sample_id', 'sample_date', 'sample_seq']);
         const newCount = samples.length - dupInfo.updateCount;
         this._setStatus(statusEl, 'pending',
           `⏳ ${samples.length} muestras (${newCount} nuevas, ${dupInfo.updateCount} actualizadas). Guardando...`);
 
-        const { count, error } = await this.upsertRows('wine_samples', samples, 'sample_id,sample_date');
+        const { count, error } = await this.upsertRows('wine_samples', samples);
         if (error) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] wine_samples error:', error);
@@ -328,15 +332,15 @@ const UploadManager = {
         }
 
         // Detect duplicates
-        const recDup = await this._detectDuplicates('tank_receptions', receptions, 'report_code');
-        const prefDup = await this._detectDuplicates('prefermentativos', preferment, 'report_code', 'measurement_date');
+        const recDup = await this._detectDuplicates('tank_receptions', receptions, ['report_code']);
+        const prefDup = await this._detectDuplicates('prefermentativos', preferment, ['report_code', 'measurement_date']);
         const newRec = receptions.length - recDup.updateCount;
         const newPref = preferment.length - prefDup.updateCount;
         this._setStatus(statusEl, 'pending',
           `⏳ ${receptions.length} recepciones (${newRec} nuevas), ${preferment.length} prefermentativos (${newPref} nuevos). Guardando...`);
 
         // 1 — Insert receptions
-        const { count: rCount, error: rErr } = await this.upsertRows('tank_receptions', receptions, 'report_code');
+        const { count: rCount, error: rErr } = await this.upsertRows('tank_receptions', receptions);
         if (rErr) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] tank_receptions error:', rErr);
@@ -363,14 +367,14 @@ const UploadManager = {
               .filter(l => codeToId[l.report_code])
               .map(l => ({ reception_id: codeToId[l.report_code], lot_code: l.lot_code, lot_position: l.lot_position }));
             if (lotRows.length) {
-              const { error: lotErr } = await this.upsertRows('reception_lots', lotRows, null);
+              const { error: lotErr } = await this.upsertRows('reception_lots', lotRows);
               if (lotErr) console.error('[upload] reception_lots error:', lotErr);
             }
           }
         }
 
         // 3 — Insert prefermentativos
-        const { count: pCount, error: pErr } = await this.upsertRows('prefermentativos', preferment, 'report_code,measurement_date');
+        const { count: pCount, error: pErr } = await this.upsertRows('prefermentativos', preferment);
         if (pErr) {
           this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
           console.error('[upload] prefermentativos error:', pErr);
