@@ -414,3 +414,129 @@ No critical gaps remain. Minor notes:
 - **Column whitelists verified correct** across all 5 tables (cross-checked in R14, still valid).
 - **The composite ID approach resolves the original bug.** Berry rows with `sample_id='25'` + variety + appellation → meaningful composite IDs → correct upsert identity → multiple data points per lot preserved across uploads.
 - **Branch is clean.** No changes to charts, filters, events, weather, mediciones, auth, or any module outside the upload pipeline.
+
+---
+
+## Round 16 — Branch `main` — Phase 8 Merged + 4 Follow-Up Fixes (2026-04-13)
+
+**Scope:** 5 commits merged to `main` (`7cfaed0..d8d1486`). 10 files changed, +1265 / −217 lines total.
+**Commits:**
+1. `7cfaed0` — feat: Phase 8 — deterministic berry upload identity & pipeline hardening
+2. `8073a97` — fix: derive composite lot codes for weak sample_ids at data load time
+3. `021d195` — fix: stop modifying sample_id in DB — derive lot codes at display time only
+4. `51c1589` — fix: use raw sample_id as lot code — no transformation
+5. `d8d1486` — fix: parseFloat destroying sample IDs — '25TEON-5' became 25
+
+**Key discovery in commit 5:** The *actual* root cause of the "all berries have sample_id = 25" bug was `parseFloat` in `_normalizeValue()`. `parseFloat('25TEON-5')` → `25` (parses leading digits, discards the rest). This destroyed all sample IDs starting with digits. The fix: `parseFloat` → `Number`, which returns `NaN` for non-numeric strings and falls back to the original string.
+
+---
+
+### Priority 1 — Issues
+
+**P1.1 — `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping — extraction charts silently lose wine data**
+- **Files:** `js/dataLoader.js:63,238,508`, `js/charts.js:633,1984,1998`, `js/explorer.js:151`, `js/app.js:592`
+- With the old code, `lotCode = extractLotCode('25CALMX-1E')` → `'CALMX-1E'` (vintage prefix stripped). `CONFIG.berryToWine` maps these stripped codes to wine lots:
+  ```js
+  berryToWine: { 'CALMX-1E': ['25CAVDG-1'], 'KCA-S3B': ['25CAKMP-1','25CAKMP-2'], ... }
+  ```
+- Now, `lotCode = sampleId = '25CALMX-1E'` (vintage prefix included). `CONFIG.berryToWine['25CALMX-1E']` → `undefined`.
+- **Impact:** Extraction comparison charts (`_buildExtractionPairs`), the extraction table in `app.js`, and the ANT extractability calculation in `explorer.js` all silently return empty results. No error is thrown — the data just doesn't appear.
+
+**P1.2 — `lotCode = sampleId` breaks vineyard map section resolution — map parcels have no data**
+- **Files:** `js/maps.js:57-58,15-30`, `js/app.js:354-355`
+- `MapStore.resolveSection('25CALMX-1E')` fails all 3 resolution strategies:
+  1. Direct lookup: `CONFIG.fieldLotToSection['25CALMX-1E']` → `undefined` (keys are `'CALMX-1E'`)
+  2. Suffix strip: no match after stripping
+  3. Pattern regex: all patterns anchor on `^[A-Z]` (e.g., `/^[A-Z]{2,4}MX-(.+)$/i`). `'25CALMX-1E'` starts with digits → no match.
+- **Impact:** Vineyard quality map shows no colored parcels and no lot data in tooltips.
+
+**P1.3 — `Identity.buildCompositeSampleId`, `Identity.isWeakSampleId`, `Identity.stableRowKey` are now dead code**
+- **File:** `js/identity.js:45-65`
+- After the 4 follow-up commits, no source file calls these 3 functions. Only `Identity.canonicalSeqAssign` (from `upload.js`) and `Identity.extractLotCode` (from `dataLoader.js`) are used.
+- `buildCompositeSampleId` was the R15 fix for weak IDs, but the R15 approach (composite ID construction) was replaced by the `parseFloat` → `Number` fix. The functions remain in source and are tested by MT.6, but they're dead code.
+- **Impact:** Medium. Not a bug, but 20 lines of dead code and ~15 tests covering unused functions. Creates false impression that these functions are load-bearing.
+
+---
+
+### Priority 2 — Improvements
+
+**P2.1 — `DataStore.extractLotCode` is dead code**
+- **File:** `js/dataLoader.js:278-280`
+- The method delegates to `Identity.extractLotCode(sampleId)`, but no code calls `DataStore.extractLotCode` anymore. All 3 former call sites were changed to `obj.sampleId || ''`.
+- **Impact:** Dead code. Can be removed.
+
+**P2.2 — `parseFloat` → `Number` changes behavior for comma-separated thousands**
+- **File:** `js/upload.js:32`
+- `parseFloat('1,200')` → `1` (silently truncates at comma). `Number('1,200')` → `NaN` → falls back to string `'1,200'`.
+- For WineXRay CSVs (US-format, period decimals), this is correct behavior — `Number` is more strict. But if any CSV uses comma-separated thousands (e.g., `'1,200'` meaning twelve hundred), the value will be stored as a string instead of a number.
+- **Low risk** — WineXRay uses standard numeric formats.
+
+**P2.3 — 4 rapid-fire fix commits suggest incomplete testing before merge**
+- Commits `8073a97`, `021d195`, `51c1589`, `d8d1486` were all quick follow-up fixes. The trail suggests the Phase 8 commit (`7cfaed0`) was merged before the `parseFloat` root cause was found. Each fix discovered a new issue in the previous fix.
+- The final state is correct, but the commit history is messy. Consider squashing for cleanliness if this matters to the team.
+
+**P2.4 — Untracked files (5 items)**
+- `.playwright-mcp/` — new directory, likely from Playwright MCP setup. Should be in `.gitignore`.
+- `DIAGNOSIS.md` — diagnostic notes from this session.
+- `codex-review-consolidated-handoff.md` — Codex analysis.
+- `ultraplan-prompt.txt` — prompt template.
+- `Logotipo_corporativo_MX_amarillo-01 (1).png` — carried forward since Round 11.
+
+---
+
+### Missing Tests
+
+- **No test for the `parseFloat` → `Number` fix.** The critical fix in `d8d1486` — the actual root cause — has no dedicated test. A test like "normalizeValue preserves string sample IDs starting with digits" (`_normalizeValue('25TEON-5')` should return `'25TEON-5'`, not `25`) would prevent regression.
+- **MT.6 tests dead code.** `buildCompositeSampleId`, `isWeakSampleId`, and `stableRowKey` tests are testing functions no longer called from any source file. Consider removing these tests or the dead functions.
+- **No test for berryToWine or fieldLotToSection lookup compatibility.** A test that verifies lotCode format matches the key format in `CONFIG.berryToWine` and `CONFIG.fieldLotToSection` would have caught P1.1/P1.2.
+
+---
+
+### Notes
+
+- **The `parseFloat` → `Number` fix (`d8d1486`) was the real root cause.** `parseFloat('25TEON-5')` → `25` silently destroyed all sample IDs starting with digits. This single line change fixes the original "one point per lot" bug. The entire composite ID approach from R13-R15 was treating a symptom.
+- **92/92 tests pass.** No regressions. But the test suite doesn't cover the lotCode format change or the `_normalizeValue` fix.
+- **The Phase 8 feature work is sound.** Deterministic seq, backend column whitelists, required-field validation, and the `_detectDuplicates` 3-column fix are all correct and well-tested.
+- **P1.1 and P1.2 are the blocking issues.** The fix is straightforward: `lotCode` should use `Identity.extractLotCode(sampleId)` (or equivalent vintage-prefix stripping) instead of raw `sampleId`. This is how it worked before Phase 8, and the downstream mappings (`berryToWine`, `fieldLotToSection`, `fieldLotRanchPatterns`) all expect stripped codes.
+- **Recommended fix:** In `_rowToBerry`, `parseWineSheet`, and `_enrichData`, change `lotCode = obj.sampleId || ''` back to `lotCode = Identity.extractLotCode(obj.sampleId)`. This restores the vintage-stripped lot codes that all downstream code expects, while keeping the `sampleId` field (used for DB identity) unchanged.
+
+---
+
+## Round 17 — Branch `main` — Dead Code Cleanup + Fixes (2026-04-13)
+
+**Scope:** 3 commits (`adcb89e`, `8db2d18`, `62d8010`). 4 files changed, 1 file deleted.
+**Commits:**
+1. `adcb89e` — chore: remove dead code (buildCompositeSampleId, isWeakSampleId, stableRowKey, DataStore.extractLotCode, MT.1)
+2. `8db2d18` — fix: jsPDF CDN 404 — version 2.5.2 → 2.5.1
+3. `62d8010` — fix: scatter chart legend shows lot codes when lots selected
+
+---
+
+### Round 16 Items Resolved
+
+| ID | Issue | Resolution |
+|----|-------|------------|
+| R16.P1.3 | Dead code: `buildCompositeSampleId`, `isWeakSampleId`, `stableRowKey` | **Removed** (`adcb89e`) — functions + 13 dead tests deleted from identity.js and MT.6 |
+| R16.P2.1 | Dead code: `DataStore.extractLotCode` wrapper | **Removed** (`adcb89e`) |
+| R16.P2.4 | Untracked `.playwright-mcp/` directory | Should be in `.gitignore` — **still open** |
+
+### Round 16 Items Still Open
+
+| ID | Issue | Status |
+|----|-------|--------|
+| R16.P1.1 | `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping | **Open** — extraction charts return empty |
+| R16.P1.2 | `lotCode = sampleId` breaks vineyard map section resolution | **Open** — map parcels show no data |
+
+---
+
+### New Fixes
+
+**jsPDF CDN 404** — `index.html` referenced `jspdf/2.5.2` which does not exist on cdnjs. Changed to `2.5.1`. PDF export now works.
+
+**Scatter chart legend** — When specific lots are selected via filter chips, scatter chart datasets now group by `sampleId` instead of variety/origin. Legend labels show lot codes (e.g., `25CSMX-1`) so exported charts identify exactly which grapes are referenced. When no lots are selected, default variety/origin grouping is used.
+
+---
+
+### Tests
+
+72/72 passing (6 suites). Down from 92 after removing 7 MT.1 tests and 13 dead-code MT.6 tests.
