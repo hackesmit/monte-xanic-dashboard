@@ -1,65 +1,30 @@
-# Task — Current Objective
+# Task — Current State
 
-## Phase 8: Deterministic Berry Upload Identity & Pipeline Hardening
+## Phase 8: Deterministic Berry Upload Identity & Pipeline Hardening — COMPLETE
 
-### Goal
+### Root Cause
 
-Make berry upload identity deterministic and idempotent. Harden the upload pipeline against weak IDs, schema drift, and unvalidated payloads.
+The original "one lot" bug was caused by `parseFloat` in `_normalizeValue()` — `parseFloat('25TEON-5')` returned `25`, silently destroying all sample IDs starting with digits. Fixed by changing to `Number()` which preserves non-numeric strings.
 
-### Problem Statement
+### What Shipped
 
-Berry upload identity is **non-deterministic**: `sample_seq` (part of the upsert conflict key `(sample_id, sample_date, sample_seq)`) is assigned by CSV row order. Re-uploading the same file with rows reordered produces different `sample_seq` values, causing data duplication or silent value swaps.
+1. **Deterministic `sample_seq`** — `Identity.canonicalSeqAssign` sorts by stable fields within each `(sample_id, sample_date)` group before assigning seq. Re-uploading shuffled rows produces identical seq values.
+2. **`_detectDuplicates` 3-column key** — Preview now matches real upsert conflict key `(sample_id, sample_date, sample_seq)`.
+3. **Server column whitelists** — Per-table `columns` Set in `ALLOWED_TABLES`. Unknown fields stripped before upsert.
+4. **Server required-field validation** — Rows missing required fields rejected with Spanish error messages.
+5. **`parseFloat` → `Number` fix** — The actual root cause. All 92 unique sample IDs now persist correctly.
+6. **`lotCode = sampleId`** — Raw IDs from CSV persist to dashboard. No prefix stripping.
+7. **Dead code removed** — `buildCompositeSampleId`, `isWeakSampleId`, `stableRowKey`, `DataStore.extractLotCode`, MT.1 test.
+8. **jsPDF CDN fix** — Version 2.5.2 → 2.5.1 (2.5.2 returned 404).
+9. **Scatter chart legend** — Shows lot codes when lots are selected, varietals otherwise.
 
-Secondary issues:
-- Weak `sample_id` values (e.g., bare `'25'`) collapse lot derivation (empty `lotCode`)
-- `_detectDuplicates()` checks only 2 columns but real conflict key is 3 columns — preview counts lie
-- Server accepts any fields the client sends with no column validation
-- Normalization logic duplicated between `upload.js` and `dataLoader.js`
+### Post-deploy
 
-### Constraints
-
-- Vanilla JS only, no npm packages (CDN only)
-- All UI labels in Spanish
-- Don't break existing 47 passing tests
-- No schema migration — same `(sample_id, sample_date, sample_seq)` constraint
-- `sample_seq` becomes deterministic metadata, not positional identity
-- Respect existing file responsibilities (see CLAUDE.md)
-
-### Files Involved
-
-| File | Role | Change Type |
-|------|------|-------------|
-| `js/identity.js` | Shared identity module | **NEW** |
-| `js/upload.js` | Deterministic seq, weak ID guard, fixed dedup | Modify |
-| `js/dataLoader.js` | Delegate `extractLotCode` to Identity | Modify |
-| `api/upload.js` | Column whitelist, required-field validation | Modify |
-| `index.html` | Add `<script>` for identity.js | Modify |
-| `tests/mt6-canonical-seq.test.mjs` | Deterministic seq + weak ID tests | **NEW** |
-| `tests/mt7-column-whitelist.test.mjs` | Server validation tests | **NEW** |
-
-### Acceptance Criteria
-
-1. Same rows in any order → identical `sample_seq` values (deterministic)
-2. Re-upload of shuffled CSV shows "0 new / N updated" not "N new / 0 updated"
-3. Rows with weak `sample_id` (numeric-only, < 3 chars) are skipped
-4. `_detectDuplicates` matches real 3-column conflict key
-5. `Identity.extractLotCode` used by both upload and dataLoader
-6. Server strips unknown columns before upsert
-7. Server rejects rows missing required fields (Spanish error messages)
-8. All new tests pass (`mt6`, `mt7`)
-9. All 47 existing tests still pass
-10. Dashboard loads, charts render, upload flow works end-to-end
-
-### Reference
-
-- Full analysis: `codex-review-consolidated-handoff.md`
-- Approved plan: `PLAN.md`
+- Database truncated and re-uploaded with clean data (done 2026-04-13).
 
 ---
 
-## Project Status: Phases 1–7 Complete
-
-All planned work through Phase 7 is committed on `main`. Security hardening done. REVIEW.md Rounds 1–10 complete. **Waves 1–7 all implemented and merged.** Phase 7 (Mediciones Tecnicas) implemented 2026-04-08. Lot-line plugin removed 2026-04-13.
+## Project Status: Phases 1–8 Complete
 
 | Phase | Description | Status |
 |-------|-------------|--------|
@@ -76,20 +41,35 @@ All planned work through Phase 7 is committed on `main`. Security hardening done
 | — | Waves 1–7 (all review findings resolved) | Done |
 | 7 | Mediciones Tecnicas (form, table, charts) | Done |
 | — | Remove always-on lot-line plugin from scatter charts | Done |
-| **8** | **Deterministic Berry Identity & Pipeline Hardening** | **In Progress** |
+| 8 | Deterministic Berry Identity & Pipeline Hardening | Done |
 
 ---
 
-## Tests — Written & Passing (47/47 + 2 new pending)
+## Tests — 72/72 Passing (6 suites)
 
 | ID | Scope | Tests | Status |
 |----|-------|-------|--------|
-| MT.1 | `sample_seq` assignment in `upload.js` | 7 | **Pass** |
 | MT.2 | Deterministic jitter function in `charts.js` | 8 | **Pass** |
 | MT.3 | `verifyToken()` shared module | 13 | **Pass** |
 | MT.4 | `rateLimit()` | 9 | **Pass** |
 | MT.5 | Valley selector flow | 10 | **Pass** |
-| MT.6 | Canonical seq + weak ID guard | TBD | **Pending** |
-| MT.7 | Column whitelist + required fields | TBD | **Pending** |
+| MT.6 | Canonical seq + extractLotCode | 13 | **Pass** |
+| MT.7 | Column whitelist + required fields | 19 | **Pass** |
 
 Run: `npm test` or `node --test tests/*.test.mjs`
+
+### Removed
+
+| ID | Reason |
+|----|--------|
+| MT.1 | Superseded by MT.6 — tested old row-order seq algorithm |
+
+---
+
+## Open Items (from Round 16 Review)
+
+| ID | Issue | Status |
+|----|-------|--------|
+| R16.P1.1 | `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping (extraction charts) | **Open** |
+| R16.P1.2 | `lotCode = sampleId` breaks vineyard map section resolution | **Open** |
+| R16.P2.2 | `Number()` vs `parseFloat` for comma-separated thousands — low risk | **Noted** |
