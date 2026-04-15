@@ -8,9 +8,10 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 - All UI labels in Spanish. Never translate to English.
 - All units metric (C, g/L, mg/L, ppm, Bx).
 - Every new feature must be mobile responsive.
-- No npm packages or build tools. CDN only.
-- No frameworks. Vanilla JS ES6 only.
-- Maintain Chart.js 4.4.1 and SheetJS 0.18.5 compatibility.
+- Vite build. Dependencies managed via npm.
+- No frameworks. Vanilla JS ES modules only.
+- Run `npm run dev` for local development.
+- Maintain Chart.js and SheetJS compatibility.
 
 ## File Responsibilities
 

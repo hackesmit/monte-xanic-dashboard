@@ -1,8 +1,7 @@
 // ── Identity: Shared berry identity and normalization module ──
 // Used by both upload.js (parsing) and dataLoader.js (lot derivation).
-// Global object — no ES modules on client side (project convention).
 
-const Identity = {
+export const Identity = {
   // Deterministic sample_seq assignment: within each (sample_id, sample_date) group,
   // sort by stable fields then assign seq 1, 2, 3...
   // Mutates rows in-place and returns them.

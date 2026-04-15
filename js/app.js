@@ -1,6 +1,18 @@
 // ── Main Application Logic ──
+import { CONFIG } from './config.js';
+import { Auth } from './auth.js';
+import { DataStore } from './dataLoader.js';
+import { Filters } from './filters.js';
+import { Charts } from './charts.js';
+import { KPIs } from './kpis.js';
+import { Tables } from './tables.js';
+import { WeatherStore } from './weather.js';
+import { MapStore } from './maps.js';
+import { Events } from './events.js';
+import { Explorer } from './explorer.js';
+import { Mediciones } from './mediciones.js';
 
-const App = {
+export const App = {
   currentView: 'berry',
   initialized: false,
   theme: 'dark',

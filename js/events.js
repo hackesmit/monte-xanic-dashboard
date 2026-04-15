@@ -1,6 +1,16 @@
 // ── Event Binding (CSP-safe — no inline handlers) ──
+import { Auth } from './auth.js';
+import { App } from './app.js';
+import { Filters } from './filters.js';
+import { Charts } from './charts.js';
+import { Explorer } from './explorer.js';
+import { MapStore } from './maps.js';
+import { WeatherStore } from './weather.js';
+import { UploadManager } from './upload.js';
+import { Mediciones } from './mediciones.js';
+import { Tables } from './tables.js';
 
-const Events = {
+export const Events = {
   bindAll() {
     this._bindNavigation();
     this._bindAuth();

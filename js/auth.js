@@ -1,6 +1,8 @@
 // ── Authentication Module ──
+import { DataStore } from './dataLoader.js';
+import { App } from './app.js';
 
-const Auth = {
+export const Auth = {
   _tokenKey: 'xanic_session_token',
   _roleKey: 'xanic_user_role',
   role: 'viewer',

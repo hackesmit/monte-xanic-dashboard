@@ -1,43 +1,9 @@
 // MT.6 — Deterministic canonical seq + extractLotCode
 // Tests Identity.canonicalSeqAssign and Identity.extractLotCode
-// Logic extracted from js/identity.js (runs in browser context as global).
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-
-// ── Extract Identity module logic for Node.js testing ──
-
-const Identity = {
-  canonicalSeqAssign(rows) {
-    const groups = {};
-    rows.forEach(r => {
-      const key = `${r.sample_id}|${r.sample_date || ''}`;
-      (groups[key] = groups[key] || []).push(r);
-    });
-    for (const group of Object.values(groups)) {
-      group.sort((a, b) => {
-        return (a.sample_type || '').localeCompare(b.sample_type || '')
-            || (a.vessel_id || '').localeCompare(b.vessel_id || '')
-            || (a.brix ?? -Infinity) - (b.brix ?? -Infinity)
-            || (a.ph ?? -Infinity) - (b.ph ?? -Infinity)
-            || (a.ta ?? -Infinity) - (b.ta ?? -Infinity)
-            || (a.berry_weight ?? -Infinity) - (b.berry_weight ?? -Infinity)
-            || (a.tant ?? -Infinity) - (b.tant ?? -Infinity)
-            || JSON.stringify(a).localeCompare(JSON.stringify(b));
-      });
-      group.forEach((r, i) => { r.sample_seq = i + 1; });
-    }
-    return rows;
-  },
-
-  extractLotCode(sampleId) {
-    if (!sampleId) return '';
-    let code = String(sampleId);
-    code = code.replace(/^\d{2}/, '');
-    code = code.replace(/_(BERRIES|RECEPCION)$/i, '');
-    return code;
-  }
-};
+import { Identity } from '../js/identity.js';
 
 // ── Tests ──
 

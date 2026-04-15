@@ -1,8 +1,13 @@
 // ── Upload Manager: File → Supabase pipeline ──
 // Auto-detects file type: .csv = WineXRay, .xlsx = Recepción de Tanque
 // All user-facing messages are in Spanish.
+import { CONFIG } from './config.js';
+import { Identity } from './identity.js';
+import { DataStore } from './dataLoader.js';
+import { Auth } from './auth.js';
+import { App } from './app.js';
 
-const UploadManager = {
+export const UploadManager = {
   _uploading: false,
 
   _belowDetectionRe: /^<\s*\d+(\.\d+)?$/,

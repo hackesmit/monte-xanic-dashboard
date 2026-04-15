@@ -1,7 +1,12 @@
 // ── Chart Explorer Module ──
 // Allows users to create up to 4 custom charts with configurable axes, chart type, and grouping.
+import { CONFIG } from './config.js';
+import { DataStore } from './dataLoader.js';
+import { Filters } from './filters.js';
+import { Charts } from './charts.js';
+import { WeatherStore } from './weather.js';
 
-const Explorer = {
+export const Explorer = {
   slots: [],
   maxSlots: 4,
   _nextId: 0,
@@ -208,7 +213,7 @@ const Explorer = {
         out.maturityIndex = null;
       }
       // GDD
-      if (typeof WeatherStore !== 'undefined' && d.sampleDate) {
+      if (WeatherStore && d.sampleDate) {
         out.gdd = WeatherStore.getCumulativeGDD ? WeatherStore.getCumulativeGDD(d.sampleDate, d.appellation) : null;
       } else {
         out.gdd = null;

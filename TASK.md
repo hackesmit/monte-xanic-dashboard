@@ -21,7 +21,7 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 
 | # | Feature | Scope | Status |
 |---|---------|-------|--------|
-| F0 | Vite migration | Replace CDN scripts with npm packages, ES modules, Vite dev/build | **Pending** |
+| F0 | Vite migration | Replace CDN scripts with npm packages, ES modules, Vite dev/build | **In Progress** — branch `feat/vite-migration`, needs browser smoke test |
 | F1 | Explorer line connections | Per-slot "Conectar Lineas" toggle on scatter charts | **Done** (`5f933e2`) |
 | F2 | Explorer per-chart export | PNG/PDF export button per explorer chart slot, with legend | **Done** (`7f500b9`) |
 | F3 | Page-wide export | "Exportar Vista" on all dashboard views — PNG vertical stack / multi-page PDF with legend | **Done** (`d067072`, `f506fe9`) |
