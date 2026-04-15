@@ -1672,6 +1672,77 @@ canvas { max-width: 100%; }
 }
 .explorer-legend .legend-item:hover { color: var(--text); }
 .explorer-legend .legend-item.dimmed { opacity: 0.3; }
+.explorer-lot-picker {
+  padding: 10px 16px;
+  background: var(--card2);
+  border-bottom: 1px solid var(--border);
+}
+.lot-picker-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.lot-picker-search {
+  flex: 1;
+  min-width: 140px;
+  padding: 5px 8px;
+  font-size: 11px;
+  font-family: 'Sackers Gothic Medium';
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  outline: none;
+}
+.lot-picker-search:focus {
+  border-color: var(--gold-dim);
+}
+.lot-picker-count {
+  font-size: 10px;
+  color: var(--gold-lt);
+  font-family: 'Sackers Gothic Medium';
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+.lot-picker-btn {
+  padding: 3px 10px;
+  font-size: 9px;
+  font-family: 'Sackers Gothic Medium';
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.lot-picker-btn:hover {
+  border-color: var(--gold-dim);
+  color: var(--text);
+}
+.lot-picker-list {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+.lot-picker-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 2px 0;
+  white-space: nowrap;
+}
+.lot-picker-item:hover { color: var(--text); }
+.lot-picker-item input[type="checkbox"] {
+  accent-color: var(--gold);
+  cursor: pointer;
+}
 .explorer-config-panel {
   padding: 14px 16px;
   background: var(--card2);

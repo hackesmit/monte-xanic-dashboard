@@ -16,7 +16,7 @@ const Explorer = {
   addChart() {
     if (this.slots.length >= this.maxSlots) return;
     const id = this._nextId++;
-    const slot = { id, source: 'berry', xField: 'daysPostCrush', yField: 'brix', chartType: 'scatter', groupBy: 'variety', showLines: false, expanded: false };
+    const slot = { id, source: 'berry', xField: 'daysPostCrush', yField: 'brix', chartType: 'scatter', groupBy: 'variety', showLines: false, expanded: false, selectedLots: [] };
     this.slots.push(slot);
     this._injectSlotDOM(slot);
     this.renderSlot(slot.id);
@@ -105,6 +105,19 @@ const Explorer = {
     if (xEl) xEl.disabled = (slot.chartType === 'bar');
   },
 
+  onGroupByChange(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    const groupEl = document.getElementById('explorer-group-' + id);
+    if (groupEl) slot.groupBy = groupEl.value;
+    const isLot = slot.groupBy === 'lotCode' || slot.groupBy === 'codigoBodega';
+    const picker = document.getElementById('explorer-lot-picker-' + id);
+    if (picker) picker.style.display = isLot ? '' : 'none';
+    if (isLot && !slot.selectedLots.length) {
+      this._populateLotPicker(slot);
+    }
+  },
+
   renderSlot(id) {
     const slot = this._slotById(id);
     if (!slot) return;
@@ -122,7 +135,19 @@ const Explorer = {
 
     const canvasId = 'explorerChart_' + id;
     const data = this._getData(slot);
-    const enriched = this._computeDerived(data, slot.source);
+    let enriched = this._computeDerived(data, slot.source);
+
+    // Filter by selected lots when grouping by lot
+    const isLot = slot.groupBy === 'lotCode' || slot.groupBy === 'codigoBodega';
+    if (isLot && slot.selectedLots.length) {
+      const selected = new Set(slot.selectedLots);
+      enriched = enriched.filter(d => selected.has(d[slot.groupBy]));
+    }
+
+    // Show/hide lot picker and populate if needed
+    const picker = document.getElementById('explorer-lot-picker-' + id);
+    if (picker) picker.style.display = isLot ? '' : 'none';
+    if (isLot) this._populateLotPicker(slot);
     const metrics = CONFIG.explorerMetrics[slot.source] || {};
     const xMeta = metrics[slot.xField] || { label: slot.xField, unit: '' };
     const yMeta = metrics[slot.yField] || { label: slot.yField, unit: '' };
@@ -212,6 +237,9 @@ const Explorer = {
     if (groupField === 'variety' || groupField === 'variedad') {
       return (name) => CONFIG.varietyColors[name] || CONFIG._hashColor(name);
     }
+    if (groupField === 'lotCode' || groupField === 'codigoBodega') {
+      return (name) => CONFIG._hashColor(String(name));
+    }
     // Vintage
     return (name) => {
       const vintageColors = { 2022: '#E06070', 2023: '#9B59B6', 2024: '#60A8C0', 2025: '#C4A060', 2026: '#7EC87A' };
@@ -231,6 +259,68 @@ const Explorer = {
     } else {
       el.textContent = `${yMeta.label} vs ${xMeta.label} \u2014 ${typeLabel}`;
     }
+  },
+
+  _populateLotPicker(slot) {
+    const data = this._getData(slot);
+    const field = slot.groupBy === 'codigoBodega' ? 'codigoBodega' : 'lotCode';
+    const lots = [...new Set(data.map(d => d[field]).filter(Boolean))].sort();
+    const listEl = document.getElementById('lot-list-' + slot.id);
+    if (!listEl) return;
+    listEl.innerHTML = lots.map(lot => {
+      const checked = slot.selectedLots.includes(lot) ? ' checked' : '';
+      return `<label class="lot-picker-item" data-lot="${lot}"><input type="checkbox" class="lot-checkbox" data-slot="${slot.id}" data-lot="${lot}"${checked}><span>${lot}</span></label>`;
+    }).join('');
+    this._updateLotCount(slot);
+  },
+
+  _filterLotPicker(id, query) {
+    const listEl = document.getElementById('lot-list-' + id);
+    if (!listEl) return;
+    const q = query.toLowerCase();
+    listEl.querySelectorAll('.lot-picker-item').forEach(item => {
+      item.style.display = item.dataset.lot.toLowerCase().includes(q) ? '' : 'none';
+    });
+  },
+
+  _toggleLotItem(id, lotCode, checked) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    if (checked && !slot.selectedLots.includes(lotCode)) {
+      slot.selectedLots.push(lotCode);
+    } else if (!checked) {
+      slot.selectedLots = slot.selectedLots.filter(l => l !== lotCode);
+    }
+    this._updateLotCount(slot);
+  },
+
+  _selectAllLots(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    const listEl = document.getElementById('lot-list-' + id);
+    if (!listEl) return;
+    slot.selectedLots = [];
+    listEl.querySelectorAll('.lot-picker-item').forEach(item => {
+      if (item.style.display !== 'none') {
+        slot.selectedLots.push(item.dataset.lot);
+        item.querySelector('input').checked = true;
+      }
+    });
+    this._updateLotCount(slot);
+  },
+
+  _clearAllLots(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    slot.selectedLots = [];
+    const listEl = document.getElementById('lot-list-' + id);
+    if (listEl) listEl.querySelectorAll('input').forEach(cb => { cb.checked = false; });
+    this._updateLotCount(slot);
+  },
+
+  _updateLotCount(slot) {
+    const el = document.getElementById('lot-count-' + slot.id);
+    if (el) el.textContent = `${slot.selectedLots.length} seleccionados`;
   },
 
   _renderSlotLegend(slot, canvasId) {
@@ -292,11 +382,20 @@ const Explorer = {
             </select>
           </label>
           <label class="explorer-config-label">Agrupar por
-            <select id="explorer-group-${sid}" class="explorer-select">
+            <select id="explorer-group-${sid}" class="explorer-select explorer-group-select" data-slot="${sid}">
               ${groups.map(g => `<option value="${g.value}" ${g.value === slot.groupBy ? 'selected' : ''}>${g.label}</option>`).join('')}
             </select>
           </label>
           <button class="explorer-render-btn" data-slot="${sid}">Actualizar</button>
+        </div>
+        <div class="explorer-lot-picker" id="explorer-lot-picker-${sid}" style="display:none" data-slot="${sid}">
+          <div class="lot-picker-header">
+            <input type="text" class="lot-picker-search" id="lot-search-${sid}" placeholder="Buscar lote..." data-slot="${sid}">
+            <span class="lot-picker-count" id="lot-count-${sid}">0 seleccionados</span>
+            <button class="lot-picker-btn lot-picker-all" data-slot="${sid}">Todo</button>
+            <button class="lot-picker-btn lot-picker-none" data-slot="${sid}">Limpiar</button>
+          </div>
+          <div class="lot-picker-list" id="lot-list-${sid}"></div>
         </div>
       </div>
       <div class="explorer-canvas-wrap" style="height:280px">
