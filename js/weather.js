@@ -2,8 +2,10 @@
 // Valley-specific weather for 3 locations:
 //   VDG (Valle de Guadalupe), VON (Valle de Ojos Negros), SV (San Vicente)
 // Harvest season: July 1 – October 31
+import { CONFIG } from './config.js';
+import { DataStore } from './dataLoader.js';
 
-const WeatherStore = {
+export const WeatherStore = {
   data:    [],   // Flat array of all rows { date, location, temp_max, ... }
   _byDate: {},   // YYYY-MM-DD → { VDG: row, VON: row, SV: row }
   _gddCache: {},

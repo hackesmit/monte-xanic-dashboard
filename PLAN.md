@@ -16,7 +16,21 @@ Phase 9 is organized into 5 stages. **Stage 0 (Vite migration) must be completed
 
 **Goal:** Replace CDN `<script>` tags with npm packages, convert all frontend files to ES modules, add Vite as the dev server and build tool. Zero functional changes — the dashboard must behave identically before and after.
 
-### Current State
+**Status:** In Progress — branch `feat/vite-migration`
+
+### What's Done (2026-04-15)
+
+- Steps 0.1–0.7 complete: npm deps installed, vite.config.js created, all 15 JS files converted to ES modules, index.html updated (CDN tags removed, single `<script type="module">`), tests updated (MT.6 imports from source), vercel.json updated (buildCommand/outputDirectory/CSP tightened), CLAUDE.md updated, `"type": "module"` added to package.json
+- `public/` directory created with `manifest.json` + PWA icons (icon-192, icon-512) for proper build output
+- 72/72 tests pass, `vite build` succeeds (265 modules, exit 0)
+- jsPDF v4.2.1, Chart.js v4.5.1, XLSX v0.18.5, Supabase JS v2.103.2 all API-compatible (verified in Node.js)
+
+### What Remains
+
+- **Browser smoke test required.** Dashboard loads but was stuck on "Cargando datos" during local testing. Root cause was missing `import { CONFIG }` in app.js (fixed), but fix hasn't been browser-verified yet. Could also be a circular dep initialization order issue (auth↔app, filters↔app, charts↔app, tables↔app, upload↔app). All circular refs are inside methods (not module-level), so they should resolve, but needs browser confirmation.
+- After browser test passes: commit, merge to main, push, verify Vercel preview deploy.
+
+### Prior State (before migration)
 
 - 4 CDN scripts: Chart.js 4.4.1, SheetJS 0.18.5, Supabase JS v2, jsPDF 2.5.1
 - 15 app `<script>` tags loaded in dependency order (globals)

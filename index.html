@@ -10,15 +10,11 @@
 <title>Vendimias — Monte Xanic</title>
 <script>/* Restore theme before first paint to prevent flash */
 (function(){var t=localStorage.getItem('xanic_theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark')})()</script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
-<script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <link rel="stylesheet" href="css/styles.css">
 <link rel="icon" href="assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="/manifest.json">
 </head>
 <body>
 
@@ -931,22 +927,8 @@
   </div>
 </div>
 
-<!-- Scripts -->
-<script src="js/auth.js"></script>
-<script src="js/config.js"></script>
-<script src="js/identity.js"></script>
-<script src="js/dataLoader.js"></script>
-<script src="js/upload.js"></script>
-<script src="js/weather.js"></script>
-<script src="js/filters.js"></script>
-<script src="js/kpis.js"></script>
-<script src="js/charts.js"></script>
-<script src="js/explorer.js"></script>
-<script src="js/tables.js"></script>
-<script src="js/maps.js"></script>
-<script src="js/mediciones.js"></script>
-<script src="js/events.js"></script>
-<script src="js/app.js"></script>
+<!-- App entry point (ES module) -->
+<script type="module" src="/js/app.js"></script>
 
 </body>
 </html>

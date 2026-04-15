@@ -1,7 +1,14 @@
 // ── Chart Rendering ──
+import Chart from 'chart.js/auto';
+import { jsPDF } from 'jspdf';
+import { CONFIG } from './config.js';
+import { DataStore } from './dataLoader.js';
+import { Filters } from './filters.js';
+import { WeatherStore } from './weather.js';
+import { App } from './app.js';
 
 // Shared jitter helper: offsets x by sample_seq + deterministic lot hash
-function _applyDaysJitter(x, d) {
+export function _applyDaysJitter(x, d) {
   if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
   const lot = d.lotCode || d.sampleId;
   if (lot) {
@@ -12,7 +19,7 @@ function _applyDaysJitter(x, d) {
   return x;
 }
 
-const Charts = {
+export const Charts = {
   instances: {},
   showLines: false,
   hiddenSeries: new Set(),
@@ -1002,7 +1009,7 @@ const Charts = {
 
   // Multi-valley temperature comparison: one line per valley for a single vintage
   createValleyTempChart(canvasId, vintage) {
-    if (typeof WeatherStore === 'undefined') return;
+    if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1079,7 +1086,7 @@ const Charts = {
 
   // Temperature time series: daily mean °C, all vintages overlaid
   createWeatherTimeSeries(canvasId, vintages, location) {
-    if (typeof WeatherStore === 'undefined') return;
+    if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1151,7 +1158,7 @@ const Charts = {
 
   // Rainfall scatter: each rainy day as a dot (x = day-of-season, y = mm)
   createRainfallChart(canvasId, vintages, location) {
-    if (typeof WeatherStore === 'undefined') return;
+    if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1221,7 +1228,7 @@ const Charts = {
 
   // GDD cumulative chart: accumulated growing degree days from Jul 1, per vintage
   createGDDChart(canvasId, vintages, location) {
-    if (typeof WeatherStore === 'undefined') return;
+    if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1324,7 +1331,7 @@ const Charts = {
       if (!d.crushDate || !d.variety) return;
       const v = Number(d.vintage);
       if (v !== Number(vintage)) return;
-      const day = typeof WeatherStore !== 'undefined' ? WeatherStore.dayOfSeason(d.crushDate) : null;
+      const day = WeatherStore ? WeatherStore.dayOfSeason(d.crushDate) : null;
       if (!day || day < 1 || day > 150) return;
       events.push({ variety: d.variety, day, brix: d.brix, tANT: d.tANT, lotCode: d.lotCode, appellation: d.appellation });
     });
@@ -1369,7 +1376,7 @@ const Charts = {
     }];
 
     // Weather overlay on secondary axis
-    if (typeof WeatherStore !== 'undefined') {
+    if (WeatherStore) {
       const weatherRows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`, location);
       if (weatherRows.length) {
         // Temperature line
@@ -1502,7 +1509,7 @@ const Charts = {
 
   // Brix vs Temperature on sample date — scatter by variety/origin
   createTempCorrelation(canvasId, berryData) {
-    if (typeof WeatherStore === 'undefined') return;
+    if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1552,7 +1559,7 @@ const Charts = {
 
   // tANT vs Cumulative Rainfall since July 1 — scatter by variety/origin
   createRainCorrelation(canvasId, berryData) {
-    if (typeof WeatherStore === 'undefined') return;
+    if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -1809,11 +1816,6 @@ const Charts = {
   },
 
   exportChartPDF(canvasId, title) {
-    if (typeof window.jspdf === 'undefined') {
-      console.error('[Charts] jsPDF no disponible — librería aún no cargada');
-      this._showExportToast('✗ PDF no disponible — la librería jsPDF aún no se ha cargado. Intente de nuevo en unos segundos.');
-      return;
-    }
     const chart = this.instances[canvasId];
     const srcCanvas = document.getElementById(canvasId);
     if (!srcCanvas || !chart) {
@@ -1822,7 +1824,6 @@ const Charts = {
     }
 
     try {
-      const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();
@@ -1996,10 +1997,6 @@ const Charts = {
   },
 
   exportPagePDF(viewId, viewTitle) {
-    if (typeof window.jspdf === 'undefined') {
-      this._showExportToast('PDF no disponible \u2014 la libreria jsPDF aun no se ha cargado.');
-      return;
-    }
     const container = document.getElementById('view-' + viewId);
     if (!container) { this._showExportToast('Vista no encontrada'); return; }
 
@@ -2011,7 +2008,6 @@ const Charts = {
     if (!canvases.length) { this._showExportToast('No hay graficos visibles para exportar'); return; }
 
     try {
-      const { jsPDF } = window.jspdf;
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();

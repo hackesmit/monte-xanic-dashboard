@@ -1,6 +1,8 @@
 // ── Table Rendering ──
+import { CONFIG } from './config.js';
+import { App } from './app.js';
 
-const Tables = {
+export const Tables = {
   sortField: null,
   sortDir: 'desc',
 

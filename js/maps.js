@@ -1,6 +1,7 @@
 // ── Map Store: SVG vineyard heatmaps with metric color coding ──
+import { CONFIG } from './config.js';
 
-const MapStore = {
+export const MapStore = {
   currentRanch: 'MX',
   currentMetric: 'brix',
   currentVintage: null,

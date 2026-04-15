@@ -1,6 +1,6 @@
 // ── KPI Calculations ──
 
-const KPIs = {
+export const KPIs = {
   avg(arr) {
     const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
     return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;

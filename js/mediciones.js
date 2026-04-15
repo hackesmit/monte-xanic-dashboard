@@ -1,6 +1,10 @@
 // ── Mediciones Tecnicas — form, table, charts ──
+import Chart from 'chart.js/auto';
+import { CONFIG } from './config.js';
+import { DataStore } from './dataLoader.js';
+import { Charts } from './charts.js';
 
-const Mediciones = {
+export const Mediciones = {
   _sortField: 'date',
   _sortAsc: false,
 

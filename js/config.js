@@ -1,6 +1,6 @@
 // ── Configuration: Colors, Categories, Mappings ──
 
-const CONFIG = {
+export const CONFIG = {
   // Grape type classification
   grapeTypes: {
     red: ['Cabernet Sauvignon','Syrah','Cabernet Franc','Merlot','Tempranillo',

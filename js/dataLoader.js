@@ -1,6 +1,10 @@
 // ── Data Loader: SheetJS Excel parsing + Supabase queries + state management ──
+import { CONFIG } from './config.js';
+import { Identity } from './identity.js';
+import { createClient } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx';
 
-const DataStore = {
+export const DataStore = {
   berryData: [],
   wineRecepcion: [],
   winePreferment: [],
@@ -35,8 +39,8 @@ const DataStore = {
         anonKey = localStorage.getItem('xanic_dev_supabase_key');
       }
 
-      if (url && anonKey && window.supabase) {
-        this.supabase = window.supabase.createClient(url, anonKey);
+      if (url && anonKey) {
+        this.supabase = createClient(url, anonKey);
         this._supabaseReady = true;
         return true;
       }

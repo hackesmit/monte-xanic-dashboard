@@ -1,6 +1,9 @@
 // ── Filter System ──
+import { CONFIG } from './config.js';
+import { DataStore } from './dataLoader.js';
+import { App } from './app.js';
 
-const Filters = {
+export const Filters = {
   state: {
     vintages: new Set(),
     varieties: new Set(),
@@ -21,7 +24,7 @@ const Filters = {
 
   _debounceTimer: null,
   _debouncedRefresh() {
-    if (typeof App !== 'undefined' && App._isMobile && App._isMobile()) {
+    if (App._isMobile && App._isMobile()) {
       clearTimeout(this._debounceTimer);
       this._debounceTimer = setTimeout(() => App.refresh(), 200);
     } else {
