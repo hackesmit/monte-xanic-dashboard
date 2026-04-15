@@ -1561,6 +1561,12 @@ canvas { max-width: 100%; }
   margin-bottom: 12px;
   transition: background 0.3s;
 }
+.explorer-canvas-wrap {
+  transition: height 0.3s ease;
+}
+.explorer-slot-expanded .explorer-canvas-wrap {
+  height: 500px !important;
+}
 .explorer-slot-header {
   display: flex;
   align-items: center;
