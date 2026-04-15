@@ -221,7 +221,8 @@ const Events = {
       const sid = parseInt(slot.dataset.slot);
       if (isNaN(sid)) return;
 
-      if (e.target.closest('.explorer-toggle-btn')) Explorer.toggleConfig(sid);
+      if (e.target.closest('.explorer-line-toggle')) Explorer.toggleLines(sid);
+      else if (e.target.closest('.explorer-toggle-btn')) Explorer.toggleConfig(sid);
       else if (e.target.closest('.explorer-remove-btn')) Explorer.removeChart(sid);
       else if (e.target.closest('.explorer-render-btn')) Explorer.renderSlot(sid);
     });
