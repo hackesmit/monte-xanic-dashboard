@@ -6,57 +6,170 @@
 
 ---
 
-## Round 11 — Main branch, post-Phase 8 (2026-04-14)
+## Phase 9 Stage 1 — Explorer Enhancements Shipped (2026-04-15)
 
-**Scope:** No tracked file modifications. 5 untracked items in working tree.
-**Context:** Phase 8 (deterministic berry upload identity) shipped in commits `7cfaed0`–`d886688`. This review covers workspace hygiene only — no code diff to review.
+**Scope:** 14 commits on `main` (`5f933e2`..`f506fe9`). 5 source files + 1 HTML + 1 CSS modified.
+
+### Features Delivered
+
+| Feature | Description |
+|---------|-------------|
+| F1 | Per-slot "Conectar Lineas" toggle — updates chart in-place preserving hidden series |
+| F2 | Per-chart ⤓ export with PNG/PDF menu + legend |
+| F3 | "Exportar Vista" on 6 dashboard views — PNG vertical stack / multi-page PDF, legend per chart, aspect-ratio preserved |
+| F4 | Expand/compact toggle (280px ↔ 500px), clickable legend bar below each chart |
+| F4b | Searchable lot picker (type-to-filter, checkboxes, Todo/Limpiar) |
+
+### Bug Fixes During Implementation
+
+| Commit | Fix |
+|--------|-----|
+| `d36b3b2` | Localhost auth bypass when `/api/verify` unreachable (hostname check) |
+| `63b37b0` | Line toggle preserves hidden dataset state (in-place update vs re-render) |
+| `3c91e89` | Legend export: use `background-color` + PDF aspect ratio preservation |
+| `77faed6` | Read legend from Chart.js instance instead of fragile DOM scraping |
+| `f506fe9` | Add legend + aspect ratio to page export paths (`exportPage`/`exportPagePDF`) |
+
+### Tests
+
+72/72 passing throughout. No regressions. No new test files (UI-only changes).
 
 ---
 
-### Priority 1 — Issues
+## Round 13 — Design Spec Review: Explorer Enhancements (2026-04-15)
 
-**P1.1 — `.playwright-mcp/` directory should be gitignored**
-`.playwright-mcp/` contains ephemeral Playwright MCP test artifacts: console logs (`.log`), a page snapshot (`.yml`), and a 107 KB screenshot (`.png`). These are debug/session artifacts that should never be committed. The directory is not in `.gitignore`. If accidentally staged (e.g., `git add -A`), binary screenshots and log files would pollute the repository.
-**Action:** Add `.playwright-mcp/` to `.gitignore`.
-
-**P1.2 — `codex-review-consolidated-handoff.md` contains security-sensitive analysis**
-This 348-line file documents the upload endpoint's trust model, service-key write path behavior, RLS baseline concerns, rate-limiting weaknesses, and token revocation gaps (lines 177–220). If committed to a public repository, it would serve as a roadmap for attackers. The repo is deployed on Vercel and the `.gitignore` does not exclude this file.
-**Action:** Either delete after implementing its recommendations, or add to `.gitignore`. Do not commit.
-
-**P1.3 — `DIAGNOSIS.md` may be stale after Phase 8**
-`DIAGNOSIS.md` describes the berry `sample_id = '25'` collapse problem and proposes fix options. Phase 8 (commit `7cfaed0`) and follow-up fixes (`d8d1486`, `51c1589`, `021d195`, `adcb89e`) have already addressed this. Leaving a stale diagnosis document risks confusing future contributors into re-implementing a fix or doubting the current solution.
-**Action:** Verify all diagnosis items are resolved, then delete or archive. Do not commit as-is.
+**Document:** `docs/superpowers/specs/2026-04-15-explorer-enhancements-design.md`
+**Scope:** F1 (line connections), F2 (per-chart export), F3 (page export), F4 (chart resize + legend)
+**Review type:** Pre-implementation design review — verified all assumptions against current codebase.
 
 ---
 
-### Priority 2 — Improvements
+### Priority 1 — Issues (must fix before building)
 
-**P2.1 — Logo PNG in repo root with messy filename**
-`Logotipo_corporativo_MX_amarillo-01 (1).png` (64 KB) sits in the project root with a duplicate-download filename pattern (`(1)`). If this asset is used by the dashboard, it should be in a proper directory (e.g., `public/` or `assets/`). If unused, it should be removed. Either way, committing it at root level clutters the project.
-**Action:** Move to appropriate directory if needed, or delete. Rename to remove `(1)`.
+**P1.1 — F2: Export menu positioning will break in explorer slots**
+`Charts.showExportMenu()` (`charts.js:1647`) positions the dropdown via `btn.closest('.chart-card')`. Explorer slots use `.explorer-slot`, not `.chart-card`. The fallback branch (`charts.js:1654`) does `btn.appendChild(menu)`, which appends the popup *inside the button element* — broken layout.
+**Fix:** Either (a) update `showExportMenu` to also check `.closest('.explorer-slot')`, or (b) add `position: relative` to `.explorer-slot` and adjust the selector. This must be addressed in the design before implementation.
 
-**P2.2 — `ultraplan-prompt.txt` is a working prompt, not source code**
-This 27-line file is a Claude/Codex prompt template referencing the berry identity fix. It has no runtime value and should not be committed.
-**Action:** Delete or add to `.gitignore`.
+**P1.2 — F3: `#view-weather` does not exist**
+The design's page export table (line 71) lists `Meteorologia | #view-weather`. This container ID does not exist in `index.html`. Weather charts (lines 600–650) live *inside* `#view-berry`, not in a separate view panel. The nav tabs do not include a standalone weather view.
+**Fix:** Either (a) remove "Meteorologia" from the page export table and include weather charts in the berry page export, or (b) note that weather charts should be captured as part of the `#view-berry` export. The design's 6-view table needs to become 5 views, with berry export covering weather charts too.
 
-**P2.3 — `.gitignore` does not cover common working document patterns**
-Round 10 flagged `RESUMEN*.txt` and `PROJECT_SUMMARY.md` (now in `.gitignore`). The current round surfaces similar working documents (`DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt`). A broader pattern would prevent future occurrences.
-**Action:** Consider adding patterns like `DIAGNOSIS*.md`, `*-handoff.md`, `*-prompt.txt` to `.gitignore`, or a catch-all for agent working documents.
+**P1.3 — F1: Line toggle conflicts with existing `chartType === 'line'` path**
+`explorer.js:102` currently passes `{ showLine: slot.chartType === 'line' }`. The design says to pass `{ showLine: slot.showLines }` from the new toggle. But what happens when `chartType` is `'line'`? The existing line chart type should *always* show lines regardless of the toggle. The design doesn't address this interaction.
+**Fix:** The opts should be `{ showLine: slot.showLines || slot.chartType === 'line' }`. The toggle button should be hidden or disabled when `chartType === 'line'` (already showing lines) or `chartType === 'bar'` (lines don't apply). The design says bar charts ignore the toggle but doesn't mention the line chart type case.
+
+**P1.4 — F4: Explorer legend clicks cannot use `Charts.toggleSeries()`**
+The design says legend items toggle dataset visibility "consistent with berry page legend behavior." But `Charts.toggleSeries()` (`charts.js:933`) is global — it adds to `Charts.hiddenSeries` and calls `App.refresh()`, which rebuilds *all* charts. In the explorer context, toggling "Cabernet Sauvignon" in slot 1 would also hide it in slot 2, the berry charts, and everywhere else. Explorer legends need per-chart toggling using `chart.getDatasetMeta(index).hidden` directly.
+**Fix:** Specify that explorer legend clicks use `Chart.js`'s native per-instance `getDatasetMeta(idx).hidden = !hidden` + `chart.update()`, NOT `Charts.toggleSeries()`. The event delegation in `events.js` needs to route `.explorer-legend .legend-item` clicks to a new per-chart toggle path, not the global one.
+
+---
+
+### Priority 2 — Improvements (non-blocking, address during implementation)
+
+**P2.1 — F3: View header structure is inconsistent across views**
+The design says "each dashboard view header gets an Exportar Vista button" but doesn't specify where in each view's DOM structure to place it. Current headers vary:
+- Berry/Wine: `mobile-filter-summary` + `section-label`
+- Explorer: `section-label` only
+- Map: `map-header` (flex row with tabs + select)
+- Mediciones: `section-label` only
+**Suggestion:** Define a consistent anchor point. Recommend appending the button to the first `.section-label` or creating a uniform `.view-header` wrapper if one doesn't exist.
+
+**P2.2 — F1: Mobile icon for "Conectar Lineas" unspecified**
+The design says buttons "use icon-only mode" on mobile <=768px with "just a line icon" but doesn't specify which character or SVG. Needs a concrete icon choice (e.g., `⟋` U+27CB, or a simple SVG path).
+**Suggestion:** Use `〰` (U+3030 wavy dash) or a small inline SVG line icon. Specify in the design to avoid guesswork during implementation.
+
+**P2.3 — F3: Map SVG export needs more specificity**
+The design correctly identifies SVG-to-canvas conversion as risky and proposes KPI-only fallback. But it doesn't specify: (a) which SVG element to serialize (`#map-svg-container` contains the SVG), (b) how to handle the color scale legend (`#map-color-scale`), (c) whether the section detail panel (`#section-detail-panel`) is included.
+**Suggestion:** Clarify the exact elements to capture for map export, and whether the fallback (KPI-only) should be the initial implementation with SVG as a follow-up.
+
+**P2.4 — F4: Expanded height may need to be configurable per chart type**
+Design specifies 500px for expanded mode. Bar charts with many groups may need more height, while scatter plots with few points may not benefit. Consider making this a CSS variable or slot-specific.
+**Suggestion:** Use a CSS custom property (`--explorer-expanded-h: 500px`) so it's easy to tune later.
 
 ---
 
 ### Missing Tests
 
-No new code was committed since the last test run (72 tests passing per Phase 8 completion). No new test gaps introduced by this round.
+The design's constraints section correctly states "existing 72/72 tests must not break." Additionally:
+
+- **F1 (line toggle):** No unit tests needed — purely visual toggle of a Chart.js rendering option.
+- **F2 (per-chart export):** Export functions already exist untested. Adding test for `showExportMenu` positioning logic would be valuable but may require DOM mocking.
+- **F3 (page export):** `exportPage` is a new method in `charts.js`. Consider testing the canvas-collection logic (querying correct selectors per view) even if actual image generation can't be tested in Node.
+- **F4 (legend population):** The legend HTML generation from chart datasets could be unit-tested. Consider a test that verifies legend items match dataset labels/colors.
 
 ---
 
 ### Notes
 
-- The working tree is clean against HEAD — all tracked files match the last commit (`d886688`).
-- The 5 untracked items are all workspace artifacts, not source code changes.
-- Previous P1 items from Round 10 (P1.1 harvest calendar weather overlay, P1.2 clearAll weatherLocation reset, P1.3 logout token verification) remain as noted — verify whether they were addressed in Phase 8 commits.
-- The `codex-review-consolidated-handoff.md` is the most concerning untracked file due to its security content. Prioritize its removal or exclusion before any `git add -A` operation.
+- **Design quality is high overall.** File boundaries are respected, implementation paths are specific, and the "no new files" constraint is correct.
+- **`createExplorerChart` API is already compatible** with F1 — confirmed `opts.showLine` is accepted and wired through at `charts.js:1812,1827-1828`.
+- **`responsive: true` + `maintainAspectRatio: false`** confirmed set on explorer charts (`charts.js:1838-1839`), validating F4's resize approach.
+- **Chart export delegation** at `events.js:155-166` uses `document.addEventListener('click')` so it *will* capture dynamically injected `.chart-export-btn` buttons — the design's assumption on F2 event delegation is correct.
+- **The brainstorm artifact** at `.superpowers/brainstorm/28701-1776274359/content/explorer-slot-layout.html` suggests an earlier layout exploration was done. Good process.
+- **Recommended build order:** F1 (simplest, self-contained) → F4 resize (CSS only) → F4 legend → F2 (depends on export menu fix) → F3 (most complex, depends on F2 patterns).
+
+---
+
+## Round 12 — 2 unpushed commits + workspace hygiene (2026-04-15)
+
+**Scope:** 2 unpushed commits on `main` (`e4da5c1`, `27b7f94`) — 2 files changed, +22/−3 lines. Plus 5 untracked items in working tree.
+**Commits reviewed:**
+1. `e4da5c1` — `ci: add GitHub Actions workflow to run tests on PRs` (+19 lines, new `.github/workflows/ci.yml`)
+2. `27b7f94` — `fix: restore lotCode vintage-prefix stripping — extraction charts and map broken` (+3/−3 in `js/dataLoader.js`)
+
+---
+
+### Priority 1 — Issues
+
+**P1.1 — CI workflow missing `npm ci` step (`.github/workflows/ci.yml`)**
+The workflow runs `npm test` but never installs dependencies. The project declares `bcryptjs` and `@playwright/test` in `package.json`. On a fresh GitHub Actions runner, `node_modules/` won't exist. Currently the 72 tests use only Node built-in `node:test` and `node:assert`, so this works *by accident*. The moment any test imports a real dependency (e.g., `bcryptjs` for auth tests), CI will break silently.
+**Action:** Add `- run: npm ci` before `- run: npm test` in `ci.yml`.
+
+**P1.2 — `codex-review-consolidated-handoff.md` contains security-sensitive analysis (carried from R11)**
+348-line file documents the upload endpoint's trust model, service-key behavior, RLS concerns, rate-limiting weaknesses, and token revocation gaps. If committed to a public repo, this is an attacker roadmap. Not in `.gitignore`.
+**Action:** Delete or add to `.gitignore`. Do not commit.
+
+**P1.3 — `.playwright-mcp/` directory should be gitignored (carried from R11)**
+Contains ephemeral Playwright MCP artifacts: `.log`, `.yml`, and a 107 KB `.png` screenshot. Risk of accidental commit via `git add -A`.
+**Action:** Add `.playwright-mcp/` to `.gitignore`.
+
+---
+
+### Priority 2 — Improvements
+
+**P2.1 — CI workflow has no dependency caching**
+`ci.yml` uses `actions/setup-node@v4` but does not set `cache: 'npm'`. Once `npm ci` is added (per P1.1), every run will do a full install. Adding `cache: 'npm'` is a one-line fix that speeds up CI.
+**Action:** Add `cache: 'npm'` to the `setup-node` step.
+
+**P2.2 — `dataLoader.js` lotCode fix is correct but regression-prone**
+Commit `27b7f94` correctly restores `Identity.extractLotCode(obj.sampleId)` at three call sites (`dataLoader.js:63`, `:238`, `:504`), fixing the regression where raw `sampleId` (with vintage prefix) broke downstream chart/map grouping. The change is minimal and correct. However, this is the second time this regression has occurred — a brief inline comment explaining *why* `lotCode` must differ from `sampleId` would prevent repeat.
+**Action:** Optional — add a one-line comment at `dataLoader.js:63`.
+
+**P2.3 — Stale workspace files (carried from R11)**
+- `DIAGNOSIS.md` (90 lines) — describes the berry `sample_id = '25'` collapse, already fixed in Phase 8. Stale.
+- `ultraplan-prompt.txt` (27 lines) — agent prompt template, no runtime value.
+- `Logotipo_corporativo_MX_amarillo-01 (1).png` (64 KB) — duplicate-download filename in project root.
+**Action:** Delete stale files or add to `.gitignore`. Move logo to `assets/` if used, else delete.
+
+**P2.4 — Branch is ahead of `origin/main` by 2 commits**
+Per CLAUDE.md: "Always push changes to remote after fixing bugs or completing features." Both commits appear ready.
+**Action:** Run `git push`.
+
+---
+
+### Missing Tests
+
+- **CI workflow not locally testable.** No way to validate `ci.yml` locally — inherent to GitHub Actions. Consider a dry-run push to a feature branch to verify the workflow triggers and passes.
+- **No new test gaps from `27b7f94`.** `Identity.extractLotCode` already has 7 test cases in `tests/mt6-canonical-seq.test.mjs:159-178` covering prefix stripping, suffix stripping, null/empty, and edge cases. The `dataLoader.js` change re-wires call sites to use the tested function — no new logic introduced.
+
+---
+
+### Notes
+
+- **All 72 tests pass** (verified `npm test` during this review).
+- Round 11 review (prior agent session) covered workspace hygiene only. This Round 12 supersedes it by also covering the 2 unpushed code commits.
+- The `Identity.extractLotCode` regex (`/^\d{2}/`) strips exactly 2 leading digits. Correct for current vintage codes (24, 25) but would break on 3-digit or 1-digit prefixes. Acceptable for now — awareness item.
+- `ci.yml` does not include `workflow_dispatch` — no manual trigger available. Consider adding if ad-hoc CI runs are needed.
 
 ---
 
