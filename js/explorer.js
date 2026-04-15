@@ -16,7 +16,7 @@ const Explorer = {
   addChart() {
     if (this.slots.length >= this.maxSlots) return;
     const id = this._nextId++;
-    const slot = { id, source: 'berry', xField: 'daysPostCrush', yField: 'brix', chartType: 'scatter', groupBy: 'variety' };
+    const slot = { id, source: 'berry', xField: 'daysPostCrush', yField: 'brix', chartType: 'scatter', groupBy: 'variety', showLines: false, expanded: false };
     this.slots.push(slot);
     this._injectSlotDOM(slot);
     this.renderSlot(slot.id);
@@ -38,6 +38,15 @@ const Explorer = {
     const hidden = panel.style.display === 'none';
     panel.style.display = hidden ? '' : 'none';
     if (btn) btn.textContent = hidden ? '\u25B2 Configurar' : '\u25BC Configurar';
+  },
+
+  toggleLines(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    slot.showLines = !slot.showLines;
+    const btn = document.querySelector(`#explorer-slot-${id} .explorer-line-toggle`);
+    if (btn) btn.classList.toggle('active', slot.showLines);
+    this.renderSlot(id);
   },
 
   onSourceChange(id) {
@@ -99,7 +108,7 @@ const Explorer = {
     if (slot.chartType === 'bar') {
       Charts.createExplorerBar(canvasId, enriched, slot.yField, yMeta.label, slot.groupBy, colorResolver);
     } else {
-      const opts = { showLine: slot.chartType === 'line' };
+      const opts = { showLine: slot.chartType === 'line' || slot.showLines };
       Charts.createExplorerChart(canvasId, enriched, slot.xField, slot.yField, xLabel, yLabel, slot.groupBy, colorResolver, opts);
     }
 
@@ -206,7 +215,10 @@ const Explorer = {
       <div class="explorer-slot-header">
         <button class="explorer-toggle-btn" id="explorer-toggle-btn-${sid}" data-slot="${sid}">\u25BC Configurar</button>
         <span class="explorer-summary" id="explorer-summary-${sid}"></span>
-        <button class="explorer-remove-btn" data-slot="${sid}" title="Eliminar">\u00D7</button>
+        <div class="explorer-slot-actions">
+          <button class="chart-toggle explorer-line-toggle" data-slot="${sid}" title="Conectar puntos con lineas">Conectar Lineas</button>
+          <button class="explorer-remove-btn" data-slot="${sid}" title="Eliminar">\u00D7</button>
+        </div>
       </div>
       <div class="explorer-config-panel" id="explorer-config-panel-${sid}" style="display:none">
         <div class="explorer-config-row">

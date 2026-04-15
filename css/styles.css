@@ -1610,6 +1610,14 @@ canvas { max-width: 100%; }
   border-color: var(--flag-error);
   color: var(--flag-error);
 }
+.explorer-slot-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.explorer-line-toggle {
+  white-space: nowrap;
+}
 .explorer-config-panel {
   padding: 14px 16px;
   background: var(--card2);
