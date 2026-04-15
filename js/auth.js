@@ -37,8 +37,12 @@ const Auth = {
       }
     } catch (_) {
       // Verify endpoint unreachable (local dev without Vercel)
-      // Restore cached role if available
-      this.role = localStorage.getItem(this._roleKey) || 'viewer';
+      if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+        this.role = localStorage.getItem(this._roleKey) || 'admin';
+        this.hideLoginScreen();
+        this.applyRole();
+        return true;
+      }
     }
 
     // Token invalid or expired
