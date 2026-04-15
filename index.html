@@ -217,7 +217,10 @@
         <span class="summary-text" id="summary-text-berry"></span>
         <button class="summary-clear" data-clear="all">Limpiar</button>
       </div>
-      <div class="section-label">Indicadores Clave</div>
+      <div class="view-export-row">
+        <div class="section-label">Indicadores Clave</div>
+        <button class="page-export-btn" data-view="berry" data-view-title="Bayas" title="Exportar vista completa">Exportar Vista &#x2913;</button>
+      </div>
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-label">Brix Promedio</div><div class="kpi-value" id="kpi-avg-brix">—</div></div>
         <div class="kpi-card"><div class="kpi-label">pH Promedio</div><div class="kpi-value" id="kpi-avg-ph">—</div></div>
@@ -418,7 +421,10 @@
         <span class="summary-text" id="summary-text-wine"></span>
         <button class="summary-clear" data-clear="all-wine">Limpiar</button>
       </div>
-      <div class="section-label">Indicadores Clave — Recepción</div>
+      <div class="view-export-row">
+        <div class="section-label">Indicadores Clave — Recepción</div>
+        <button class="page-export-btn" data-view="wine" data-view-title="Vino" title="Exportar vista completa">Exportar Vista &#x2913;</button>
+      </div>
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="wine-kpi-tant">—</div></div>
         <div class="kpi-card"><div class="kpi-label">fANT Promedio</div><div class="kpi-value" id="wine-kpi-fant">—</div></div>
@@ -491,7 +497,10 @@
 
     <!-- ═══════ EXTRACTION VIEW ═══════ -->
     <div id="view-extraction" class="view-panel">
-      <div class="section-label">Comparación Baya → Vino · Extracción Fenólica</div>
+      <div class="view-export-row">
+        <div class="section-label">Comparación Baya → Vino · Extracción Fenólica</div>
+        <button class="page-export-btn" data-view="extraction" data-view-title="Extraccion" title="Exportar vista completa">Exportar Vista &#x2913;</button>
+      </div>
 
       <div class="charts-grid">
         <div class="chart-card chart-wide">
@@ -531,7 +540,10 @@
 
     <!-- ═══════ VINTAGE COMPARISON VIEW ═══════ -->
     <div id="view-vintage" class="view-panel">
-      <div class="section-label" id="vintage-section-label">Comparación entre Vendimias</div>
+      <div class="view-export-row">
+        <div class="section-label" id="vintage-section-label">Comparación entre Vendimias</div>
+        <button class="page-export-btn" data-view="vintage" data-view-title="Vendimias" title="Exportar vista completa">Exportar Vista &#x2913;</button>
+      </div>
 
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <div id="vintage-legend-dots" style="display:flex;gap:8px;flex-wrap:wrap"></div>
@@ -651,7 +663,10 @@
 
     <!-- ═══════ EXPLORER VIEW ═══════ -->
     <div id="view-explorer" class="view-panel">
-      <div class="section-label">Explorador de Gráficas</div>
+      <div class="view-export-row">
+        <div class="section-label">Explorador de Gráficas</div>
+        <button class="page-export-btn" data-view="explorer" data-view-title="Explorador" title="Exportar vista completa">Exportar Vista &#x2913;</button>
+      </div>
       <div id="explorer-charts"></div>
       <button class="explorer-add-btn">+ Agregar Gráfica</button>
     </div>
@@ -685,7 +700,10 @@
 
     <!-- ═══════ MEDICIONES VIEW ═══════ -->
     <div id="view-mediciones" class="view-panel">
-      <div class="section-label">Mediciones Tecnicas</div>
+      <div class="view-export-row">
+        <div class="section-label">Mediciones Tecnicas</div>
+        <button class="page-export-btn" data-view="mediciones" data-view-title="Mediciones" title="Exportar vista completa">Exportar Vista &#x2913;</button>
+      </div>
 
       <div class="kpi-row">
         <div class="kpi-card"><div class="kpi-label">Total Mediciones</div><div class="kpi-value" id="med-kpi-count">—</div></div>
