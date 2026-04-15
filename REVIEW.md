@@ -6,6 +6,60 @@
 
 ---
 
+## Round 11 — Main branch, post-Phase 8 (2026-04-14)
+
+**Scope:** No tracked file modifications. 5 untracked items in working tree.
+**Context:** Phase 8 (deterministic berry upload identity) shipped in commits `7cfaed0`–`d886688`. This review covers workspace hygiene only — no code diff to review.
+
+---
+
+### Priority 1 — Issues
+
+**P1.1 — `.playwright-mcp/` directory should be gitignored**
+`.playwright-mcp/` contains ephemeral Playwright MCP test artifacts: console logs (`.log`), a page snapshot (`.yml`), and a 107 KB screenshot (`.png`). These are debug/session artifacts that should never be committed. The directory is not in `.gitignore`. If accidentally staged (e.g., `git add -A`), binary screenshots and log files would pollute the repository.
+**Action:** Add `.playwright-mcp/` to `.gitignore`.
+
+**P1.2 — `codex-review-consolidated-handoff.md` contains security-sensitive analysis**
+This 348-line file documents the upload endpoint's trust model, service-key write path behavior, RLS baseline concerns, rate-limiting weaknesses, and token revocation gaps (lines 177–220). If committed to a public repository, it would serve as a roadmap for attackers. The repo is deployed on Vercel and the `.gitignore` does not exclude this file.
+**Action:** Either delete after implementing its recommendations, or add to `.gitignore`. Do not commit.
+
+**P1.3 — `DIAGNOSIS.md` may be stale after Phase 8**
+`DIAGNOSIS.md` describes the berry `sample_id = '25'` collapse problem and proposes fix options. Phase 8 (commit `7cfaed0`) and follow-up fixes (`d8d1486`, `51c1589`, `021d195`, `adcb89e`) have already addressed this. Leaving a stale diagnosis document risks confusing future contributors into re-implementing a fix or doubting the current solution.
+**Action:** Verify all diagnosis items are resolved, then delete or archive. Do not commit as-is.
+
+---
+
+### Priority 2 — Improvements
+
+**P2.1 — Logo PNG in repo root with messy filename**
+`Logotipo_corporativo_MX_amarillo-01 (1).png` (64 KB) sits in the project root with a duplicate-download filename pattern (`(1)`). If this asset is used by the dashboard, it should be in a proper directory (e.g., `public/` or `assets/`). If unused, it should be removed. Either way, committing it at root level clutters the project.
+**Action:** Move to appropriate directory if needed, or delete. Rename to remove `(1)`.
+
+**P2.2 — `ultraplan-prompt.txt` is a working prompt, not source code**
+This 27-line file is a Claude/Codex prompt template referencing the berry identity fix. It has no runtime value and should not be committed.
+**Action:** Delete or add to `.gitignore`.
+
+**P2.3 — `.gitignore` does not cover common working document patterns**
+Round 10 flagged `RESUMEN*.txt` and `PROJECT_SUMMARY.md` (now in `.gitignore`). The current round surfaces similar working documents (`DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt`). A broader pattern would prevent future occurrences.
+**Action:** Consider adding patterns like `DIAGNOSIS*.md`, `*-handoff.md`, `*-prompt.txt` to `.gitignore`, or a catch-all for agent working documents.
+
+---
+
+### Missing Tests
+
+No new code was committed since the last test run (72 tests passing per Phase 8 completion). No new test gaps introduced by this round.
+
+---
+
+### Notes
+
+- The working tree is clean against HEAD — all tracked files match the last commit (`d886688`).
+- The 5 untracked items are all workspace artifacts, not source code changes.
+- Previous P1 items from Round 10 (P1.1 harvest calendar weather overlay, P1.2 clearAll weatherLocation reset, P1.3 logout token verification) remain as noted — verify whether they were addressed in Phase 8 commits.
+- The `codex-review-consolidated-handoff.md` is the most concerning untracked file due to its security content. Prioritize its removal or exclusion before any `git add -A` operation.
+
+---
+
 ## Round 10 — Branch `feature/wave3-wave4-fixes` (2026-04-07)
 
 **Scope:** 4 commits (04cb435..54b63fc) — 20 files changed, +498 / −538 lines.
@@ -520,12 +574,12 @@ No critical gaps remain. Minor notes:
 | R16.P2.1 | Dead code: `DataStore.extractLotCode` wrapper | **Removed** (`adcb89e`) |
 | R16.P2.4 | Untracked `.playwright-mcp/` directory | Should be in `.gitignore` — **still open** |
 
-### Round 16 Items Still Open
+### Round 16 Items Resolved (Post-Round 17)
 
 | ID | Issue | Status |
 |----|-------|--------|
-| R16.P1.1 | `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping | **Open** — extraction charts return empty |
-| R16.P1.2 | `lotCode = sampleId` breaks vineyard map section resolution | **Open** — map parcels show no data |
+| R16.P1.1 | `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping | **Fixed** (`27b7f94`) — restored `Identity.extractLotCode()` for lotCode derivation |
+| R16.P1.2 | `lotCode = sampleId` breaks vineyard map section resolution | **Fixed** (`27b7f94`) — same commit, stripped codes now match `fieldLotToSection` keys |
 
 ---
 
