@@ -1668,30 +1668,17 @@ const Charts = {
   },
 
   // Export a chart canvas as PNG with branded background and watermark
-  // Read legend items from DOM for a given canvas (explorer or berry page)
+  // Read legend items directly from Chart.js instance (no DOM scraping)
   _getLegendItems(canvasId) {
-    const canvas = document.getElementById(canvasId);
-    if (!canvas) return [];
-    // Explorer charts: legend is sibling .explorer-legend inside .explorer-slot
-    const slot = canvas.closest('.explorer-slot');
-    if (slot) {
-      const legend = slot.querySelector('.explorer-legend');
-      if (legend) {
-        return Array.from(legend.querySelectorAll('.legend-item')).filter(el => !el.classList.contains('dimmed')).map(el => ({
-          color: el.querySelector('.legend-dot')?.style.backgroundColor || el.querySelector('.legend-dot')?.getAttribute('style')?.match(/background:\s*([^;]+)/)?.[1]?.trim() || '#888',
-          label: el.textContent.trim()
-        }));
-      }
-    }
-    // Berry page: global #legend-bar
-    const globalLegend = document.getElementById('legend-bar');
-    if (globalLegend) {
-      return Array.from(globalLegend.querySelectorAll('.legend-item')).filter(el => !el.classList.contains('dimmed')).map(el => ({
-        color: el.querySelector('.legend-dot')?.style.backgroundColor || el.querySelector('.legend-dot')?.getAttribute('style')?.match(/background:\s*([^;]+)/)?.[1]?.trim() || '#888',
-        label: el.textContent.trim()
-      }));
-    }
-    return [];
+    const chart = this.instances[canvasId];
+    if (!chart || !chart.data || !chart.data.datasets) return [];
+    return chart.data.datasets
+      .filter((ds, i) => !chart.getDatasetMeta(i).hidden)
+      .map(ds => ({
+        color: ds.borderColor || ds.backgroundColor || '#888',
+        label: ds.label || ''
+      }))
+      .filter(item => item.label);
   },
 
   // Draw legend items onto a canvas context, returns total height used
