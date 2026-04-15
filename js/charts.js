@@ -1915,7 +1915,12 @@ const Charts = {
     const chartHeights = canvases.map(c => c.height);
     const maxW = Math.max(...canvases.map(c => c.width));
     const totalW = maxW + pad * 2;
-    const totalH = titleH + chartHeights.reduce((sum, h) => sum + h + chartGap, 0) + watermarkH + pad;
+    // Reserve extra space for legends (24px per chart that has datasets)
+    const legendExtra = canvases.reduce((sum, c) => {
+      const chart = this.instances[c.id];
+      return sum + (chart && chart.data && chart.data.datasets && chart.data.datasets.length ? 24 : 0);
+    }, 0);
+    const totalH = titleH + chartHeights.reduce((sum, h) => sum + h + chartGap, 0) + legendExtra + watermarkH + pad;
 
     const tmp = document.createElement('canvas');
     tmp.width = totalW;
@@ -1944,6 +1949,9 @@ const Charts = {
     let yOffset = titleH + 10;
     let loaded = 0;
 
+    // Pre-collect legend items for each chart
+    const allLegends = canvases.map(c => this._getLegendItems(c.id));
+
     canvases.forEach((c, i) => {
       const chart = this.instances[c.id];
       if (!chart) { loaded++; return; }
@@ -1951,10 +1959,17 @@ const Charts = {
         const imgSrc = chart.toBase64Image('image/png', 1);
         const img = new Image();
         const myY = yOffset;
+        const legendForChart = allLegends[i];
         yOffset += chartHeights[i] + chartGap;
+        // Add space for legend if present
+        if (legendForChart.length) yOffset += 24;
 
         img.onload = () => {
           ctx.drawImage(img, pad, myY, c.width, c.height);
+          // Draw legend below this chart
+          if (legendForChart.length) {
+            this._drawLegend(ctx, legendForChart, pad, myY + c.height + 8, maxW, { fontSize: 10, dotRadius: 5 });
+          }
           loaded++;
           if (loaded === canvases.length) {
             ctx.fillStyle = 'rgba(196,160,96,0.4)';
@@ -2015,7 +2030,7 @@ const Charts = {
       pdf.setFontSize(8);
       pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
 
-      // One page per chart
+      // One page per chart — preserve aspect ratio, include legend
       canvases.forEach(c => {
         const chart = this.instances[c.id];
         if (!chart) return;
@@ -2035,8 +2050,43 @@ const Charts = {
         pdf.setLineWidth(0.3);
         pdf.line(15, 22, pw - 15, 22);
 
+        // Preserve aspect ratio
+        const legendItems = this._getLegendItems(c.id);
+        const legendMM = legendItems.length ? 12 : 0;
         const imgData = chart.toBase64Image('image/png', 1);
-        pdf.addImage(imgData, 'PNG', 15, 26, pw - 30, ph - 50);
+        const maxChartW = pw - 30;
+        const maxChartH = ph - 50 - legendMM;
+        const srcRatio = c.width / c.height;
+        let cw = maxChartW;
+        let ch = cw / srcRatio;
+        if (ch > maxChartH) { ch = maxChartH; cw = ch * srcRatio; }
+        const cx = 15 + (maxChartW - cw) / 2;
+        pdf.addImage(imgData, 'PNG', cx, 26, cw, ch);
+
+        // Legend
+        if (legendItems.length) {
+          const ly = 26 + ch + 3;
+          let lx = 15;
+          pdf.setFontSize(7);
+          legendItems.forEach(item => {
+            const textW = pdf.getTextWidth(item.label);
+            const itemW = 4 + textW + 6;
+            if (lx + itemW > pw - 15) { lx = 15; }
+            let r = 128, g = 128, b = 128;
+            const rgbMatch = item.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (rgbMatch) {
+              r = parseInt(rgbMatch[1]); g = parseInt(rgbMatch[2]); b = parseInt(rgbMatch[3]);
+            } else {
+              const hex = item.color.replace(/[^0-9a-f]/gi, '').slice(0, 6);
+              if (hex.length >= 6) { r = parseInt(hex.slice(0,2),16); g = parseInt(hex.slice(2,4),16); b = parseInt(hex.slice(4,6),16); }
+            }
+            pdf.setFillColor(r, g, b);
+            pdf.circle(lx + 1.5, ly + 1.5, 1.5, 'F');
+            pdf.setTextColor(216, 208, 196);
+            pdf.text(item.label, lx + 4, ly + 2.5);
+            lx += itemW;
+          });
+        }
 
         pdf.setTextColor(196, 160, 96);
         pdf.setFontSize(8);
