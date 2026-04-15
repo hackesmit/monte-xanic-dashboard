@@ -126,9 +126,16 @@ const Explorer = {
       Charts.createExplorerChart(canvasId, enriched, slot.xField, slot.yField, xLabel, yLabel, slot.groupBy, colorResolver, opts);
     }
 
-    // Update summary text and legend
+    // Update summary text, legend, and export title
     this._updateSummary(slot, xMeta, yMeta);
     this._renderSlotLegend(slot, canvasId);
+    const exportBtn = document.querySelector(`#explorer-slot-${id} .chart-export-btn`);
+    if (exportBtn) {
+      const title = slot.chartType === 'bar'
+        ? `${yMeta.label} por ${(CONFIG.explorerGroupBy[slot.source] || []).find(g => g.value === slot.groupBy)?.label || slot.groupBy}`
+        : `${yMeta.label} vs ${xMeta.label}`;
+      exportBtn.dataset.chartTitle = title;
+    }
   },
 
   refreshAll() {
@@ -246,6 +253,7 @@ const Explorer = {
         <div class="explorer-slot-actions">
           <button class="chart-toggle explorer-line-toggle" data-slot="${sid}" title="Conectar puntos con lineas">Conectar Lineas</button>
           <button class="chart-toggle explorer-expand-toggle" data-slot="${sid}" title="Expandir grafico">\u26F6</button>
+          <button class="chart-export-btn" data-slot="${sid}" data-chart-id="explorerChart_${sid}" data-chart-title="" title="Exportar grafico">&#x2913;</button>
           <button class="explorer-remove-btn" data-slot="${sid}" title="Eliminar">\u00D7</button>
         </div>
       </div>

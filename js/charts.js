@@ -1643,8 +1643,8 @@ const Charts = {
       }
     });
 
-    // Position relative to chart-card (which already has position: relative)
-    const card = btn.closest('.chart-card');
+    // Position relative to chart-card or explorer-slot (which have position: relative)
+    const card = btn.closest('.chart-card') || btn.closest('.explorer-slot');
     if (card) {
       menu.style.top = (btn.offsetTop + btn.offsetHeight + 4) + 'px';
       menu.style.right = '12px';

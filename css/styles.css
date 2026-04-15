@@ -1560,6 +1560,7 @@ canvas { max-width: 100%; }
   background: var(--card);
   margin-bottom: 12px;
   transition: background 0.3s;
+  position: relative;
 }
 .explorer-canvas-wrap {
   transition: height 0.3s ease;
