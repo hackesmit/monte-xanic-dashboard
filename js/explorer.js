@@ -126,8 +126,9 @@ const Explorer = {
       Charts.createExplorerChart(canvasId, enriched, slot.xField, slot.yField, xLabel, yLabel, slot.groupBy, colorResolver, opts);
     }
 
-    // Update summary text
+    // Update summary text and legend
     this._updateSummary(slot, xMeta, yMeta);
+    this._renderSlotLegend(slot, canvasId);
   },
 
   refreshAll() {
@@ -214,6 +215,19 @@ const Explorer = {
     }
   },
 
+  _renderSlotLegend(slot, canvasId) {
+    const el = document.getElementById('explorerLegend_' + slot.id);
+    if (!el) return;
+    const chart = Charts.instances[canvasId];
+    if (!chart || !chart.data || !chart.data.datasets) { el.innerHTML = ''; return; }
+    el.innerHTML = chart.data.datasets.map((ds, i) => {
+      const color = ds.borderColor || ds.backgroundColor || '#888';
+      const dimmed = chart.getDatasetMeta(i).hidden ? ' dimmed' : '';
+      return `<span class="legend-item${dimmed}" data-slot="${slot.id}" data-ds-index="${i}" role="button" tabindex="0">` +
+             `<span class="legend-dot" style="background:${color}"></span>${ds.label || ''}</span>`;
+    }).join('');
+  },
+
   _injectSlotDOM(slot) {
     const container = document.getElementById('explorer-charts');
     if (!container) return;
@@ -269,6 +283,7 @@ const Explorer = {
       <div class="explorer-canvas-wrap" style="height:280px">
         <canvas id="explorerChart_${sid}"></canvas>
       </div>
+      <div class="explorer-legend" id="explorerLegend_${sid}"></div>
     `;
     container.appendChild(div);
   },
