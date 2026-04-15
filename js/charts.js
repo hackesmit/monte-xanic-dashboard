@@ -1668,6 +1668,66 @@ const Charts = {
   },
 
   // Export a chart canvas as PNG with branded background and watermark
+  // Read legend items from DOM for a given canvas (explorer or berry page)
+  _getLegendItems(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return [];
+    // Explorer charts: legend is sibling .explorer-legend inside .explorer-slot
+    const slot = canvas.closest('.explorer-slot');
+    if (slot) {
+      const legend = slot.querySelector('.explorer-legend');
+      if (legend) {
+        return Array.from(legend.querySelectorAll('.legend-item')).filter(el => !el.classList.contains('dimmed')).map(el => ({
+          color: el.querySelector('.legend-dot')?.style.background || '#888',
+          label: el.textContent.trim()
+        }));
+      }
+    }
+    // Berry page: global #legend-bar
+    const globalLegend = document.getElementById('legend-bar');
+    if (globalLegend) {
+      return Array.from(globalLegend.querySelectorAll('.legend-item')).filter(el => !el.classList.contains('dimmed')).map(el => ({
+        color: el.querySelector('.legend-dot')?.style.background || '#888',
+        label: el.textContent.trim()
+      }));
+    }
+    return [];
+  },
+
+  // Draw legend items onto a canvas context, returns total height used
+  _drawLegend(ctx, items, x, y, maxW, opts) {
+    if (!items.length) return 0;
+    const fontSize = (opts && opts.fontSize) || 10;
+    const dotR = (opts && opts.dotRadius) || 5;
+    const gap = 16;
+    const rowH = fontSize + 8;
+    ctx.font = `${fontSize}px "Sackers Gothic Medium", sans-serif`;
+
+    let cx = x;
+    let cy = y;
+    let rows = 1;
+    items.forEach(item => {
+      const textW = ctx.measureText(item.label).width;
+      const itemW = dotR * 2 + 6 + textW + gap;
+      if (cx + itemW > x + maxW && cx > x) {
+        cx = x;
+        cy += rowH;
+        rows++;
+      }
+      // Dot
+      ctx.beginPath();
+      ctx.arc(cx + dotR, cy + dotR, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = item.color;
+      ctx.fill();
+      // Label
+      ctx.fillStyle = '#D8D0C4';
+      ctx.textAlign = 'left';
+      ctx.fillText(item.label, cx + dotR * 2 + 6, cy + dotR + fontSize / 3);
+      cx += itemW;
+    });
+    return rows * rowH;
+  },
+
   exportChart(canvasId, title) {
     const chart = this.instances[canvasId];
     const srcCanvas = document.getElementById(canvasId);
@@ -1686,8 +1746,16 @@ const Charts = {
       return;
     }
 
+    // Pre-measure legend to allocate canvas height
+    const legendItems = this._getLegendItems(canvasId);
+    // Estimate legend height: ~18px per row, ~200px per item width
+    const legendRowH = 18;
+    const itemsPerRow = Math.max(1, Math.floor((w) / 160));
+    const legendRows = legendItems.length ? Math.ceil(legendItems.length / itemsPerRow) : 0;
+    const legendH = legendRows ? legendRows * legendRowH + 16 : 0;
+
     const totalW = w + pad * 2;
-    const totalH = h + titleH + watermarkH + pad;
+    const totalH = h + titleH + watermarkH + legendH + pad;
 
     const tmp = document.createElement('canvas');
     tmp.width = totalW;
@@ -1729,6 +1797,11 @@ const Charts = {
     };
     chartImg.onload = () => {
       ctx.drawImage(chartImg, pad, titleH + 8, w, h);
+
+      // Legend
+      if (legendItems.length) {
+        this._drawLegend(ctx, legendItems, pad, titleH + 8 + h + 10, w, { fontSize: 10, dotRadius: 5 });
+      }
 
       // Watermark
       ctx.fillStyle = 'rgba(196,160,96,0.4)';
@@ -1781,11 +1854,36 @@ const Charts = {
       pdf.setLineWidth(0.3);
       pdf.line(15, 22, pw - 15, 22);
 
-      // Chart image
+      // Chart image — shrink to leave room for legend
+      const legendItems = this._getLegendItems(canvasId);
+      const legendMM = legendItems.length ? 12 : 0;
       const imgData = chart.toBase64Image('image/png', 1);
       const chartW = pw - 30;
-      const chartH = ph - 50;
+      const chartH = ph - 50 - legendMM;
       pdf.addImage(imgData, 'PNG', 15, 26, chartW, chartH);
+
+      // Legend
+      if (legendItems.length) {
+        const ly = 26 + chartH + 3;
+        let lx = 15;
+        pdf.setFontSize(7);
+        legendItems.forEach(item => {
+          const textW = pdf.getTextWidth(item.label);
+          const itemW = 4 + textW + 6;
+          if (lx + itemW > pw - 15) { lx = 15; }
+          // Dot
+          const hex = item.color.replace(/[^0-9a-f]/gi, '').slice(0, 6);
+          const r = parseInt(hex.slice(0, 2), 16) || 128;
+          const g = parseInt(hex.slice(2, 4), 16) || 128;
+          const b = parseInt(hex.slice(4, 6), 16) || 128;
+          pdf.setFillColor(r, g, b);
+          pdf.circle(lx + 1.5, ly + 1.5, 1.5, 'F');
+          // Label
+          pdf.setTextColor(216, 208, 196);
+          pdf.text(item.label, lx + 4, ly + 2.5);
+          lx += itemW;
+        });
+      }
 
       // Watermark
       pdf.setTextColor(196, 160, 96);
