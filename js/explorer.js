@@ -46,7 +46,18 @@ const Explorer = {
     slot.showLines = !slot.showLines;
     const btn = document.querySelector(`#explorer-slot-${id} .explorer-line-toggle`);
     if (btn) btn.classList.toggle('active', slot.showLines);
-    this.renderSlot(id);
+    // Update existing chart in-place to preserve hidden dataset state
+    const chart = Charts.instances['explorerChart_' + id];
+    if (chart) {
+      const show = slot.chartType === 'line' || slot.showLines;
+      chart.data.datasets.forEach(ds => {
+        ds.showLine = show;
+        ds.borderWidth = show ? (CONFIG.chartDefaults.borderWidth || 2) : 0;
+      });
+      chart.update();
+    } else {
+      this.renderSlot(id);
+    }
   },
 
   toggleExpand(id) {
