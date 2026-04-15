@@ -70,6 +70,6 @@ Run: `npm test` or `node --test tests/*.test.mjs`
 
 | ID | Issue | Status |
 |----|-------|--------|
-| R16.P1.1 | `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping (extraction charts) | **Open** |
-| R16.P1.2 | `lotCode = sampleId` breaks vineyard map section resolution | **Open** |
+| R16.P1.1 | `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping (extraction charts) | **Done** (`27b7f94`) |
+| R16.P1.2 | `lotCode = sampleId` breaks vineyard map section resolution | **Done** (`27b7f94`) |
 | R16.P2.2 | `Number()` vs `parseFloat` for comma-separated thousands — low risk | **Noted** |
