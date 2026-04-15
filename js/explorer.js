@@ -49,6 +49,20 @@ const Explorer = {
     this.renderSlot(id);
   },
 
+  toggleExpand(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    slot.expanded = !slot.expanded;
+    const el = document.getElementById('explorer-slot-' + id);
+    if (el) el.classList.toggle('explorer-slot-expanded', slot.expanded);
+    const btn = el && el.querySelector('.explorer-expand-toggle');
+    if (btn) btn.classList.toggle('active', slot.expanded);
+    // Trigger Chart.js resize after CSS transition
+    const canvasId = 'explorerChart_' + id;
+    const chart = Charts.instances[canvasId];
+    if (chart) setTimeout(() => chart.resize(), 320);
+  },
+
   onSourceChange(id) {
     const slot = this._slotById(id);
     if (!slot) return;
@@ -217,6 +231,7 @@ const Explorer = {
         <span class="explorer-summary" id="explorer-summary-${sid}"></span>
         <div class="explorer-slot-actions">
           <button class="chart-toggle explorer-line-toggle" data-slot="${sid}" title="Conectar puntos con lineas">Conectar Lineas</button>
+          <button class="chart-toggle explorer-expand-toggle" data-slot="${sid}" title="Expandir grafico">\u26F6</button>
           <button class="explorer-remove-btn" data-slot="${sid}" title="Eliminar">\u00D7</button>
         </div>
       </div>
