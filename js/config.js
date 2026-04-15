@@ -832,12 +832,14 @@ const CONFIG = {
     berry: [
       { value: 'variety',     label: 'Varietal' },
       { value: 'appellation', label: 'Origen' },
-      { value: 'vintage',     label: 'Vendimia' }
+      { value: 'vintage',     label: 'Vendimia' },
+      { value: 'lotCode',     label: 'Lote' }
     ],
     wine: [
       { value: 'variedad',    label: 'Varietal' },
       { value: 'proveedor',   label: 'Origen' },
-      { value: 'vintage',     label: 'Vendimia' }
+      { value: 'vintage',     label: 'Vendimia' },
+      { value: 'codigoBodega', label: 'Lote' }
     ]
   },
 

@@ -253,6 +253,32 @@ const Events = {
 
       if (e.target.closest('.explorer-source-select')) Explorer.onSourceChange(sid);
       else if (e.target.closest('.explorer-type-select')) Explorer.onChartTypeChange(sid);
+      else if (e.target.closest('.explorer-group-select')) Explorer.onGroupByChange(sid);
+      else if (e.target.closest('.lot-checkbox')) {
+        Explorer._toggleLotItem(sid, e.target.dataset.lot, e.target.checked);
+      }
+    });
+
+    container.addEventListener('input', (e) => {
+      if (e.target.closest('.lot-picker-search')) {
+        const sid = parseInt(e.target.dataset.slot);
+        if (!isNaN(sid)) Explorer._filterLotPicker(sid, e.target.value);
+      }
+    });
+
+    container.addEventListener('click', (e) => {
+      const allBtn = e.target.closest('.lot-picker-all');
+      if (allBtn) {
+        const sid = parseInt(allBtn.dataset.slot);
+        if (!isNaN(sid)) Explorer._selectAllLots(sid);
+        return;
+      }
+      const noneBtn = e.target.closest('.lot-picker-none');
+      if (noneBtn) {
+        const sid = parseInt(noneBtn.dataset.slot);
+        if (!isNaN(sid)) Explorer._clearAllLots(sid);
+        return;
+      }
     });
   },
 
