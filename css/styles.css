@@ -558,6 +558,33 @@ header {
   margin-bottom: 18px;
   font-weight: 400;
 }
+.view-export-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0;
+}
+.view-export-row .section-label {
+  margin-bottom: 0;
+}
+.page-export-btn {
+  padding: 4px 14px;
+  font-size: 9px;
+  font-family: 'Sackers Gothic Medium';
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  position: relative;
+}
+.page-export-btn:hover {
+  border-color: var(--gold-dim);
+  color: var(--text);
+}
 .chart-controls {
   display: flex;
   gap: 8px;

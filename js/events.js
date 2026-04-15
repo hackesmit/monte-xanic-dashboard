@@ -15,6 +15,7 @@ const Events = {
     this._bindExplorerDelegation();
     this._bindLegendDelegation();
     this._bindMediciones();
+    this._bindPageExport();
   },
 
   // ── Navigation (2 handlers) ──
@@ -287,6 +288,42 @@ const Events = {
     if (table) table.addEventListener('click', (e) => {
       const th = e.target.closest('th[data-sort]');
       if (th) Mediciones.sortBy(th.dataset.sort);
+    });
+  },
+
+  _bindPageExport() {
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.page-export-btn');
+      if (!btn) return;
+      const viewId = btn.dataset.view;
+      const viewTitle = btn.dataset.viewTitle || viewId;
+
+      document.querySelectorAll('.chart-export-menu').forEach(m => m.remove());
+      const menu = document.createElement('div');
+      menu.className = 'chart-export-menu';
+      menu.innerHTML =
+        '<button data-fmt="png">PNG</button>' +
+        '<button data-fmt="pdf">PDF</button>';
+      menu.addEventListener('click', (ev) => {
+        const fmt = ev.target.getAttribute('data-fmt');
+        if (fmt === 'png') Charts.exportPage(viewId, viewTitle);
+        if (fmt === 'pdf') Charts.exportPagePDF(viewId, viewTitle);
+        menu.remove();
+      });
+      menu.style.position = 'absolute';
+      menu.style.top = (btn.offsetHeight + 4) + 'px';
+      menu.style.right = '0';
+      btn.appendChild(menu);
+
+      setTimeout(() => {
+        const handler = (ev) => {
+          if (!menu.contains(ev.target) && ev.target !== btn) {
+            menu.remove();
+            document.removeEventListener('click', handler);
+          }
+        };
+        document.addEventListener('click', handler);
+      }, 0);
     });
   }
 };

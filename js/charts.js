@@ -1800,6 +1800,163 @@ const Charts = {
     }
   },
 
+  // ── Page Export (multi-chart) ─────────────────────────────────
+
+  exportPage(viewId, viewTitle) {
+    const container = document.getElementById('view-' + viewId);
+    if (!container) { this._showExportToast('Vista no encontrada'); return; }
+
+    const canvases = Array.from(container.querySelectorAll('canvas')).filter(c => {
+      const chart = this.instances[c.id];
+      return chart && c.offsetParent !== null;
+    });
+
+    if (!canvases.length) { this._showExportToast('No hay graficos visibles para exportar'); return; }
+
+    const pad = 40;
+    const titleH = 50;
+    const chartGap = 30;
+    const watermarkH = 30;
+
+    const chartHeights = canvases.map(c => c.height);
+    const maxW = Math.max(...canvases.map(c => c.width));
+    const totalW = maxW + pad * 2;
+    const totalH = titleH + chartHeights.reduce((sum, h) => sum + h + chartGap, 0) + watermarkH + pad;
+
+    const tmp = document.createElement('canvas');
+    tmp.width = totalW;
+    tmp.height = totalH;
+    const ctx = tmp.getContext('2d');
+
+    ctx.fillStyle = '#161616';
+    ctx.fillRect(0, 0, totalW, totalH);
+
+    const date = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+    ctx.fillStyle = '#FFFFFF';
+    ctx.font = '18px "Sackers Gothic Medium", sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`${viewTitle} \u2014 Monte Xanic`, pad, pad + 6);
+    ctx.fillStyle = '#888';
+    ctx.font = '11px "Sackers Gothic Medium", sans-serif';
+    ctx.fillText(date, pad, pad + 22);
+
+    ctx.strokeStyle = 'rgba(196,160,96,0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(pad, titleH);
+    ctx.lineTo(totalW - pad, titleH);
+    ctx.stroke();
+
+    let yOffset = titleH + 10;
+    let loaded = 0;
+
+    canvases.forEach((c, i) => {
+      const chart = this.instances[c.id];
+      if (!chart) { loaded++; return; }
+      try {
+        const imgSrc = chart.toBase64Image('image/png', 1);
+        const img = new Image();
+        const myY = yOffset;
+        yOffset += chartHeights[i] + chartGap;
+
+        img.onload = () => {
+          ctx.drawImage(img, pad, myY, c.width, c.height);
+          loaded++;
+          if (loaded === canvases.length) {
+            ctx.fillStyle = 'rgba(196,160,96,0.4)';
+            ctx.font = '10px "Sackers Gothic Medium", sans-serif';
+            ctx.textAlign = 'right';
+            ctx.fillText('Monte Xanic \u2014 Vendimia', totalW - pad, totalH - 12);
+
+            const safeName = viewTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+            const link = document.createElement('a');
+            link.download = `monte-xanic-${safeName}-${new Date().toISOString().slice(0,10)}.png`;
+            link.href = tmp.toDataURL('image/png');
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }
+        };
+        img.onerror = () => { loaded++; };
+        img.src = imgSrc;
+      } catch (err) {
+        loaded++;
+        console.error('[Charts] Error exporting chart', c.id, err);
+      }
+    });
+  },
+
+  exportPagePDF(viewId, viewTitle) {
+    if (typeof window.jspdf === 'undefined') {
+      this._showExportToast('PDF no disponible \u2014 la libreria jsPDF aun no se ha cargado.');
+      return;
+    }
+    const container = document.getElementById('view-' + viewId);
+    if (!container) { this._showExportToast('Vista no encontrada'); return; }
+
+    const canvases = Array.from(container.querySelectorAll('canvas')).filter(c => {
+      const chart = this.instances[c.id];
+      return chart && c.offsetParent !== null;
+    });
+
+    if (!canvases.length) { this._showExportToast('No hay graficos visibles para exportar'); return; }
+
+    try {
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+      const pw = pdf.internal.pageSize.getWidth();
+      const ph = pdf.internal.pageSize.getHeight();
+
+      // Title page
+      pdf.setFillColor(22, 22, 22);
+      pdf.rect(0, 0, pw, ph, 'F');
+      pdf.setTextColor(255, 255, 255);
+      pdf.setFontSize(20);
+      pdf.text(`${viewTitle} \u2014 Monte Xanic`, pw / 2, ph / 2 - 10, { align: 'center' });
+      const date = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
+      pdf.setFontSize(12);
+      pdf.setTextColor(136, 136, 136);
+      pdf.text(date, pw / 2, ph / 2 + 5, { align: 'center' });
+      pdf.setTextColor(196, 160, 96);
+      pdf.setFontSize(8);
+      pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
+
+      // One page per chart
+      canvases.forEach(c => {
+        const chart = this.instances[c.id];
+        if (!chart) return;
+        pdf.addPage();
+        pdf.setFillColor(22, 22, 22);
+        pdf.rect(0, 0, pw, ph, 'F');
+
+        const card = c.closest('.chart-card') || c.closest('.explorer-slot');
+        const titleEl = card && (card.querySelector('.chart-title') || card.querySelector('.explorer-summary'));
+        const chartTitle = titleEl ? titleEl.textContent : c.id;
+
+        pdf.setTextColor(255, 255, 255);
+        pdf.setFontSize(14);
+        pdf.text(chartTitle, 15, 18);
+
+        pdf.setDrawColor(196, 160, 96);
+        pdf.setLineWidth(0.3);
+        pdf.line(15, 22, pw - 15, 22);
+
+        const imgData = chart.toBase64Image('image/png', 1);
+        pdf.addImage(imgData, 'PNG', 15, 26, pw - 30, ph - 50);
+
+        pdf.setTextColor(196, 160, 96);
+        pdf.setFontSize(8);
+        pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
+      });
+
+      const safeName = viewTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
+      pdf.save(`monte-xanic-${safeName}-${new Date().toISOString().slice(0,10)}.pdf`);
+    } catch (err) {
+      console.error('[Charts] Error generando PDF de vista:', err);
+      this._showExportToast('Error al generar el PDF de la vista');
+    }
+  },
+
   // ── Explorer Parameterized Charts ──────────────────────────────
 
   createExplorerChart(canvasId, data, xField, yField, xLabel, yLabel, groupField, colorResolver, opts) {
