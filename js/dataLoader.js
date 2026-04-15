@@ -60,7 +60,7 @@ const DataStore = {
     obj.appellation  = CONFIG.normalizeAppellation(obj.appellation, obj.sampleId);
     // Filter California
     if (obj.appellation === 'California') return null;
-    obj.lotCode      = obj.sampleId || '';
+    obj.lotCode      = Identity.extractLotCode(obj.sampleId);
     obj.grapeType    = this.getGrapeType(obj.variety);
     return obj;
   },
@@ -235,7 +235,7 @@ const DataStore = {
         }
       });
       if (hasData && obj.sampleId) {
-        obj.lotCode = obj.sampleId || '';
+        obj.lotCode = Identity.extractLotCode(obj.sampleId);
         // Determine grape type
         obj.grapeType = this.getGrapeType(obj.variety);
         data.push(obj);
@@ -501,7 +501,7 @@ const DataStore = {
   // Enrich loaded data with computed fields (lotCode, grapeType)
   _enrichData() {
     this.berryData.forEach(d => {
-      if (d.sampleId && !d.lotCode) d.lotCode = d.sampleId;
+      if (d.sampleId && !d.lotCode) d.lotCode = Identity.extractLotCode(d.sampleId);
       if (d.variety && !d.grapeType) d.grapeType = this.getGrapeType(d.variety);
     });
   },
