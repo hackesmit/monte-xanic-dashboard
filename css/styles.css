@@ -1624,6 +1624,26 @@ canvas { max-width: 100%; }
 .explorer-line-toggle {
   white-space: nowrap;
 }
+.explorer-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 8px 16px;
+  background: var(--near-black);
+  border-top: 1px solid var(--border);
+  min-height: 20px;
+}
+.explorer-legend .legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.explorer-legend .legend-item:hover { color: var(--text); }
+.explorer-legend .legend-item.dimmed { opacity: 0.3; }
 .explorer-config-panel {
   padding: 14px 16px;
   background: var(--card2);

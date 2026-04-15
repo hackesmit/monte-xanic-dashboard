@@ -216,6 +216,22 @@ const Events = {
     if (!container) return;
 
     container.addEventListener('click', (e) => {
+      // Legend item toggle
+      const legendItem = e.target.closest('.explorer-legend .legend-item');
+      if (legendItem) {
+        const slotId = parseInt(legendItem.dataset.slot);
+        const dsIdx = parseInt(legendItem.dataset.dsIndex);
+        const cId = 'explorerChart_' + slotId;
+        const chart = Charts.instances[cId];
+        if (chart && !isNaN(dsIdx)) {
+          const meta = chart.getDatasetMeta(dsIdx);
+          meta.hidden = !meta.hidden;
+          chart.update();
+          legendItem.classList.toggle('dimmed', meta.hidden);
+        }
+        return;
+      }
+
       const slot = e.target.closest('[data-slot]');
       if (!slot) return;
       const sid = parseInt(slot.dataset.slot);
