@@ -332,7 +332,7 @@ const Explorer = {
       const color = ds.borderColor || ds.backgroundColor || '#888';
       const dimmed = chart.getDatasetMeta(i).hidden ? ' dimmed' : '';
       return `<span class="legend-item${dimmed}" data-slot="${slot.id}" data-ds-index="${i}" role="button" tabindex="0">` +
-             `<span class="legend-dot" style="background:${color}"></span>${ds.label || ''}</span>`;
+             `<span class="legend-dot" style="background-color:${color}"></span>${ds.label || ''}</span>`;
     }).join('');
   },
 

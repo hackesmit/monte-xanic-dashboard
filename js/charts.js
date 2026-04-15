@@ -1678,7 +1678,7 @@ const Charts = {
       const legend = slot.querySelector('.explorer-legend');
       if (legend) {
         return Array.from(legend.querySelectorAll('.legend-item')).filter(el => !el.classList.contains('dimmed')).map(el => ({
-          color: el.querySelector('.legend-dot')?.style.background || '#888',
+          color: el.querySelector('.legend-dot')?.style.backgroundColor || el.querySelector('.legend-dot')?.getAttribute('style')?.match(/background:\s*([^;]+)/)?.[1]?.trim() || '#888',
           label: el.textContent.trim()
         }));
       }
@@ -1687,7 +1687,7 @@ const Charts = {
     const globalLegend = document.getElementById('legend-bar');
     if (globalLegend) {
       return Array.from(globalLegend.querySelectorAll('.legend-item')).filter(el => !el.classList.contains('dimmed')).map(el => ({
-        color: el.querySelector('.legend-dot')?.style.background || '#888',
+        color: el.querySelector('.legend-dot')?.style.backgroundColor || el.querySelector('.legend-dot')?.getAttribute('style')?.match(/background:\s*([^;]+)/)?.[1]?.trim() || '#888',
         label: el.textContent.trim()
       }));
     }
@@ -1854,15 +1854,20 @@ const Charts = {
       pdf.setLineWidth(0.3);
       pdf.line(15, 22, pw - 15, 22);
 
-      // Chart image — shrink to leave room for legend
+      // Chart image — preserve aspect ratio, shrink to leave room for legend
       const legendItems = this._getLegendItems(canvasId);
       const legendMM = legendItems.length ? 12 : 0;
       const imgData = chart.toBase64Image('image/png', 1);
-      const chartW = pw - 30;
-      const chartH = ph - 50 - legendMM;
-      pdf.addImage(imgData, 'PNG', 15, 26, chartW, chartH);
+      const maxW = pw - 30;
+      const maxH = ph - 50 - legendMM;
+      const srcRatio = srcCanvas.width / srcCanvas.height;
+      let chartW = maxW;
+      let chartH = chartW / srcRatio;
+      if (chartH > maxH) { chartH = maxH; chartW = chartH * srcRatio; }
+      const chartX = 15 + (maxW - chartW) / 2;
+      pdf.addImage(imgData, 'PNG', chartX, 26, chartW, chartH);
 
-      // Legend
+      // Legend below chart
       if (legendItems.length) {
         const ly = 26 + chartH + 3;
         let lx = 15;
@@ -1871,11 +1876,15 @@ const Charts = {
           const textW = pdf.getTextWidth(item.label);
           const itemW = 4 + textW + 6;
           if (lx + itemW > pw - 15) { lx = 15; }
-          // Dot
-          const hex = item.color.replace(/[^0-9a-f]/gi, '').slice(0, 6);
-          const r = parseInt(hex.slice(0, 2), 16) || 128;
-          const g = parseInt(hex.slice(2, 4), 16) || 128;
-          const b = parseInt(hex.slice(4, 6), 16) || 128;
+          // Dot — parse rgb(...) or hex color
+          let r = 128, g = 128, b = 128;
+          const rgbMatch = item.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+          if (rgbMatch) {
+            r = parseInt(rgbMatch[1]); g = parseInt(rgbMatch[2]); b = parseInt(rgbMatch[3]);
+          } else {
+            const hex = item.color.replace(/[^0-9a-f]/gi, '').slice(0, 6);
+            if (hex.length >= 6) { r = parseInt(hex.slice(0,2),16); g = parseInt(hex.slice(2,4),16); b = parseInt(hex.slice(4,6),16); }
+          }
           pdf.setFillColor(r, g, b);
           pdf.circle(lx + 1.5, ly + 1.5, 1.5, 'F');
           // Label
