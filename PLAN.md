@@ -241,7 +241,9 @@ Currently, tests copy-paste logic (e.g., MT.2 re-implements `_applyDaysJitter`, 
 
 ---
 
-## Stage 2 — Weather Time Aggregation & Timeframes (F5, F6)
+## Stage 2 — Weather Time Aggregation & Timeframes (F5, F6) — COMPLETE
+
+**Shipped:** 2026-04-16 (commit `b7d6b48`)
 
 **Goal:** Let users control the temporal resolution and date range of weather charts.
 
