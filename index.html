@@ -618,13 +618,29 @@
         </div>
       </div>
 
-      <div class="section-label" style="margin-top:24px;display:flex;align-items:center;gap:12px">
+      <div class="section-label" style="margin-top:24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span id="weather-section-title">Clima durante la Vendimia — Valle de Guadalupe</span>
         <select id="weather-valley-select" class="nav-select" style="font-size:11px;padding:3px 8px;min-width:auto">
           <option value="VDG">VDG</option>
           <option value="VON">VON</option>
           <option value="SV">SV</option>
         </select>
+        <select id="weather-agg-select" class="nav-select" style="font-size:11px;padding:3px 8px;min-width:auto">
+          <option value="day">Día</option>
+          <option value="week">Semana</option>
+          <option value="month">Mes</option>
+        </select>
+        <select id="weather-timeframe-select" class="nav-select" style="font-size:11px;padding:3px 8px;min-width:auto">
+          <option value="season">Temporada</option>
+          <option value="year">Año Completo</option>
+          <option value="30d">Últimos 30 Días</option>
+          <option value="custom">Personalizado</option>
+        </select>
+        <span id="weather-custom-dates" style="display:none;gap:6px;align-items:center">
+          <input type="date" id="weather-custom-start" class="nav-select" style="font-size:11px;padding:3px 6px">
+          <span style="color:var(--text-dim)">–</span>
+          <input type="date" id="weather-custom-end" class="nav-select" style="font-size:11px;padding:3px 6px">
+        </span>
       </div>
 
       <div class="charts-grid">

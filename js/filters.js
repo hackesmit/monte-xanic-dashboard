@@ -11,7 +11,11 @@ export const Filters = {
     lots: new Set(),
     grapeType: 'all',  // 'all', 'red', 'white'
     colorBy: 'variety',  // 'variety', 'origin'
-    weatherLocation: 'VDG'  // 'VDG', 'VON', 'SV'
+    weatherLocation: 'VDG',  // 'VDG', 'VON', 'SV'
+    weatherAggregation: 'day',  // 'day', 'week', 'month'
+    weatherTimeframe: 'season',  // 'season', 'year', '30d', 'custom'
+    weatherCustomStart: null,
+    weatherCustomEnd: null
   },
 
   // Wine-specific filter state
@@ -218,8 +222,18 @@ export const Filters = {
     document.querySelectorAll('.color-mode-btn').forEach(b => b.classList.remove('active'));
     document.querySelector('.color-mode-btn[data-mode="variety"]')?.classList.add('active');
     this.state.weatherLocation = 'VDG';
+    this.state.weatherAggregation = 'day';
+    this.state.weatherTimeframe = 'season';
+    this.state.weatherCustomStart = null;
+    this.state.weatherCustomEnd = null;
     const valleySelect = document.getElementById('weather-valley-select');
     if (valleySelect) valleySelect.value = 'VDG';
+    const aggSelect = document.getElementById('weather-agg-select');
+    if (aggSelect) aggSelect.value = 'day';
+    const tfSelect = document.getElementById('weather-timeframe-select');
+    if (tfSelect) tfSelect.value = 'season';
+    const customWrap = document.getElementById('weather-custom-dates');
+    if (customWrap) customWrap.style.display = 'none';
     const sectionTitle = document.getElementById('weather-section-title');
     if (sectionTitle) sectionTitle.textContent = 'Clima durante la Vendimia — Valle de Guadalupe';
     const lotSearch = document.getElementById('lot-search');

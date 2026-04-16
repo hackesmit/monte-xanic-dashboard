@@ -39,30 +39,97 @@ export const Events = {
     const mapMetric = document.getElementById('map-metric-select');
     if (mapMetric) mapMetric.addEventListener('change', () => MapStore.setMetric(mapMetric.value));
 
+    // Shared weather chart renderer — reads current filter state
+    const _renderWeatherCharts = () => {
+      const vintages = WeatherStore.getVintagesFromData();
+      const loc = Filters.state.weatherLocation || 'VDG';
+      const agg = Filters.state.weatherAggregation || 'day';
+      const tf = Filters.state.weatherTimeframe || 'season';
+      const custom = (Filters.state.weatherCustomStart && Filters.state.weatherCustomEnd)
+        ? { start: Filters.state.weatherCustomStart, end: Filters.state.weatherCustomEnd } : null;
+      Charts.createWeatherTimeSeries('chartWeatherTemp', vintages, loc, agg, tf, custom);
+      Charts.createRainfallChart('chartWeatherRain', vintages, loc, agg, tf, custom);
+      Charts.createGDDChart('chartGDD', vintages, loc, agg);
+      Charts.createValleyTempChart('chartValleyTemp',
+        vintages.length ? Math.max(...vintages) : null, agg);
+    };
+
+    const _weatherTitleMap = {
+      season: 'Clima durante la Vendimia',
+      year: 'Clima Anual',
+      '30d': 'Clima — Últimos 30 Días',
+      custom: 'Clima — Rango Personalizado'
+    };
+    const _valleyNames = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
+
+    const _updateWeatherTitle = () => {
+      const tf = Filters.state.weatherTimeframe || 'season';
+      const loc = Filters.state.weatherLocation || 'VDG';
+      const title = document.getElementById('weather-section-title');
+      if (title) title.textContent = `${_weatherTitleMap[tf] || _weatherTitleMap.season} — ${_valleyNames[loc] || loc}`;
+    };
+
+    // Valley selector
     const weatherValley = document.getElementById('weather-valley-select');
     if (weatherValley) weatherValley.addEventListener('change', () => {
-      const loc = weatherValley.value;
-      Filters.state.weatherLocation = loc;
-      const names = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
-      const title = document.getElementById('weather-section-title');
-      if (title) title.textContent = `Clima durante la Vendimia — ${names[loc] || loc}`;
-      // Directly re-render only the weather charts (skip full App.refresh)
+      Filters.state.weatherLocation = weatherValley.value;
+      _updateWeatherTitle();
+      _renderWeatherCharts();
+      // Sync if no data for this valley
       const vintages = WeatherStore.getVintagesFromData();
-      const renderWeather = () => {
-        Charts.createWeatherTimeSeries('chartWeatherTemp', vintages, loc);
-        Charts.createRainfallChart('chartWeatherRain', vintages, loc);
-        Charts.createGDDChart('chartGDD', vintages, loc);
-      };
-      renderWeather();
-      // If no data for this valley, trigger a sync then re-render only if new data arrived
-      const hasData = vintages.some(y => WeatherStore.getRange(`${y}-07-01`, `${y}-10-31`, loc).length > 0);
+      const loc = weatherValley.value;
+      const tf = Filters.state.weatherTimeframe || 'season';
+      const hasData = vintages.some(y => {
+        const { start, end } = WeatherStore.getDateRange(y, tf);
+        return WeatherStore.getRange(start, end, loc).length > 0;
+      });
       if (!hasData && vintages.length) {
-        WeatherStore.sync(vintages).then(() => {
-          const nowHasData = vintages.some(y => WeatherStore.getRange(`${y}-07-01`, `${y}-10-31`, loc).length > 0);
-          if (nowHasData) renderWeather();
-        });
+        const rangeFn = tf === 'season' ? undefined : (year => WeatherStore.getDateRange(year, tf));
+        WeatherStore.sync(vintages, rangeFn).then(() => _renderWeatherCharts());
       }
     });
+
+    // Aggregation selector (day / week / month)
+    const weatherAgg = document.getElementById('weather-agg-select');
+    if (weatherAgg) weatherAgg.addEventListener('change', () => {
+      Filters.state.weatherAggregation = weatherAgg.value;
+      _renderWeatherCharts();
+    });
+
+    // Timeframe selector (season / year / 30d / custom)
+    const weatherTf = document.getElementById('weather-timeframe-select');
+    if (weatherTf) weatherTf.addEventListener('change', () => {
+      const tf = weatherTf.value;
+      Filters.state.weatherTimeframe = tf;
+      const customWrap = document.getElementById('weather-custom-dates');
+      if (customWrap) customWrap.style.display = tf === 'custom' ? 'inline-flex' : 'none';
+      _updateWeatherTitle();
+      // Sync extended range if needed, then render
+      const vintages = WeatherStore.getVintagesFromData();
+      if (tf === '30d') {
+        const thisYear = new Date().getFullYear();
+        WeatherStore.sync([thisYear], () => WeatherStore.getDateRange(null, '30d')).then(() => _renderWeatherCharts());
+      } else if (tf === 'year' && vintages.length) {
+        WeatherStore.sync(vintages, year => WeatherStore.getDateRange(year, 'year')).then(() => _renderWeatherCharts());
+      } else {
+        _renderWeatherCharts();
+      }
+    });
+
+    // Custom date inputs
+    const customStart = document.getElementById('weather-custom-start');
+    const customEnd = document.getElementById('weather-custom-end');
+    const onCustomDateChange = () => {
+      Filters.state.weatherCustomStart = customStart?.value || null;
+      Filters.state.weatherCustomEnd = customEnd?.value || null;
+      if (Filters.state.weatherCustomStart && Filters.state.weatherCustomEnd) {
+        const range = { start: Filters.state.weatherCustomStart, end: Filters.state.weatherCustomEnd };
+        const year = parseInt(range.start.substring(0, 4));
+        WeatherStore.sync([year], () => range).then(() => _renderWeatherCharts());
+      }
+    };
+    if (customStart) customStart.addEventListener('change', onCustomDateChange);
+    if (customEnd) customEnd.addEventListener('change', onCustomDateChange);
   },
 
   // ── Auth (1 handler — login form handled by Auth.bindForm()) ──
