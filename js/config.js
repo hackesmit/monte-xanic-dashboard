@@ -106,12 +106,21 @@ export const CONFIG = {
 
   normalizeAppellation(name, sampleId) {
     if (!name) return name;
-    // Fix mojibake/replacement characters
+    // Fix mojibake/replacement characters (U+FFFD from encoding errors in DB)
     let fixed = name;
     if (fixed.includes('\uFFFD')) {
       fixed = fixed
         .replace('Vi\uFFFDa', 'Viña').replace('Ol\uFFFD', 'Olé')
         .replace('Ger\uFFFDnimo', 'Gerónimo').replace('Coraz\uFFFDn', 'Corazón');
+      // Strip any remaining replacement characters as last resort
+      fixed = fixed.replace(/\uFFFD/g, '');
+    }
+    // Also fix double-encoded UTF-8 mojibake (ñ as Ã±, é as Ã©, etc.)
+    if (fixed.includes('\u00C3')) {
+      fixed = fixed
+        .replace(/\u00C3\u00B1/g, 'ñ').replace(/\u00C3\u00A9/g, 'é')
+        .replace(/\u00C3\u00B3/g, 'ó').replace(/\u00C3\u00AD/g, 'í')
+        .replace(/\u00C3\u00BA/g, 'ú').replace(/\u00C3\u0091/g, 'Ñ');
     }
     // Check direct mapping
     if (this.appellationFixes[fixed]) return this.appellationFixes[fixed];

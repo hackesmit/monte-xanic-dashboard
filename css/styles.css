@@ -78,6 +78,11 @@
   --tooltip-bg: #ffffff;
 }
 
+/* Theme-aware logos: SVG (white text) for dark, webp (black text) for light */
+.logo-light { display: none !important; }
+[data-theme="light"] .logo-dark { display: none !important; }
+[data-theme="light"] .logo-light { display: inline !important; }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
   background: var(--black);
@@ -1465,6 +1470,7 @@ canvas { max-width: 100%; }
   background: radial-gradient(ellipse 600px 400px at 50% 45%, rgba(196,160,96,0.06) 0%, var(--black) 70%);
 }
 .login-card {
+  position: relative;
   width: 360px;
   max-width: 90vw;
   text-align: center;
@@ -1580,6 +1586,13 @@ canvas { max-width: 100%; }
   opacity: 0.5;
   animation: loginFadeIn 0.5s ease-out 0.55s both;
 }
+.login-theme-toggle {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  opacity: 0.5;
+}
+.login-theme-toggle:hover { opacity: 1; }
 
 /* ── EXPLORER ── */
 .explorer-slot {

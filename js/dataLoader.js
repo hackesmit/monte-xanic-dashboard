@@ -111,8 +111,8 @@ export const DataStore = {
       code: row.medicion_code,
       date: row.medicion_date,
       vintage: row.vintage_year,
-      variety: row.variety,
-      appellation: row.appellation,
+      variety: CONFIG.normalizeVariety(row.variety),
+      appellation: CONFIG.normalizeAppellation(row.appellation, row.lot_code),
       lotCode: row.lot_code,
       tons: row.tons_received ? parseFloat(row.tons_received) : null,
       berryCount: row.berry_count_sample,
@@ -502,11 +502,21 @@ export const DataStore = {
     });
   },
 
-  // Enrich loaded data with computed fields (lotCode, grapeType)
+  // Enrich loaded data with computed fields (lotCode, grapeType, normalization)
   _enrichData() {
     this.berryData.forEach(d => {
       if (d.sampleId && !d.lotCode) d.lotCode = Identity.extractLotCode(d.sampleId);
-      if (d.variety && !d.grapeType) d.grapeType = this.getGrapeType(d.variety);
+      if (d.variety) d.variety = CONFIG.normalizeVariety(d.variety);
+      if (d.appellation) d.appellation = CONFIG.normalizeAppellation(d.appellation, d.sampleId);
+      if (!d.grapeType) d.grapeType = this.getGrapeType(d.variety);
+    });
+    this.wineRecepcion.forEach(d => {
+      if (d.variedad) d.variedad = CONFIG.normalizeVariety(d.variedad);
+      if (d.proveedor) d.proveedor = CONFIG.normalizeAppellation(d.proveedor, d.codigoBodega);
+    });
+    this.winePreferment.forEach(d => {
+      if (d.variedad) d.variedad = CONFIG.normalizeVariety(d.variedad);
+      if (d.proveedor) d.proveedor = CONFIG.normalizeAppellation(d.proveedor, d.codigoBodega);
     });
   },
 
