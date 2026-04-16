@@ -15,7 +15,7 @@ import { Mediciones } from './mediciones.js';
 export const App = {
   currentView: 'berry',
   initialized: false,
-  theme: 'dark',
+  theme: 'light',
 
   _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
 
@@ -783,10 +783,8 @@ export const App = {
 
   _syncThemeIcons() {
     const isLight = this.theme === 'light';
-    const darkIcon = document.querySelector('.theme-icon-dark');
-    const lightIcon = document.querySelector('.theme-icon-light');
-    if (darkIcon) darkIcon.style.display = isLight ? 'none' : '';
-    if (lightIcon) lightIcon.style.display = isLight ? '' : 'none';
+    document.querySelectorAll('.theme-icon-dark').forEach(el => el.style.display = isLight ? 'none' : '');
+    document.querySelectorAll('.theme-icon-light').forEach(el => el.style.display = isLight ? '' : 'none');
   },
 
   toggleTheme() {
@@ -803,7 +801,7 @@ export const App = {
 
   restoreTheme() {
     const saved = localStorage.getItem('xanic_theme');
-    this.theme = saved === 'light' ? 'light' : 'dark';
+    this.theme = saved === 'dark' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', this.theme);
     this.updateChartTheme();
     this._syncThemeIcons();
@@ -840,6 +838,11 @@ export const App = {
 
 // Initialize on DOM ready — auth gate before app
 document.addEventListener('DOMContentLoaded', async () => {
+  // Restore theme + bind login toggle before auth (works on login screen)
+  App.restoreTheme();
+  const loginToggle = document.getElementById('login-theme-toggle');
+  if (loginToggle) loginToggle.addEventListener('click', () => App.toggleTheme());
+
   const authed = await Auth.init();
   if (authed) App.init();
 });

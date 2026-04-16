@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Monte Xanic">
 <title>Vendimias — Monte Xanic</title>
 <script>/* Restore theme before first paint to prevent flash */
-(function(){var t=localStorage.getItem('xanic_theme');document.documentElement.setAttribute('data-theme',t==='light'?'light':'dark')})()</script>
+(function(){var t=localStorage.getItem('xanic_theme');document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'light')})()</script>
 <link rel="stylesheet" href="css/styles.css">
 <link rel="icon" href="assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
@@ -21,7 +21,8 @@
 <!-- Login Screen -->
 <div id="login-screen" class="login-screen" style="display:none">
   <div class="login-card">
-    <img src="assets/logo_montexanic.svg" class="login-logo" alt="Monte Xanic">
+    <img src="assets/logo_montexanic.svg" class="login-logo logo-dark" alt="Monte Xanic">
+    <img src="assets/logo_montexanic_light.webp" class="login-logo logo-light" alt="Monte Xanic">
     <div class="login-divider"></div>
     <div class="login-tagline">Seguimiento de Maduración y Fenólicos</div>
     <form id="login-form">
@@ -35,6 +36,10 @@
       <div id="login-error" class="login-error"></div>
     </form>
     <div class="login-footer">Monte Xanic &mdash; Bodega Vinícola</div>
+    <button class="theme-toggle login-theme-toggle" id="login-theme-toggle" title="Cambiar tema" aria-label="Cambiar tema">
+      <span class="theme-icon-dark">&#9790;</span>
+      <span class="theme-icon-light" style="display:none">&#9788;</span>
+    </button>
   </div>
 </div>
 
@@ -86,7 +91,8 @@
 <header>
   <div class="header-left">
     <div class="brand">
-      <img src="assets/logo_montexanic.svg" class="brand-logo" alt="Monte Xanic">
+      <img src="assets/logo_montexanic.svg" class="brand-logo logo-dark" alt="Monte Xanic">
+      <img src="assets/logo_montexanic_light.webp" class="brand-logo logo-light" alt="Monte Xanic">
       <div class="header-tagline" id="header-tagline">Seguimiento de Maduración y Fenólicos</div>
     </div>
   </div>
@@ -97,8 +103,8 @@
     <div class="hdr-stat"><div class="hdr-num" id="hdr-origenes">—</div><div class="hdr-lbl">Orígenes</div></div>
     <span id="db-status-badge" class="db-badge db-badge-off" title="Sin conexión a base de datos">DB —</span>
     <button class="theme-toggle" title="Cambiar tema claro/oscuro" id="theme-toggle-btn" aria-label="Cambiar tema">
-      <span class="theme-icon-dark">&#9790;</span>
-      <span class="theme-icon-light" style="display:none">&#9788;</span>
+      <span class="theme-icon-dark" style="display:none">&#9790;</span>
+      <span class="theme-icon-light">&#9788;</span>
     </button>
     <button class="help-toggle" id="help-toggle-btn" title="Ayuda" aria-label="Ayuda">?</button>
     <button class="help-toggle" id="logout-btn" title="Cerrar sesión" aria-label="Cerrar sesión" style="font-size:10px">&#x23FB;</button>
