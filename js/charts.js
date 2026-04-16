@@ -48,6 +48,49 @@ export const Charts = {
     return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
   },
 
+  _parseColorToRGB(cssColor) {
+    // Parse hex (#RRGGBB) or rgb(r,g,b) to [r, g, b]
+    if (!cssColor) return null;
+    const hexMatch = cssColor.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+    if (hexMatch) return [parseInt(hexMatch[1], 16), parseInt(hexMatch[2], 16), parseInt(hexMatch[3], 16)];
+    const rgbMatch = cssColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    if (rgbMatch) return [parseInt(rgbMatch[1]), parseInt(rgbMatch[2]), parseInt(rgbMatch[3])];
+    return null;
+  },
+
+  _getPdfThemeColors() {
+    return {
+      bg:    this._parseColorToRGB(this._getThemeColor('--card'))   || [22, 22, 22],
+      title: this._parseColorToRGB(this._getThemeColor('--white'))  || [255, 255, 255],
+      text:  this._parseColorToRGB(this._getThemeColor('--text'))   || [216, 208, 196],
+      muted: this._parseColorToRGB(this._getThemeColor('--muted'))  || [136, 136, 136],
+      gold:  this._parseColorToRGB(this._getThemeColor('--gold'))   || [196, 160, 96],
+    };
+  },
+
+  _drawPdfLegend(pdf, items, startX, y, maxX, textRGB) {
+    let lx = startX;
+    pdf.setFontSize(7);
+    items.forEach(item => {
+      const textW = pdf.getTextWidth(item.label);
+      const itemW = 4 + textW + 6;
+      if (lx + itemW > maxX) { lx = startX; }
+      let r = 128, g = 128, b = 128;
+      const rgbMatch = item.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (rgbMatch) {
+        r = parseInt(rgbMatch[1]); g = parseInt(rgbMatch[2]); b = parseInt(rgbMatch[3]);
+      } else {
+        const hex = item.color.replace(/[^0-9a-f]/gi, '').slice(0, 6);
+        if (hex.length >= 6) { r = parseInt(hex.slice(0,2),16); g = parseInt(hex.slice(2,4),16); b = parseInt(hex.slice(4,6),16); }
+      }
+      pdf.setFillColor(r, g, b);
+      pdf.circle(lx + 1.5, y + 1.5, 1.5, 'F');
+      pdf.setTextColor(...textRGB);
+      pdf.text(item.label, lx + 4, y + 2.5);
+      lx += itemW;
+    });
+  },
+
   destroy(id) {
     if (this.instances[id]) {
       this.instances[id].destroy();
@@ -1710,6 +1753,7 @@ export const Charts = {
     const dotR = (opts && opts.dotRadius) || 5;
     const gap = 16;
     const rowH = fontSize + 8;
+    const labelColor = this._getThemeColor('--text') || '#D8D0C4';
     ctx.font = `${fontSize}px "Sackers Gothic Medium", sans-serif`;
 
     let cx = x;
@@ -1729,7 +1773,7 @@ export const Charts = {
       ctx.fillStyle = item.color;
       ctx.fill();
       // Label
-      ctx.fillStyle = '#D8D0C4';
+      ctx.fillStyle = labelColor;
       ctx.textAlign = 'left';
       ctx.fillText(item.label, cx + dotR * 2 + 6, cy + dotR + fontSize / 3);
       cx += itemW;
@@ -1771,18 +1815,22 @@ export const Charts = {
     tmp.height = totalH;
     const ctx = tmp.getContext('2d');
 
-    // Dark background
-    ctx.fillStyle = '#161616';
+    // Theme-aware colors
+    const bgColor = this._getThemeColor('--card') || '#161616';
+    const titleColor = this._getThemeColor('--white') || '#FFFFFF';
+    const borderGold = this._getThemeColor('--border-gold') || 'rgba(196,160,96,0.35)';
+
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, totalW, totalH);
 
     // Title
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = titleColor;
     ctx.font = '16px "Sackers Gothic Medium", sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(title, pad, pad + 6);
 
     // Separator line
-    ctx.strokeStyle = 'rgba(196,160,96,0.35)';
+    ctx.strokeStyle = borderGold;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad, titleH + 4);
@@ -1843,17 +1891,19 @@ export const Charts = {
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();
 
-      // Dark background
-      pdf.setFillColor(22, 22, 22);
+      // Theme-aware colors
+      const pdfColors = this._getPdfThemeColors();
+
+      pdf.setFillColor(...pdfColors.bg);
       pdf.rect(0, 0, pw, ph, 'F');
 
       // Title
-      pdf.setTextColor(255, 255, 255);
+      pdf.setTextColor(...pdfColors.title);
       pdf.setFontSize(14);
       pdf.text(title, 15, 18);
 
       // Gold separator
-      pdf.setDrawColor(196, 160, 96);
+      pdf.setDrawColor(...pdfColors.gold);
       pdf.setLineWidth(0.3);
       pdf.line(15, 22, pw - 15, 22);
 
@@ -1872,33 +1922,11 @@ export const Charts = {
 
       // Legend below chart
       if (legendItems.length) {
-        const ly = 26 + chartH + 3;
-        let lx = 15;
-        pdf.setFontSize(7);
-        legendItems.forEach(item => {
-          const textW = pdf.getTextWidth(item.label);
-          const itemW = 4 + textW + 6;
-          if (lx + itemW > pw - 15) { lx = 15; }
-          // Dot — parse rgb(...) or hex color
-          let r = 128, g = 128, b = 128;
-          const rgbMatch = item.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-          if (rgbMatch) {
-            r = parseInt(rgbMatch[1]); g = parseInt(rgbMatch[2]); b = parseInt(rgbMatch[3]);
-          } else {
-            const hex = item.color.replace(/[^0-9a-f]/gi, '').slice(0, 6);
-            if (hex.length >= 6) { r = parseInt(hex.slice(0,2),16); g = parseInt(hex.slice(2,4),16); b = parseInt(hex.slice(4,6),16); }
-          }
-          pdf.setFillColor(r, g, b);
-          pdf.circle(lx + 1.5, ly + 1.5, 1.5, 'F');
-          // Label
-          pdf.setTextColor(216, 208, 196);
-          pdf.text(item.label, lx + 4, ly + 2.5);
-          lx += itemW;
-        });
+        this._drawPdfLegend(pdf, legendItems, 15, 26 + chartH + 3, pw - 15, pdfColors.text);
       }
 
       // Watermark
-      pdf.setTextColor(196, 160, 96);
+      pdf.setTextColor(...pdfColors.gold);
       pdf.setFontSize(8);
       pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
 
@@ -1943,19 +1971,25 @@ export const Charts = {
     tmp.height = totalH;
     const ctx = tmp.getContext('2d');
 
-    ctx.fillStyle = '#161616';
+    // Theme-aware colors
+    const bgColor = this._getThemeColor('--card') || '#161616';
+    const titleColor = this._getThemeColor('--white') || '#FFFFFF';
+    const mutedColor = this._getThemeColor('--muted') || '#888';
+    const borderGold = this._getThemeColor('--border-gold') || 'rgba(196,160,96,0.35)';
+
+    ctx.fillStyle = bgColor;
     ctx.fillRect(0, 0, totalW, totalH);
 
     const date = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
-    ctx.fillStyle = '#FFFFFF';
+    ctx.fillStyle = titleColor;
     ctx.font = '18px "Sackers Gothic Medium", sans-serif';
     ctx.textAlign = 'left';
     ctx.fillText(`${viewTitle} \u2014 Monte Xanic`, pad, pad + 6);
-    ctx.fillStyle = '#888';
+    ctx.fillStyle = mutedColor;
     ctx.font = '11px "Sackers Gothic Medium", sans-serif';
     ctx.fillText(date, pad, pad + 22);
 
-    ctx.strokeStyle = 'rgba(196,160,96,0.35)';
+    ctx.strokeStyle = borderGold;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(pad, titleH);
@@ -2027,17 +2061,20 @@ export const Charts = {
       const pw = pdf.internal.pageSize.getWidth();
       const ph = pdf.internal.pageSize.getHeight();
 
+      // Theme-aware colors
+      const pdfColors = this._getPdfThemeColors();
+
       // Title page
-      pdf.setFillColor(22, 22, 22);
+      pdf.setFillColor(...pdfColors.bg);
       pdf.rect(0, 0, pw, ph, 'F');
-      pdf.setTextColor(255, 255, 255);
+      pdf.setTextColor(...pdfColors.title);
       pdf.setFontSize(20);
       pdf.text(`${viewTitle} \u2014 Monte Xanic`, pw / 2, ph / 2 - 10, { align: 'center' });
       const date = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
       pdf.setFontSize(12);
-      pdf.setTextColor(136, 136, 136);
+      pdf.setTextColor(...pdfColors.muted);
       pdf.text(date, pw / 2, ph / 2 + 5, { align: 'center' });
-      pdf.setTextColor(196, 160, 96);
+      pdf.setTextColor(...pdfColors.gold);
       pdf.setFontSize(8);
       pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
 
@@ -2046,18 +2083,18 @@ export const Charts = {
         const chart = this.instances[c.id];
         if (!chart) return;
         pdf.addPage();
-        pdf.setFillColor(22, 22, 22);
+        pdf.setFillColor(...pdfColors.bg);
         pdf.rect(0, 0, pw, ph, 'F');
 
         const card = c.closest('.chart-card') || c.closest('.explorer-slot');
         const titleEl = card && (card.querySelector('.chart-title') || card.querySelector('.explorer-summary'));
         const chartTitle = titleEl ? titleEl.textContent : c.id;
 
-        pdf.setTextColor(255, 255, 255);
+        pdf.setTextColor(...pdfColors.title);
         pdf.setFontSize(14);
         pdf.text(chartTitle, 15, 18);
 
-        pdf.setDrawColor(196, 160, 96);
+        pdf.setDrawColor(...pdfColors.gold);
         pdf.setLineWidth(0.3);
         pdf.line(15, 22, pw - 15, 22);
 
@@ -2076,30 +2113,10 @@ export const Charts = {
 
         // Legend
         if (legendItems.length) {
-          const ly = 26 + ch + 3;
-          let lx = 15;
-          pdf.setFontSize(7);
-          legendItems.forEach(item => {
-            const textW = pdf.getTextWidth(item.label);
-            const itemW = 4 + textW + 6;
-            if (lx + itemW > pw - 15) { lx = 15; }
-            let r = 128, g = 128, b = 128;
-            const rgbMatch = item.color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
-            if (rgbMatch) {
-              r = parseInt(rgbMatch[1]); g = parseInt(rgbMatch[2]); b = parseInt(rgbMatch[3]);
-            } else {
-              const hex = item.color.replace(/[^0-9a-f]/gi, '').slice(0, 6);
-              if (hex.length >= 6) { r = parseInt(hex.slice(0,2),16); g = parseInt(hex.slice(2,4),16); b = parseInt(hex.slice(4,6),16); }
-            }
-            pdf.setFillColor(r, g, b);
-            pdf.circle(lx + 1.5, ly + 1.5, 1.5, 'F');
-            pdf.setTextColor(216, 208, 196);
-            pdf.text(item.label, lx + 4, ly + 2.5);
-            lx += itemW;
-          });
+          this._drawPdfLegend(pdf, legendItems, 15, 26 + ch + 3, pw - 15, pdfColors.text);
         }
 
-        pdf.setTextColor(196, 160, 96);
+        pdf.setTextColor(...pdfColors.gold);
         pdf.setFontSize(8);
         pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
       });
