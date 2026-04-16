@@ -105,7 +105,97 @@
 
 ---
 
-## Prior Rounds (1–17)
+## Round 19 — Branch `feat/vite-migration` — 4 New Commits (2026-04-16)
+
+**Scope:** 4 commits (`1810695`, `b7d6b48`, `68c9763`, `d9c7010`) on branch `feat/vite-migration`. 15 files changed, +637 / −771 lines (net reduction from REVIEW.md consolidation).
+**Commits:**
+1. `1810695` — feat: light theme default, dual logos, encoding normalization
+2. `b7d6b48` — feat: weather time aggregation (F5) and selectable timeframes (F6)
+3. `68c9763` — docs: update TASK.md, PLAN.md for Stage 2 (F5+F6) completion
+4. `d9c7010` — fix: move inline theme script to external file for CSP compliance (P1.1)
+
+**Build:** `vite build` succeeds — 265 modules, 14 output files, 1.36s.
+**Tests:** 96/96 passing (13 suites, 890ms). 24 new tests in MT.8.
+**Browser smoke test:** Dev server + production build both load with 0 JS errors. Theme toggle verified on login screen (light ↔ dark).
+
+---
+
+### Round 18 Items Resolved
+
+| ID | Issue | Resolution |
+|----|-------|------------|
+| R18.P1.1 | Inline theme script blocked by CSP | **Fixed** (`d9c7010`) — moved to `public/theme-init.js`, served as `'self'` |
+
+---
+
+### Priority 1 — Issues
+
+None. All R18 P1 items resolved or downgraded:
+- **P1.1 (CSP inline script):** Fixed in `d9c7010`.
+- **P1.2 (circular deps):** No current bug — remains a maintenance note. Browser testing confirms all modules load and resolve correctly.
+- **P1.3 (jsPDF v4):** Cannot test PDF export without authenticated session + data. Remains an open verification item but is not blocking the migration.
+
+---
+
+### Priority 2 — Improvements
+
+**P2.1 — `theme-init.js` has no trailing newline**
+- **File:** `public/theme-init.js`
+- Minor: file ends without a newline character. Some linters and POSIX tools expect a trailing newline.
+- **Impact:** Cosmetic.
+
+**P2.2 — `_syncInner` `dateRangeFn` API is inconsistent — some callers ignore the `year` parameter**
+- **Files:** `js/events.js:111,128`
+- `_syncInner` calls `rangeFn(year)` in a loop. Two callers pass lambdas that ignore `year`:
+  - `() => WeatherStore.getDateRange(null, '30d')` — always returns 30-day window regardless of year
+  - `() => range` — returns a fixed custom range
+- This works because both callers also pass a single-element `[year]` array, so the loop runs exactly once. But the API contract is unclear — `rangeFn` looks like it should use `year`, yet these callers don't.
+- **Impact:** Low. Functional, but confusing to a future maintainer. Consider documenting the two modes (per-vintage vs fixed-range).
+
+**P2.3 — `normalizeAppellation` double-encoded UTF-8 fix is fragile**
+- **File:** `js/config.js:113-120`
+- The fix detects `\u00C3` (Ã) to identify double-encoded UTF-8, then replaces specific byte sequences (`Ã±` → `ñ`, `Ã©` → `é`, etc.). This handles the 6 most common Spanish diacritics.
+- However, it's a byte-pair replacement — if `\u00C3` appears legitimately in text (unlikely in Spanish wine appellations but possible), it would be falsely matched. Also, any diacritics not in the list (e.g., `ü` as `Ã¼`) would not be fixed.
+- **Impact:** Low. The current list covers all known cases in the dataset. A more robust approach would be to fix encoding at the database/API level.
+
+**P2.4 — `_enrichData` now normalizes variety/appellation on wineRecepcion/winePreferment too**
+- **File:** `js/dataLoader.js:509-517`
+- Previous `_enrichData` only processed `berryData`. Now it also normalizes `wineRecepcion.variedad`/`.proveedor` and `winePreferment.variedad`/`.proveedor`. This is a scope expansion beyond the Vite migration.
+- The normalization is correct and consistent with the berry data path. But it changes the data shape — if any downstream code compares raw DB strings to these normalized values, it could break.
+- **Impact:** Low risk. The normalization functions are idempotent and additive. More of a scope note.
+
+**P2.5 — Untracked files grew from 6 to 10 items**
+- New since R18: `Logotipo_corporativo_MX_amarillo-01.webp`, `dark-mode.png`, `light-mode.png`, `light-trimmed.png`
+- These appear to be design reference screenshots. None should be committed.
+- **Action:** Add `*.png` root-level screenshots and `.webp` logo variants to `.gitignore`, or delete them.
+
+**P2.6 — `_applyDaysJitter` still exported unnecessarily (carried from R18)**
+- **File:** `js/charts.js:11`
+- Not addressed in the 4 new commits. Minor cosmetic issue.
+
+---
+
+### Missing Tests
+
+- **No test for encoding normalization** — The double-encoded UTF-8 fix in `config.js:113-120` and the `_enrichData` normalization of wineRecepcion/winePreferment have no test coverage. A test verifying `normalizeAppellation('Vi\uFFFDa')` → `'Viña'` and `normalizeAppellation('Ger\u00C3\u00B3nimo')` → `'Gerónimo'` would prevent regression.
+- **PDF export with jsPDF v4** — still untested in browser (requires auth + data).
+- **Weather UI interactions** — The aggregation/timeframe selectors are tested at the data layer (MT.8) but not at the UI event layer. Would need Playwright E2E tests with live data.
+
+---
+
+### Notes
+
+- **P1.1 fix is clean and correct.** External `theme-init.js` in `public/` is the right approach — it's blocking (runs before paint), CSP-compliant (served from `'self'`), and Vite copies it to `dist/` root untouched. Default flipped to light (`t==='dark'?'dark':'light'`), matching `App.theme: 'light'` and `App.restoreTheme()`.
+- **Light theme implementation is well done.** Dual logos (SVG for dark, WebP for light) toggled via CSS classes `.logo-dark`/`.logo-light` with `[data-theme="light"]` selector. Login screen gets its own theme toggle button. `_syncThemeIcons` now uses `querySelectorAll` to update both login and header toggle icons.
+- **Weather aggregation (F5) is solid.** `WeatherStore.aggregate()` correctly averages temperatures, sums rainfall, and accumulates GDD contributions. The `_gddContribution` field in aggregated rows is used by `createGDDChart` to avoid re-computing GDD from averaged temps (which would be mathematically wrong). Good design.
+- **Selectable timeframes (F6) are well-integrated.** New filter state (`weatherAggregation`, `weatherTimeframe`, `weatherCustomStart`, `weatherCustomEnd`), new HTML selectors in `index.html`, event handlers in `events.js`, and chart functions updated to accept the new parameters. `clearAll` correctly resets all new state.
+- **MT.8 test suite is thorough.** 24 tests covering aggregation (day/week/month modes, null handling, correctness), date range helpers, ISO week calculation, and x-axis title generation. Tests import directly from `js/weather.js` — no code duplication.
+- **Browser smoke test passed.** Both dev server and production build load with 0 JS errors. Theme toggle works on login screen. Light theme is the new default with correct logo switching.
+- **96/96 tests pass.** No regressions in existing tests (MT.2–MT.7). 24 new tests in MT.8.
+
+---
+
+## Prior Rounds (1–18)
 
 Historical review rounds are preserved in git history. Key milestones:
 - **Rounds 1–9:** Initial development, Waves 1–7 merged.
@@ -114,3 +204,4 @@ Historical review rounds are preserved in git history. Key milestones:
 - **Rounds 13–15:** Phase 8 — deterministic berry upload identity.
 - **Round 16:** Phase 8 merged + `parseFloat` root cause fix.
 - **Round 17:** Dead code cleanup, jsPDF CDN fix, scatter legend.
+- **Round 18:** Vite migration review — CSP inline script, circular deps, jsPDF v4 jump.
