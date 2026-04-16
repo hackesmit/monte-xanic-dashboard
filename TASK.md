@@ -27,8 +27,8 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 | F3 | Page-wide export | "Exportar Vista" on all dashboard views — PNG vertical stack / multi-page PDF with legend | **Done** (`d067072`, `f506fe9`) |
 | F4 | Explorer chart resize + legend | Expand/compact toggle, clickable legend bar below each chart | **Done** (`2fdcf50`, `185d65e`) |
 | F4b | Explorer lot picker | Searchable multi-select lot picker when groupBy = Lote | **Done** (`7b9213f`) |
-| F5 | Weather time aggregation | Toggle day/week/month on weather charts | **Pending** |
-| F6 | Weather multiple timeframes | Selectable date ranges beyond fixed Jul–Oct | **Pending** |
+| F5 | Weather time aggregation | Toggle day/week/month on weather charts | **Done** (`b7d6b48`) |
+| F6 | Weather multiple timeframes | Selectable date ranges beyond fixed Jul–Oct | **Done** (`b7d6b48`) |
 | F7 | Satellite vineyard map | Leaflet-based satellite view with quality heatmap overlay | **Future** — deferred |
 | F8 | Weather forecast integration | Show future weather predictions | **Future** |
 | F9 | Lot categorization (monovarietal vs mix) | Chemical-value-based lot classification | **Bookmarked** |
@@ -89,10 +89,21 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 - Localhost auth bypass when /api/verify unreachable (`d36b3b2`)
 - Line toggle preserves hidden dataset state (`63b37b0`)
 
-### Pending (Sub-project 2: Weather Enhancements)
+### What Shipped (Sub-project 2: Weather Enhancements)
 
-**F5 — Weather time aggregation:** Day/week/month toggle on weather charts
-**F6 — Weather timeframes:** Selectable date ranges beyond fixed Jul–Oct
+**F5 — Weather time aggregation:**
+- Día/Semana/Mes dropdown next to valley selector
+- `WeatherStore.aggregate()` groups daily data: temps averaged, rainfall summed, GDD preserved
+- All 4 weather charts support aggregation (temp, rain, GDD, valley comparison)
+- Larger point radius for aggregated data (visual clarity)
+
+**F6 — Weather selectable timeframes:**
+- Temporada (Jul–Oct), Año Completo (Jan–Dec), Últimos 30 Días, Personalizado
+- Custom date picker with inline `<input type="date">` inputs
+- Dynamic sync fetches extended ranges from Open-Meteo when timeframe changes
+- Section title updates to reflect active timeframe + valley
+- GDD chart always uses season range (Jul–Oct) — domain-appropriate for viticulture
+- 30d/custom modes show single "Reciente"/"Personalizado" dataset (no vintage overlay)
 
 ---
 
@@ -118,7 +129,7 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 
 ---
 
-## Tests — 72/72 Passing (6 suites)
+## Tests — 96/96 Passing (7 suites)
 
 | ID | Scope | Tests | Status |
 |----|-------|-------|--------|
@@ -128,6 +139,7 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 | MT.5 | Valley selector flow | 10 | **Pass** |
 | MT.6 | Canonical seq + extractLotCode | 13 | **Pass** |
 | MT.7 | Column whitelist + required fields | 19 | **Pass** |
+| MT.8 | Weather aggregation, date ranges, ISO weeks | 24 | **Pass** |
 
 Run: `npm test` or `node --test tests/*.test.mjs`
 
