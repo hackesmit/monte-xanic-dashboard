@@ -100,10 +100,12 @@ export const Mediciones = {
         await DataStore.loadMediciones();
         this.refresh();
       } else {
-        this._setStatus(data.error || 'Error al guardar', 'error');
+        console.error('[Mediciones] Upload failed:', res.status, data);
+        this._setStatus(data.error || `Error al guardar (${res.status})`, 'error');
       }
     } catch (e) {
-      this._setStatus('Error de conexion', 'error');
+      console.error('[Mediciones] Network error:', e);
+      this._setStatus('Error de conexion: ' + e.message, 'error');
     } finally {
       if (btn) btn.disabled = false;
     }

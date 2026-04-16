@@ -149,7 +149,13 @@ export default async function handler(req, res) {
     if (!response.ok) {
       const errText = await response.text();
       console.error(`[upload] Supabase error for ${table}:`, errText);
-      return res.status(500).json({ ok: false, error: 'Error al insertar datos' });
+      // Parse Supabase error for user-facing detail
+      let detail = 'Error al insertar datos';
+      try {
+        const errObj = JSON.parse(errText);
+        if (errObj.message) detail += ': ' + errObj.message;
+      } catch (_) { /* ignore parse error */ }
+      return res.status(500).json({ ok: false, error: detail });
     }
 
     return res.status(200).json({ ok: true, count: rows.length });
