@@ -1008,7 +1008,7 @@ export const Charts = {
   },
 
   // Multi-valley temperature comparison: one line per valley for a single vintage
-  createValleyTempChart(canvasId, vintage) {
+  createValleyTempChart(canvasId, vintage, aggregation) {
     if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
@@ -1016,13 +1016,15 @@ export const Charts = {
 
     if (!vintage) { this._drawNoData(canvas, 'Seleccione una vendimia para comparar valles'); return; }
 
+    const agg = aggregation || 'day';
     const valleyColors = { VDG: '#C4A060', VON: '#60A8C0', SV: '#7EC87A' };
     const valleyNames = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
     const datasets = [];
 
     for (const valley of ['VDG', 'VON', 'SV']) {
-      const rows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`, valley);
-      if (!rows.length) continue;
+      const rawRows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`, valley);
+      if (!rawRows.length) continue;
+      const rows = WeatherStore.aggregate(rawRows, agg);
       const color = valleyColors[valley];
       const pts = rows
         .filter(r => r.temp_avg !== null)
@@ -1085,33 +1087,36 @@ export const Charts = {
   },
 
   // Temperature time series: daily mean °C, all vintages overlaid
-  createWeatherTimeSeries(canvasId, vintages, location) {
+  createWeatherTimeSeries(canvasId, vintages, location, aggregation, timeframe, customRange) {
     if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
     const loc = location || 'VDG';
+    const agg = aggregation || 'day';
+    const tf = timeframe || 'season';
     const datasets = [];
-    for (const year of vintages) {
-      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`, loc);
-      if (!rows.length) continue;
-      const color = this._vintageColor(year);
-      const pts   = rows
-        .filter(r => r.temp_avg !== null)
-        .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.temp_avg }));
-      datasets.push({
-        label: String(year),
-        data:  pts,
-        borderColor:     color,
-        backgroundColor: 'transparent',
-        pointRadius:     1.5,
-        pointHoverRadius: 5,
-        borderWidth:     1.5,
-        showLine:        true,
-        tension:         0.3,
-        fill:            false
+
+    const addSeries = (label, color, rawRows, rangeStart) => {
+      const rows = WeatherStore.aggregate(rawRows, agg);
+      const pts = rows.filter(r => r.temp_avg !== null)
+        .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.temp_avg }));
+      if (pts.length) datasets.push({
+        label, data: pts, borderColor: color, backgroundColor: 'transparent',
+        pointRadius: agg === 'day' ? 1.5 : 4, pointHoverRadius: 5,
+        borderWidth: 1.5, showLine: true, tension: 0.3, fill: false
       });
+    };
+
+    if (tf === '30d' || tf === 'custom') {
+      const { start, end } = WeatherStore.getDateRange(null, tf, customRange);
+      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start);
+    } else {
+      for (const year of vintages) {
+        const { start, end } = WeatherStore.getDateRange(year, tf, customRange);
+        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start);
+      }
     }
 
     if (!datasets.length) {
@@ -1134,14 +1139,14 @@ export const Charts = {
             backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
             titleColor: '#DDB96E', bodyColor: '#D8D0C4',
             callbacks: {
-              title: (items) => `Día ${items[0].raw.x} temporada ${items[0].dataset.label}`,
+              title: (items) => `Día ${items[0].raw.x} — ${items[0].dataset.label}`,
               label: (ctx)   => `Temp: ${ctx.raw.y?.toFixed(1)}°C`
             }
           }
         },
         scales: {
           x: {
-            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            title: { display: true, text: WeatherStore._xAxisTitle(tf), color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid:  { color: CONFIG.chartDefaults.gridColor }
           },
@@ -1157,31 +1162,37 @@ export const Charts = {
   },
 
   // Rainfall scatter: each rainy day as a dot (x = day-of-season, y = mm)
-  createRainfallChart(canvasId, vintages, location) {
+  createRainfallChart(canvasId, vintages, location, aggregation, timeframe, customRange) {
     if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
     const loc = location || 'VDG';
+    const agg = aggregation || 'day';
+    const tf = timeframe || 'season';
     const datasets = [];
-    for (const year of vintages) {
-      const rows = WeatherStore.getRange(`${year}-07-01`, `${year}-10-31`, loc);
-      if (!rows.length) continue;
-      const color = this._vintageColor(year);
-      const pts   = rows
+
+    const addSeries = (label, color, rawRows, rangeStart) => {
+      const rows = WeatherStore.aggregate(rawRows, agg);
+      const pts = rows
         .filter(r => r.rainfall_mm !== null && r.rainfall_mm > 0)
-        .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.rainfall_mm }));
-      if (!pts.length) continue;
-      datasets.push({
-        label:           String(year),
-        data:            pts,
-        backgroundColor: color + 'BB',
-        borderColor:     color,
-        pointRadius:     5,
-        pointHoverRadius: 8,
-        showLine:        false
+        .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.rainfall_mm }));
+      if (pts.length) datasets.push({
+        label, data: pts, backgroundColor: color + 'BB', borderColor: color,
+        pointRadius: agg === 'day' ? 5 : 8, pointHoverRadius: agg === 'day' ? 8 : 11,
+        showLine: false
       });
+    };
+
+    if (tf === '30d' || tf === 'custom') {
+      const { start, end } = WeatherStore.getDateRange(null, tf, customRange);
+      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start);
+    } else {
+      for (const year of vintages) {
+        const { start, end } = WeatherStore.getDateRange(year, tf, customRange);
+        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start);
+      }
     }
 
     if (!datasets.length) {
@@ -1204,14 +1215,14 @@ export const Charts = {
             backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
             titleColor: '#DDB96E', bodyColor: '#D8D0C4',
             callbacks: {
-              title: (items) => `Día ${items[0].raw.x} temporada ${items[0].dataset.label}`,
+              title: (items) => `Día ${items[0].raw.x} — ${items[0].dataset.label}`,
               label: (ctx)   => `Lluvia: ${ctx.raw.y?.toFixed(1)} mm`
             }
           }
         },
         scales: {
           x: {
-            title: { display: true, text: 'Día de temporada (1 = 1 Jul)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+            title: { display: true, text: WeatherStore._xAxisTitle(tf), color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
             ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
             grid:  { color: CONFIG.chartDefaults.gridColor }
           },
@@ -1227,13 +1238,14 @@ export const Charts = {
   },
 
   // GDD cumulative chart: accumulated growing degree days from Jul 1, per vintage
-  createGDDChart(canvasId, vintages, location) {
+  createGDDChart(canvasId, vintages, location, aggregation) {
     if (!WeatherStore) return;
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
     const loc = location || 'VDG';
+    const agg = aggregation || 'day';
     const datasets = [];
 
     for (const year of vintages) {
@@ -1242,17 +1254,20 @@ export const Charts = {
       const end = `${year}-10-31` <= today ? `${year}-10-31` : today;
       if (start > today) continue;
 
-      const rows = WeatherStore.getRange(start, end, loc);
-      if (!rows.length) continue;
+      const rawRows = WeatherStore.getRange(start, end, loc);
+      if (!rawRows.length) continue;
+      const rows = WeatherStore.aggregate(rawRows, agg);
 
       // Build cumulative GDD series
       let cumGDD = 0;
       const pts = [];
-      // Sort by date to accumulate correctly
       const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
       for (const r of sorted) {
-        if (r.temp_avg === null) continue;
-        cumGDD += Math.max(0, r.temp_avg - 10);
+        const contrib = r._gddContribution !== undefined
+          ? r._gddContribution
+          : (r.temp_avg !== null ? Math.max(0, r.temp_avg - 10) : null);
+        if (contrib === null) continue;
+        cumGDD += contrib;
         const day = WeatherStore.dayOfSeason(r.date);
         if (day !== null && day >= 1) {
           pts.push({ x: day, y: Math.round(cumGDD * 10) / 10 });

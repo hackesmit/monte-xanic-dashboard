@@ -43,15 +43,19 @@ export const WeatherStore = {
 
   _isSyncing: false,
 
-  async sync(vintages) {
+  async sync(vintages, dateRangeFn) {
     if (!DataStore.supabase || this._isSyncing) return;
     this._isSyncing = true;
-    try { await this._syncInner(vintages); } finally { this._isSyncing = false; }
+    try { await this._syncInner(vintages, dateRangeFn); } finally { this._isSyncing = false; }
   },
 
-  async _syncInner(vintages) {
+  async _syncInner(vintages, dateRangeFn) {
     const today = new Date().toISOString().split('T')[0];
     const coords = CONFIG.valleyCoordinates || { VDG: { lat: 32.08, lon: -116.62 } };
+    const rangeFn = dateRangeFn || (year => ({
+      start: `${year}-07-01`,
+      end: `${year}-10-31` <= today ? `${year}-10-31` : today
+    }));
 
     // Detect if location column exists by checking if any loaded row has it
     const hasLocationCol = this.data.some(r => r.location !== undefined);
@@ -64,8 +68,7 @@ export const WeatherStore = {
       if (!coord) continue;
 
       for (const year of vintages) {
-        const start = `${year}-07-01`;
-        const end   = `${year}-10-31` <= today ? `${year}-10-31` : today;
+        const { start, end } = rangeFn(year);
         if (start > today) continue;
         if (this._hasFullRange(start, end, valley)) continue;
 
@@ -246,6 +249,98 @@ export const WeatherStore = {
     const d = Date.UTC(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
     const jul1 = Date.UTC(parseInt(parts[0]), 6, 1);
     return Math.floor((d - jul1) / 86400000) + 1;
+  },
+
+  // ── Aggregation ──────────────────────────────────────────────────
+
+  aggregate(rows, mode) {
+    if (!mode || mode === 'day') return rows;
+    const groups = {};
+    for (const r of rows) {
+      const key = mode === 'week' ? this._isoWeek(r.date) : r.date.substring(0, 7);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(r);
+    }
+    return Object.entries(groups)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([, grp]) => {
+        const avg = (f) => {
+          const v = grp.map(r => r[f]).filter(x => x !== null && x !== undefined);
+          return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+        };
+        const sum = (f) => {
+          const v = grp.map(r => r[f]).filter(x => x !== null && x !== undefined);
+          return v.length ? v.reduce((a, b) => a + b, 0) : null;
+        };
+        const mid = grp[Math.floor(grp.length / 2)];
+        return {
+          date: mid.date,
+          location: grp[0].location,
+          temp_max: avg('temp_max'),
+          temp_min: avg('temp_min'),
+          temp_avg: avg('temp_avg'),
+          rainfall_mm: sum('rainfall_mm'),
+          humidity_pct: avg('humidity_pct'),
+          uv_index: avg('uv_index'),
+          wind_speed: avg('wind_speed'),
+          _gddContribution: grp.reduce((acc, r) =>
+            acc + (r.temp_avg !== null ? Math.max(0, r.temp_avg - 10) : 0), 0),
+          _periodLabel: mode === 'week'
+            ? `Sem ${this._isoWeek(mid.date).split('-W')[1]}`
+            : this._monthName(parseInt(mid.date.split('-')[1])),
+          _dayCount: grp.length
+        };
+      });
+  },
+
+  _isoWeek(dateStr) {
+    const d = new Date(dateStr + 'T12:00:00Z');
+    const day = d.getUTCDay() || 7;
+    d.setUTCDate(d.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+    const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+    return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+  },
+
+  _monthName(month) {
+    return ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'][month - 1] || '';
+  },
+
+  // ── Date range helpers ─────────────────────────────────────────
+
+  getDateRange(vintage, timeframe, customRange) {
+    const today = new Date().toISOString().split('T')[0];
+    switch (timeframe) {
+      case 'year':
+        return { start: `${vintage}-01-01`, end: `${vintage}-12-31` <= today ? `${vintage}-12-31` : today };
+      case '30d': {
+        const d = new Date(); d.setDate(d.getDate() - 29);
+        return { start: d.toISOString().split('T')[0], end: today };
+      }
+      case 'custom':
+        return (customRange && customRange.start && customRange.end)
+          ? customRange
+          : { start: `${vintage}-07-01`, end: `${vintage}-10-31` <= today ? `${vintage}-10-31` : today };
+      default:
+        return { start: `${vintage}-07-01`, end: `${vintage}-10-31` <= today ? `${vintage}-10-31` : today };
+    }
+  },
+
+  dayInRange(dateStr, rangeStart) {
+    const dp = dateStr.split('-').map(Number);
+    const sp = rangeStart.split('-').map(Number);
+    const d = Date.UTC(dp[0], dp[1] - 1, dp[2]);
+    const s = Date.UTC(sp[0], sp[1] - 1, sp[2]);
+    return Math.floor((d - s) / 86400000) + 1;
+  },
+
+  _xAxisTitle(timeframe) {
+    switch (timeframe) {
+      case 'year': return 'Día del año (1 = 1 Ene)';
+      case '30d': return 'Últimos 30 días';
+      case 'custom': return 'Día desde inicio del rango';
+      default: return 'Día de temporada (1 = 1 Jul)';
+    }
   },
 
   getVintagesFromData() {

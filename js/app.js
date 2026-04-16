@@ -347,12 +347,16 @@ export const App = {
         Charts.createHarvestCalendar('chartHarvestCal', cleanBerry, Filters.getFilteredWine(), calVintage, Filters.state.weatherLocation || 'VDG');
         const latestBerryVintage = cleanBerry.length ? Math.max(...new Set(cleanBerry.map(d => d.vintage).filter(Boolean))) : null;
         const valleyVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : latestBerryVintage);
-        Charts.createValleyTempChart('chartValleyTemp', valleyVintage);
         const weatherVintages = WeatherStore.getVintagesFromData();
         const weatherLoc = Filters.state.weatherLocation || 'VDG';
-        Charts.createWeatherTimeSeries('chartWeatherTemp', weatherVintages, weatherLoc);
-        Charts.createRainfallChart('chartWeatherRain', weatherVintages, weatherLoc);
-        Charts.createGDDChart('chartGDD', weatherVintages, weatherLoc);
+        const weatherAgg = Filters.state.weatherAggregation || 'day';
+        const weatherTf = Filters.state.weatherTimeframe || 'season';
+        const weatherCustom = (Filters.state.weatherCustomStart && Filters.state.weatherCustomEnd)
+          ? { start: Filters.state.weatherCustomStart, end: Filters.state.weatherCustomEnd } : null;
+        Charts.createValleyTempChart('chartValleyTemp', valleyVintage, weatherAgg);
+        Charts.createWeatherTimeSeries('chartWeatherTemp', weatherVintages, weatherLoc, weatherAgg, weatherTf, weatherCustom);
+        Charts.createRainfallChart('chartWeatherRain', weatherVintages, weatherLoc, weatherAgg, weatherTf, weatherCustom);
+        Charts.createGDDChart('chartGDD', weatherVintages, weatherLoc, weatherAgg);
         break;
       }
 
