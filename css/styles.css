@@ -264,6 +264,21 @@ header {
   padding: 8px;
 }
 
+/* Forecast toggle button — matches .nav-select styling but shows pressed state */
+.weather-forecast-btn {
+  background-image: none !important;
+  padding-right: 10px !important;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+.weather-forecast-btn.active {
+  background: var(--gold);
+  color: var(--near-black);
+  border-color: var(--gold);
+}
+.weather-forecast-btn:hover:not(.active) {
+  border-color: var(--gold);
+}
+
 .filter-section { margin-bottom: 20px; }
 .filter-label {
   font-size: 9px;

@@ -1062,10 +1062,14 @@ export const Charts = {
     const agg = aggregation || 'day';
     const valleyColors = { VDG: '#C4A060', VON: '#60A8C0', SV: '#7EC87A' };
     const valleyNames = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
+    const showForecast = !!Filters.state.weatherShowForecast;
+    const horizon = Filters.state.weatherForecastHorizon || 7;
+    const seasonEnd = `${vintage}-10-31`;
+    const eligible = showForecast && WeatherStore.forecastEligible('season', seasonEnd);
     const datasets = [];
 
     for (const valley of ['VDG', 'VON', 'SV']) {
-      const rawRows = WeatherStore.getRange(`${vintage}-07-01`, `${vintage}-10-31`, valley);
+      const rawRows = WeatherStore.getRange(`${vintage}-07-01`, seasonEnd, valley);
       if (!rawRows.length) continue;
       const rows = WeatherStore.aggregate(rawRows, agg);
       const color = valleyColors[valley];
@@ -1085,6 +1089,34 @@ export const Charts = {
         tension: 0.3,
         fill: false
       });
+
+      if (eligible) {
+        const forecastRows = WeatherStore.getForecast(valley, horizon);
+        if (forecastRows) {
+          const lastObs = rawRows[rawRows.length - 1]?.date || null;
+          const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObs, seasonEnd);
+          const fPts = fRows
+            .filter(r => r.temp_avg !== null)
+            .map(r => ({ x: WeatherStore.dayOfSeason(r.date), y: r.temp_avg }));
+          if (fPts.length) {
+            // Prepend last observed point so dashed line connects
+            if (pts.length) fPts.unshift(pts[pts.length - 1]);
+            datasets.push({
+              label: `${valleyNames[valley]} · pronóstico`,
+              data: fPts,
+              borderColor: color,
+              backgroundColor: 'transparent',
+              borderDash: [6, 4],
+              pointRadius: 0,
+              pointHoverRadius: 5,
+              borderWidth: 2,
+              showLine: true,
+              tension: 0.3,
+              fill: false
+            });
+          }
+        }
+      }
     }
 
     if (!datasets.length) {
@@ -1139,9 +1171,12 @@ export const Charts = {
     const loc = location || 'VDG';
     const agg = aggregation || 'day';
     const tf = timeframe || 'season';
+    const showForecast = !!Filters.state.weatherShowForecast;
+    const horizon = Filters.state.weatherForecastHorizon || 7;
+    const forecastRows = showForecast ? WeatherStore.getForecast(loc, horizon) : null;
     const datasets = [];
 
-    const addSeries = (label, color, rawRows, rangeStart) => {
+    const addSeries = (label, color, rawRows, rangeStart, rangeEnd) => {
       const rows = WeatherStore.aggregate(rawRows, agg);
       const pts = rows.filter(r => r.temp_avg !== null)
         .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.temp_avg }));
@@ -1150,15 +1185,29 @@ export const Charts = {
         pointRadius: agg === 'day' ? 1.5 : 4, pointHoverRadius: 5,
         borderWidth: 1.5, showLine: true, tension: 0.3, fill: false
       });
+      if (forecastRows && WeatherStore.forecastEligible(tf, rangeEnd)) {
+        const lastObs = rawRows.length ? rawRows[rawRows.length - 1].date : null;
+        const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObs, rangeEnd);
+        if (fRows.length) {
+          const fPts = fRows.filter(r => r.temp_avg !== null)
+            .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.temp_avg }));
+          if (fPts.length) datasets.push({
+            label: `${label} · pronóstico`,
+            data: fPts, borderColor: color, backgroundColor: 'transparent',
+            borderDash: [6, 4], pointRadius: agg === 'day' ? 2 : 4, pointHoverRadius: 5,
+            pointStyle: 'triangle', borderWidth: 1.5, showLine: true, tension: 0.3, fill: false
+          });
+        }
+      }
     };
 
     if (tf === '30d' || tf === 'custom') {
       const { start, end } = WeatherStore.getDateRange(null, tf, customRange);
-      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start);
+      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start, end);
     } else {
       for (const year of vintages) {
         const { start, end } = WeatherStore.getDateRange(year, tf, customRange);
-        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start);
+        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start, end);
       }
     }
 
@@ -1214,9 +1263,12 @@ export const Charts = {
     const loc = location || 'VDG';
     const agg = aggregation || 'day';
     const tf = timeframe || 'season';
+    const showForecast = !!Filters.state.weatherShowForecast;
+    const horizon = Filters.state.weatherForecastHorizon || 7;
+    const forecastRows = showForecast ? WeatherStore.getForecast(loc, horizon) : null;
     const datasets = [];
 
-    const addSeries = (label, color, rawRows, rangeStart) => {
+    const addSeries = (label, color, rawRows, rangeStart, rangeEnd) => {
       const rows = WeatherStore.aggregate(rawRows, agg);
       const pts = rows
         .filter(r => r.rainfall_mm !== null && r.rainfall_mm > 0)
@@ -1226,15 +1278,29 @@ export const Charts = {
         pointRadius: agg === 'day' ? 5 : 8, pointHoverRadius: agg === 'day' ? 8 : 11,
         showLine: false
       });
+      if (forecastRows && WeatherStore.forecastEligible(tf, rangeEnd)) {
+        const lastObs = rawRows.length ? rawRows[rawRows.length - 1].date : null;
+        const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObs, rangeEnd);
+        const fPts = fRows
+          .filter(r => r.rainfall_mm !== null && r.rainfall_mm > 0)
+          .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.rainfall_mm }));
+        if (fPts.length) datasets.push({
+          label: `${label} · pronóstico`,
+          data: fPts, backgroundColor: color + '55', borderColor: color,
+          borderDash: [4, 3], borderWidth: 1.5,
+          pointRadius: agg === 'day' ? 5 : 8, pointHoverRadius: agg === 'day' ? 8 : 11,
+          pointStyle: 'triangle', showLine: false
+        });
+      }
     };
 
     if (tf === '30d' || tf === 'custom') {
       const { start, end } = WeatherStore.getDateRange(null, tf, customRange);
-      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start);
+      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start, end);
     } else {
       for (const year of vintages) {
         const { start, end } = WeatherStore.getDateRange(year, tf, customRange);
-        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start);
+        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start, end);
       }
     }
 
@@ -1289,19 +1355,23 @@ export const Charts = {
 
     const loc = location || 'VDG';
     const agg = aggregation || 'day';
+    const showForecast = !!Filters.state.weatherShowForecast;
+    const horizon = Filters.state.weatherForecastHorizon || 7;
+    const forecastRows = showForecast ? WeatherStore.getForecast(loc, horizon) : null;
     const datasets = [];
 
     for (const year of vintages) {
       const start = `${year}-07-01`;
       const today = new Date().toISOString().split('T')[0];
-      const end = `${year}-10-31` <= today ? `${year}-10-31` : today;
+      const seasonEnd = `${year}-10-31`;
+      const end = seasonEnd <= today ? seasonEnd : today;
       if (start > today) continue;
 
       const rawRows = WeatherStore.getRange(start, end, loc);
       if (!rawRows.length) continue;
       const rows = WeatherStore.aggregate(rawRows, agg);
 
-      // Build cumulative GDD series
+      // Build cumulative GDD series (observed)
       let cumGDD = 0;
       const pts = [];
       const sorted = [...rows].sort((a, b) => a.date.localeCompare(b.date));
@@ -1331,6 +1401,38 @@ export const Charts = {
         tension: 0.3,
         fill: false
       });
+
+      // Forecast continuation: extend cumulative GDD from last observed day
+      // up to min(season end, forecast horizon). Only for current-year vintage.
+      if (forecastRows && WeatherStore.forecastEligible('season', seasonEnd)) {
+        const lastObsDate = rawRows[rawRows.length - 1]?.date || null;
+        const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObsDate, seasonEnd);
+        if (fRows.length) {
+          let fCum = cumGDD;
+          const fPts = [];
+          for (const r of fRows) {
+            if (r.temp_avg === null) continue;
+            fCum += Math.max(0, r.temp_avg - 10);
+            const day = WeatherStore.dayOfSeason(r.date);
+            if (day !== null && day >= 1) fPts.push({ x: day, y: Math.round(fCum * 10) / 10 });
+          }
+          // Prepend the last observed point so the dashed line connects cleanly
+          if (fPts.length && pts.length) fPts.unshift(pts[pts.length - 1]);
+          if (fPts.length > 1) datasets.push({
+            label: `${year} · pronóstico`,
+            data: fPts,
+            borderColor: color,
+            backgroundColor: 'transparent',
+            borderDash: [6, 4],
+            pointRadius: 0,
+            pointHoverRadius: 5,
+            borderWidth: 2,
+            showLine: true,
+            tension: 0.3,
+            fill: false
+          });
+        }
+      }
     }
 
     if (!datasets.length) {

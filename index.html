@@ -640,6 +640,11 @@
           <span style="color:var(--text-dim)">–</span>
           <input type="date" id="weather-custom-end" class="nav-select" style="font-size:11px;padding:3px 6px">
         </span>
+        <button id="weather-forecast-toggle" type="button" class="nav-select weather-forecast-btn" style="font-size:11px;padding:3px 10px;min-width:auto;cursor:pointer" aria-pressed="false" title="Mostrar pronóstico de Open-Meteo">Mostrar pronóstico</button>
+        <select id="weather-forecast-horizon" class="nav-select" style="display:none;font-size:11px;padding:3px 8px;min-width:auto" title="Horizonte de pronóstico">
+          <option value="7">7 días</option>
+          <option value="16">16 días</option>
+        </select>
       </div>
 
       <div class="charts-grid">
