@@ -8,27 +8,51 @@
 
 ## Architecture Overview
 
-Phase 9 is organized into 5 stages. **Stage 0 (Vite migration) must be completed first** — all subsequent stages benefit from ES modules, proper imports, and npm-managed dependencies. Stages 1–2 are then independent and can be built in either order.
+Phase 9 is organized into 5 stages. **Stage 0 (Vite migration) is complete** — all subsequent stages benefit from ES modules, proper imports, and npm-managed dependencies. **Stage 0b (mobile hardening)** landed immediately after as a follow-on from REVIEW.md Rounds 20–24. Stages 1–2 are complete; Stage 3 (satellite map) and Stage 4 (future analytics) remain.
 
 ---
 
-## Stage 0 — Vite Migration: CDN → npm + ES Modules
+## Stage 0 — Vite Migration: CDN → npm + ES Modules — COMPLETE
 
 **Goal:** Replace CDN `<script>` tags with npm packages, convert all frontend files to ES modules, add Vite as the dev server and build tool. Zero functional changes — the dashboard must behave identically before and after.
 
-**Status:** In Progress — branch `feat/vite-migration`
+**Status:** Complete — merged to `main`. Review Rounds 18–19 closed.
 
-### What's Done (2026-04-15)
+### What's Done (2026-04-15 → 2026-04-16)
 
 - Steps 0.1–0.7 complete: npm deps installed, vite.config.js created, all 15 JS files converted to ES modules, index.html updated (CDN tags removed, single `<script type="module">`), tests updated (MT.6 imports from source), vercel.json updated (buildCommand/outputDirectory/CSP tightened), CLAUDE.md updated, `"type": "module"` added to package.json
 - `public/` directory created with `manifest.json` + PWA icons (icon-192, icon-512) for proper build output
-- 72/72 tests pass, `vite build` succeeds (265 modules, exit 0)
-- jsPDF v4.2.1, Chart.js v4.5.1, XLSX v0.18.5, Supabase JS v2.103.2 all API-compatible (verified in Node.js)
+- `public/theme-init.js` extracted from inline `<script>` (P1.1, CSP-compliant, `d9c7010`)
+- Browser smoke test completed at 390 px viewport — dev server and production build both load with zero JS errors
+- jsPDF v4.2.1, Chart.js v4.5.1, XLSX v0.18.5, Supabase JS v2.103.2 all API-compatible (verified in Node.js and browser)
+- **Mobile hardening follow-on:** see Stage 0b below.
 
-### What Remains
+### Known residual risk (not blocking)
 
-- **Browser smoke test required.** Dashboard loads but was stuck on "Cargando datos" during local testing. Root cause was missing `import { CONFIG }` in app.js (fixed), but fix hasn't been browser-verified yet. Could also be a circular dep initialization order issue (auth↔app, filters↔app, charts↔app, tables↔app, upload↔app). All circular refs are inside methods (not module-level), so they should resolve, but needs browser confirmation.
-- After browser test passes: commit, merge to main, push, verify Vercel preview deploy.
+- Circular imports between `app.js` and `{auth,filters,charts,tables,events,upload}.js` (R18 P1.2). All current access is inside method bodies, so ES module live bindings resolve correctly at event time. Flagged for future `state.js` refactor; no current bug.
+- 1.3 MB main bundle (R18 P2.3). Code-split `jspdf` and `xlsx` via dynamic `import()` in a follow-up; not a migration blocker.
+
+---
+
+## Stage 0b — Mobile Hardening — COMPLETE
+
+**Goal:** Close the mobile-responsiveness gaps found in REVIEW.md Rounds 20–22. Raise every primary touch target to ≥ 44 px, eliminate off-screen controls at 320 / 390 px, and lock the fixes behind a browser-based regression suite so they can't silently drift.
+
+**Status:** Complete — 17 of 20 punch-list corrections closed across `cb76a24` → `9c49feb`. Two items (C18, C19) deferred by design. One new observation (weather-forecast toggle inline sizing) logged in TASK.md.
+
+### What shipped
+
+See TASK.md "What Shipped (Sub-project 3: Mobile Hardening — Rounds 20–24)" for the per-correction breakdown and commit map. High-level:
+
+1. **Repo hygiene** — `.gitignore` covers Playwright/superpowers scratch dirs; pre–Phase-8 planning docs archived under `docs/reviews/archive/` with RESOLVED headers; stray PNGs moved into gitignored archive.
+2. **Mobile CSS pass** under `@media (max-width: 768px)` — login theme toggle, chart/table export buttons, explorer slot header wrap, `.btn-gold`, `.ranch-tab`, `.nav-tab` layout and font, `.kpi-row` auto-fit, `.form-group` input/select sizing + 16 px font (iOS auto-zoom prevention), `.table-scroll` affordance shadow, `#map-metric-select` height.
+3. **Root-cause fix for login-toggle clipping** — `.login-card`'s `loginFadeIn` animation left an identity-matrix transform that captured fixed-positioned descendants. Split into opacity-only `loginCardFadeIn` for the card; slide preserved on inner elements.
+4. **E2E regression suite** — `tests/e2e/mobile-responsive.spec.js` (Playwright) seeds a dev bypass token via `addInitScript`, iterates 320×568 and 390×844, asserts tap targets and overflow on every nav view. 12/12 pass. `npm run test:e2e` runs separately from `npm test` to keep node feedback ≤ 2 s.
+
+### Follow-ups (not blocking)
+
+- Weather forecast toggle (`#weather-forecast-toggle` / `#weather-forecast-horizon` in `index.html:644-649`) has inline `font-size:11px; padding:3px 10px` → ~18–20 px tall. Bump to 44 px if it's a primary control.
+- Extend the e2e spec to cover real-data scenarios (long varietal names in tables, map section resolution, PDF/PNG export on mobile Safari) once data fixtures are available.
 
 ### Prior State (before migration)
 
