@@ -8,7 +8,7 @@ import { WeatherStore } from './weather.js';
 import { App } from './app.js';
 
 // Shared jitter helper: offsets x by sample_seq + deterministic lot hash
-export function _applyDaysJitter(x, d) {
+function _applyDaysJitter(x, d) {
   if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
   const lot = d.lotCode || d.sampleId;
   if (lot) {

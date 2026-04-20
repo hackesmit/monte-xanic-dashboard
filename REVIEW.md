@@ -205,3 +205,86 @@ Historical review rounds are preserved in git history. Key milestones:
 - **Round 16:** Phase 8 merged + `parseFloat` root cause fix.
 - **Round 17:** Dead code cleanup, jsPDF CDN fix, scatter legend.
 - **Round 18:** Vite migration review — CSP inline script, circular deps, jsPDF v4 jump.
+
+---
+
+## Round 20 — Branch `main` — Untracked Artifacts Audit (2026-04-20)
+
+**Scope:** No tracked modifications. `git diff` and `git diff --cached` both empty. `git status` reports the branch is even with `origin/main`. The review below covers **only untracked files** that could pollute the next commit or leak into history if `git add -A` or `git add .` is used.
+
+**Untracked inventory:**
+- `.playwright-mcp/` — 884 KB of agent-generated browser snapshots, console logs, and PNGs (e.g., `light-theme-login.png`, `vite-smoke-test.png`, `trimmed-logo-base64.txt`).
+- `.superpowers/brainstorm/` — 12 KB agent scratch directory.
+- `DIAGNOSIS.md` — 4.1 KB, pre-Phase-8 berry identity analysis.
+- `codex-review-consolidated-handoff.md` — 14.5 KB, same vintage, same subject.
+- `ultraplan-prompt.txt` — 1.6 KB, derived prompt from the handoff.
+- `Logotipo_corporativo_MX_amarillo-01 (1).png` (64 KB) and `Logotipo_corporativo_MX_amarillo-01.webp` (30 KB) — brand assets at repo root.
+- `dark-mode.png`, `light-mode.png`, `light-trimmed.png` — 70–73 KB each, theme screenshots from Round 18/19 work.
+
+---
+
+### Priority 1 — Issues
+
+**P1.1 — Agent/test-artifact directories are not git-ignored**
+- **Files:** `.gitignore` (lines 60–65) ignores `.claude/` and `test-results/` but **not** `.playwright-mcp/` or `.superpowers/`.
+- **Risk:** A future `git add -A` / `git add .` would commit ~884 KB of transient Playwright snapshots, console logs, and base64 blobs to history. `trimmed-logo-base64.txt` alone is ~54 KB; committed once, it stays in pack history forever.
+- **Recommendation:** Add two lines to `.gitignore` before the next commit:
+  ```
+  .playwright-mcp/
+  .superpowers/
+  ```
+  Place them next to the existing `.claude/` and `test-results/` stanza so the pattern is obvious. This is a non-destructive, reversible change and does not touch any tracked content.
+
+**P1.2 — Stale diagnosis documents contradict shipped code**
+- **Files:** `DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt`.
+- All three describe the berry-identity bug (non-deterministic `sample_seq`, weak `sample_id = '25'`, collapsed lots) as a live problem and recommend creating `js/identity.js` and `buildBerryIdentity()`.
+- **Current state:** `js/identity.js` exists on `main` (Phase 8, Rounds 13–16 in this file). The bug is already fixed. These untracked docs are historical context, not open issues.
+- **Risk:** If a future agent treats them as authoritative, it may re-implement identity generation, duplicate logic, or "fix" code that is already correct. The `ultraplan-prompt.txt` explicitly instructs a follow-on agent to "Create shared normalization module (js/identity.js)" — which already exists.
+- **Recommendation:** Either (a) delete them, (b) move under `docs/reviews/archive/` with a header stating "resolved in Phase 8 (commit 3c2b8e8 and prior)", or (c) add to `.gitignore`. Do not commit them as-is. The narrowest safe action is (b); (a) is fine if the analysis is duplicated in git log.
+
+---
+
+### Priority 2 — Improvements
+
+**P2.1 — Brand assets and theme screenshots at repo root**
+- **Files:** `Logotipo_corporativo_MX_amarillo-01 (1).png`, `Logotipo_corporativo_MX_amarillo-01.webp`, `dark-mode.png`, `light-mode.png`, `light-trimmed.png`.
+- The two logo files are production brand assets (the `.webp` variant is referenced as the light-theme logo in the Round 19 notes). Shipping them from repo root is inconsistent with the rest of the project, which serves static assets from `public/` (per `index.html` and the `public/theme-init.js` pattern from P1.1 of Round 18).
+- The `(1)` suffix on the PNG is the Windows "duplicate download" marker — suggests it was dragged in by hand and never normalized.
+- The filename contains a space, which is fragile in shell contexts and for any future `<link>`/`<img>` reference unless URL-encoded.
+- The three `*-mode.png` screenshots look like debugging artifacts from Round 18/19.
+- **Recommendation:**
+  - Move the active logo into `public/` under a space-free, suffix-free name (e.g., `public/logo-mx-amarillo.webp`) and reference from HTML/CSS.
+  - Delete the `(1).png` duplicate and the three theme screenshots, or move them under a screenshots folder that is git-ignored.
+  - Until disposition is decided, do **not** `git add .` — a targeted `git add <file>` per item is safer.
+
+**P2.2 — `.gitignore` could pre-empt future noise**
+- Currently there is no catch-all for ad-hoc top-level work-in-progress documents (the repo already excludes `RESUMEN*.txt`, `REPORTE_DASHBOARD.txt`, `PROJECT_SUMMARY.md`). Consider adding:
+  ```
+  DIAGNOSIS*.md
+  *-handoff.md
+  ultraplan-*.txt
+  ```
+  This is optional and should be a conscious policy call, not a silent add — flagging for the user to decide.
+
+**P2.3 — Untracked assets are candidates for `git clean`, but only after disposition is confirmed**
+- Do **not** run `git clean -fd` to remove these. Some (the logo) are likely intended to be tracked; some (the handoff docs) carry analysis the user may want to preserve outside the repo. Ask the user which to keep before any cleanup.
+
+---
+
+### Missing Tests
+
+- **No code changed**, so no new tests are required by this review.
+- The stale handoff docs (P1.2) list a "must-add" test plan for upload idempotency. Those regressions are presumably covered by the Phase 8 test suite (see Round 16). If the user wants to verify the docs are actually stale, grep `tests/` for re-upload / shuffle idempotency coverage before archiving the handoff.
+
+---
+
+### Notes
+
+- **Tree is clean at the source level.** No source file has been modified. This review is entirely about preventing accidental commits of agent/test artifacts and about the stale-doc footgun — it is not a code review of a feature.
+- **Safety posture.** All recommendations above are additive or localized (edit `.gitignore`, move a file). No recommendation involves `git reset`, `git clean -f`, force-push, or touching tracked content.
+- **Before the next commit on this branch**, the user should:
+  1. Decide which untracked files to keep as tracked (likely: the `.webp` logo, moved into `public/`).
+  2. Decide which to delete (likely: `(1).png` duplicate, theme PNGs, handoff/diagnosis/prompt files if duplicated elsewhere).
+  3. Update `.gitignore` for `.playwright-mcp/` and `.superpowers/` (P1.1) so they stay out of history permanently.
+  4. Use explicit `git add <path>` — never `git add .` — until the above is resolved.
+- **No risky scope expansion observed** (there is no diff to expand). No dependency churn, no config changes, no schema changes in this review cycle.
