@@ -460,7 +460,7 @@ Every finding below is a correction a Builder can apply. Format: **ID — File:L
 
 - [x] **C1 — `.gitignore`** — `.playwright-mcp/` and `.superpowers/` are untracked (884 KB + 12 KB). — **Fixed** in commit `cb76a24` (Phase A review closure). Both patterns now sit next to `.claude/` in the Claude Code stanza. Source: Round 20 P1.1.
 
-- [ ] **C2 — repo root** — `DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt` describe the berry-identity bug as open, but `js/identity.js` shipped in Phase 8. — **Fix:** move to `docs/reviews/archive/` with a header noting Phase 8 resolution, or delete. Do not commit as-is. Source: Round 20 P1.2.
+- [x] **C2 — repo root** — `DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt` described the berry-identity bug as open, but `js/identity.js` shipped in Phase 8. — **Fixed.** Moved to `docs/reviews/archive/` with a "RESOLVED in Phase 8" header prepended to each. Preserved for historical context; no future agent will treat the recommendations as open items. Source: Round 20 P1.2.
 
 - [x] **C3 — `css/styles.css` (`.login-theme-toggle`)** — `36×17 px`, top at `y=-11` at 320 px viewport (clipped above the card). — **Fixed.** Under `@media (max-width: 768px)`: `position: fixed; top/right: 12px; width/height: 44px; z-index: 10002`, with a subtle backdrop so the button reads on any theme. Anchored to the viewport so short screens can't clip it above the card. Source: Round 21 P1.1.
 
@@ -474,7 +474,7 @@ Every finding below is a correction a Builder can apply. Format: **ID — File:L
 
 ### P2 — Improvements (nice-to-have, bundle with P1 fixes)
 
-- [ ] **C8 — repo root** — brand logo at `Logotipo_corporativo_MX_amarillo-01 (1).png` (duplicate with Windows `(1)` suffix) + `.webp` variant; also `dark-mode.png`, `light-mode.png`, `light-trimmed.png` (Round 18/19 screenshots). — **Fix:** move the active logo to `public/logo-mx-amarillo.webp` (space-free), delete the `(1).png` duplicate and the three theme screenshots (or move to a gitignored screenshots folder). Source: Round 20 P2.1.
+- [x] **C8 — repo root** — brand logo at `Logotipo_corporativo_MX_amarillo-01 (1).png` (duplicate with Windows `(1)` suffix) + `.webp` variant; also `dark-mode.png`, `light-mode.png`, `light-trimmed.png`, `mobile-*.png` (Round 18/19/21/22 screenshots). — **Fixed.** Verified none were referenced by code (`grep -r Logotipo_corporativo` → only REVIEW.md itself); the active light logo is `assets/logo_montexanic_light.webp`, already in place. Moved all stray PNG/WebP files to `.playwright-mcp/archive-2026-04-20/` (already gitignored) instead of deleting, so they remain on disk if needed. Source: Round 20 P2.1.
 
 - [ ] **C9 — `css/styles.css:1286`** — `@media (min-width: 400px) and (max-width: 768px) { .kpi-row { grid-template-columns: repeat(3, 1fr) } }`. Below 400 px the grid falls back to 2 columns → 5 KPIs leave one orphan cell. — **Fix:** use `grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))` instead of fixed column counts so cards reflow cleanly. Source: Round 21 P2.1.
 
