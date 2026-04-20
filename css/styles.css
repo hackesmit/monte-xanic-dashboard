@@ -1088,9 +1088,11 @@ canvas { max-width: 100%; }
     margin-bottom: 10px;
   }
   .nav-tab {
-    flex: 1 1 calc(33.33% - 3px);
+    /* 4/row so 7 tabs lay out as 4+3 instead of 3+3+1 (MEDICIONES orphaned). */
+    flex: 1 1 calc(25% - 3px);
     min-height: 44px;
-    font-size: 8px;
+    /* 8 px was under Material's 10 px label floor. */
+    font-size: 10px;
     touch-action: manipulation;
   }
 
@@ -1197,7 +1199,8 @@ canvas { max-width: 100%; }
   .sidebar.sheet-open .nav-tabs { display: none; }
 
   /* ── KPIs ── */
-  .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  /* auto-fit so 5 cards don't orphan at 320 px (was repeat(2, 1fr) → 2+2+1). */
+  .kpi-row { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
   .kpi-card { padding: 12px 10px 10px; }
   .kpi-value { font-size: 22px; }
   .kpi-label { font-size: 7px; letter-spacing: 0.16em; margin-bottom: 6px; }
@@ -1248,6 +1251,13 @@ canvas { max-width: 100%; }
   /* ── Tables ── */
   .data-table th { padding: 5px 6px; font-size: 8px; }
   .data-table td { padding: 4px 6px; font-size: 10px; }
+  /* Horizontal-scroll affordance: subtle inset shadow on right edge hints
+     that there is more content to swipe toward. Using inset box-shadow keeps
+     it glued to the scroll container (no pseudo-positioning gymnastics). */
+  .table-scroll {
+    -webkit-overflow-scrolling: touch;
+    box-shadow: inset -16px 0 12px -12px rgba(0, 0, 0, 0.35);
+  }
 
   /* ── Section groups (collapsible on mobile) ── */
   .mobile-section-group { margin-top: 16px; }
@@ -2097,13 +2107,23 @@ canvas { max-width: 100%; }
     flex-direction: column;
     align-items: stretch;
   }
+  /* 8 ranch tabs summed ~831 px at 390 px viewport and wrapped to 3–4 rows.
+     Horizontal strip with scroll-snap is easier to scan and keeps the map
+     header compact. */
   .ranch-tabs {
-    justify-content: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    justify-content: flex-start;
+    padding-bottom: 4px;
   }
   /* Primary view-switch for the map; default was 24 px tall. */
   .ranch-tab {
     min-height: 44px;
     padding: 10px 14px;
+    flex-shrink: 0;
+    scroll-snap-align: start;
   }
   #map-metric-select {
     max-width: 100%;
