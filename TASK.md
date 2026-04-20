@@ -21,7 +21,8 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 
 | # | Feature | Scope | Status |
 |---|---------|-------|--------|
-| F0 | Vite migration | Replace CDN scripts with npm packages, ES modules, Vite dev/build | **In Progress** — branch `feat/vite-migration`, needs browser smoke test |
+| F0 | Vite migration | Replace CDN scripts with npm packages, ES modules, Vite dev/build | **Done** — merged to `main`, browser-verified, Rounds 18–19 closed |
+| F0b | Mobile hardening | 44×44 touch targets, tap-target / overflow fixes, e2e regression spec | **Done** — 17 of 20 punch-list corrections closed (Rounds 20–24) |
 | F1 | Explorer line connections | Per-slot "Conectar Lineas" toggle on scatter charts | **Done** (`5f933e2`) |
 | F2 | Explorer per-chart export | PNG/PDF export button per explorer chart slot, with legend | **Done** (`7f500b9`) |
 | F3 | Page-wide export | "Exportar Vista" on all dashboard views — PNG vertical stack / multi-page PDF with legend | **Done** (`d067072`, `f506fe9`) |
@@ -30,7 +31,7 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 | F5 | Weather time aggregation | Toggle day/week/month on weather charts | **Done** (`b7d6b48`) |
 | F6 | Weather multiple timeframes | Selectable date ranges beyond fixed Jul–Oct | **Done** (`b7d6b48`) |
 | F7 | Satellite vineyard map | Leaflet-based satellite view with quality heatmap overlay | **Future** — deferred |
-| F8 | Weather forecast integration | Show future weather predictions | **Future** |
+| F8 | Weather forecast integration | Open-Meteo 7/16-day, on-demand dashed overlay on all 4 weather charts | **Done** (`4a6e80a`) |
 | F9 | Lot categorization (monovarietal vs mix) | Chemical-value-based lot classification | **Bookmarked** |
 | F10 | Lot performance percentile ranking | Rank lots vs historical same-lot data | **Future** |
 
@@ -89,6 +90,47 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 - Localhost auth bypass when /api/verify unreachable (`d36b3b2`)
 - Line toggle preserves hidden dataset state (`63b37b0`)
 
+### What Shipped (Sub-project 3: Mobile Hardening — Rounds 20–24)
+
+Commits: `cb76a24`, `4dc8354`, `31d38c4`, `2118ac8`, `9c49feb`. REVIEW.md Rounds 20–24 capture the audit trail.
+
+**Repo hygiene (`cb76a24`, `31d38c4`):**
+- `.gitignore`: `.playwright-mcp/`, `.superpowers/` added (C1)
+- `DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt` → `docs/reviews/archive/` with RESOLVED-in-Phase-8 headers (C2)
+- Brand logo duplicates and theme/mobile screenshots moved into gitignored `.playwright-mcp/archive-2026-04-20/` (C8)
+- `_applyDaysJitter` unexported; `public/theme-init.js` trailing newline; MT.9 encoding-normalization tests added (22 cases)
+
+**Touch targets and overflow fixes at `@media (max-width: 768px)` (`4dc8354`, `2118ac8`):**
+- `.login-theme-toggle` → 44×44 fixed, z-index above card (C3)
+- Per-chart `.chart-export-btn` hidden on mobile; section-level "Exportar Vista" remains (C4)
+- `.explorer-slot-header` flex-wraps; actions row drops to full width; `.explorer-summary` truncates with ellipsis (C5, C14)
+- `.btn-gold` → min-height 44 px (C6)
+- `.ranch-tab` → min-height 44 px (C7)
+- `.kpi-row` → `repeat(auto-fit, minmax(100px, 1fr))`, no orphan cell (C9)
+- `.nav-tab` → 25 % basis (4+3 layout), font-size 8 → 10 px (C10, C11)
+- `mobile-web-app-capable` meta tag added alongside the deprecated Apple one (C12)
+- `.table-scroll` right-edge inset shadow as horizontal-scroll affordance (C13)
+- `.form-group` input/select → 44 px tall, font-size 16 px (prevents iOS Safari auto-zoom) (C15)
+- `.ranch-tabs` → horizontal scroll strip with scroll-snap (C16)
+- `#map-metric-select` → min-height 44 px (C17)
+
+**Root-cause fix for C3's residual clipping (`9c49feb`):**
+- `.login-card` ran `animation: loginFadeIn` whose `transform: translateY(...)` keyframe ended as `matrix(1,0,0,1,0,0)` — an identity transform that still establishes a containing block for fixed descendants, anchoring `.login-theme-toggle` to the card instead of the viewport
+- Split the keyframe: `.login-card` now runs opacity-only `loginCardFadeIn`; inner elements still slide via `loginFadeIn`
+- Verified at 320×568: toggle now at `{x:264, y:12, w:44, h:44}`, `fullyVisible: true`, card `transform: none`
+
+**Regression suite (`9c49feb`):**
+- `tests/e2e/mobile-responsive.spec.js` (Playwright) iterates iPhone SE 320×568 and iPhone 14 390×844
+- Asserts: login toggle inside viewport + ≥ 44×44, no horizontal page overflow on any nav view, nav-tab/ranch-tab/form-input/btn-gold/map-metric-select ≥ 44 px
+- Runs via `npm run test:e2e` (kept out of `npm test` so node-test stays browser-free at ~1.8 s)
+- 12/12 passing locally
+
+**Deferred by design:**
+- C18 (catch-all gitignore for ad-hoc top-level docs) — redundant now that the archive exists
+- C19 (`?dev=1` bypass UX) — e2e spec already seeds the bypass via `context.addInitScript`
+
+**New observation from Round 23/24:** The `#weather-forecast-toggle` / `#weather-forecast-horizon` controls I flagged were actually F8 (weather forecast overlay) shipped in `4a6e80a` — the feature itself is done, MT.10 covers 22 test cases (parsing, eligibility, TTL cache, horizon coercion, multi-valley isolation). Only the mobile-width touch-target bump to 44 px remains; not covered by the e2e spec.
+
 ### What Shipped (Sub-project 2: Weather Enhancements)
 
 **F5 — Weather time aggregation:**
@@ -129,7 +171,7 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 
 ---
 
-## Tests — 96/96 Passing (7 suites)
+## Tests — 140/140 node + 12/12 Playwright e2e Passing
 
 | ID | Scope | Tests | Status |
 |----|-------|-------|--------|
@@ -140,8 +182,12 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 | MT.6 | Canonical seq + extractLotCode | 13 | **Pass** |
 | MT.7 | Column whitelist + required fields | 19 | **Pass** |
 | MT.8 | Weather aggregation, date ranges, ISO weeks | 24 | **Pass** |
+| MT.9 | Encoding normalization (U+FFFD, double-encoded UTF-8 mojibake) | 22 | **Pass** |
+| MT.10 | Weather forecast (Open-Meteo parsing, eligibility, TTL cache, horizon coercion) | 22 | **Pass** |
+| E2E  | Mobile-responsive Playwright spec (320×568 + 390×844) | 12 | **Pass** |
 
-Run: `npm test` or `node --test tests/*.test.mjs`
+Node suite: `npm test` (~1.8 s, browser-free).
+E2E suite: `npm run test:e2e:install` (one-time), then `npm run test:e2e` (~15 s, needs chromium).
 
 ### Removed
 
@@ -151,10 +197,48 @@ Run: `npm test` or `node --test tests/*.test.mjs`
 
 ---
 
-## Open Items (from Round 16 Review)
+## Open Items
+
+### Round 16 Review
 
 | ID | Issue | Status |
 |----|-------|--------|
 | R16.P1.1 | `lotCode = sampleId` breaks `CONFIG.berryToWine` mapping (extraction charts) | **Done** (`27b7f94`) |
 | R16.P1.2 | `lotCode = sampleId` breaks vineyard map section resolution | **Done** (`27b7f94`) |
 | R16.P2.2 | `Number()` vs `parseFloat` for comma-separated thousands — low risk | **Noted** |
+
+### Rounds 18–19 Review (Vite migration)
+
+| ID | Issue | Status |
+|----|-------|--------|
+| R18.P1.1 | Inline theme-restore script blocked by tightened CSP | **Done** (`d9c7010`) |
+| R18.P1.2 | Circular deps `app.js ↔ {auth,filters,charts,tables,events,upload}.js` | **Noted** — safe today; future `state.js` refactor |
+| R18.P1.3 | jsPDF 2.5.1 → 4.2.1 major jump — browser rendering untested | **Noted** — browser-verified light path; PDF-on-mobile Safari still open |
+| R18.P2.1 | `_applyDaysJitter` unnecessarily exported | **Done** (`cb76a24`) |
+| R18.P2.3 | 1.3 MB main bundle warning | **Noted** — code-split follow-up |
+| R19.missing-tests | Encoding normalization untested | **Done** — MT.9, 22 tests (`cb76a24`) |
+
+### Rounds 20–24 Review (Mobile hardening)
+
+| ID | Issue | Status |
+|----|-------|--------|
+| C1  | `.gitignore` missing `.playwright-mcp/` + `.superpowers/` | **Done** (`cb76a24`) |
+| C2  | Stale DIAGNOSIS / handoff / ultraplan docs at repo root | **Done** — archived (`31d38c4`) |
+| C3  | Login theme toggle 36×17, clipped above viewport at 320 px | **Done** — fixed animation-transform root cause (`9c49feb`) |
+| C4  | Chart export `⤓` buttons 18×14 px | **Done** — hidden on mobile (`4dc8354`) |
+| C5 / C14 | Explorer slot actions render off-screen at 390 px | **Done** — flex-wrap + ellipsis (`4dc8354`) |
+| C6  | `.btn-gold` "Guardar Medicion" 26 px tall | **Done** — min-height 44 (`4dc8354`) |
+| C7  | `.ranch-tab` 24 px tall | **Done** — min-height 44 (`4dc8354`) |
+| C8  | Brand logo duplicates + theme/mobile PNGs at repo root | **Done** — archived (`31d38c4`) |
+| C9  | KPI grid orphan cell at 320 px | **Done** — auto-fit minmax (`2118ac8`) |
+| C10 | 7 nav tabs orphan MEDICIONES on its own row | **Done** — 4+3 layout (`2118ac8`) |
+| C11 | Nav tab font-size 8 px | **Done** — bumped to 10 px (`2118ac8`) |
+| C12 | Deprecated `apple-mobile-web-app-capable` warning | **Done** — added `mobile-web-app-capable` (`4dc8354`) |
+| C13 | Table horizontal scroll has no visual affordance | **Done** — inset shadow (`2118ac8`) |
+| C15 | Mediciones inputs 31–33 px + 13 px font (iOS auto-zoom) | **Done** — 44 px + 16 px font (`4dc8354`) |
+| C16 | Ranch tabs wrap into 3–4 rows at mobile | **Done** — horizontal scroll-snap strip (`2118ac8`) |
+| C17 | `#map-metric-select` 34 px tall | **Done** — min-height 44 (`4dc8354`) |
+| C20 | No automated mobile-viewport regression tests | **Done** — `tests/e2e/mobile-responsive.spec.js`, 12/12 (`9c49feb`) |
+| C18 | Optional gitignore catch-all for ad-hoc root docs | **Deferred** — archive makes this redundant |
+| C19 | Optional `?dev=1` bypass UX | **Deferred** — e2e spec already seeds via `addInitScript` |
+| R24.weather | `#weather-forecast-toggle` inline `font-size:11px; padding:3px 10px` → 18–20 px on mobile | **Open** — F8 shipped (`4a6e80a`); mobile-touch-target bump to 44 px still pending |

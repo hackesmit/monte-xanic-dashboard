@@ -1,8 +1,10 @@
 # Code Review — Monte Xanic Dashboard
 
-> All findings from Rounds 1–17 have been resolved. Phase 8 merged to main. Phase 9 Stage 0 (Vite migration) in progress.
+> All findings from Rounds 1–19 resolved. Phase 8 merged to main. Phase 9 Stage 0 (Vite migration) and Stage 0b (Mobile hardening, Rounds 20–24) complete — 17 of 20 punch-list corrections closed, 2 deferred by design, 1 new observation. Safety net: `npm test` 140/140 + `npm run test:e2e` 12/12.
 > See TASK.md for the complete resolution table.
 > Read `CLAUDE.md` first for full project context.
+>
+> **Last updated:** 2026-04-20 (Round 24, end of day).
 
 ---
 
@@ -549,3 +551,45 @@ The C20 spec surfaced a latent bug in the C3 fix: `.login-card` used `animation:
 - Commit `4dc8354` also added a `weather-forecast-btn` / `weather-forecast-toggle` (`css/styles.css:267-279`, `index.html:644-649`) that is **not** part of the Rounds 20–22 punch list. It appears to be parallel work bundled into the same commit. Flagged here so it doesn't hide — the new button and `<select>` have inline `style="font-size:11px; padding:3px 10px"` which will be ~18–20 px tall on mobile. If it's a primary control, it may want the same `min-height: 44px` treatment as C6/C17. Not measured live under data; worth confirming on the Vendimias (weather) view before release.
 - Verification screenshot: `.playwright-mcp/mobile-login-fixed-390.png` (still untracked — correctly ignored by C1).
 - No source files modified during this round.
+
+---
+
+## Round 24 — Branch `main` — Verification of Commits `31d38c4` + `2118ac8` + `9c49feb` (2026-04-20)
+
+**Scope:** Three commits landed after Round 23. Re-ran the mobile audit + both test suites to confirm every remaining punch-list item is closed. `git status` is clean — no untracked files at repo root.
+
+### Corrections closed (verified)
+
+- [x] **C2** (`31d38c4`) — `DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt` moved to `docs/reviews/archive/` with RESOLVED-in-Phase-8 headers prepended. History preserved, future agents can't mistake them for open work.
+- [x] **C3 (now full)** (`9c49feb`) — At 320×568: toggle rect `{x:264, y:12, w:44, h:44, right:308, bottom:56}`, `fullyVisible: true`. Root cause was `.login-card`'s `animation: loginFadeIn` — the keyframe used `transform: translateY(...)` with `fill-mode: both`, so the settled computed style was `matrix(1,0,0,1,0,0)` (identity transform). An identity transform still establishes a containing block for `position: fixed` descendants, which anchored the toggle to the card instead of the viewport. Fix split the keyframe: `.login-card` now runs `loginCardFadeIn` (opacity-only), inner elements retain `loginFadeIn`. `getComputedStyle(card).transform === 'none'` confirmed.
+- [x] **C8** (`31d38c4`) — Brand logo duplicates, theme screenshots, and prior mobile audit PNGs all moved to `.playwright-mcp/archive-2026-04-20/` (already gitignored via C1). Live logo still resolves at `assets/logo_montexanic_light.webp`. Repo root is clean.
+- [x] **C9** (`2118ac8`) — `.kpi-row` switched to `repeat(auto-fit, minmax(100px, 1fr))` on mobile. 5 KPIs now flow as 3+2 at 320 px (no orphan cell). 400–768 px override preserved.
+- [x] **C10** (`2118ac8`) — `.nav-tab { flex: 1 1 calc(25% - 3px) }`. 7 tabs now lay out as 4+3 instead of 3+3+1; MEDICIONES no longer orphaned.
+- [x] **C11** (`2118ac8`) — `.nav-tab { font-size: 10px }` (was 8 px). Still tight but above Material's 10 px label floor.
+- [x] **C13** (`2118ac8`) — `.table-scroll` gets an inset right-edge box-shadow as a scroll affordance. Chose inset shadow over a pseudo-element to avoid positioning quirks inside `overflow: auto`.
+- [x] **C16** (`2118ac8`) — `.ranch-tabs` converted from wrap+center to a horizontal scroll strip with `scroll-snap`. 8 tabs no longer collapse into a 3-row grid at 390 px.
+- [x] **C20** (`9c49feb`) — `tests/e2e/mobile-responsive.spec.js` + `playwright.config.js` added. Iterates 320×568 and 390×844, asserts viewport-toggle containment, no horizontal overflow on any nav view, nav-tab ≥ 44×44, ranch-tab ≥ 44×44, mediciones form inputs + `.btn-gold` ≥ 44 px, map metric select ≥ 44 px. **Ran locally: 12/12 passing in 15.7 s.** Kept out of `npm test` so the 1.8 s node-test feedback loop stays browser-free.
+
+### Test status
+
+- **`npm test`**: 140/140 passing (17 suites, ~1.8 s). Unchanged from Round 23.
+- **`npm run test:e2e`**: **12/12 passing** (new). Safety net now exists for every mobile fix C3, C6, C7, C10, C11, C15, C17.
+- **`vite build`**: clean (per commit messages; not re-run here).
+
+### Still open
+
+- [ ] **C18** — optional gitignore catch-all (`DIAGNOSIS*.md`, `*-handoff.md`, `ultraplan-*.txt`). Policy call — deliberately left open; archive-then-ignore is redundant since repo root is already clean.
+- [ ] **C19** — optional `?dev=1` bypass UX. Convenience improvement; not required now that the e2e spec uses `context.addInitScript` to seed the token cleanly.
+- [ ] **Weather forecast toggle** (flagged in Round 23 Notes) — `#weather-forecast-toggle` / `#weather-forecast-horizon` in `index.html:644-649` still carry inline `font-size:11px; padding:3px 10px`. Renders ~18–20 px tall at mobile width. Not in the original punch list, not covered by the e2e spec. If it's a primary control on the weather view, bump to 44 px to match the rest of mobile. Lightweight — one CSS rule or a `min-height` on the `.nav-select` class.
+
+### Outcome
+
+Of the 20-item punch list from Rounds 20–22:
+
+- **17 closed and verified** in the browser (C1, C2, C3, C4, C5, C6, C7, C8, C9, C10, C11, C12, C13, C14, C15, C16, C17, C20).
+- **2 deferred by design** (C18, C19 — optional enhancements).
+- **1 new item** surfaced and flagged (weather-forecast toggle).
+
+The e2e regression spec closes the accountability loop: future mobile regressions now fail CI rather than silently breaking the fixes above.
+
+- No source files modified during this round. Findings are observational/verification only.
