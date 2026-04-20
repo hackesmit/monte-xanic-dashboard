@@ -130,6 +130,31 @@ export const Events = {
     };
     if (customStart) customStart.addEventListener('change', onCustomDateChange);
     if (customEnd) customEnd.addEventListener('change', onCustomDateChange);
+
+    // Forecast toggle + horizon (F8). On-demand API call — never auto-fetches.
+    const forecastBtn = document.getElementById('weather-forecast-toggle');
+    const horizonSel = document.getElementById('weather-forecast-horizon');
+    const _forecastSyncAndRender = () => {
+      const h = Filters.state.weatherForecastHorizon || 7;
+      // Sync only the valleys needed: current selection, plus all three for the
+      // Valley-comparison chart. Cache (1h TTL) dedupes redundant calls.
+      const valleys = new Set([Filters.state.weatherLocation || 'VDG', 'VDG', 'VON', 'SV']);
+      Promise.all([...valleys].map(v => WeatherStore.syncForecast(v, h)))
+        .then(() => _renderWeatherCharts());
+    };
+    if (forecastBtn) forecastBtn.addEventListener('click', () => {
+      const next = !Filters.state.weatherShowForecast;
+      Filters.state.weatherShowForecast = next;
+      forecastBtn.classList.toggle('active', next);
+      forecastBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
+      forecastBtn.textContent = next ? 'Ocultar pronóstico' : 'Mostrar pronóstico';
+      if (horizonSel) horizonSel.style.display = next ? 'inline-block' : 'none';
+      if (next) _forecastSyncAndRender(); else _renderWeatherCharts();
+    });
+    if (horizonSel) horizonSel.addEventListener('change', () => {
+      Filters.state.weatherForecastHorizon = parseInt(horizonSel.value, 10) || 7;
+      if (Filters.state.weatherShowForecast) _forecastSyncAndRender();
+    });
   },
 
   // ── Auth (1 handler — login form handled by Auth.bindForm()) ──

@@ -15,7 +15,9 @@ export const Filters = {
     weatherAggregation: 'day',  // 'day', 'week', 'month'
     weatherTimeframe: 'season',  // 'season', 'year', '30d', 'custom'
     weatherCustomStart: null,
-    weatherCustomEnd: null
+    weatherCustomEnd: null,
+    weatherShowForecast: false,  // F8: toggle forecast overlay
+    weatherForecastHorizon: 7    // F8: 7 or 16 days
   },
 
   // Wine-specific filter state
@@ -226,6 +228,12 @@ export const Filters = {
     this.state.weatherTimeframe = 'season';
     this.state.weatherCustomStart = null;
     this.state.weatherCustomEnd = null;
+    this.state.weatherShowForecast = false;
+    this.state.weatherForecastHorizon = 7;
+    const forecastBtn = document.getElementById('weather-forecast-toggle');
+    if (forecastBtn) { forecastBtn.classList.remove('active'); forecastBtn.setAttribute('aria-pressed', 'false'); }
+    const horizonSel = document.getElementById('weather-forecast-horizon');
+    if (horizonSel) { horizonSel.value = '7'; horizonSel.style.display = 'none'; }
     const valleySelect = document.getElementById('weather-valley-select');
     if (valleySelect) valleySelect.value = 'VDG';
     const aggSelect = document.getElementById('weather-agg-select');

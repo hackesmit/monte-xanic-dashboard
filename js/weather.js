@@ -11,8 +11,13 @@ export const WeatherStore = {
   _gddCache: {},
 
   _API_BASE: 'https://archive-api.open-meteo.com/v1/archive',
+  _FORECAST_API: 'https://api.open-meteo.com/v1/forecast',
   _TZ:       'America/Tijuana',
   _VALLEYS:  ['VDG', 'VON', 'SV'],
+
+  // Forecast cache: in-memory, 1-hour TTL, keyed by `${valley}_${horizon}`
+  _FORECAST_TTL_MS: 60 * 60 * 1000,
+  _forecastCache: {},
 
   // ── Load ───────────────────────────────────────────────────────
 
@@ -166,6 +171,96 @@ export const WeatherStore = {
       uv_index:     d.uv_index_max?.[i]              ?? null,
       wind_speed:   d.wind_speed_10m_max?.[i]        ?? null
     }));
+  },
+
+  // ── Forecast (Open-Meteo forecast API) ─────────────────────────
+
+  async syncForecast(valley, horizon) {
+    const loc = valley || 'VDG';
+    const h = horizon === 16 ? 16 : 7;
+    const key = `${loc}_${h}`;
+    const now = Date.now();
+    const cached = this._forecastCache[key];
+    if (cached && (now - cached.fetchedAt) < this._FORECAST_TTL_MS) return cached.data;
+
+    const coord = (CONFIG.valleyCoordinates || {})[loc];
+    if (!coord) return null;
+
+    try {
+      const rows = await this._fetchForecastFromAPI(coord.lat, coord.lon, h);
+      this._forecastCache[key] = { data: rows, fetchedAt: now };
+      return rows;
+    } catch (e) {
+      console.warn('[WeatherStore] forecast fetch failed for', loc, ':', e.message);
+      return null;
+    }
+  },
+
+  async _fetchForecastFromAPI(lat, lon, horizon) {
+    const params = new URLSearchParams({
+      latitude:  lat,
+      longitude: lon,
+      daily: [
+        'temperature_2m_max',
+        'temperature_2m_min',
+        'temperature_2m_mean',
+        'precipitation_sum',
+        'relative_humidity_2m_mean'
+      ].join(','),
+      forecast_days: horizon,
+      timezone: this._TZ
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    let res;
+    try {
+      res = await fetch(`${this._FORECAST_API}?${params}`, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (!res.ok) throw new Error(`Open-Meteo forecast HTTP ${res.status}`);
+    const json = await res.json();
+    return this._parseForecastDaily(json);
+  },
+
+  _parseForecastDaily(json) {
+    const d = json && json.daily;
+    if (!d || !Array.isArray(d.time)) return [];
+    return d.time.map((date, i) => ({
+      date,
+      temp_max:     d.temperature_2m_max?.[i]        ?? null,
+      temp_min:     d.temperature_2m_min?.[i]        ?? null,
+      temp_avg:     d.temperature_2m_mean?.[i]       ?? null,
+      rainfall_mm:  d.precipitation_sum?.[i]         ?? null,
+      humidity_pct: d.relative_humidity_2m_mean?.[i] ?? null,
+      isForecast:   true
+    }));
+  },
+
+  getForecast(valley, horizon) {
+    const loc = valley || 'VDG';
+    const h = horizon === 16 ? 16 : 7;
+    return this._forecastCache[`${loc}_${h}`]?.data || null;
+  },
+
+  clearForecastCache() { this._forecastCache = {}; },
+
+  // Forecast is only meaningful when the visible range extends to/past today
+  // AND we're not in a purely-historical mode (30d is today-backward).
+  forecastEligible(timeframe, rangeEnd) {
+    if (timeframe === '30d') return false;
+    if (!rangeEnd) return false;
+    const today = new Date().toISOString().split('T')[0];
+    return rangeEnd >= today;
+  },
+
+  // Filter forecast rows to those with date strictly after lastObservedDate,
+  // up to min(rangeEnd, forecast horizon end). Never overlap observed data.
+  forecastWithinRange(forecastRows, lastObservedDate, rangeEnd) {
+    if (!Array.isArray(forecastRows)) return [];
+    const today = new Date().toISOString().split('T')[0];
+    const minDate = lastObservedDate && lastObservedDate >= today ? lastObservedDate : today;
+    return forecastRows.filter(r => r.date > minDate && r.date <= rangeEnd);
   },
 
   // ── Accessors ──────────────────────────────────────────────────
