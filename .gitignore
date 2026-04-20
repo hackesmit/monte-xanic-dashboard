@@ -65,3 +65,5 @@ PROJECT_SUMMARY.md
 # Test artifacts
 test-results/
 test-diag.js
+playwright-report/
+playwright/.cache/
