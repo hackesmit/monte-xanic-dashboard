@@ -1,0 +1,34 @@
+ARCHIVED — RESOLVED in Phase 8 (commits up to 3c2b8e8). The work described in this
+prompt shipped as js/identity.js and MT.1–MT.7 test coverage; see REVIEW.md Rounds
+13–16. Preserved here for historical context only. DO NOT treat the goals below as
+open action items.
+
+---
+
+Implement deterministic berry upload identity and harden the upload pipeline.
+
+Context: Read codex-review-consolidated-handoff.md for full analysis. Core problem: berry upload identity is non-deterministic because sample_seq is assigned by row order, making re-uploads non-idempotent. Weak sample_id values like '25' collapse lot derivation.
+
+Goals:
+1. Make berry upload identity deterministic and idempotent (canonical ID from stable business fields, not row order)
+2. Create shared normalization module (js/identity.js) used by both temp and server parsing paths
+3. Fix lot derivation so weak IDs don't collapse chart grouping
+4. Add strict per-table schema validation in /api/upload
+5. Fix or remove duplicate preview logic that doesn't match real conflict key
+6. Add regression tests proving re-upload of shuffled rows produces identical DB state
+
+Constraints:
+- Vanilla JS only, no npm packages (project convention)
+- All UI labels in Spanish
+- Don't break existing 47 passing tests
+- If schema changes needed, provide migration SQL and historical data remediation strategy
+- If sample_seq remains, it must be deterministic metadata, not business identity
+- Minimize file churn — respect existing file responsibilities (see CLAUDE.md)
+
+Implementation order from handoff:
+Phase 1: Stop corruption (canonical identity + server rejection + preview fix)
+Phase 2: Eliminate drift (shared module, unify parsing paths)
+Phase 3: Harden backend (schema validation, auth tightening)
+Phase 4: Clean up (schema alignment, historical remediation, observability)
+
+Key files: js/upload.js, api/upload.js, js/dataLoader.js, js/config.js, js/charts.js
