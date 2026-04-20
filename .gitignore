@@ -59,6 +59,8 @@ PROJECT_SUMMARY.md
 
 # Claude Code
 .claude/
+.playwright-mcp/
+.superpowers/
 
 # Test artifacts
 test-results/
