@@ -288,3 +288,222 @@ Historical review rounds are preserved in git history. Key milestones:
   3. Update `.gitignore` for `.playwright-mcp/` and `.superpowers/` (P1.1) so they stay out of history permanently.
   4. Use explicit `git add <path>` — never `git add .` — until the above is resolved.
 - **No risky scope expansion observed** (there is no diff to expand). No dependency churn, no config changes, no schema changes in this review cycle.
+
+---
+
+## Round 21 — Branch `main` — Mobile Responsiveness Audit (2026-04-20)
+
+**Scope:** Live mobile-viewport smoke test via Playwright (iPhone SE 320×568 and iPhone 14 390×844) plus static audit of `css/styles.css` media queries. No tracked source changes reviewed — this is a feature-verification pass requested after Round 20.
+**Tooling limits:** `vite dev` does not serve the Vercel serverless functions, so `POST /api/login` returns 404 and real login cannot complete under `npm run dev`. To inspect dashboard layout I force-revealed `#dashboard-content` via `document.getElementById('dashboard-content').style.display = 'block'` after hiding the login screen. Layout measurements below are from the real DOM but **without live data** — charts render empty, tables render with one stub row. Anything requiring real data (table row heights with long varietal names, chart legends at mobile, map SVG interactions, PDF export rendering) was **not** exercised.
+
+---
+
+### Priority 1 — Issues
+
+**P1.1 — Login theme toggle is clipped above the viewport on small phones**
+- **File:** `css/styles.css` `.login-screen .theme-toggle` (and the parent positioning rules around the login card).
+- **Measured at 320×568:** `.theme-toggle` rect is `{ x: 255, y: -11, w: 36, h: 17 }` — the button's top edge sits **11 px above** the viewport.
+- **Measured at 390×844:** same button is at `y ≈ 134` (visible) but still only `36×17` px — roughly **2× below** Apple HIG's 44×44 and below the 24×24 WCAG 2.5.5 Target Size minimum.
+- **Impact:** Users on iPhone SE / Galaxy S8-class phones cannot switch themes on the login screen. Users on standard phones can tap it only with precision.
+- **Recommendation (do not apply — REVIEWER role):** Raise the toggle to at least `height: 36px` (to match `.theme-toggle` in the header), reposition it within the login card padding so it never lands at `y < 0`, and verify at 320×568.
+
+**P1.2 — Chart and table export buttons (`⤓`) are 18×14 px**
+- **File:** Wherever `.export-btn` / chart action buttons are styled (see `css/styles.css`; the buttons themselves are built in `charts.js`).
+- **Measured at 320 px:** each `⤓` button is `18×14` px. Counted ~20+ such buttons across the analytics view (per-chart export + section-level "Exportar Vista ⤓").
+- **Impact:** Below any reasonable touch-target floor. On mobile these are near-unusable without zooming, and the dense cluster of six adjacent `⤓` icons in the scatter charts guarantees mis-taps.
+- **Recommendation:** Either (a) inflate the button to 32×32+ with the icon centered, or (b) hide per-chart `⤓` on `max-width: 768px` and rely on the per-section "Exportar Vista" button, which is already 44 px tall.
+
+---
+
+### Priority 2 — Improvements
+
+**P2.1 — KPI grid at 320 px orphans the 5th card**
+- **File:** `css/styles.css:1286` — `@media (min-width: 400px) and (max-width: 768px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }`; below 400 px the grid falls back to 2 columns.
+- **Observed at 320 px:** 5 KPI cards render in a 2-column grid → row 3 has one card + an empty slot. Visually awkward, ~150 px of dead space.
+- **Recommendation:** Either (a) let the 400 px breakpoint cascade down to 320 (3-column fits KPIs in 2 rows with no orphan — test legibility), or (b) use `grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))` so the cards re-flow.
+
+**P2.2 — Nav tabs orphan "MEDICIONES" on its own row**
+- **File:** `css/styles.css:1075` — `.nav-tab { flex: 1 1 calc(33.33% - 3px); }`.
+- **Observed at 320 px:** 7 tabs in a 3-per-row grid → rows 1–2 have 3 tabs each, row 3 is `MEDICIONES` stretched to full width (297 px).
+- **Recommendation:** Change to 4 tabs/row (`calc(25% - 3px)`) so 7 tabs fit in rows of 4 + 3 (less lopsided), or to 2 tabs/row with a scrollable horizontal tab strip. Minor visual polish, not a blocker.
+
+**P2.3 — Nav tab label font-size is 8 px**
+- **File:** `css/styles.css:1078` — `.nav-tab { font-size: 8px; }`.
+- 8 px uppercase with `letter-spacing` is legible on high-DPI phones but aggressive. Android Material guidelines treat 10 px as the floor for labels; WCAG doesn't set a px floor but recommends user-scalable. Users with low vision will struggle.
+- **Recommendation:** Bump to 10–11 px. Tab pill is already 44 px tall, so vertical room is not the constraint.
+
+**P2.4 — Deprecated `apple-mobile-web-app-capable` meta tag**
+- **Console warning:** `<meta name="apple-mobile-web-app-capable" content="yes"> is deprecated. Please include <meta name="mobile-web-app-capable" content="yes">`.
+- **File:** `index.html`.
+- **Recommendation:** Add the canonical `mobile-web-app-capable` alongside the legacy Apple tag — no behavior change, just silences the warning and future-proofs PWA install metadata.
+
+**P2.5 — Tables need a horizontal-scroll affordance on mobile**
+- **Observed at 320 px:** the data table is 615 px wide inside a 295 px `.table-scroll` parent with `overflow-x: auto`. Scrolling works, but there is no visual cue (shadow edge, "→" hint, or sticky first column) telling the user they can swipe.
+- **Recommendation:** Add a right-edge gradient shadow that appears when `scrollWidth > clientWidth`, or freeze the first column via `position: sticky; left: 0` so users always see the lot/variety identifier while scrolling metric columns.
+
+---
+
+### Mobile Positives (observed, worth keeping)
+
+- **No horizontal page overflow at 320 or 390 px** — viewport is respected everywhere except the login toggle (P1.1).
+- **Viewport meta tag correct** — `width=device-width, initial-scale=1.0`.
+- **Bottom-sheet filter pattern (`.sidebar.sheet-open`)** — clean implementation with slide-up animation, pull handle, 75 vh max-height, and a backdrop. The FAB (`FILTROS ⧈`) is 117×44 px and correctly positioned at `bottom: 20px; right: 16px`.
+- **Nav tab touch targets are 44 px tall** — meets Apple HIG / WCAG 2.5.5 AAA.
+- **Form `min-width: 100%` below 600 px** (`css/styles.css:2108`) — mediciones form fields stack correctly.
+- **Map mobile layout** — `.map-header` / `.map-body` flip to `flex-direction: column` at 768 px (`css/styles.css:2051`). Not tested live but the CSS is coherent.
+- **Touch action / scroll flags** — `touch-action: manipulation` on nav tabs, `-webkit-overflow-scrolling: touch` on the filter sheet.
+
+---
+
+### Missing Tests
+
+- **No automated mobile-viewport tests.** The existing 96-test Node suite does not exercise responsive breakpoints. A Playwright smoke suite that (a) logs in, (b) cycles through each view at 320 / 390 / 768 px, and (c) asserts no element extends beyond `innerWidth` would catch all of the above automatically. This is a larger undertaking than one REVIEW cycle — flagging it, not requiring it.
+- **No tap-target audit in CI.** An axe-core or custom assertion over `button, a, input` elements checking `getBoundingClientRect() ≥ 24×24` on mobile viewports would catch P1.1, P1.2, and prevent regressions when new `⤓`-style icons are added.
+
+---
+
+### Notes
+
+- **I could not exercise the real login flow under `vite dev`** because `/api/login` is a Vercel serverless function. All dashboard observations came from force-revealing `#dashboard-content` with empty data. Anything that renders differently when data is present (long table cells, wide chart legends, map section resolution mentioned in `memory/project_current_state.md`) was not measured.
+- **Map view and upload view were not exercised** — the FAB + bottom sheet cover filters, but I did not open the upload flow at mobile width or interact with the map SVG. The CSS at `css/styles.css:2051` looks correct, but correctness ≠ verified.
+- **PDF/PNG export behavior on mobile was not tested** — jsPDF v4 and html2canvas rendering on mobile Safari has historically been quirky (canvas memory limits, font fallback). Recommend manual test on an actual iOS device before marking mobile export as "works."
+- **Screenshots captured during this review**: `.playwright-mcp/mobile-login-390.png`, `.playwright-mcp/mobile-dashboard-320.png`. These are untracked artifacts covered by Round 20 P1.1 — they should not be committed.
+- **No source files were modified during this review.** All findings are observational. Applying fixes is the Builder's role.
+
+---
+
+## Round 22 — Branch `main` — Mobile Audit Re-run via Localhost Auth Bypass (2026-04-20)
+
+**Scope:** Re-ran the mobile audit after user pointed out the localhost auth bypass (`js/auth.js:40-48`). The bypass triggers when a token already exists in localStorage **and** `/api/verify` is unreachable. Setting `localStorage.setItem('xanic_session_token', 'dev.bypass.token')` + `xanic_user_role='admin'` before reloading is enough to reach the dashboard under `vite dev` without Vercel functions. This round supersedes Round 21's caveat that the dashboard could not be exercised; the view-by-view layout was measured at 390×844.
+
+**Data state:** Bypass reaches the dashboard but `/api/config` also 404s, so `DataStore` stays empty. Charts show "Sin datos para esta selección", tables render headers only. Layout measurements below are structurally complete but do not reflect data-dependent edge cases (long row labels, wrapping chart legends, long SVG section paths).
+
+---
+
+### Priority 1 — Issues
+
+**P1.1 — Explorador slot-header buttons render off-screen at 390 px**
+- **Files:** `css/styles.css` (`.explorer-slot`, `.explorer-slot-header`, `.explorer-slot-actions`); `js/explorer.js` or equivalent (builds the toolbar).
+- **Measured at 390 px:** `.explorer-slot-actions` is 214 px wide with `flex-wrap: nowrap`, placed to the right of a chart title. Its children land at `right = 391` (CONECTAR LÍNEAS), `427` (⛶ expand), `367` (⤓ export), and `461` (× remove). Viewport ends at 390, so `⛶` and `×` sit entirely off the initial viewport.
+- **`main` has `overflow-x: auto`** with `scrollWidth: 461` vs `clientWidth: 390` — users *can* horizontally scroll the entire main pane to reach these buttons, but there is no visual affordance (no gradient shadow, no arrow hint), and side-scrolling the whole view is an unexpected gesture on mobile.
+- **`elementFromPoint` at the × button's center returns `null`**, confirming the button is outside the visible viewport at load.
+- **Impact:** Users on 390 px phones cannot remove, expand, or full-screen an explorer chart without first discovering that the entire dashboard scrolls sideways. Export button is also hidden behind "CONECTAR LÍNEAS".
+- **Recommendation:** On `max-width: 768px`, either (a) set `.explorer-slot-header { flex-wrap: wrap }` so the actions bar drops to a second line, or (b) collapse the toolbar into an overflow (`⋯`) menu, or (c) move the `×` and `⛶` onto the card corners with absolute positioning.
+
+**P1.2 — "Guardar Medicion" button is 26 px tall**
+- **File:** `css/styles.css:2091` — `.btn-gold { padding: 8px 20px; font-size: 11px; }`.
+- **Measured at 390 px inside the mediciones form:** submit button rect is `192×26` px. 26 px is roughly half the WCAG 2.5.5 AAA touch-target minimum of 44 px and well below Apple HIG.
+- **Recommendation:** Raise `padding` to `12px 28px` under `max-width: 768px`, or set `min-height: 44px` for `.btn-gold` on mobile. Same treatment for any other `.btn-gold` instances that serve as primary form actions.
+
+**P1.3 — Ranch tabs on Mapa view are 24 px tall**
+- **File:** `css/styles.css` (`.ranch-tab` — no explicit mobile rule found).
+- **Measured at 390 px:** all 8 ranch tabs (`Monte Xanic`, `Kompali`, `Viña Alta`, `Ojos Negros`, `Olé`, `Siete Leguas`, `Dubacano`, `Dom. Abejas`) are 24 px tall. These are the primary view switch on the map — users change ranches by tapping them dozens of times per session.
+- **Recommendation:** Under `max-width: 768px`, set `.ranch-tab { min-height: 44px; padding: 10px 14px }` and ensure the flex/wrap layout still works. Existing rule at `css/styles.css:2056` (`.ranch-tabs { justify-content: center }`) is correct; it just needs the per-tab height bump.
+
+**P1.4 — Login theme toggle remains tiny and, at 320 px, clipped above viewport**
+- **Carried from Round 21 P1.1** — still reproducible after the bypass was confirmed. Bypass does not affect the login-screen layout because the toggle lives on the login card itself, which renders identically before login.
+
+**P1.5 — Chart/table export buttons (`⤓`) remain 18×14 px**
+- **Carried from Round 21 P1.2** — confirmed identically during Round 22 across Bayas (16 canvases), Vino (1), Extracción (2), Vendimias (9), Explorador (1), Mediciones (3).
+
+---
+
+### Priority 2 — Improvements
+
+**P2.1 — Explorer chart title collides with Configurar button**
+- **Observed at 390 px Explorador screenshot:** `CONFIGURAR ▼` button overlaps the three-line wrapped title `BRIX VS DIAS POST-ENVERO – DISPERSION`. Title text flows under/around the button because the slot header has `flex-wrap: nowrap` and the title isn't allocated a fixed share.
+- **Recommendation:** Tied to P1.1 — once the action buttons wrap or collapse, allocate the title area `flex: 1 1 auto` with `min-width: 0` so long titles truncate with ellipsis rather than colliding.
+
+**P2.2 — Mediciones form inputs are 31–33 px tall**
+- **File:** `css/styles.css:2086` — `.form-group input, .form-group select { padding: 7px 10px; font-size: 13px }`.
+- Usable (iOS minimum is ~20 px before auto-zoom) but the 31–33 px height for `<input>` and `<select>` is under the 44 px touch target. 18 such controls on one form amplifies the friction.
+- **Recommendation:** Bump to `padding: 11px 12px` on mobile. Keep `font-size: 13px` (below 16 px triggers iOS Safari input-zoom — actually, **check this** — 13 px may force the autozoom behavior users find disorienting).
+
+**P2.3 — Ranch tabs row may wrap into too many lines at 320 px**
+- At 390 px, 8 ranch tabs with widths 56–125 px sum to ~831 px against a 390 px container, so wrap to 3–4 lines. At 320 px that gets worse. Consider a horizontal scroll strip (`overflow-x: auto; flex-wrap: nowrap`) with momentum scrolling instead of wrapping.
+
+**P2.4 — Map metric select is 34 px tall**
+- Borderline (below 44 but above 30). Low priority; bump alongside P2.2 if doing a form-control pass.
+
+---
+
+### Positives confirmed under bypass
+
+- **Every view renders without page-level horizontal overflow at 390 px.** `document.documentElement.scrollWidth` ≤ 390 on all seven views (Bayas, Vino, Extracción, Vendimias, Mapa, Explorador, Mediciones).
+- **Tables overflow into `.table-scroll` parents with `overflow-x: auto`** — the apparent "offenders" in Round 21's naive measurement were legitimate scrollable children, not broken layout.
+- **Map flex-direction correctly flips to `column` at 390 px**, SVG is 300×253 (fits), KPIs wrap cleanly.
+- **Bottom-sheet filter FAB** stays at `bottom: 20px; right: 16px` across all views.
+- **Mediciones form stacks single-column** at 390 px (`.form-group { min-width: 100% }`), as the 600 px breakpoint rule specifies.
+
+---
+
+### Missing Tests
+
+Unchanged from Round 21 — no automated mobile-viewport tests exist. The Round 22 data would be straightforward to capture in a Playwright suite that iterates the nav tabs at 320/390/768 px and asserts (a) no `hOverflow`, and (b) every `button` and interactive `input/select` has `getBoundingClientRect()` width × height ≥ 44×44 on mobile. That single assertion would have caught P1.1, P1.2, P1.3, P1.5, and P2.2 automatically.
+
+---
+
+### Notes
+
+- **Localhost bypass is in `js/auth.js:40–48`**: triggers only when a token is already present AND `/api/verify` fetch throws. A fresh session with no token shows the login screen unconditionally (line 19). For dev UI work, either (a) have testers paste `localStorage.setItem('xanic_session_token','x')` once, or (b) consider a `?dev=1` query-param path that sets a dummy token and `role='admin'` automatically under `localhost`.
+- **Screenshots captured:** `.playwright-mcp/mobile-login-390.png`, `.playwright-mcp/mobile-dashboard-320.png`, `.playwright-mcp/mobile-explorador-390.png`. Still untracked; Round 20 P1.1 applies (add `.playwright-mcp/` to `.gitignore`).
+- **Not exercised with real data:** long labels inside tables, wrapped chart legends with many varietals, map SVG section taps, PDF/PNG export rendering on mobile Safari. These remain caveats — the hard mobile usability issues above are present regardless of data.
+- **No source files were modified.** Findings are diagnostic; Builder to apply fixes.
+
+---
+
+## Corrections Punch List — Rounds 20–22 Consolidated (2026-04-20)
+
+Every finding below is a correction a Builder can apply. Format: **ID — File:Line — Current → Target — Fix**. Priorities inherited from the originating round. Nothing here is a style preference; each item has a measured defect (size, clipping, overflow, staleness, untracked artifact).
+
+### P1 — Blockers (fix before next release)
+
+- [x] **C1 — `.gitignore`** — `.playwright-mcp/` and `.superpowers/` are untracked (884 KB + 12 KB). — **Fixed** in commit `cb76a24` (Phase A review closure). Both patterns now sit next to `.claude/` in the Claude Code stanza. Source: Round 20 P1.1.
+
+- [ ] **C2 — repo root** — `DIAGNOSIS.md`, `codex-review-consolidated-handoff.md`, `ultraplan-prompt.txt` describe the berry-identity bug as open, but `js/identity.js` shipped in Phase 8. — **Fix:** move to `docs/reviews/archive/` with a header noting Phase 8 resolution, or delete. Do not commit as-is. Source: Round 20 P1.2.
+
+- [x] **C3 — `css/styles.css` (`.login-theme-toggle`)** — `36×17 px`, top at `y=-11` at 320 px viewport (clipped above the card). — **Fixed.** Under `@media (max-width: 768px)`: `position: fixed; top/right: 12px; width/height: 44px; z-index: 10002`, with a subtle backdrop so the button reads on any theme. Anchored to the viewport so short screens can't clip it above the card. Source: Round 21 P1.1.
+
+- [x] **C4 — `css/styles.css` (`.chart-export-btn`)** — `18×14 px`, ~20+ instances. — **Fixed.** Mobile rule changed from `opacity: 0.7; font-size: 7px` to `display: none`. The section-level "Exportar Vista" (`.page-export-btn`) stays visible on every view and covers export for the whole section. Source: Round 21 P1.2, Round 22 P1.5.
+
+- [x] **C5 — `css/styles.css` (`.explorer-slot-header`, `.explorer-slot-actions`, `.explorer-summary`)** — `flex-wrap: nowrap` pushed the action toolbar off-screen at 390 px. — **Fixed.** Mobile rule: `.explorer-slot-header { flex-wrap: wrap; row-gap: 6px }`, `.explorer-slot-actions { width: 100%; justify-content: flex-end }`, `.explorer-summary` drops to `flex: 1 1 100%` and truncates long titles with ellipsis. Bundled C14 (title/button collision) into the same rule. Source: Round 22 P1.1.
+
+- [x] **C6 — `css/styles.css` (`.btn-gold`)** — `padding: 8px 20px; font-size: 11px` → 26 px tall on mediciones. — **Fixed.** Mobile rule: `.btn-gold { min-height: 44px; padding: 12px 28px; font-size: 12px }`. Applies to every `.btn-gold` primary action. Source: Round 22 P1.2.
+
+- [x] **C7 — `css/styles.css` (`.ranch-tab`)** — all 8 map ranch tabs rendered 24 px tall. — **Fixed.** Added to the existing map mobile block: `.ranch-tab { min-height: 44px; padding: 10px 14px }`. Source: Round 22 P1.3.
+
+### P2 — Improvements (nice-to-have, bundle with P1 fixes)
+
+- [ ] **C8 — repo root** — brand logo at `Logotipo_corporativo_MX_amarillo-01 (1).png` (duplicate with Windows `(1)` suffix) + `.webp` variant; also `dark-mode.png`, `light-mode.png`, `light-trimmed.png` (Round 18/19 screenshots). — **Fix:** move the active logo to `public/logo-mx-amarillo.webp` (space-free), delete the `(1).png` duplicate and the three theme screenshots (or move to a gitignored screenshots folder). Source: Round 20 P2.1.
+
+- [ ] **C9 — `css/styles.css:1286`** — `@media (min-width: 400px) and (max-width: 768px) { .kpi-row { grid-template-columns: repeat(3, 1fr) } }`. Below 400 px the grid falls back to 2 columns → 5 KPIs leave one orphan cell. — **Fix:** use `grid-template-columns: repeat(auto-fit, minmax(140px, 1fr))` instead of fixed column counts so cards reflow cleanly. Source: Round 21 P2.1.
+
+- [ ] **C10 — `css/styles.css:1076`** — `.nav-tab { flex: 1 1 calc(33.33% - 3px) }`; 7 tabs at 3/row orphan `MEDICIONES` on a full-width row 3. — **Fix:** switch to `calc(25% - 3px)` (4/row) so 7 tabs fit as 4+3, or change to a horizontally scrollable tab strip. Source: Round 21 P2.2.
+
+- [ ] **C11 — `css/styles.css:1078`** — `.nav-tab { font-size: 8px }`. — **Fix:** bump to `10px` or `11px`; the 44 px tall pill has plenty of vertical room. Source: Round 21 P2.3.
+
+- [x] **C12 — `index.html`** — console warning: `<meta name="apple-mobile-web-app-capable" content="yes"> is deprecated`. — **Fixed.** Added `<meta name="mobile-web-app-capable" content="yes">` on the line directly below the legacy Apple tag. No behavior change; silences the warning and future-proofs PWA install metadata. Source: Round 21 P2.4.
+
+- [ ] **C13 — `css/styles.css` (`.table-scroll`)** — tables scroll horizontally correctly, but there is no visual cue (615 px table inside 295 px parent at 320 px). — **Fix:** add a right-edge gradient shadow that fades in when `scrollWidth > clientWidth`, or `position: sticky; left: 0` on the first column. Source: Round 21 P2.5.
+
+- [x] **C14 — `css/styles.css` (explorer slot header / title area)** — 3-line wrapped chart title collided with `CONFIGURAR ▼`. — **Fixed alongside C5.** `.explorer-summary` now drops to `flex: 1 1 100%` with ellipsis once the action bar wraps, so titles stay on a single line on mobile. Source: Round 22 P2.1.
+
+- [x] **C15 — `css/styles.css` (`.form-group input`, `.form-group select`)** — 31–33 px tall with font-size that triggered iOS Safari input-zoom on focus. — **Fixed.** Moved the existing 600 px form block up to 768 px and added `padding: 11px 12px; font-size: 16px; min-height: 44px`. 16 px is the iOS threshold below which Safari auto-zooms inputs. Bundled with C6 in the same rule. Source: Round 22 P2.2.
+
+- [ ] **C16 — `css/styles.css` (`.ranch-tabs`)** — 8 ranch tabs summing ~831 px wrap to 3–4 rows at 390 px. — **Fix:** `overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scroll-snap-type: x mandatory` (with `.ranch-tab { scroll-snap-align: start }`) so users scroll the row instead of wrapping. Source: Round 22 P2.3.
+
+- [x] **C17 — `css/styles.css` (`#map-metric-select`)** — `370×34 px`. — **Fixed.** Added `min-height: 44px` in the map mobile block alongside the existing `max-width: 100%`. Source: Round 22 P2.4.
+
+- [ ] **C18 — `.gitignore`** — optional: catch-all for future ad-hoc top-level docs. — **Fix:** decide policy first; if adopting, add `DIAGNOSIS*.md`, `*-handoff.md`, `ultraplan-*.txt`. Source: Round 20 P2.2.
+
+### Dev-experience corrections (not blocking but cheap wins)
+
+- [ ] **C19 — `js/auth.js:40-48`** — localhost bypass requires a pre-existing token in localStorage AND a network failure on `/api/verify`. Fresh dev sessions can't reach the dashboard without manual `localStorage` setup. — **Fix (optional):** accept `?dev=1` on localhost to auto-set `xanic_session_token='dev.bypass'` + `role='admin'`, or add a one-line banner in the login screen shown when `location.hostname === 'localhost'` and no token exists, with a "Dev bypass" button. Source: Round 22 Notes.
+
+### Testing gap (not a correction itself, but the forcing function for the rest)
+
+- [ ] **C20 — `tests/` (new file)** — no automated mobile-viewport tests exist. — **Fix:** add a Playwright spec that (a) sets a dev token, (b) iterates `[320, 390, 768]` viewports against each nav tab, (c) asserts `scrollWidth ≤ innerWidth` and every `button, input, select` inside visible view has `rect.width ≥ 44 && rect.height ≥ 44`. This single test would have caught C3, C4, C5, C6, C7, C15 automatically and prevents regressions when new `⤓`-style icons are added. Source: Round 21 Missing Tests + Round 22 Missing Tests.
+
+---
+
+**Scope guard:** Corrections C1–C20 cover only what was measured in Rounds 20–22 on branch `main` at viewports 320×568 and 390×844. Real-data scenarios (long varietal names, map section resolution, PDF/PNG export on mobile Safari) remain unmeasured and may reveal further issues — they are explicitly **not** in this punch list.
