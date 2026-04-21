@@ -38,6 +38,7 @@ export const Mediciones = {
     const weight = parseFloat(document.getElementById('med-weight')?.value) || null;
     const diameter = parseFloat(document.getElementById('med-diameter')?.value) || null;
     const grade = document.getElementById('med-grade')?.value || null;
+    const phenolicMaturity = document.getElementById('med-phenolic-maturity')?.value || null;
     const measuredBy = document.getElementById('med-by')?.value.trim() || null;
     const notes = document.getElementById('med-notes')?.value.trim() || null;
 
@@ -73,6 +74,7 @@ export const Mediciones = {
       health_picadura: hPicadura,
       health_enfermedad: hEnfermedad,
       health_quemadura: hQuemadura,
+      phenolic_maturity: phenolicMaturity,
       measured_by: measuredBy,
       notes
     };
@@ -168,8 +170,16 @@ export const Mediciones = {
         <td>${d.berryDiameter !== null ? d.berryDiameter.toFixed(1) : '—'}</td>
         <td>${bar}</td>
         <td>${esc(d.healthGrade)}</td>
+        <td>${esc(this._madurezShort(d.phenolicMaturity))}</td>
       </tr>`;
     }).join('');
+  },
+
+  _madurezShort(v) {
+    if (v === 'Sobresaliente')    return 'Sobr.';
+    if (v === 'Parcial')          return 'Parc.';
+    if (v === 'No sobresaliente') return 'No sobr.';
+    return '—';
   },
 
   sortBy(field) {

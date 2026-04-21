@@ -56,7 +56,7 @@ const ALLOWED_TABLES = {
       'lot_code','tons_received','berry_count_sample','berry_avg_weight_g',
       'berry_diameter_mm','health_grade','health_madura','health_inmadura',
       'health_sobremadura','health_picadura','health_enfermedad',
-      'health_quemadura','measured_by','notes'
+      'health_quemadura','phenolic_maturity','measured_by','notes'
     ])
   }
 };
