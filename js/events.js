@@ -168,6 +168,9 @@ export const Events = {
     const themeBtn = document.getElementById('theme-toggle-btn');
     if (themeBtn) themeBtn.addEventListener('click', () => App.toggleTheme());
 
+    const demoBtn = document.getElementById('demo-toggle-btn');
+    if (demoBtn) demoBtn.addEventListener('click', () => App.toggleDemoMode());
+
     const helpBtn = document.getElementById('help-toggle-btn');
     if (helpBtn) helpBtn.addEventListener('click', () => App.toggleHelp());
 

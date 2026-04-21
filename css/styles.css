@@ -184,6 +184,48 @@ header {
   font-weight: 500;
 }
 
+/* ── Modo Demo toggle + banner ── */
+.demo-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  cursor: pointer;
+  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  transition: color 0.2s, background 0.2s;
+}
+.demo-toggle:hover {
+  color: var(--gold);
+  background: rgba(196,160,96,0.06);
+}
+.demo-toggle.demo-active {
+  color: #7CFFA8;
+  background: rgba(124,255,168,0.08);
+}
+.demo-banner {
+  display: none;
+  background: linear-gradient(90deg, rgba(124,255,168,0.18), rgba(196,160,96,0.14));
+  color: var(--fg);
+  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  text-align: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid rgba(124,255,168,0.35);
+}
+body.demo-mode-active .demo-banner { display: block; }
+@media (max-width: 768px) {
+  .demo-toggle { min-width: 44px; font-size: 10px; padding: 0 6px; }
+  .demo-banner { font-size: 11px; padding: 6px 10px; }
+}
+
 /* ── LAYOUT ── */
 .layout {
   display: grid;

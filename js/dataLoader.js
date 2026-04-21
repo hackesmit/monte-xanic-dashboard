@@ -9,6 +9,8 @@ export const DataStore = {
   wineRecepcion: [],
   winePreferment: [],
   medicionesData: [],
+  receptionData: [],        // tank_receptions rows (snake_case, internal use)
+  receptionLotsData: [],    // reception_lots rows (snake_case, internal use)
   loaded: { berry: false, wine: false },
   supabase: null,        // Supabase client instance (set by initSupabase)
   _supabaseReady: false, // true once credentials have been fetched
@@ -173,8 +175,21 @@ export const DataStore = {
         this.winePreferment = this.wineRecepcion.filter(r => r.sampleType === 'Must');
       }
 
+      // Fetch tank_receptions + reception_lots for the quality-classification
+      // engine's av/ag/polyphenols inputs. Failure is non-fatal — the engine's
+      // partial-data guard handles missing params gracefully.
+      try {
+        this.receptionData = await this._fetchAll('tank_receptions', 'reception_date');
+      } catch (_) { this.receptionData = []; }
+      try {
+        this.receptionLotsData = await this._fetchAll('reception_lots', 'reception_id');
+      } catch (_) { this.receptionLotsData = []; }
+
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine  = this.wineRecepcion.length > 0;
+
+      // Re-enrich so receptions join into berry rows
+      this._enrichData();
 
       if (this.loaded.berry || this.loaded.wine) this.cacheData();
       return this.loaded.berry;
@@ -524,6 +539,8 @@ export const DataStore = {
     // Enrich berry rows with their matching medicion (if loaded).
     // Idempotent — safe to call before or after loadMediciones().
     this.joinBerryWithMediciones();
+    // Same pattern for tank_receptions → supplies av/ag/polyphenols.
+    this.joinBerryWithReceptions();
   },
 
   // Attach each berry row's matching mediciones_tecnicas entry as row.medicion,
@@ -554,6 +571,76 @@ export const DataStore = {
     return this.berryData;
   },
 
+  // Normalize a lot code for cross-table matching.
+  // Berry side has "CSMX-5B-1" (seq kept), reception_lots side has "CSMX-5B".
+  // Also tolerates accidental vintage prefix ("25CSMX-5B") on either side.
+  _normalizeLotCode(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).trim().toUpperCase()
+      .replace(/^(\d{2})-?/, '')       // strip 2-digit vintage prefix
+      .replace(/_(BERRIES|RECEPCION)$/i, '');
+  },
+
+  // Enrich berry rows with av / ag / polyphenols averaged across any
+  // tank_receptions whose reception_lots entry matches (lot_code, vintage).
+  // Written only onto berry rows; no DB writes, no mutation of reception data.
+  // Idempotent: running this twice yields the same result.
+  joinBerryWithReceptions() {
+    // Build reception lookup: id → { av, ag, polyphenols_wx, anto_wx, vintage_year, ... }
+    const recById = new Map();
+    for (const r of (this.receptionData || [])) {
+      if (!r || !r.id) continue;
+      recById.set(r.id, r);
+    }
+
+    // Build lot-code-key → [receptions...] index, seeded from reception_lots.
+    // Key is `${normLot(lot_code)}||${vintage_year}`.
+    const lotIndex = new Map();
+    for (const rl of (this.receptionLotsData || [])) {
+      if (!rl || !rl.lot_code || !rl.reception_id) continue;
+      const rec = recById.get(rl.reception_id);
+      if (!rec || rec.vintage_year == null) continue;
+      const key = `${this._normalizeLotCode(rl.lot_code)}||${rec.vintage_year}`;
+      if (!lotIndex.has(key)) lotIndex.set(key, []);
+      lotIndex.get(key).push(rec);
+    }
+
+    const avgField = (recs, primary, fallback) => {
+      let sum = 0, n = 0;
+      for (const r of recs) {
+        let v = r[primary];
+        if ((v === null || v === undefined || v === '') && fallback) v = r[fallback];
+        if (v === null || v === undefined || v === '') continue;
+        const num = Number(v);
+        if (Number.isFinite(num)) { sum += num; n += 1; }
+      }
+      return n > 0 ? sum / n : null;
+    };
+
+    for (const b of (this.berryData || [])) {
+      if (!b.lotCode || b.vintage == null) continue;
+      const normBerry = this._normalizeLotCode(b.lotCode);
+      // Try exact, then with trailing seq (e.g. "CSMX-5B-1" → "CSMX-5B") stripped
+      let recs = lotIndex.get(`${normBerry}||${b.vintage}`);
+      if (!recs || !recs.length) {
+        const stripped = normBerry.replace(/-\d+$/, '');
+        if (stripped && stripped !== normBerry) {
+          recs = lotIndex.get(`${stripped}||${b.vintage}`);
+        }
+      }
+      if (!recs || !recs.length) continue;
+
+      const av = avgField(recs, 'av');
+      const ag = avgField(recs, 'ag');
+      const poly = avgField(recs, 'polifenoles_wx', 'poli_spica');
+
+      if (av !== null) b.av = av;
+      if (ag !== null) b.ag = ag;
+      if (poly !== null) b.polyphenols = poly;
+    }
+    return this.berryData;
+  },
+
   // Cache data to localStorage
   cacheData() {
     try {
@@ -561,6 +648,8 @@ export const DataStore = {
         berry: this.berryData,
         wineR: this.wineRecepcion,
         wineP: this.winePreferment,
+        recs:  this.receptionData,
+        recL:  this.receptionLotsData,
         ts: Date.now()
       };
       localStorage.setItem('xanic_data_cache', JSON.stringify(cache));
@@ -580,6 +669,8 @@ export const DataStore = {
       this.berryData = cache.berry || [];
       this.wineRecepcion = cache.wineR || [];
       this.winePreferment = cache.wineP || [];
+      this.receptionData = cache.recs || [];
+      this.receptionLotsData = cache.recL || [];
       this._enrichData();
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine = this.wineRecepcion.length > 0;

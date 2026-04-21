@@ -488,6 +488,7 @@ export const CONFIG = {
     'ta':              'ta',
     'brix':            'brix',
     'berry_weight':    'berryFW',
+    'berry_anthocyanins': 'anthocyanins',
     'l_star':          'colorL',
     'a_star':          'colorA',
     'b_star':          'colorB',

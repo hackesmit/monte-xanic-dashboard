@@ -102,6 +102,7 @@
     <div class="hdr-stat"><div class="hdr-num" id="hdr-varietales">—</div><div class="hdr-lbl">Varietales</div></div>
     <div class="hdr-stat"><div class="hdr-num" id="hdr-origenes">—</div><div class="hdr-lbl">Orígenes</div></div>
     <span id="db-status-badge" class="db-badge db-badge-off" title="Sin conexión a base de datos">DB —</span>
+    <button class="demo-toggle" id="demo-toggle-btn" title="Activar/desactivar Modo Demo (datos temporales, no toca la base de datos)" aria-label="Modo Demo">Demo</button>
     <button class="theme-toggle" title="Cambiar tema claro/oscuro" id="theme-toggle-btn" aria-label="Cambiar tema">
       <span class="theme-icon-dark" style="display:none">&#9790;</span>
       <span class="theme-icon-light">&#9788;</span>
@@ -110,6 +111,11 @@
     <button class="help-toggle" id="logout-btn" title="Cerrar sesión" aria-label="Cerrar sesión" style="font-size:10px">&#x23FB;</button>
   </div>
 </header>
+
+<!-- Modo Demo banner — shown only when body has .demo-mode-active -->
+<div id="demo-banner" class="demo-banner" role="status" aria-live="polite">
+  MODO DEMO — datos de demostración temporales. La base de datos real no se modifica.
+</div>
 
 <div class="layout">
   <!-- ── SIDEBAR ── -->
