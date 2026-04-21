@@ -30,8 +30,9 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `app.js` | View routing, refresh orchestration, init |
 | `maps.js` | SVG vineyard map |
 | `classification.js` | Quality rubric scoring and percentile only |
+| `demoMode.js` | In-memory demo-data overlay (no DB/cache writes while active) |
 
-Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js.
+Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js. Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`.
 
 ## Upload Pipeline Rules
 

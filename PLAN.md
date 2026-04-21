@@ -1,8 +1,8 @@
 # Plan — Phase 9: Explorer Enhancements, Weather Timeframes, Satellite Map
 
-> **Last synced:** 2026-04-21 — Stage 5 (Quality Classification & True Quality Map) added after shipping on branch `feat/quality-classification`.
+> **Last synced:** 2026-04-21 — Stage 5 reception-join follow-up + Stage 6 Modo Demo merged to `main` (`5558da4`). Test suite now 198/198.
 
-## Status: IN PROGRESS (Stages 0, 0b, 1, 2, 5 complete; Stage 3 satellite map and Stage 4 future analytics remain)
+## Status: IN PROGRESS (Stages 0, 0b, 1, 2, 5, 6 complete; Stage 3 satellite map and Stage 4 future analytics remain)
 
 **Reference:** TASK.md (Phase 9 objectives and acceptance criteria)
 
@@ -10,15 +10,15 @@
 
 ## Architecture Overview
 
-Phase 9 is organized into 5 stages plus a later Stage 5. **Stage 0 (Vite migration)** is complete — all subsequent stages benefit from ES modules, proper imports, and npm-managed dependencies. **Stage 0b (mobile hardening)** landed immediately after as a follow-on from REVIEW.md Rounds 20–24. **Stages 1–2** are complete. **Stage 5 (Quality Classification)** shipped on branch `feat/quality-classification`. **Stage 3** (satellite map) and **Stage 4** (future analytics foundations) remain.
+Phase 9 is organized into multiple stages. **Stage 0 (Vite migration)** is complete — all subsequent stages benefit from ES modules, proper imports, and npm-managed dependencies. **Stage 0b (mobile hardening)** landed immediately after as a follow-on from REVIEW.md Rounds 20–24. **Stages 1–2** are complete. **Stage 5 (Quality Classification)** merged to `main` at `8998656` and its tank-reception data-wiring follow-up landed in `5558da4`. **Stage 6 (Modo Demo)** shipped alongside in `5558da4`. **Stage 3** (satellite map) and **Stage 4** (future analytics foundations) remain.
 
 ---
 
 ## Stage 5 — Quality Classification & True Quality Map (F9) — COMPLETE
 
-**Shipped:** 2026-04-21 on branch `feat/quality-classification` (pending merge). Spec: `docs/superpowers/specs/2026-04-21-quality-classification-design.md`. Plan: `docs/superpowers/plans/2026-04-21-quality-classification.md`.
+**Shipped:** 2026-04-21 (merged to `main` at `8998656`; reception-join follow-up in `5558da4`). Spec: `docs/superpowers/specs/2026-04-21-quality-classification-design.md`. Plan: `docs/superpowers/plans/2026-04-21-quality-classification.md`.
 
-**What shipped:** see TASK.md "What Shipped (Sub-project 4: Quality Classification & True Quality Map)" for the full breakdown and the known polyphenols/av/ag data-wiring follow-up. High-level:
+**What shipped:** see TASK.md "What Shipped (Sub-project 4: Quality Classification & True Quality Map)" for the full breakdown. High-level:
 
 1. `js/classification.js` — pure scoring engine covering rubric + valley resolution, A/B/C threshold bucketing, madurez ±3 overlay, partial-data guard at 60 Imp, per-variety peso overrides, percentile within cohort, tonnage-weighted section aggregation.
 2. `CONFIG.rubrics` (7 rubrics) + `varietyRubricMap` + `valleyPatterns` + `sanitaryThresholds` + `madurezOverlay` + `gradeColors`.
@@ -26,13 +26,44 @@ Phase 9 is organized into 5 stages plus a later Stage 5. **Stage 0 (Vite migrati
 4. `maps.js` — new `calidad` metric (default) with discrete A+/A/B/C coloring, SVG `<title>` tooltip per-lot breakdown, detail-panel grade row with cohort percentile and expandable `<details>` desglose, discrete legend swap.
 5. `mediciones.js` — new `Madurez Fenólica (opcional)` form select + table column. `api/upload.js` whitelist + MT.7 mirror updated.
 6. `sql/migration_phenolic_maturity.sql` — nullable `phenolic_maturity TEXT CHECK (…)` on `mediciones_tecnicas`.
-7. MT.11 (41 cases) green. `npm test` 181/181; `npm run test:e2e` 12/12; `npm run build` succeeds.
+7. MT.11 (41 cases) green at ship; `npm test` 181/181 then; `npm run test:e2e` 12/12; `npm run build` succeeds.
+
+**Reception-join follow-up (`5558da4`):** Initial ship had a data-wiring gap where `av`/`ag`/`polyphenols` weren't reaching the engine, so every lot rendered gray. Closed with three coordinated changes:
+
+- `config.js` — added `berry_anthocyanins → anthocyanins` mapping in `supabaseToBerryJS` (was silently dropped).
+- `dataLoader.js` — loads `tank_receptions` + `reception_lots` from Supabase, exposes `receptionData` / `receptionLotsData`, and `joinBerryWithReceptions()` averages `av` / `ag` / `polifenoles_wx` (with `poli_spica` fallback) across all receptions matching `(lot_code, vintage)`. Lot-code normalization tolerates trailing-seq suffixes and vintage prefixes.
+- `app.js` — fixed the map bridge that was stripping scoring fields before reaching `aggregateBySection`.
+
+MT.12 adds 17 tests (normalization, multi-tank averaging, vintage isolation, null handling, idempotency). Cohort keying unchanged, so ranking integrity is preserved: lots still without enough Imp return `grade: null` and stay out of the percentile cohort.
 
 **Deferred by design:**
 - Cohort-toggle UI (`vintage-variety` ↔ `variety-only`) — engine supports it via `scoreAll(lots, { cohort: 'variety-only' })`; wire into detail panel when ≥ 2 vintages of data exist.
 - Grade column on berry / recepción / extracción tables — spec §11 defers until the map view has been validated in production.
 - Bulk-edit Madurez for already-imported lots — today requires one-at-a-time edits via the mediciones form.
 - Export grade breakdown in `Exportar Vista` (PNG / PDF) — spec §11 defers.
+
+---
+
+## Stage 6 — Modo Demo (F11) — COMPLETE
+
+**Shipped:** 2026-04-21 in `5558da4`. New module `js/demoMode.js`; header "Demo" button; banner announces temporary-data state. Enables stakeholder walkthroughs without live DB data.
+
+**What shipped:**
+
+1. `js/demoMode.js` — `DemoMode.enable()` / `disable()` / `toggle()`. Snapshots the six DataStore arrays (`berry`, `wineR`, `wineP`, `med`, `recs`, `recL`) plus the real `cacheData` / `loadFromSupabase` / `loadMediciones` methods, overlays a deterministic 192-sample / 64-lot / 64-reception demo dataset covering every valid variety × valley combination in `CONFIG.varietyRubricMap`, then restores on disable.
+2. Seeded mulberry32 RNG → reproducible output on repeated toggles.
+3. Three time-series points per lot (DPC 18 / 28 / 38) so berry evolution charts render curves, not dots. Final point carries the target grade's chemistry; earlier points interpolate back from a plausible green-fruit baseline.
+4. Grade distribution targeted as 25% A+ / 35% A / 30% B / 10% C; actual spread validated in browser (28 A+, 8 A, 11 B, 17 C with 0 null across 64 lots).
+5. Monkey-patches `DataStore.cacheData` to `() => {}` while active — zero localStorage writes confirmed after toggle cycle.
+6. Exercises the full reception-join pipeline (tank receptions → berry rows → scoring) end-to-end, so it doubles as an integration smoke test for Stage 5.
+
+**UI touches:**
+- `index.html` — header button + `#demo-banner` div (status role, live-region).
+- `css/styles.css` — `.demo-toggle` pill styling, `.demo-banner` gold/green gradient, mobile-responsive.
+- `js/events.js` — CSP-safe click binding → `App.toggleDemoMode()`.
+- `js/app.js` — `toggleDemoMode()` orchestrator (toggles DemoMode, clears filter chips, refreshes the view).
+
+**Verified in browser:** map renders correctly across all ranches (Monte Xanic, Kompali, Viña Alta, Ojos Negros, Olé, Siete Leguas, Dominio de las Abejas), evolution charts show 13 varieties across DPC 18/28/38, toggle-off confirms `localStorage.getItem('xanic_data_cache')` stays empty when no real data was loaded.
 
 ---
 
