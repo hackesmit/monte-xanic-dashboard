@@ -120,17 +120,23 @@ test('MT.11 scoreLot: all-C reds → C 12', () => {
 });
 
 test('MT.11 scoreLot: madurez Sobresaliente adds +3', () => {
+  // Push both phenolics into the B bucket so base36 ≈ 30.7; +3 → 33.7 (no clamp).
   const lot = mkLot({ brix: 23.0, pH: 3.60, ta: 6.0, av: 0.0, ag: 0.02,
-                      berryFW: 1.0, polyphenols: 1900, anthocyanins: 950 });
+                      berryFW: 1.0, polyphenols: 1800, anthocyanins: 700 });
   const without = scoreLot({ ...lot, medicion: { ...lot.medicion, phenolic_maturity: null } });
   const with_ = scoreLot({ ...lot, medicion: { ...lot.medicion, phenolic_maturity: 'Sobresaliente' } });
+  assert.ok(without.score36 < 33, `base must be <33 to avoid clamp (got ${without.score36})`);
   assert.equal(with_.score36 - without.score36, 3);
 });
 
 test('MT.11 scoreLot: madurez No sobresaliente subtracts 3, clamps at 0', () => {
+  // Full all-C lot (including Malo medicion) so base36 == 12; -3 → 9.
   const lot = mkLot({ brix: 26, pH: 3.90, ta: 5.0, av: 0.10, ag: 0.20,
-                      berryFW: 0.5, polyphenols: 500, anthocyanins: 200 });
-  const r = scoreLot({ ...lot, medicion: { ...lot.medicion, phenolic_maturity: 'No sobresaliente' } });
+                      berryFW: 0.5, polyphenols: 500, anthocyanins: 200,
+                      medicion: { ...mkLot().medicion, health_grade: 'Malo',
+                                  health_picadura: 10, health_madura: 90,
+                                  phenolic_maturity: 'No sobresaliente' } });
+  const r = scoreLot(lot);
   assert.equal(r.score36, 9); // 12 base - 3 = 9
   assert.equal(r.grade, 'C');
 });
@@ -144,12 +150,13 @@ test('MT.11 scoreLot: unknown variety/valley → null rubric', () => {
 });
 
 test('MT.11 scoreLot: partial data (3 params missing) still scores', () => {
-  const lot = mkLot({ ag: null, polyphenols: null, anthocyanins: null });
+  // Drop berryFW (5) + ag (13) + av (13) = 31 Imp; remaining still ≥ 60.
+  const lot = mkLot({ berryFW: null, ag: null, av: null });
   const r = scoreLot(lot);
   assert.ok(r.grade); // still scores
+  assert.ok(r.missing.includes('berryFW'));
   assert.ok(r.missing.includes('ag'));
-  assert.ok(r.missing.includes('polyphenols'));
-  assert.ok(r.missing.includes('anthocyanins'));
+  assert.ok(r.missing.includes('av'));
 });
 
 test('MT.11 scoreLot: too little data (< 60 Imp) → null', () => {
@@ -240,10 +247,11 @@ test('MT.11 scoreLot: white rubric (SB) normalizes correctly', () => {
 
 // ── Percentile + aggregate ───────────────────────────────────────────
 test('MT.11 scoreAll: percentile within same-variety same-vintage cohort', () => {
+  // Use pH (le-a-le-b, monotonic) so three distinct values produce three distinct scores.
   const lots = [
-    { ...mkLot({ lotCode: 'a' }), brix: 23.7 },  // high
-    { ...mkLot({ lotCode: 'b' }), brix: 23.0 },  // mid
-    { ...mkLot({ lotCode: 'c' }), brix: 22.5 }   // low
+    { ...mkLot({ lotCode: 'a' }), pH: 3.60 },  // A (≤3.67) → 3pts
+    { ...mkLot({ lotCode: 'b' }), pH: 3.75 },  // B (≤3.80) → 2pts
+    { ...mkLot({ lotCode: 'c' }), pH: 3.90 }   // C (>3.80) → 1pt
   ];
   const scored = scoreAll(lots, { cohort: 'vintage-variety' });
   const byCode = Object.fromEntries(scored.map(s => [s.lotCode, s]));
