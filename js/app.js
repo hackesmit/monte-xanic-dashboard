@@ -11,6 +11,7 @@ import { MapStore } from './maps.js';
 import { Events } from './events.js';
 import { Explorer } from './explorer.js';
 import { Mediciones } from './mediciones.js';
+import { DemoMode } from './demoMode.js';
 
 export const App = {
   currentView: 'berry',
@@ -367,16 +368,20 @@ export const App = {
       }
 
       case 'map': {
-        // Bridge berry data → MapStore format (latest measurement per lot)
+        // Bridge berry data → MapStore format (latest measurement per lot).
+        // Spread the full row so variety/appellation/medicion/av/ag/polyphenols/
+        // anthocyanins flow through to the classification engine; add fieldLot +
+        // aliases the map/chart layers expect.
         const latestByLot = {};
         for (const d of cleanBerry) {
           if (!d.lotCode) continue;
           const prev = latestByLot[d.lotCode];
           if (!prev || (d.daysPostCrush || 0) > (prev.daysPostCrush || 0)) {
             latestByLot[d.lotCode] = {
-              fieldLot: d.lotCode, vintageYear: d.vintage,
-              brix: d.brix, pH: d.pH, ta: d.ta, tANT: d.tANT,
-              berryAvgWeight: d.berryFW, berryFW: d.berryFW
+              ...d,
+              fieldLot: d.lotCode,
+              vintageYear: d.vintage,
+              berryAvgWeight: d.berryFW
             };
           }
         }
@@ -821,6 +826,29 @@ export const App = {
     const isLight = this.theme === 'light';
     CONFIG.chartDefaults.gridColor = isLight ? 'rgba(0,0,0,0.08)' : 'rgba(255,255,255,0.05)';
     CONFIG.chartDefaults.tickColor = isLight ? '#7A7A7A' : '#4A4A4A';
+  },
+
+  // ── Modo Demo ──
+  // Swaps DataStore arrays to in-memory demo data; restores on toggle off.
+  // No database or cache writes happen while demo is active.
+
+  toggleDemoMode() {
+    const active = DemoMode.toggle();
+    const btn = document.getElementById('demo-toggle-btn');
+    if (btn) btn.classList.toggle('demo-active', active);
+    // Clear selected filters so the newly-overlaid (or restored) data isn't
+    // masked by chips referencing the other dataset.
+    if (Filters.state) {
+      Filters.state.vintages?.clear?.();
+      Filters.state.varieties?.clear?.();
+      Filters.state.origins?.clear?.();
+      Filters.state.lots?.clear?.();
+    }
+    Filters.buildVintageChips?.();
+    Filters.buildVarietyChips?.();
+    Filters.buildOriginChips?.();
+    Filters.buildLotChips?.();
+    this.refresh();
   },
 
   // ── Help Modal ──
