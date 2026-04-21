@@ -4,7 +4,7 @@
 > See TASK.md for the complete resolution table.
 > Read `CLAUDE.md` first for full project context.
 >
-> **Last updated:** 2026-04-20 (Round 24, end of day).
+> **Last updated:** 2026-04-20 (Round 24, end of day — doc sync in `146b50b`).
 
 ---
 
@@ -593,3 +593,40 @@ Of the 20-item punch list from Rounds 20–22:
 The e2e regression spec closes the accountability loop: future mobile regressions now fail CI rather than silently breaking the fixes above.
 
 - No source files modified during this round. Findings are observational/verification only.
+
+---
+
+## Round 25 — Uncommitted doc-sync banners (2026-04-21)
+
+**Scope:** Working-tree changes only. `git diff --stat`: 3 files, +6 / −2. No source, config, dependency, secret, or test changes.
+
+- `PLAN.md` — adds `> **Last synced:** 2026-04-20 — aligned with main through 146b50b…` blockquote and extends `## Status: IN PROGRESS` with `(Stages 0, 0b, 1, 2 complete; Stage 3 satellite map and Stage 4 future analytics remain)`.
+- `REVIEW.md` — appends ` — doc sync in \`146b50b\`` to the existing `**Last updated:**` line.
+- `TASK.md` — adds `> **Last synced:** 2026-04-20 — PLAN/REVIEW/TASK aligned with main through 146b50b. Branch is 1 commit ahead of origin/main (push pending user approval).` blockquote.
+
+**Verification performed:**
+- `git log --oneline -1` → HEAD is `146b50b`. ✅ Matches banners.
+- `git log origin/main..HEAD --oneline` → exactly 1 commit ahead. ✅ Matches TASK.md.
+- `PLAN.md` stage-header grep → Stages 0, 0b, 1, 2 marked `COMPLETE`; Stage 3 has no completion marker; Stage 4 is `DOCUMENTATION ONLY`. ✅ Matches the new `Status:` parenthetical.
+
+### Priority 1 Issues
+
+None. No correctness, safety, scope, or regression risk. Reviewer/Planner-scoped (docs only) per `CLAUDE.md`.
+
+### Priority 2 Improvements
+
+- **P2.1 — Volatile state baked into TASK.md banner.** `Branch is 1 commit ahead of origin/main (push pending user approval)` will be stale the moment the push lands. Suggest either dropping that clause or moving it to a transient "## Next action" block so the persistent banner stays accurate. File: `TASK.md` (new banner line).
+- **P2.2 — Banner-style inconsistency across the three docs.** `PLAN.md` and `TASK.md` introduce a blockquoted `> **Last synced:**` line; `REVIEW.md` embeds the sync note inline in the existing `**Last updated:**` blockquote. Purely cosmetic, but a future reader skimming for the sync stamp will hunt in two places. Either lift REVIEW's note into its own `> **Last synced:**` line or keep all three inline — pick one.
+- **P2.3 — `PLAN.md` `## Status:` header now ~140 chars on one line.** Readable but starts to wrap awkwardly in narrower panes. Minor: consider demoting the stage-summary parenthetical to the next line or to a short `### Progress` subsection, leaving `## Status: IN PROGRESS` scannable on its own. File: `PLAN.md:5`.
+
+### Missing Tests
+
+N/A. No source behavior changed — the existing safety net (140/140 node + 12/12 e2e from Round 24) remains authoritative.
+
+### Notes
+
+- Diff is minimal and on-scope for a doc-sync pass. No unrelated edits, no moves, no deletions.
+- No risky commands or destructive operations required to land this (`git add` + commit + push).
+- Banner claims are internally consistent with repo state at review time; the only claim that expires on action is the "push pending" note in TASK.md (see P2.1).
+- Respects `CLAUDE.md` constraint: "Planner/Reviewer: NEVER edit source code. Only produce markdown."
+- Green-light to commit as-is. If any P2 item is worth addressing, P2.1 is the only one that will matter after the next push.
