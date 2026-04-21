@@ -125,6 +125,7 @@ export const DataStore = {
       healthPicadura: row.health_picadura || 0,
       healthEnfermedad: row.health_enfermedad || 0,
       healthQuemadura: row.health_quemadura || 0,
+      phenolicMaturity: row.phenolic_maturity || null,
       measuredBy: row.measured_by,
       notes: row.notes
     };
@@ -188,6 +189,8 @@ export const DataStore = {
     try {
       const rows = await this._fetchAll('mediciones_tecnicas', 'medicion_date');
       this.medicionesData = (rows || []).map(r => this._rowToMedicion(r));
+      // Re-run join so existing berryData picks up the new medicion rows.
+      this.joinBerryWithMediciones();
     } catch (e) {
       console.error('[DataStore] loadMediciones failed:', e);
     }
@@ -518,6 +521,37 @@ export const DataStore = {
       if (d.variedad) d.variedad = CONFIG.normalizeVariety(d.variedad);
       if (d.proveedor) d.proveedor = CONFIG.normalizeAppellation(d.proveedor, d.codigoBodega);
     });
+    // Enrich berry rows with their matching medicion (if loaded).
+    // Idempotent — safe to call before or after loadMediciones().
+    this.joinBerryWithMediciones();
+  },
+
+  // Attach each berry row's matching mediciones_tecnicas entry as row.medicion,
+  // translating camelCase DB-side fields to the snake_case contract the
+  // classification engine expects (see js/classification.js / MT.11 tests).
+  // Lookup key: (lotCode, vintage). Unmatched rows get medicion: null.
+  joinBerryWithMediciones() {
+    const medIndex = new Map();
+    for (const m of (this.medicionesData || [])) {
+      if (!m.lotCode || m.vintage == null) continue;
+      const key = `${m.lotCode}||${m.vintage}`;
+      medIndex.set(key, {
+        health_grade:       m.healthGrade,
+        health_madura:      m.healthMadura,
+        health_inmadura:    m.healthInmadura,
+        health_sobremadura: m.healthSobremadura,
+        health_picadura:    m.healthPicadura,
+        health_enfermedad:  m.healthEnfermedad,
+        health_quemadura:   m.healthQuemadura,
+        tons_received:      m.tons,
+        phenolic_maturity:  m.phenolicMaturity
+      });
+    }
+    for (const b of (this.berryData || [])) {
+      if (!b.lotCode || b.vintage == null) { b.medicion = null; continue; }
+      b.medicion = medIndex.get(`${b.lotCode}||${b.vintage}`) || null;
+    }
+    return this.berryData;
   },
 
   // Cache data to localStorage

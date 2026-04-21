@@ -39,6 +39,12 @@ export const App = {
           this._showOfflineToast();
         });
 
+        // Mediciones power the Calidad (classification) scoring on the map.
+        // Fire-and-forget; the join is re-run when the rows arrive.
+        DataStore.loadMediciones().then(() => {
+          if (this.initialized) this.refresh();
+        });
+
         // Weather: load from Supabase meteorology table now that connection is ready
         WeatherStore.load().then(hasCache => {
           const vintages = WeatherStore.getVintagesFromData();
