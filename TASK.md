@@ -34,8 +34,8 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 | F6 | Weather multiple timeframes | Selectable date ranges beyond fixed Jul–Oct | **Done** (`b7d6b48`) |
 | F7 | Satellite vineyard map | Leaflet-based satellite view with quality heatmap overlay | **Future** — deferred |
 | F8 | Weather forecast integration | Open-Meteo 7/16-day, on-demand dashed overlay on all 4 weather charts | **Done** (`4a6e80a`) |
-| F9 | Lot categorization (monovarietal vs mix) | Chemical-value-based lot classification | **Bookmarked** |
-| F10 | Lot performance percentile ranking | Rank lots vs historical same-lot data | **Future** |
+| F9 | Lot quality classification (A+/A/B/C + percentile) | Berry+mediciones → rubric-based grade per lot, tonnage-weighted per section on the map | **Done** — branch `feat/quality-classification` |
+| F10 | Lot performance percentile ranking | Rank lots vs historical same-lot data | **Partial** — percentile shipped with F9; historical-cohort toggle deferred |
 
 ### Files Likely Involved
 
@@ -148,6 +148,20 @@ Commits: `cb76a24`, `4dc8354`, `31d38c4`, `2118ac8`, `9c49feb`. REVIEW.md Rounds
 - Section title updates to reflect active timeframe + valley
 - GDD chart always uses season range (Jul–Oct) — domain-appropriate for viticulture
 - 30d/custom modes show single "Reciente"/"Personalizado" dataset (no vintage overlay)
+
+### What Shipped (Sub-project 4: Quality Classification & True Quality Map)
+
+Branch: `feat/quality-classification` (pending merge). Spec in `docs/superpowers/specs/2026-04-21-quality-classification-design.md`; plan in `docs/superpowers/plans/2026-04-21-quality-classification.md`.
+
+- `js/classification.js` (new) — pure scoring engine: rubric + valley resolution, threshold bucketing (`le-a-le-b` / `ge-a-ge-b` / `range`), weighted sum, madurez ±3 overlay, partial-data guard at ≥ 60 Imp, per-variety peso overrides, percentile within cohort (default `vintage-variety`), tonnage-weighted `aggregateSection`.
+- `CONFIG.rubrics` (7 entries: PV-DUR-VON, CS-SY-MAL-MRS-TEM-VON, CS-SY-VDG, MER-CF-GRE-CALADOC-VON, GRE-CALADOC-VDG-VSV, SB-VDG-VON, CH-CB-SBGR-VDG-VON) plus `varietyRubricMap`, `valleyPatterns`, `sanitaryThresholds`, `madurezOverlay`, `gradeColors`.
+- `DataStore.joinBerryWithMediciones()` — attaches `row.medicion = { health_*, tons_received, phenolic_maturity }` to each berry via `(lotCode, vintage)` lookup; translates camelCase `_rowToMedicion` fields into the snake_case contract the engine expects. Hooked into `_enrichData()` + `loadMediciones()`. Cache-path `app.js` now also fires `loadMediciones()`.
+- `maps.js` — new `calidad` metric (default), discrete A+/A/B/C + Sin-clasificar coloring, SVG `<title>` per-lot tooltip, detail-panel grade row with percentile pill and expandable `<details>` breakdown, legend swap.
+- `mediciones.js` + `index.html` — new `Madurez Fenólica (opcional)` select in the form and `Madurez` column in the table with short labels. `api/upload.js` whitelist + MT.7 test mirror updated.
+- `sql/migration_phenolic_maturity.sql` — adds nullable `phenolic_maturity TEXT CHECK (…)` to `mediciones_tecnicas`. **Apply manually in Supabase SQL editor before the form is exercised in production.**
+- MT.11 (41 cases) green. Total `npm test` 181/181; `npm run test:e2e` 12/12.
+
+**Known limitation (follow-up):** The rubrics scored by the engine expect `polyphenols`, `anthocyanins`, `av`, and `ag` fields on each berry row. The current `supabaseToBerryJS` mapping doesn't expose them (`av`/`ag` live on `tank_receptions`; polyphenols is unmapped). On live data, lots fall below the 60-Imp threshold and render as gray "Sin clasificar" across every section. A follow-up should either (a) map `tANT → anthocyanins` + `ipt → polyphenols` in the berry pipeline, (b) join tank-reception chem back to berry rows, or (c) lower the partial-data threshold. The engine correctly handles partial data today; this is a data-wiring gap, not an engine bug.
 
 ---
 

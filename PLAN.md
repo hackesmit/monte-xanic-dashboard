@@ -1,8 +1,8 @@
 # Plan — Phase 9: Explorer Enhancements, Weather Timeframes, Satellite Map
 
-> **Last synced:** 2026-04-20 — aligned with `main` through `146b50b`. See REVIEW.md (Rounds 18–24) and TASK.md for resolution tables.
+> **Last synced:** 2026-04-21 — Stage 5 (Quality Classification & True Quality Map) added after shipping on branch `feat/quality-classification`.
 
-## Status: IN PROGRESS (Stages 0, 0b, 1, 2 complete; Stage 3 satellite map and Stage 4 future analytics remain)
+## Status: IN PROGRESS (Stages 0, 0b, 1, 2, 5 complete; Stage 3 satellite map and Stage 4 future analytics remain)
 
 **Reference:** TASK.md (Phase 9 objectives and acceptance criteria)
 
@@ -10,7 +10,29 @@
 
 ## Architecture Overview
 
-Phase 9 is organized into 5 stages. **Stage 0 (Vite migration) is complete** — all subsequent stages benefit from ES modules, proper imports, and npm-managed dependencies. **Stage 0b (mobile hardening)** landed immediately after as a follow-on from REVIEW.md Rounds 20–24. Stages 1–2 are complete; Stage 3 (satellite map) and Stage 4 (future analytics) remain.
+Phase 9 is organized into 5 stages plus a later Stage 5. **Stage 0 (Vite migration)** is complete — all subsequent stages benefit from ES modules, proper imports, and npm-managed dependencies. **Stage 0b (mobile hardening)** landed immediately after as a follow-on from REVIEW.md Rounds 20–24. **Stages 1–2** are complete. **Stage 5 (Quality Classification)** shipped on branch `feat/quality-classification`. **Stage 3** (satellite map) and **Stage 4** (future analytics foundations) remain.
+
+---
+
+## Stage 5 — Quality Classification & True Quality Map (F9) — COMPLETE
+
+**Shipped:** 2026-04-21 on branch `feat/quality-classification` (pending merge). Spec: `docs/superpowers/specs/2026-04-21-quality-classification-design.md`. Plan: `docs/superpowers/plans/2026-04-21-quality-classification.md`.
+
+**What shipped:** see TASK.md "What Shipped (Sub-project 4: Quality Classification & True Quality Map)" for the full breakdown and the known polyphenols/av/ag data-wiring follow-up. High-level:
+
+1. `js/classification.js` — pure scoring engine covering rubric + valley resolution, A/B/C threshold bucketing, madurez ±3 overlay, partial-data guard at 60 Imp, per-variety peso overrides, percentile within cohort, tonnage-weighted section aggregation.
+2. `CONFIG.rubrics` (7 rubrics) + `varietyRubricMap` + `valleyPatterns` + `sanitaryThresholds` + `madurezOverlay` + `gradeColors`.
+3. `DataStore.joinBerryWithMediciones()` attaches `row.medicion` (snake_case contract) to berry rows; called from `_enrichData()` and `loadMediciones()`.
+4. `maps.js` — new `calidad` metric (default) with discrete A+/A/B/C coloring, SVG `<title>` tooltip per-lot breakdown, detail-panel grade row with cohort percentile and expandable `<details>` desglose, discrete legend swap.
+5. `mediciones.js` — new `Madurez Fenólica (opcional)` form select + table column. `api/upload.js` whitelist + MT.7 mirror updated.
+6. `sql/migration_phenolic_maturity.sql` — nullable `phenolic_maturity TEXT CHECK (…)` on `mediciones_tecnicas`.
+7. MT.11 (41 cases) green. `npm test` 181/181; `npm run test:e2e` 12/12; `npm run build` succeeds.
+
+**Deferred by design:**
+- Cohort-toggle UI (`vintage-variety` ↔ `variety-only`) — engine supports it via `scoreAll(lots, { cohort: 'variety-only' })`; wire into detail panel when ≥ 2 vintages of data exist.
+- Grade column on berry / recepción / extracción tables — spec §11 defers until the map view has been validated in production.
+- Bulk-edit Madurez for already-imported lots — today requires one-at-a-time edits via the mediciones form.
+- Export grade breakdown in `Exportar Vista` (PNG / PDF) — spec §11 defers.
 
 ---
 
