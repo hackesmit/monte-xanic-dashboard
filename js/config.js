@@ -883,5 +883,191 @@ export const CONFIG = {
     ta:      { label: 'Acidez Total (g/L)', min: 3, max: 12,  stops: ['#B2182B','#EF8A62','#FDDBC7','#D1E5F0','#67A9CF','#2166AC'] },
     tANT:    { label: 'tANT (ppm ME)',     min: 0, max: 2500, stops: ['#F7F7F7','#FDD49E','#FDBB84','#FC8D59','#E34A33','#B30000'] },
     berryFW: { label: 'Peso Baya (g)',     min: 0.5, max: 2.5, stops: ['#F7FCB1','#ADDD8E','#78C679','#31A354','#006837'] }
-  }
+  },
+
+  // ── Grade color tokens (used by maps.js and legend) ─────────────────────
+  gradeColors: {
+    'A+': '#1a7f3e',
+    'A':  '#7ac74f',
+    'B':  '#f5c542',
+    'C':  '#d94a3d',
+    null: '#6b6b6b'   // "Sin clasificar"
+  },
+
+  // ── Quality rubrics ─────────────────────────────────────────────────────
+  // Each rubric defines thresholds per parameter for one variety-group + valley.
+  // Params not listed (sanitary-pct, visual, madurez) are derived identically
+  // across all rubrics — logic lives in classification.js, not here.
+  rubrics: {
+    'PV-DUR-VON': {
+      name: 'Petit Verdot y Durif — Valle de Ojos Negros',
+      params: {
+        brix:         { kind: 'range', a: [23.5, 24.2], b: [[22.1, 23.4],[24.3, 25.5]], imp: 4 },
+        pH:           { kind: 'le-a-le-b', a: 3.67, b: 3.80, imp: 12 },
+        ta:           { kind: 'ge-a-ge-b', a: 5.85, b: 5.40, imp: 9 },
+        av:           { kind: 'le-a-le-b', a: 0.00, b: 0.03, imp: 13 },
+        ag:           { kind: 'le-a-le-b', a: 0.03, b: 0.10, imp: 13 },
+        berryFW:      { kind: 'range', a: [0.9, 1.1], b: [[0.8, 0.89],[1.12, 1.2]], imp: 5 },
+        polyphenols:  { kind: 'ge-a-ge-b', a: 2800, b: 2000, imp: 20 },
+        anthocyanins: { kind: 'ge-a-ge-b', a: 1000, b: 800, imp: 20 }
+      }
+    },
+
+    'CS-SY-MAL-MRS-TEM-VON': {
+      name: 'Cabernet Sauvignon, Syrah, Malbec, Marselan, Tempranillo — Valle de Ojos Negros',
+      params: {
+        brix:         { kind: 'range', a: [23.5, 24.2], b: [[22.1, 23.4],[24.3, 25.5]], imp: 4 },
+        pH:           { kind: 'le-a-le-b', a: 3.67, b: 3.80, imp: 12 },
+        ta:           { kind: 'ge-a-ge-b', a: 5.85, b: 5.40, imp: 9 },
+        av:           { kind: 'le-a-le-b', a: 0.00, b: 0.03, imp: 13 },
+        ag:           { kind: 'le-a-le-b', a: 0.03, b: 0.10, imp: 13 },
+        berryFW:      { kind: 'range', a: [0.9, 1.1], b: [[0.8, 0.89],[1.12, 1.2]], imp: 5 },
+        polyphenols:  { kind: 'ge-a-ge-b', a: 1900, b: 1500, imp: 20 },
+        anthocyanins: { kind: 'ge-a-ge-b', a: 950, b: 700, imp: 20 }
+      },
+      peso_overrides: {
+        'Tempranillo': { kind: 'range', a: [1.3, 1.5], b: [[1.0, 1.2],[1.51, 1.7]], imp: 5 }
+      }
+    },
+
+    'CS-SY-VDG': {
+      name: 'Cabernet Sauvignon, Syrah — Valle de Guadalupe',
+      params: {
+        brix:         { kind: 'range', a: [23.8, 24.5], b: [[22.1, 23.8],[24.6, 25.9]], imp: 4 },
+        pH:           { kind: 'le-a-le-b', a: 3.60, b: 3.73, imp: 12 },
+        ta:           { kind: 'ge-a-ge-b', a: 5.85, b: 5.40, imp: 9 },
+        av:           { kind: 'le-a-le-b', a: 0.00, b: 0.03, imp: 13 },
+        ag:           { kind: 'le-a-le-b', a: 0.03, b: 0.10, imp: 13 },
+        berryFW:      { kind: 'range', a: [0.9, 1.1], b: [[0.8, 0.89],[1.12, 1.2]], imp: 5 },
+        polyphenols:  { kind: 'ge-a-ge-b', a: 2100, b: 1600, imp: 20 },
+        anthocyanins: { kind: 'ge-a-ge-b', a: 800, b: 600, imp: 20 }
+      },
+      peso_overrides: {
+        'Syrah': { kind: 'range', a: [1.2, 1.4], b: [[1.1, 1.2],[1.4, 1.5]], imp: 5 }
+      }
+    },
+
+    'MER-CF-GRE-CALADOC-VON': {
+      name: 'Merlot, Cabernet Franc, Grenache, Caladoc — Valle de Ojos Negros',
+      params: {
+        brix:         { kind: 'range', a: [22.8, 23.5], b: [[22.0, 22.7],[23.7, 24.4]], imp: 4 },
+        pH:           { kind: 'le-a-le-b', a: 3.67, b: 3.80, imp: 12 },
+        ta:           { kind: 'ge-a-ge-b', a: 5.85, b: 5.40, imp: 9 },
+        av:           { kind: 'le-a-le-b', a: 0.00, b: 0.03, imp: 13 },
+        ag:           { kind: 'le-a-le-b', a: 0.03, b: 0.10, imp: 13 },
+        berryFW:      { kind: 'range', a: [0.9, 1.1], b: [[0.8, 0.89],[1.12, 1.2]], imp: 5 },
+        polyphenols:  { kind: 'ge-a-ge-b', a: 1500, b: 1200, imp: 20 },
+        anthocyanins: { kind: 'ge-a-ge-b', a: 900, b: 600, imp: 20 }
+      },
+      peso_overrides: {
+        'Caladoc':  { kind: 'range', a: [1.3, 1.5], b: [[1.0, 1.19],[1.51, 1.7]], imp: 5 },
+        'Grenache': { kind: 'range', a: [1.3, 1.5], b: [[1.0, 1.19],[1.51, 1.7]], imp: 5 }
+      }
+    },
+
+    'GRE-CALADOC-VDG-VSV': {
+      name: 'Grenache, Caladoc — Valle de Guadalupe / Valle de San Vicente',
+      params: {
+        brix:         { kind: 'range', a: [23.0, 23.7], b: [[22.1, 22.9],[23.8, 24.5]], imp: 4 },
+        pH:           { kind: 'le-a-le-b', a: 3.60, b: 3.73, imp: 12 },
+        ta:           { kind: 'ge-a-ge-b', a: 5.85, b: 5.40, imp: 9 },
+        av:           { kind: 'le-a-le-b', a: 0.00, b: 0.03, imp: 13 },
+        ag:           { kind: 'le-a-le-b', a: 0.03, b: 0.10, imp: 13 },
+        berryFW:      { kind: 'range', a: [0.9, 1.1], b: [[0.8, 0.89],[1.12, 1.2]], imp: 5 },
+        polyphenols:  { kind: 'ge-a-ge-b', a: 1800, b: 1400, imp: 20 },
+        anthocyanins: { kind: 'ge-a-ge-b', a: 650, b: 450, imp: 20 }
+      }
+    },
+
+    'SB-VDG-VON': {
+      name: 'Sauvignon Blanc — Valle de Guadalupe / Valle de Ojos Negros',
+      // Whites have a different Imp distribution than reds (95 base, not 100).
+      // Engine normalizes via (3 * Σ imp_present); no special-case needed.
+      params: {
+        brix:         { kind: 'range', a: [19.0, 23.0], b: [[18.0, 19.0],[23.0, 24.5]], imp: 10 },
+        pH:           { kind: 'le-a-le-b', a: 3.20, b: 3.40, imp: 20 },
+        ta:           { kind: 'ge-a-ge-b', a: 6.60, b: 5.55, imp: 15 },
+        av:           { kind: 'le-a-le-b', a: 0.00, b: 0.03, imp: 20 },
+        ag:           { kind: 'le-a-le-b', a: 0.03, b: 0.10, imp: 20 },
+        berryFW:      { kind: 'range', a: [1.1, 1.35], b: [[0.95, 1.09],[1.36, 1.44]], imp: 5 }
+      },
+      visualImp: 3   // whites weight visual 3, not 2
+    },
+
+    'CH-CB-SBGR-VDG-VON': {
+      name: 'Chardonnay, Chenin Blanc, Sauvignon Blanc (Gran Ricardo) — VDG / VON',
+      params: {
+        brix:         { kind: 'range', a: [22.5, 23.5], b: [[21.5, 22.4],[23.6, 24.5]], imp: 10 },
+        pH:           { kind: 'le-a-le-b', a: 3.35, b: 3.50, imp: 20 },
+        ta:           { kind: 'ge-a-ge-b', a: 6.60, b: 5.55, imp: 15 },
+        av:           { kind: 'le-a-le-b', a: 0.00, b: 0.03, imp: 20 },
+        ag:           { kind: 'le-a-le-b', a: 0.03, b: 0.10, imp: 20 },
+        berryFW:      { kind: 'ge-a-ge-b', a: 1.4, b: 1.0, imp: 5 }
+      },
+      visualImp: 3
+    }
+  },
+
+  // ── Global sanitary / visual scoring (same for all rubrics) ─────────────
+  sanitaryThresholds: {
+    pct: { a: 0.5, b: 2.0 },          // ≤0.5 → A, 0.5 < pct ≤ 2 → B, > 2 → C
+    visual: {
+      'Excelente': 3,
+      'Bueno':     3,
+      'Regular':   2,
+      'Malo':      1
+    },
+    defaultConteoImp: 2,
+    defaultVisualImp: 2
+  },
+
+  // ── Madurez fenólica overlay (winemaker input on mediciones) ────────────
+  madurezOverlay: {
+    'Sobresaliente':  +3,
+    'Parcial':         0,
+    'No sobresaliente': -3
+    // null / undefined → 0
+  },
+
+  // ── Variety × Valley → rubric ID lookup ─────────────────────────────────
+  // Valley is derived from appellation (see resolveValley in classification.js).
+  // Unknown combinations return null → "Sin rúbrica".
+  varietyRubricMap: {
+    'Valle de Ojos Negros': {
+      'Petit Verdot':       'PV-DUR-VON',
+      'Durif':              'PV-DUR-VON',
+      'Cabernet Sauvignon': 'CS-SY-MAL-MRS-TEM-VON',
+      'Syrah':              'CS-SY-MAL-MRS-TEM-VON',
+      'Malbec':             'CS-SY-MAL-MRS-TEM-VON',
+      'Marselan':           'CS-SY-MAL-MRS-TEM-VON',
+      'Tempranillo':        'CS-SY-MAL-MRS-TEM-VON',
+      'Merlot':             'MER-CF-GRE-CALADOC-VON',
+      'Cabernet Franc':     'MER-CF-GRE-CALADOC-VON',
+      'Grenache':           'MER-CF-GRE-CALADOC-VON',
+      'Caladoc':            'MER-CF-GRE-CALADOC-VON',
+      'Sauvignon Blanc':    'SB-VDG-VON',
+      'Chardonnay':         'CH-CB-SBGR-VDG-VON',
+      'Chenin Blanc':       'CH-CB-SBGR-VDG-VON'
+    },
+    'Valle de Guadalupe': {
+      'Cabernet Sauvignon': 'CS-SY-VDG',
+      'Syrah':              'CS-SY-VDG',
+      'Grenache':           'GRE-CALADOC-VDG-VSV',
+      'Caladoc':            'GRE-CALADOC-VDG-VSV',
+      'Sauvignon Blanc':    'SB-VDG-VON',
+      'Chardonnay':         'CH-CB-SBGR-VDG-VON',
+      'Chenin Blanc':       'CH-CB-SBGR-VDG-VON'
+    },
+    'Valle de San Vicente': {
+      'Grenache': 'GRE-CALADOC-VDG-VSV',
+      'Caladoc':  'GRE-CALADOC-VDG-VSV'
+    }
+  },
+
+  // Valley-name extraction from appellation strings — ordered, first match wins.
+  valleyPatterns: [
+    { re: /Valle de Ojos Negros|\(VON\)/i,   valley: 'Valle de Ojos Negros' },
+    { re: /Valle de Guadalupe|\(VDG\)|VDG/i, valley: 'Valle de Guadalupe' },
+    { re: /San Vicente|VSV|\(SV\)/i,         valley: 'Valle de San Vicente' }
+  ]
 };
