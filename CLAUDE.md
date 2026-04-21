@@ -29,8 +29,9 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `events.js` | Event delegation (CSP-safe, no inline handlers) |
 | `app.js` | View routing, refresh orchestration, init |
 | `maps.js` | SVG vineyard map |
+| `classification.js` | Quality rubric scoring and percentile only |
 
-Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries.
+Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js.
 
 ## Upload Pipeline Rules
 
