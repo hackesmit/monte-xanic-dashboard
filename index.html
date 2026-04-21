@@ -821,6 +821,15 @@
             </select>
           </div>
           <div class="form-group">
+            <label>Madurez Fenólica (opcional)</label>
+            <select id="med-phenolic-maturity">
+              <option value="">—</option>
+              <option value="Sobresaliente">Sobresaliente (+3)</option>
+              <option value="Parcial">Parcial (0)</option>
+              <option value="No sobresaliente">No sobresaliente (−3)</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label>Medido por</label>
             <input type="text" id="med-by" placeholder="Nombre">
           </div>
@@ -867,6 +876,7 @@
                 <th data-sort="berryDiameter">Diam (mm)</th>
                 <th>Salud</th>
                 <th data-sort="healthGrade">Grado</th>
+                <th data-sort="phenolicMaturity">Madurez</th>
               </tr>
             </thead>
             <tbody id="med-table-body"></tbody>
