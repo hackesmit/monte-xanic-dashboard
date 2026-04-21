@@ -1,5 +1,7 @@
 # Task — Current State
 
+> **Last synced:** 2026-04-20 — PLAN/REVIEW/TASK aligned with `main` through `146b50b`. Branch is 1 commit ahead of `origin/main` (push pending user approval).
+
 ## Phase 9: Explorer Enhancements, Weather Timeframes, Satellite Map & Analytics Foundations
 
 ### Goal

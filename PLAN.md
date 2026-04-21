@@ -1,6 +1,8 @@
 # Plan — Phase 9: Explorer Enhancements, Weather Timeframes, Satellite Map
 
-## Status: IN PROGRESS
+> **Last synced:** 2026-04-20 — aligned with `main` through `146b50b`. See REVIEW.md (Rounds 18–24) and TASK.md for resolution tables.
+
+## Status: IN PROGRESS (Stages 0, 0b, 1, 2 complete; Stage 3 satellite map and Stage 4 future analytics remain)
 
 **Reference:** TASK.md (Phase 9 objectives and acceptance criteria)
 
