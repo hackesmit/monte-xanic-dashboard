@@ -1,6 +1,6 @@
 # Task — Current State
 
-> **Last synced:** 2026-04-20 — PLAN/REVIEW/TASK aligned with `main` through `146b50b`. Branch is 1 commit ahead of `origin/main` (push pending user approval).
+> **Last synced:** 2026-04-21 — aligned with `main` through `5558da4` (Modo Demo + tank_receptions join + F9 follow-up).
 
 ## Phase 9: Explorer Enhancements, Weather Timeframes, Satellite Map & Analytics Foundations
 
@@ -34,8 +34,9 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 | F6 | Weather multiple timeframes | Selectable date ranges beyond fixed Jul–Oct | **Done** (`b7d6b48`) |
 | F7 | Satellite vineyard map | Leaflet-based satellite view with quality heatmap overlay | **Future** — deferred |
 | F8 | Weather forecast integration | Open-Meteo 7/16-day, on-demand dashed overlay on all 4 weather charts | **Done** (`4a6e80a`) |
-| F9 | Lot quality classification (A+/A/B/C + percentile) | Berry+mediciones → rubric-based grade per lot, tonnage-weighted per section on the map | **Done** — branch `feat/quality-classification` |
+| F9 | Lot quality classification (A+/A/B/C + percentile) | Berry+mediciones+tank → rubric-based grade per lot, tonnage-weighted per section on the map | **Done** — merged to `main` (`8998656`); reception-join follow-up landed in `5558da4` |
 | F10 | Lot performance percentile ranking | Rank lots vs historical same-lot data | **Partial** — percentile shipped with F9; historical-cohort toggle deferred |
+| F11 | Modo Demo (in-memory demo overlay) | Snapshots DataStore, overlays deterministic demo data for stakeholder walkthroughs; never touches DB or cache | **Done** (`5558da4`) |
 
 ### Files Likely Involved
 
@@ -53,11 +54,12 @@ Evolve the dashboard from a reporting tool into an interactive analytics platfor
 | `js/weather.js` | F5, F6, F8 |
 | `js/maps.js` | F7 |
 | `js/config.js` | F5, F6, F7, F9, F10 |
-| `js/events.js` | F2, F3, F4, F5, F6, F7 |
+| `js/events.js` | F2, F3, F4, F5, F6, F7, F11 |
 | `js/tables.js` | F4 |
-| `js/dataLoader.js` | F9, F10 |
-| `index.html` | F1–F7 (HTML structure, CDN scripts) |
-| `css/styles.css` | F1–F7 (styling) |
+| `js/dataLoader.js` | F9, F10 (incl. tank_receptions + reception_lots join) |
+| `js/demoMode.js` | F11 (new) |
+| `index.html` | F1–F7, F11 (HTML structure, CDN scripts) |
+| `css/styles.css` | F1–F7, F11 (styling) |
 
 ### What Shipped (Sub-project 1: Explorer Enhancements)
 
@@ -159,9 +161,25 @@ Branch: `feat/quality-classification` (pending merge). Spec in `docs/superpowers
 - `maps.js` — new `calidad` metric (default), discrete A+/A/B/C + Sin-clasificar coloring, SVG `<title>` per-lot tooltip, detail-panel grade row with percentile pill and expandable `<details>` breakdown, legend swap.
 - `mediciones.js` + `index.html` — new `Madurez Fenólica (opcional)` select in the form and `Madurez` column in the table with short labels. `api/upload.js` whitelist + MT.7 test mirror updated.
 - `sql/migration_phenolic_maturity.sql` — adds nullable `phenolic_maturity TEXT CHECK (…)` to `mediciones_tecnicas`. **Apply manually in Supabase SQL editor before the form is exercised in production.**
-- MT.11 (41 cases) green. Total `npm test` 181/181; `npm run test:e2e` 12/12.
+- MT.11 (41 cases) green. Total `npm test` 181/181 at initial ship; now 198/198 after the reception-join follow-up below.
 
-**Known limitation (follow-up):** The rubrics scored by the engine expect `polyphenols`, `anthocyanins`, `av`, and `ag` fields on each berry row. The current `supabaseToBerryJS` mapping doesn't expose them (`av`/`ag` live on `tank_receptions`; polyphenols is unmapped). On live data, lots fall below the 60-Imp threshold and render as gray "Sin clasificar" across every section. A follow-up should either (a) map `tANT → anthocyanins` + `ipt → polyphenols` in the berry pipeline, (b) join tank-reception chem back to berry rows, or (c) lower the partial-data threshold. The engine correctly handles partial data today; this is a data-wiring gap, not an engine bug.
+**F9 follow-up — resolved in `5558da4` (2026-04-21):** The initial ship had a data-wiring gap — `polyphenols`/`av`/`ag` weren't reaching the engine, so on live data every lot fell below the 60-Imp threshold and the map rendered entirely gray. Fixed via three coordinated changes:
+
+- `config.js` — added the missing `berry_anthocyanins → anthocyanins` mapping in `supabaseToBerryJS` (the column existed in Supabase and was silently being dropped at the dataLoader boundary).
+- `dataLoader.js` — now fetches `tank_receptions` + `reception_lots` on client load, caches both in localStorage, and `joinBerryWithReceptions()` averages `av` / `ag` / `polifenoles_wx` (falling back to `poli_spica`) across every reception matching `(lot_code, vintage)`. Lot-code normalization is tolerant to trailing-seq suffixes (`CSMX-5B-1` vs `CSMX-5B`) and vintage prefixes.
+- `app.js` — fixed a blocking bug in the map bridge that was stripping `variety`/`appellation`/`medicion`/`av`/`ag`/`polyphenols` from berry rows before handing them to the classification engine, invalidating every lot regardless of data quality.
+
+Ranking-integrity preserved: cohort key stays `variety+vintage`; lots still without enough Imp return `grade: null` and stay out of the percentile cohort (same as before). MT.12 adds 17 unit tests covering normalization, multi-tank averaging, vintage isolation, null handling, and idempotency.
+
+### What Shipped (Sub-project 5: Modo Demo overlay)
+
+Commit: `5558da4`. New `js/demoMode.js`; header toggle button; banner announcing temporary state.
+
+- Snapshots the real DataStore arrays (`berryData`, `wineRecepcion`, `winePreferment`, `medicionesData`, `receptionData`, `receptionLotsData`) on enable, overlays a deterministic 192-sample / 64-lot / 64-reception demo dataset that covers every valid variety × valley combination in `CONFIG.varietyRubricMap`, then restores on disable.
+- Monkey-patches `DataStore.cacheData` / `loadFromSupabase` / `loadMediciones` to no-ops while active, so no demo row can ever reach Supabase or localStorage. `body.classList.add('demo-mode-active')` drives the banner visibility via CSS.
+- Time-series spread: each lot gets three samples at days-post-envero 18 / 28 / 38 so the berry evolution charts render curves, not single dots. Final (38-day) sample carries the target grade's chemistry; earlier points interpolate back toward a plausible green-fruit baseline.
+- Grade distribution targets 25% A+ / 35% A / 30% B / 10% C (seeded RNG = reproducible). Exercises the full reception-join pipeline end-to-end, so it also serves as an integration smoke test for F9.
+- Browser-verified at `http://localhost:8090`: map renders discrete A+/A/B/C tiles across 23/24 Monte Xanic sections, Kompali and Viña Alta ranches work, evolution charts populate with 13 varieties, toggle-off confirms `localStorage` remains clean.
 
 ---
 
@@ -187,7 +205,7 @@ Branch: `feat/quality-classification` (pending merge). Spec in `docs/superpowers
 
 ---
 
-## Tests — 140/140 node + 12/12 Playwright e2e Passing
+## Tests — 198/198 node + 12/12 Playwright e2e Passing
 
 | ID | Scope | Tests | Status |
 |----|-------|-------|--------|
@@ -200,6 +218,8 @@ Branch: `feat/quality-classification` (pending merge). Spec in `docs/superpowers
 | MT.8 | Weather aggregation, date ranges, ISO weeks | 24 | **Pass** |
 | MT.9 | Encoding normalization (U+FFFD, double-encoded UTF-8 mojibake) | 22 | **Pass** |
 | MT.10 | Weather forecast (Open-Meteo parsing, eligibility, TTL cache, horizon coercion) | 22 | **Pass** |
+| MT.11 | Quality classification engine (rubric resolution, bucketing, scoring, aggregate) | 41 | **Pass** |
+| MT.12 | `joinBerryWithReceptions` — lot-code normalization, multi-tank averaging, vintage isolation | 17 | **Pass** |
 | E2E  | Mobile-responsive Playwright spec (320×568 + 390×844) | 12 | **Pass** |
 
 Node suite: `npm test` (~1.8 s, browser-free).

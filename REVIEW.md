@@ -1,10 +1,10 @@
 # Code Review — Monte Xanic Dashboard
 
-> All findings from Rounds 1–19 resolved. Phase 8 merged to main. Phase 9 Stage 0 (Vite migration) and Stage 0b (Mobile hardening, Rounds 20–24) complete — 17 of 20 punch-list corrections closed, 2 deferred by design, 1 new observation. Safety net: `npm test` 140/140 + `npm run test:e2e` 12/12.
+> All findings from Rounds 1–19 resolved. Phase 8 merged to main. Phase 9 Stage 0 (Vite migration) and Stage 0b (Mobile hardening, Rounds 20–24) complete. Stage 5 (Quality Classification) merged to `main` at `8998656`; reception-join follow-up + Stage 6 (Modo Demo) landed in `5558da4`. Safety net: `npm test` 198/198 + `npm run test:e2e` 12/12.
 > See TASK.md for the complete resolution table.
 > Read `CLAUDE.md` first for full project context.
 >
-> **Last updated:** 2026-04-20 (Round 24, end of day — doc sync in `146b50b`).
+> **Last updated:** 2026-04-21 (Round 26 — reception join + Modo Demo shipped in `5558da4`).
 
 ---
 
@@ -630,3 +630,48 @@ N/A. No source behavior changed — the existing safety net (140/140 node + 12/1
 - Banner claims are internally consistent with repo state at review time; the only claim that expires on action is the "push pending" note in TASK.md (see P2.1).
 - Respects `CLAUDE.md` constraint: "Planner/Reviewer: NEVER edit source code. Only produce markdown."
 - Green-light to commit as-is. If any P2 item is worth addressing, P2.1 is the only one that will matter after the next push.
+
+---
+
+## Round 26 — Branch `main` — Reception-join follow-up + Modo Demo (`5558da4`) (2026-04-21)
+
+**Scope:** 1 commit on `main`, 8 files, +852 / −4. Two coordinated deliverables in one commit:
+1. **F9 follow-up** — closes the tank-receptions data-wiring gap flagged at F9 ship (TASK.md "Known limitation"). Map can now actually produce grades on live data.
+2. **F11 — Modo Demo** — new in-memory demo overlay for stakeholder walkthroughs.
+
+### What landed
+
+**Reception join (integrity-preserving):**
+- `js/config.js` — added `berry_anthocyanins → anthocyanins` in `supabaseToBerryJS`. Was silently dropped before, so `berry.anthocyanins` was always undefined even though the column existed.
+- `js/dataLoader.js` — new `receptionData` + `receptionLotsData` arrays on `DataStore`; `loadFromSupabase` now fetches `tank_receptions` and `reception_lots`; `joinBerryWithReceptions()` indexes receptions by `(normalize(lot_code), vintage_year)` and writes tonnage-agnostic averages of `av` / `ag` / `polifenoles_wx` (with `poli_spica` fallback) directly onto berry rows. Called from `_enrichData()` so it runs on Supabase, JSON, and cache paths. Cache schema extended to persist both new arrays.
+- `js/app.js` — the pre-existing map bridge at `app.js:370-386` was stripping `variety` / `appellation` / `medicion` / `av` / `ag` / `polyphenols` before handing rows to `aggregateBySection`. Replaced with a spread that carries the full row, plus the aliases (`fieldLot`, `vintageYear`, `berryAvgWeight`) the downstream consumers need. This was a blocking bug — without this hunk, the reception join would have been invisible even when data was correctly loaded.
+- `tests/mt12-reception-join.test.mjs` — 17 new tests covering lot-code normalization (vintage prefix, trailing seq, casing), multi-tank averaging, vintage isolation, null-skipping in averages, idempotency, orphan reception_ids, and defensive no-op paths.
+
+**Modo Demo:**
+- `js/demoMode.js` — new module. `enable()` snapshots the six DataStore arrays + three method references, overlays a deterministic 192-sample / 64-lot dataset, monkey-patches `cacheData` / `loadFromSupabase` / `loadMediciones` to no-ops so no demo row ever reaches Supabase or localStorage, and flips `body.classList.add('demo-mode-active')` to drive banner visibility. `disable()` does the inverse. `document` guarded for Node-time testability.
+- `index.html` — "Demo" button in `header-right` (next to theme toggle), plus `#demo-banner` `<div role="status">` under `</header>`.
+- `css/styles.css` — `.demo-toggle` button styling (active-state green glow), `.demo-banner` gold/green gradient, mobile-responsive rules at 768 px.
+- `js/events.js` — CSP-safe `addEventListener('click', …)` binding for `#demo-toggle-btn` → `App.toggleDemoMode()`.
+- `js/app.js` — `toggleDemoMode()` toggles `DemoMode`, sets button class, clears filter chips (so stale selections don't mask the new dataset), rebuilds chip options, refreshes the view.
+
+### Priority 1 Issues
+
+None. The reception join preserves ranking integrity (cohort keying unchanged, lots without enough Imp still return `grade: null`). Demo mode is strictly client-side and never touches persistence. Map bridge fix is a straightforward pass-through widening — no new behavior, just stops silent field-stripping.
+
+### Priority 2 Improvements
+
+- **P2.1 — Dev path never calls `_enrichData` after Supabase fetch historically.** The reception-join commit added `this._enrichData()` inside `loadFromSupabase()` to ensure the new join fires. Previous call-sites only ran `_enrichData` on cache / JSON paths; `_rowToBerry` / `_rowToWine` did inline normalization. Not a regression — it just means `_enrichData` now runs in one more path. Fine, but worth noting that `joinBerryWithMediciones()` is now called twice on the Supabase path (once via `_enrichData`, once via `loadMediciones` on its own). Both are idempotent; second call is a no-op repaint. Low priority to clean up.
+- **P2.2 — Demo-mode monkey-patching is reversible but fragile.** `DemoMode.disable()` restores method references from the snapshot, but if any other code reassigned `DataStore.cacheData` in between `enable` and `disable` that reassignment would be lost. In practice nothing else reassigns those methods, so this is theoretical. If a future change starts swapping methods dynamically, revisit the snapshot-and-restore pattern.
+- **P2.3 — Demo data's grade distribution is RNG-dependent.** Seeded RNG makes it reproducible across toggles within a session, but the distribution (observed: 28 A+ / 8 A / 11 B / 17 C) is biased because some rubrics have a narrower pts=1 value range than others. Not a correctness issue for demo purposes, but if stakeholders ask for specific grade spreads per demo, the generator would need a stratified-sampling pass instead of per-section RNG.
+
+### Missing Tests
+
+- MT.12 covers the reception-join algorithm via a mirror (same pattern as MT.7's whitelist mirror). Live integration — DataStore importing from Supabase — isn't unit-tested; manual browser verification plus the Modo Demo smoke test cover it end-to-end.
+- Demo mode itself isn't unit-tested beyond the Node-time smoke run used during development. An MT.13 spec could assert `enable()` populates the expected row counts, `disable()` restores state, and `localStorage` stays empty throughout a toggle cycle — low priority since the feature is narrowly scoped to a single module with no persistence paths.
+
+### Notes
+
+- GitHub reported `Required status check "test" is failing` on push and bypassed the rule, same pattern as recent pushes. Not a new issue; the CI test step remains misconfigured at the org level. Separate from this review.
+- The `sql/migration_phenolic_maturity.sql` migration from the F9 ship still needs to be applied in the Supabase SQL editor before the Madurez field is exercised in production — unchanged from prior rounds.
+- No uncommitted changes, no untracked files, working tree clean.
+- Respects the `CLAUDE.md` boundary rule added in the F9 commit: "Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`" — demo mode patches both out precisely to enforce this.
