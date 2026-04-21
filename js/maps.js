@@ -1,12 +1,14 @@
 // ── Map Store: SVG vineyard heatmaps with metric color coding ──
 import { CONFIG } from './config.js';
+import { scoreAll, aggregateSection } from './classification.js';
 
 export const MapStore = {
   currentRanch: 'MX',
-  currentMetric: 'brix',
+  currentMetric: 'calidad',
   currentVintage: null,
-  sectionData: {},        // sectionId → { brix, pH, ta, tANT, lotCount, ... }
+  sectionData: {},        // sectionId → { brix, pH, ta, tANT, grade, score36, lotCount, ... }
   sectionLots: {},        // sectionId → [berryRow, ...]
+  sectionScoredLots: {},  // sectionId → [{ lotCode, grade, score36, percentile, tons, missing, reason }]
   detailOpen: false,
 
   _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
@@ -85,11 +87,49 @@ export const MapStore = {
 
       this.sectionData[sectionId] = agg;
     }
+
+    // ── Quality scoring pass ───────────────────────────────────────
+    // Score every lot across every section so percentiles are computed
+    // against the full vintage-variety cohort, then split back per section
+    // and aggregate tonnage-weighted grade.
+    const allLots = [];
+    for (const [sectionId, lots] of Object.entries(this.sectionLots)) {
+      for (const lot of lots) allLots.push({ ...lot, _sectionId: sectionId });
+    }
+    const scoredLots = scoreAll(allLots, { cohort: 'vintage-variety' });
+
+    const sectionScoredLots = {};
+    for (const s of scoredLots) {
+      const sid = s._sectionId;
+      if (!sectionScoredLots[sid]) sectionScoredLots[sid] = [];
+      sectionScoredLots[sid].push({
+        lotCode: s.lotCode || s.sampleId || s.fieldLot,
+        score36: s.score36,
+        grade: s.grade,
+        percentile: s.percentile,
+        tons: s.medicion?.tons_received ?? null,
+        missing: s.missing,
+        reason: s.reason
+      });
+    }
+    this.sectionScoredLots = sectionScoredLots;
+
+    for (const sectionId of Object.keys(this.sectionData)) {
+      const lots = sectionScoredLots[sectionId] || [];
+      const agg = aggregateSection(lots);
+      this.sectionData[sectionId].grade = agg.grade;
+      this.sectionData[sectionId].score36 = agg.score36;
+      this.sectionData[sectionId].gradedLotCount = agg.lotCount;
+    }
   },
 
   // ── Color Scale ──
 
   getColor(value, metricKey) {
+    if (metricKey === 'calidad') {
+      // value here is a grade letter (A+/A/B/C) or null for "Sin clasificar"
+      return CONFIG.gradeColors[value] ?? CONFIG.gradeColors[null];
+    }
     const m = CONFIG.mapMetrics[metricKey];
     if (!m || value === null || value === undefined) return 'rgba(128,128,128,0.2)';
 
@@ -142,7 +182,9 @@ export const MapStore = {
 
       const sectionId = section.sectionId;
       const data = this.sectionData[sectionId];
-      const metricVal = data ? data[this.currentMetric] : null;
+      const metricVal = data
+        ? (this.currentMetric === 'calidad' ? (data.grade ?? null) : data[this.currentMetric])
+        : null;
       const fillColor = this.getColor(metricVal, this.currentMetric);
 
       // Build polygon points string with padding offset
@@ -174,8 +216,21 @@ export const MapStore = {
 
       // Metric value
       if (metricVal !== null && metricVal !== undefined) {
-        const valStr = metricVal >= 100 ? Math.round(metricVal) : metricVal.toFixed(1);
+        const valStr = this.currentMetric === 'calidad'
+          ? `${metricVal}${data?.score36 != null ? ` (${data.score36.toFixed(1)})` : ''}`
+          : (metricVal >= 100 ? Math.round(metricVal) : metricVal.toFixed(1));
         svg += `<text x="${cx}" y="${cy + varSize * 2 + 6}" text-anchor="middle" fill="rgba(255,255,255,0.7)" font-size="${varSize}">${valStr}</text>`;
+      }
+
+      // Native SVG tooltip for quality mode (grade + per-lot breakdown).
+      if (this.currentMetric === 'calidad' && data && data.grade) {
+        const scoredLots = (this.sectionScoredLots[sectionId] || [])
+          .filter(l => l.grade !== null);
+        const header = `${sectionId} — ${section.variety}\nGrado: ${data.grade} (${data.score36?.toFixed(1) ?? '—'} / 36) — ${scoredLots.length} lote${scoredLots.length === 1 ? '' : 's'}`;
+        const lines = scoredLots.slice(0, 6)
+          .map(l => `  • ${l.lotCode} ${l.grade} ${l.score36?.toFixed(1) ?? '—'}`);
+        const tipText = [header, ...lines].join('\n');
+        svg += `<title>${this._esc(tipText)}</title>`;
       }
 
       svg += '</g>';
@@ -203,6 +258,28 @@ export const MapStore = {
     const container = document.getElementById(containerId);
     if (!container) return;
 
+    if (this.currentMetric === 'calidad') {
+      const grades = [
+        { g: 'A+', label: 'A+ Sobresaliente' },
+        { g: 'A',  label: 'A Alto' },
+        { g: 'B',  label: 'B Medio' },
+        { g: 'C',  label: 'C Bajo' },
+        { g: null, label: 'Sin clasificar' }
+      ];
+      container.innerHTML = `
+        <div class="scale-label">Calidad (Clasificación)</div>
+        <div class="map-legend-discrete">
+          ${grades.map(({ g, label }) => `
+            <div class="legend-item">
+              <span class="legend-swatch" style="background:${CONFIG.gradeColors[g]}"></span>
+              <span class="legend-label">${label}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      return;
+    }
+
     const m = CONFIG.mapMetrics[this.currentMetric];
     if (!m) { container.innerHTML = ''; return; }
 
@@ -215,6 +292,43 @@ export const MapStore = {
         <span class="scale-tick">${min}</span>
         <div class="scale-gradient" style="background:linear-gradient(to right, ${gradientStops})"></div>
         <span class="scale-tick">${max}</span>
+      </div>
+    `;
+  },
+
+  _gradeCssClass(grade) {
+    if (grade === 'A+') return 'grade-Aplus';
+    return `grade-${grade}`;
+  },
+
+  _detailGradeRow(sectionId, data) {
+    if (!data || data.grade == null) {
+      return `<div class="detail-grade-row detail-grade-unscored">Clasificación: Sin datos</div>`;
+    }
+    const lots = (this.sectionScoredLots[sectionId] || []).filter(l => l.grade !== null);
+    const pctSum = lots.reduce((s, l) => s + (l.percentile ?? 0), 0);
+    const pctAvg = lots.length ? Math.round(pctSum / lots.length) : null;
+
+    const breakdown = lots.map(l => `
+      <li>
+        <span class="grade-chip ${this._gradeCssClass(l.grade)}">${this._esc(l.grade)}</span>
+        ${this._esc(l.lotCode || '—')} — ${l.score36?.toFixed(1) ?? '—'}
+        ${l.percentile != null ? ` · P${l.percentile}` : ''}
+      </li>
+    `).join('');
+
+    return `
+      <div class="detail-grade-row">
+        <div class="detail-grade-header">
+          <span class="detail-grade-label">Clasificación</span>
+          <span class="grade-chip ${this._gradeCssClass(data.grade)}">${this._esc(data.grade)}</span>
+          <span class="detail-grade-score">(${data.score36.toFixed(1)} / 36)</span>
+          ${pctAvg != null ? `<span class="detail-grade-pct">Percentil ${pctAvg}</span>` : ''}
+        </div>
+        ${lots.length ? `<details class="detail-grade-breakdown">
+          <summary>Ver desglose por lote</summary>
+          <ul>${breakdown}</ul>
+        </details>` : ''}
       </div>
     `;
   },
@@ -245,6 +359,7 @@ export const MapStore = {
     `;
 
     if (data) {
+      html += this._detailGradeRow(sectionId, data);
       html += `
         <div class="detail-section-label">Métricas Agregadas</div>
         <div class="detail-metrics">
