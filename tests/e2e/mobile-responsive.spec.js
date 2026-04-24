@@ -151,5 +151,25 @@ for (const vp of VIEWPORTS) {
       const violations = await measureTapTargets(page, '#map-metric-select', 44);
       expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
     });
+
+    test('weather forecast controls are ≥ 44 px tall (R24)', async ({ page, context }) => {
+      await installBypassToken(context);
+      await gotoDashboard(page);
+      const ok = await switchView(page, 'vintage');
+      if (!ok) test.skip();
+      // The horizon <select> is display:none until the toggle is clicked.
+      // Clicking the toggle fires an Open-Meteo request; reveal the select
+      // directly so the test does not depend on the network.
+      await page.evaluate(() => {
+        const sel = document.getElementById('weather-forecast-horizon');
+        if (sel) sel.style.display = 'inline-block';
+      });
+      const violations = await measureTapTargets(
+        page,
+        '#weather-forecast-toggle, #weather-forecast-horizon',
+        44
+      );
+      expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
+    });
   });
 }
