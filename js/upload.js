@@ -1,229 +1,152 @@
-// ── Upload Manager: File → Supabase pipeline ──
-// Auto-detects file type: .csv = WineXRay, .xlsx = Recepción de Tanque
+// ── Upload Manager: parser-agnostic preview → confirm → upsert pipeline ──
+// Parsing lives in js/upload/<parser>.js. This module owns:
+//   - file validation gates (size, role, single-flight)
+//   - preview state (_pendingUpload)
+//   - confirm/cancel handlers
+//   - Supabase upsert (via /api/upload)
 // All user-facing messages are in Spanish.
-import { CONFIG } from './config.js';
+
 import { Identity } from './identity.js';
 import { DataStore } from './dataLoader.js';
 import { Auth } from './auth.js';
 import { App } from './app.js';
+import { PARSERS } from './upload/index.js';
+
+const MAX_SIZE = 10 * 1024 * 1024;
+
+const TABLE_DISPLAY = {
+  wine_samples:     { emoji: '🍷', label: 'Muestras de vino' },
+  berry_samples:    { emoji: '🫐', label: 'Muestras de baya' },
+  tank_receptions:  { emoji: '🛢️', label: 'Recepciones de tanque' },
+  reception_lots:   { emoji: '📦', label: 'Lotes de recepción' },
+  prefermentativos: { emoji: '🧪', label: 'Prefermentativos' },
+  pre_receptions:   { emoji: '📋', label: 'Pre-recepciones' },
+};
+
+const EXCLUDED_LABEL = {
+  control_wine:  'Control Wine',
+  lab_test:      'Pruebas de laboratorio',
+  california:    'Appellation California',
+  hard_excluded: 'Excluidos por política',
+};
 
 export const UploadManager = {
   _uploading: false,
-
-  _belowDetectionRe: /^<\s*\d+(\.\d+)?$/,
-  _aboveDetectionRe: /^>\s*(\d+(\.\d+)?)$/,
-  _labTestRe: /\b(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)\b/i,
+  _pendingUpload: null,
 
   _esc(str) {
+    if (typeof document === 'undefined') return String(str);
     const d = document.createElement('div');
     d.textContent = str;
     return d.innerHTML;
   },
 
-  getFileType(file) {
-    const name = file.name.toLowerCase();
-    if (name.endsWith('.csv')) return 'winexray';
-    if (name.endsWith('.xlsx') || name.endsWith('.xls')) return 'recepcion';
-    return 'unknown';
+  // Public entry point — called from events.js button handlers.
+  async startUpload(parserId, file, statusEl) {
+    const parser = PARSERS[parserId];
+    if (!parser) {
+      this._setStatus(statusEl, 'error', `✗ Parser desconocido: ${parserId}`);
+      return;
+    }
+    return this._startUploadWithParser(parser, file, statusEl);
   },
 
-  // Normalize a raw cell value for numeric Supabase columns
-  _normalizeValue(val) {
-    if (val === null || val === undefined) return null;
-    if (val instanceof Date) return val.toISOString().split('T')[0];
-    if (typeof val === 'number') return val;
-    const str = String(val).trim();
-    if (str === '' || str === '-' || str === '—' || str === 'NA' || str === 'N/A') return null;
-    const n = Number(str);
-    return isNaN(n) ? str : n;
-  },
-
-  // Parse WineXRay CSV/XLSX rows into wine_samples insert payloads
-  parseWineXRay(rows) {
-    if (!rows || rows.length < 2) return [];
-    const headers = rows[0].map(h => String(h || '').trim());
-    // Validate that headers match WineXRay format
-    const knownHeaders = Object.keys(CONFIG.wxToSupabase);
-    const matchCount = headers.filter(h => knownHeaders.includes(h)).length;
-    if (matchCount === 0) return { error: 'no_headers' };
-    const typeIdx = headers.indexOf('Sample Type');
-    const result = [];
-
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row || row.length === 0) continue;
-
-      const sampleType = typeIdx !== -1 ? String(row[typeIdx] || '').trim() : '';
-      if (sampleType === 'Control Wine') continue;
-
-      // Skip lab extraction tests and non-grape fruit samples
-      const sampleIdRaw = headers.indexOf('Sample Id') !== -1 ? String(row[headers.indexOf('Sample Id')] || '').trim() : '';
-      if (this._labTestRe.test(sampleIdRaw) || this._labTestRe.test(sampleType)) continue;
-
-      // Skip experimental, California, and specifically excluded samples
-      if (CONFIG.isSampleExcluded(sampleIdRaw)) continue;
-
-      const obj = { below_detection: false };
-
-      headers.forEach((h, idx) => {
-        const col = CONFIG.wxToSupabase[h];
-        if (!col) return;
-
-        let val = row[idx];
-        const str = val !== null && val !== undefined ? String(val).trim() : '';
-
-        // Detect below-detection strings like <50, <10
-        if (this._belowDetectionRe.test(str)) {
-          obj.below_detection = true;
-          obj[col] = null;
-        } else if (this._aboveDetectionRe.test(str)) {
-          const m = str.match(this._aboveDetectionRe);
-          obj[col] = m ? parseFloat(m[1]) : null;
-        } else {
-          obj[col] = this._normalizeValue(val);
-        }
-      });
-
-      if (obj.sample_id) {
-        if (obj.variety) obj.variety = CONFIG.normalizeVariety(obj.variety);
-        if (obj.appellation) obj.appellation = CONFIG.normalizeAppellation(obj.appellation, obj.sample_id);
-        if (obj.appellation === 'California') continue;
-        if (!obj.vintage_year && obj.sample_id) {
-          const vm = String(obj.sample_id).match(/^(\d{2})/);
-          if (vm) {
-            const y = 2000 + parseInt(vm[1], 10);
-            obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
-          }
-        }
-        result.push(obj);
-      }
+  // Internal — also the test surface.
+  async _startUploadWithParser(parser, file, statusEl) {
+    if (this._uploading) {
+      this._setStatus(statusEl, 'error', 'Carga en progreso, espere...');
+      return;
+    }
+    if (!Auth.canUpload()) {
+      this._setStatus(statusEl, 'error', '✗ Sin permisos para subir datos.');
+      return;
+    }
+    if (file.size > MAX_SIZE) {
+      this._setStatus(statusEl, 'error', '✗ Archivo demasiado grande (máx 10 MB).');
+      return;
     }
 
-    // Assign sample_seq deterministically via shared Identity module
-    Identity.canonicalSeqAssign(result);
+    this._uploading = true;
+    this._setStatus(statusEl, 'pending', `⏳ Leyendo ${this._esc(file.name)}…`);
 
-    return result;
-  },
-
-  // Parse Recepción de Tanque Excel workbook
-  // Returns { receptions, lots, preferment }
-  parseRecepcion(wb) {
-    const receptions = [];
-    const lots = [];
-    const preferment = [];
-
-    for (const sheetName of wb.SheetNames) {
-      const lower = sheetName.toLowerCase();
-      const rows = DataStore.sheetToArray(wb, sheetName);
-      if (!rows || rows.length < 2) continue;
-
-      const headers = rows[0].map(h => String(h || '').trim());
-
-      if (lower.includes('preferm')) {
-        // ── Prefermentativos sheet ──
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row || row.length === 0) continue;
-          const obj = {};
-          let hasData = false;
-          headers.forEach((h, idx) => {
-            const col = CONFIG.prefermentToSupabase[h];
-            if (!col) return;
-            const val = this._normalizeValue(row[idx]);
-            obj[col] = val;
-            if (val !== null) hasData = true;
-          });
-          if (hasData && obj.report_code) {
-            if (obj.batch_code && !obj.vintage_year) {
-              const vm = String(obj.batch_code).match(/^(\d{2})/);
-              if (vm) {
-                const y = 2000 + parseInt(vm[1], 10);
-                obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
-              }
-            }
-            preferment.push(obj);
-          }
-        }
-
-      } else if (lower.includes('recep')) {
-        // ── Recepción sheet ──
-        for (let i = 1; i < rows.length; i++) {
-          const row = rows[i];
-          if (!row || row.length === 0) continue;
-          const obj = {};
-          let hasData = false;
-          headers.forEach((h, idx) => {
-            const col = CONFIG.recepcionToSupabase[h];
-            if (!col) return;
-            const val = this._normalizeValue(row[idx]);
-            obj[col] = val;
-            if (val !== null) hasData = true;
-          });
-          if (!hasData || !obj.report_code) continue;
-
-          // Extract vintage_year from batch_code prefix (25 → 2025)
-          if (obj.batch_code) {
-            const m = String(obj.batch_code).match(/^(\d{2})/);
-            if (m) {
-              const y = 2000 + parseInt(m[1], 10);
-              obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
-            }
-          }
-
-          // Pull lot columns out before insert
-          const reportCode = obj.report_code;
-          for (let pos = 1; pos <= 4; pos++) {
-            const lotKey = `_lot${pos}`;
-            if (obj[lotKey]) {
-              lots.push({ report_code: reportCode, lot_code: obj[lotKey], lot_position: pos });
-            }
-            delete obj[lotKey];
-          }
-
-          receptions.push(obj);
-        }
-      }
-    }
-
-    return { receptions, lots, preferment };
-  },
-
-  // Upsert rows to a Supabase table in batches of 500
-  // Check how many rows already exist in the DB (for new vs update preview)
-  // keyCols: array of column names forming the composite conflict key
-  async _detectDuplicates(table, rows, keyCols) {
-    if (!rows.length || !DataStore.supabase) return { updateCount: 0 };
-    if (!Array.isArray(keyCols)) keyCols = [keyCols];
     try {
-      const primaryCol = keyCols[0];
-      const keys = [...new Set(rows.map(r => r[primaryCol]).filter(Boolean))];
-      if (!keys.length) return { updateCount: 0 };
-      // Query existing rows matching the primary key column, then composite-match locally
+      const result = await parser.parse(file);
+
+      for (const t of result.targets) {
+        if (t.table === 'wine_samples' || t.table === 'berry_samples') {
+          Identity.canonicalSeqAssign(t.rows);
+        }
+        t.newCount = await this._countNew(t.table, t.rows, t.conflictKey);
+        t.updateCount = t.rows.length - t.newCount;
+      }
+
+      const totalRows = result.targets.reduce((s, t) => s + t.rows.length, 0);
+      if (totalRows === 0 && result.rejected.length === 0) {
+        this._uploading = false;
+        this._setStatus(statusEl, 'error', '✗ El archivo no contiene filas válidas.');
+        return;
+      }
+
+      this._pendingUpload = { parser, file, ...result };
+      this._renderPreviewCard(statusEl);
+    } catch (err) {
+      this._uploading = false;
+      this._setStatus(statusEl, 'error', `✗ ${err.message || 'Error al leer el archivo.'}`);
+    }
+  },
+
+  async confirmPendingUpload(statusEl) {
+    if (!this._pendingUpload) return [];
+    const { targets, rejected } = this._pendingUpload;
+    const results = [];
+    for (const t of targets) {
+      if (!t.rows.length) continue;
+      const r = await this.upsertRows(t.table, t.rows);
+      results.push({ table: t.table, count: r.count, error: r.error });
+      if (r.error) break;
+    }
+    this._renderSummary(statusEl, results, rejected);
+    this._pendingUpload = null;
+    this._uploading = false;
+    try {
+      if (DataStore && DataStore.cacheData) DataStore.cacheData();
+      if (App && App.refreshAllViews) App.refreshAllViews();
+    } catch (_) { /* refresh is best-effort */ }
+    return results;
+  },
+
+  cancelPendingUpload(statusEl) {
+    this._pendingUpload = null;
+    this._uploading = false;
+    this._setStatus(statusEl, 'idle', '');
+  },
+
+  async _countNew(table, rows, conflictKey) {
+    if (!rows.length || !DataStore.supabase || !conflictKey) return rows.length;
+    const keyCols = conflictKey.split(',').map(s => s.trim());
+    try {
+      const primary = keyCols[0];
+      const keys = [...new Set(rows.map(r => r[primary]).filter(Boolean))];
+      if (!keys.length) return rows.length;
       const { data, error } = await DataStore.supabase
         .from(table)
         .select(keyCols.join(','))
-        .in(primaryCol, keys);
-      if (error || !data) return { updateCount: 0 };
-      if (keyCols.length === 1) return { updateCount: data.length };
-      // Composite key — build set of "col1|col2|..." for matching
+        .in(primary, keys);
+      if (error || !data) return rows.length;
       const toKey = r => keyCols.map(c => r[c] ?? '').join('|');
       const existing = new Set(data.map(toKey));
-      const matches = rows.filter(r => existing.has(toKey(r)));
-      return { updateCount: matches.length };
+      return rows.filter(r => !existing.has(toKey(r))).length;
     } catch (_) {
-      return { updateCount: 0 };
+      return rows.length;
     }
   },
 
   async upsertRows(table, rows) {
     if (!rows.length) return { count: 0, error: null };
-
-    // Route through server-side endpoint for role validation
     const token = Auth.getToken();
     if (!token) return { count: 0, error: 'No autorizado — inicie sesión' };
 
     let total = 0;
-    // Batch into chunks of 500
     for (let i = 0; i < rows.length; i += 500) {
       const chunk = rows.slice(i, i + 500);
       try {
@@ -231,9 +154,9 @@ export const UploadManager = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-session-token': token
+            'x-session-token': token,
           },
-          body: JSON.stringify({ table, rows: chunk })
+          body: JSON.stringify({ table, rows: chunk }),
         });
         const data = await resp.json();
         if (!resp.ok || !data.ok) {
@@ -247,227 +170,18 @@ export const UploadManager = {
     return { count: total, error: null };
   },
 
-  // Main entry point — called when a file is dropped on the DB upload zone
-  async handleUpload(file, statusEl) {
-    if (this._uploading) {
-      this._setStatus(statusEl, 'error', 'Carga en progreso, espere...');
-      return;
-    }
-
-    // Server-side role check will enforce this, but fail fast on client
-    if (!Auth.canUpload()) {
-      this._setStatus(statusEl, 'error', '✗ Sin permisos para subir datos.');
-      return;
-    }
-
-    const MAX_SIZE = 10 * 1024 * 1024;
-    if (file.size > MAX_SIZE) {
-      this._setStatus(statusEl, 'error', '✗ Archivo demasiado grande (máx 10 MB).');
-      return;
-    }
-
-    const type = this.getFileType(file);
-
-    if (type === 'unknown') {
-      this._setStatus(statusEl, 'error', '✗ Formato no reconocido. Use .csv (WineXRay) o .xlsx (Recepción de Tanque).');
-      return;
-    }
-
-    if (!DataStore.supabase) {
-      this._setStatus(statusEl, 'error', '✗ Base de datos no disponible. Verifique la configuración de Supabase.');
-      return;
-    }
-
-    this._uploading = true;
-
-    this._setStatus(statusEl, 'pending', `⏳ Leyendo ${this._esc(file.name)}...`);
-
-    try {
-      const wb = await DataStore.loadFile(file);
-
-      if (type === 'winexray') {
-        const sheetName = wb.SheetNames[0];
-        const rows = DataStore.sheetToArray(wb, sheetName);
-        const samples = this.parseWineXRay(rows);
-
-        if (samples && samples.error === 'no_headers') {
-          this._setStatus(statusEl, 'error', '✗ Archivo sin encabezados reconocidos. Verifique el formato WineXRay.');
-          return;
-        }
-
-        if (!samples || !samples.length) {
-          this._setStatus(statusEl, 'error', '✗ No se encontraron muestras en el archivo.');
-          return;
-        }
-
-        const berryCount = samples.filter(s => s.sample_type === 'Berries').length;
-        const wineCount  = samples.length - berryCount;
-
-        // Detect duplicates before upsert
-        const dupInfo = await this._detectDuplicates('wine_samples', samples, ['sample_id', 'sample_date', 'sample_seq']);
-        const newCount = samples.length - dupInfo.updateCount;
-        this._setStatus(statusEl, 'pending',
-          `⏳ ${samples.length} muestras (${newCount} nuevas, ${dupInfo.updateCount} actualizadas). Guardando...`);
-
-        const { count, error } = await this.upsertRows('wine_samples', samples);
-        if (error) {
-          this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
-          console.error('[upload] wine_samples error:', error);
-          return;
-        }
-
-        const successMsg = dupInfo.updateCount > 0
-          ? `✓ ${count} muestras procesadas (${newCount} nuevas, ${dupInfo.updateCount} actualizadas).`
-          : `✓ ${count} muestras agregadas correctamente.`;
-        this._setStatus(statusEl, 'success', successMsg);
-        this._refreshDashboard();
-
-      } else if (type === 'recepcion') {
-        const { receptions, lots, preferment } = this.parseRecepcion(wb);
-        const total = receptions.length + preferment.length;
-
-        if (!total) {
-          this._setStatus(statusEl, 'error', '✗ No se encontraron datos en el archivo. Verifique las hojas del Excel.');
-          return;
-        }
-
-        // Detect duplicates
-        const recDup = await this._detectDuplicates('tank_receptions', receptions, ['report_code']);
-        const prefDup = await this._detectDuplicates('prefermentativos', preferment, ['report_code', 'measurement_date']);
-        const newRec = receptions.length - recDup.updateCount;
-        const newPref = preferment.length - prefDup.updateCount;
-        this._setStatus(statusEl, 'pending',
-          `⏳ ${receptions.length} recepciones (${newRec} nuevas), ${preferment.length} prefermentativos (${newPref} nuevos). Guardando...`);
-
-        // 1 — Insert receptions
-        const { count: rCount, error: rErr } = await this.upsertRows('tank_receptions', receptions);
-        if (rErr) {
-          this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
-          console.error('[upload] tank_receptions error:', rErr);
-          return;
-        }
-
-        // 2 — Insert reception_lots (requires reception IDs)
-        if (lots.length) {
-          const reportCodes = [...new Set(lots.map(l => l.report_code))];
-          const { data: inserted, error: fetchErr } = await DataStore.supabase
-            .from('tank_receptions')
-            .select('id, report_code')
-            .in('report_code', reportCodes);
-
-          if (!fetchErr && inserted) {
-            const codeToId = {};
-            inserted.forEach(r => { codeToId[r.report_code] = r.id; });
-            // Delete old lots before inserting new ones
-            const receptionIds = Object.values(codeToId);
-            if (receptionIds.length) {
-              await DataStore.supabase.from('reception_lots').delete().in('reception_id', receptionIds);
-            }
-            const lotRows = lots
-              .filter(l => codeToId[l.report_code])
-              .map(l => ({ reception_id: codeToId[l.report_code], lot_code: l.lot_code, lot_position: l.lot_position }));
-            if (lotRows.length) {
-              const { error: lotErr } = await this.upsertRows('reception_lots', lotRows);
-              if (lotErr) console.error('[upload] reception_lots error:', lotErr);
-            }
-          }
-        }
-
-        // 3 — Insert prefermentativos
-        const { count: pCount, error: pErr } = await this.upsertRows('prefermentativos', preferment);
-        if (pErr) {
-          this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
-          console.error('[upload] prefermentativos error:', pErr);
-          return;
-        }
-
-        const totalUpdates = recDup.updateCount + prefDup.updateCount;
-        const recSuccessMsg = totalUpdates > 0
-          ? `✓ ${rCount + pCount} registros procesados (${newRec + newPref} nuevos, ${totalUpdates} actualizados).`
-          : `✓ ${rCount + pCount} registros agregados correctamente.`;
-        this._setStatus(statusEl, 'success', recSuccessMsg);
-        this._refreshDashboard();
-      }
-
-    } catch (err) {
-      console.error('[upload] unexpected error:', err);
-      this._setStatus(statusEl, 'error', '✗ Error al cargar datos. Verificar formato del archivo.');
-    } finally {
-      this._uploading = false;
-    }
-  },
-
-  _setStatus(el, type, msg) {
+  // UI helpers (preview card + summary DOM rendering) — implemented in Task 13
+  _setStatus(el, state, msg) {
     if (!el) return;
-    const cls = type === 'success' ? 'upload-success' : type === 'error' ? 'upload-error' : 'upload-pending';
-    el.innerHTML = `<span class="${cls}">${msg}</span>`;
+    el.dataset.state = state;
+    el.textContent = msg;
   },
 
-  async _refreshDashboard() {
-    const loaded = await DataStore.loadFromSupabase();
-    if (loaded && App.initialized) App.refresh();
+  _renderPreviewCard(_statusEl) {
+    // stub — Task 13 replaces this with full DOM rendering
   },
 
-  async cleanupLabSamples() {
-    if (this._uploading) { console.warn('Upload in progress — cleanup skipped'); return; }
-    if (!DataStore.supabase) { console.error('Supabase not connected'); return; }
-    this._uploading = true;
-    const sb = DataStore.supabase;
-    let total = 0;
-
-    try {
-      // 1 — Delete by sample_id ILIKE patterns (lab tests, non-grape fruit, test runs)
-      const patterns = [
-        'COLORPRO%', 'CRUSH%', 'WATER%',
-        '%BLUEBERRY%', '%RASPBERRY%', '%RASBERRY%', '%BLACKBERRY%', '%BLKBERRY%',
-        '%EXPERIMENT%', '%EXPERIMENTO%'
-      ];
-      for (const p of patterns) {
-        const { data, error } = await sb
-          .from('wine_samples').delete()
-          .ilike('sample_id', p)
-          .select('id');
-        if (error) { console.error(`Delete ${p} failed:`, error.message); continue; }
-        if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} rows matching sample_id ILIKE '${p}'`); }
-      }
-
-      // 1b — Delete exact-match 'NORMAL' sample_id
-      {
-        const { data, error } = await sb
-          .from('wine_samples').delete()
-          .eq('sample_id', 'NORMAL')
-          .select('id');
-        if (error) { console.error('Delete NORMAL failed:', error.message); }
-        else if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} rows with sample_id = 'NORMAL'`); }
-      }
-
-      // 2 — Delete specifically excluded sample IDs
-      const excludedIds = [...CONFIG._excludedSamples];
-      if (excludedIds.length) {
-        const { data, error } = await sb
-          .from('wine_samples').delete()
-          .in('sample_id', excludedIds)
-          .select('id');
-        if (error) { console.error('Delete excluded IDs failed:', error.message); }
-        else if (data && data.length) { total += data.length; console.log(`Deleted ${data.length} specifically excluded samples`); }
-      }
-
-      // 3 — Delete California appellation samples
-      const { data: caData, error: caErr } = await sb
-        .from('wine_samples').delete()
-        .eq('appellation', 'California')
-        .select('id');
-      if (caErr) { console.error('Delete California failed:', caErr.message); }
-      else if (caData && caData.length) { total += caData.length; console.log(`Deleted ${caData.length} California samples`); }
-
-      console.log(`Total deleted: ${total} lab/test/excluded samples`);
-      if (total > 0) {
-        DataStore.clearCache();
-        await this._refreshDashboard();
-      }
-      return total;
-    } finally {
-      this._uploading = false;
-    }
-  }
+  _renderSummary(_statusEl, _results, _rejected) {
+    // stub — Task 13 replaces this with full DOM rendering
+  },
 };

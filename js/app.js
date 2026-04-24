@@ -875,7 +875,7 @@ export const App = {
 };
 
 // Initialize on DOM ready — auth gate before app
-document.addEventListener('DOMContentLoaded', async () => {
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', async () => {
   // Restore theme + bind login toggle before auth (works on login screen)
   App.restoreTheme();
   const loginToggle = document.getElementById('login-theme-toggle');
