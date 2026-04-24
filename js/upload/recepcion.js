@@ -1,10 +1,148 @@
 // js/upload/recepcion.js
-// Recepción de Tanque XLSX parser. Filled in by Task 10.
+// Recepción de Tanque XLSX parser.
+//
+// Reads two sheets:
+//   - Recepción <year>        → tank_receptions + reception_lots (up to 4 lots per row)
+//   - Prefermentativos <year> → prefermentativos
+//
+// Lot rows are emitted with report_code (NOT reception_id) per the
+// migration in sql/migration_reception_lots_upsert.sql.
+
+import * as XLSX from 'xlsx';
+import { CONFIG } from '../config.js';
+
+function normalizeValue(val) {
+  if (val === null || val === undefined) return null;
+  if (val instanceof Date) return val.toISOString().split('T')[0];
+  if (typeof val === 'number') return val;
+  const str = String(val).trim();
+  if (str === '' || str === '-' || str === '—' || str === 'NA' || str === 'N/A') return null;
+  const n = Number(str);
+  return isNaN(n) ? str : n;
+}
+
+function sheetToArray(wb, name) {
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: false });
+}
+
+function findHeaderRow(rows, minNonNull = 5) {
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const nn = rows[i].filter(v => v !== null && String(v).trim() !== '').length;
+    if (nn >= minNonNull) return i;
+  }
+  return -1;
+}
+
 export const recepcionParser = {
   id: 'recepcion',
   label: 'Recepción de Tanque',
   acceptedExtensions: ['.xlsx', '.xls'],
-  async parse(_file) {
-    throw new Error('recepcionParser.parse not yet implemented');
+
+  async parse(file) {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
+
+    let recepcionSheet = null;
+    let prefermSheet = null;
+    for (const name of wb.SheetNames) {
+      const lower = name.toLowerCase();
+      if (lower.includes('preferm')) prefermSheet = name;
+      else if (lower.includes('recep')) recepcionSheet = name;
+    }
+
+    if (!recepcionSheet) {
+      throw new Error('Falta la hoja "Recepción" en el archivo.');
+    }
+    if (!prefermSheet) {
+      throw new Error('Falta la hoja "Prefermentativos" en el archivo.');
+    }
+
+    const receptions = [];
+    const lots = [];
+    const preferment = [];
+
+    // ── Recepción sheet ──
+    const recRows = sheetToArray(wb, recepcionSheet);
+    const recHeaderIdx = findHeaderRow(recRows);
+    if (recHeaderIdx < 0) throw new Error('No se encontró la fila de encabezados en la hoja Recepción.');
+    const recHeaders = recRows[recHeaderIdx].map(h => String(h ?? '').trim().replace(/\s+/g, ' '));
+
+    for (let i = recHeaderIdx + 1; i < recRows.length; i++) {
+      const row = recRows[i];
+      if (!row || row.every(c => c === null || String(c).trim() === '')) continue;
+
+      const obj = {};
+      let hasData = false;
+      recHeaders.forEach((h, idx) => {
+        const col = CONFIG.recepcionToSupabase[h];
+        if (!col) return;
+        const val = normalizeValue(row[idx]);
+        obj[col] = val;
+        if (val !== null) hasData = true;
+      });
+
+      if (!hasData || !obj.report_code) continue;
+
+      if (obj.batch_code) {
+        const m = String(obj.batch_code).match(/^(\d{2})/);
+        if (m) {
+          const y = 2000 + parseInt(m[1], 10);
+          obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
+        }
+      }
+
+      const reportCode = obj.report_code;
+      for (let pos = 1; pos <= 4; pos++) {
+        const key = `_lot${pos}`;
+        if (obj[key]) {
+          lots.push({ report_code: reportCode, lot_code: obj[key], lot_position: pos });
+        }
+        delete obj[key];
+      }
+
+      receptions.push(obj);
+    }
+
+    // ── Prefermentativos sheet ──
+    const prefRows = sheetToArray(wb, prefermSheet);
+    if (prefRows.length >= 2) {
+      const prefHeaders = prefRows[0].map(h => String(h ?? '').trim());
+      for (let i = 1; i < prefRows.length; i++) {
+        const row = prefRows[i];
+        if (!row || row.every(c => c === null || String(c).trim() === '')) continue;
+
+        const obj = {};
+        let hasData = false;
+        prefHeaders.forEach((h, idx) => {
+          const col = CONFIG.prefermentToSupabase[h];
+          if (!col) return;
+          const val = normalizeValue(row[idx]);
+          obj[col] = val;
+          if (val !== null) hasData = true;
+        });
+
+        if (!hasData || !obj.report_code) continue;
+
+        if (obj.batch_code && !obj.vintage_year) {
+          const m = String(obj.batch_code).match(/^(\d{2})/);
+          if (m) {
+            const y = 2000 + parseInt(m[1], 10);
+            obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
+          }
+        }
+        preferment.push(obj);
+      }
+    }
+
+    return {
+      targets: [
+        { table: 'tank_receptions',  rows: receptions, conflictKey: 'report_code' },
+        { table: 'reception_lots',   rows: lots,       conflictKey: 'report_code,lot_position' },
+        { table: 'prefermentativos', rows: preferment, conflictKey: 'report_code,measurement_date' },
+      ],
+      excluded: {},
+      rejected: [],
+      meta: { totalRows: recRows.length + prefRows.length - 2, filename: file.name },
+    };
   },
 };
