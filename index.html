@@ -64,15 +64,27 @@
       <div class="loader-divider"></div>
       <div class="loader-section-label">Guardar en Base de Datos</div>
       <div class="loader-sub">
-        Arrastre o seleccione un archivo para agregarlo a la base de datos permanente.<br>
-        <strong>WineXRay</strong> (.csv) — muestras de bayas y vino<br>
-        <strong>Recepción de Tanque</strong> (.xlsx) — recepciones y prefermentativos
+        Seleccione un archivo según su tipo. Cada uno va a su destino específico.
       </div>
-      <input type="file" id="db-file-input" accept=".xlsx,.xls,.csv" style="display:none" aria-label="Subir archivo a base de datos">
-      <button class="loader-btn loader-btn-db" id="db-upload-btn">
-        Subir a Base de Datos
-      </button>
-      <div id="db-upload-status" class="loader-files"></div>
+
+      <div class="upload-buttons">
+        <button type="button" id="upload-btn-winexray" class="loader-btn loader-btn-db">
+          📄 Cargar WineXRay (.csv)
+        </button>
+        <input type="file" id="upload-file-winexray" accept=".csv" style="display:none" aria-label="Cargar archivo WineXRay">
+
+        <button type="button" id="upload-btn-recepcion" class="loader-btn loader-btn-db">
+          📄 Cargar Recepción de Tanque (.xlsx)
+        </button>
+        <input type="file" id="upload-file-recepcion" accept=".xlsx,.xls" style="display:none" aria-label="Cargar archivo Recepción de Tanque">
+
+        <button type="button" id="upload-btn-prerecepcion" class="loader-btn loader-btn-db">
+          📄 Cargar Pre-recepción (.xlsx)
+        </button>
+        <input type="file" id="upload-file-prerecepcion" accept=".xlsx,.xls" style="display:none" aria-label="Cargar archivo Pre-recepción">
+      </div>
+
+      <div id="db-upload-status" class="loader-files" data-state="idle" role="status" aria-live="polite"></div>
     </div>
   </div>
 </div>
