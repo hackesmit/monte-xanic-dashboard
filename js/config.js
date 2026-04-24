@@ -474,6 +474,79 @@ export const CONFIG = {
     'Notes...':                  'notes'
   },
 
+  // ── Sample Type routing for WineXRay ─────────────────────────────
+  // Maps the "Sample Type" column value to its destination table.
+  // Anything not in this map is rejected by the WineXRay parser.
+  sampleTypeRouting: {
+    'Berries':      'berry_samples',
+    'Must':         'wine_samples',
+    'Young Wine':   'wine_samples',
+    'Aging Wine':   'wine_samples',
+    'Bottled Wine': 'wine_samples',
+    'Control Wine': 'skip',
+  },
+
+  // ── WineXRay CSV headers → berry_samples columns ─────────────────
+  // Used by js/upload/winexray.js for rows where Sample Type = 'Berries'.
+  // Includes morphology, per-berry composition, and phenolics/color
+  // measured on the extracted juice.
+  wxToBerry: {
+    'Sample Id':              'sample_id',
+    'Sample Type':            'sample_type',
+    'Sample Date':            'sample_date',
+    'CrushDate (yyyy-mm-dd)': 'crush_date',
+    'DaysPostCrush (number)': 'days_post_crush',
+    'Vintage':                'vintage_year',
+    'Variety':                'variety',
+    'Appellation':            'appellation',
+    'Batch Id':               'batch_id',
+    'Notes...':               'notes',
+
+    // morphology
+    'Number Of Berries In Sample (number)':  'berry_count',
+    'Weight Of Berries In Sample (gr)':      'berries_weight_g',
+    'Volume Of Extracted Juice (milliliters)': 'extracted_juice_ml',
+    'Weight Of Extracted Juice (gr)':        'extracted_juice_g',
+    'Volume Of Extracted Phenolics (milliliters)': 'extracted_phenolics_ml',
+    'Berry Fresh Weight (gr)':               'berry_fresh_weight_g',
+    'Berry (extractable) Anthocyanins (mg/100b me)': 'berry_anthocyanins_mg_100b',
+    'Berry Extractable Anthocyanins (mg/100b)':      'berry_anthocyanins_mg_100b',
+
+    // per-berry composition (mg/berry)
+    'Berry Sugars (mg/b)':        'berry_sugars_mg',
+    'Berry Acids (mg/b)':         'berry_acids_mg',
+    'Berry Water (mg/b)':         'berry_water_mg',
+    'Berry Skins & Seeds (mg/b)': 'berry_skins_seeds_mg',
+
+    // per-berry composition (weight %)
+    'Berry Sugars (wt.%)':        'berry_sugars_pct',
+    'Berry Acids (wt.%)':         'berry_acids_pct',
+    'Berry Water (wt.%)':         'berry_water_pct',
+    'Berry Skins & Seeds (wt.%)': 'berry_skins_seeds_pct',
+
+    // per-berry composition (grams)
+    'Berry Sugars (gr)':        'berry_sugars_g',
+    'Berry Acids (gr)':         'berry_acids_g',
+    'Berry Water (gr)':         'berry_water_g',
+    'Berry Skins & Seeds (gr)': 'berry_skins_seeds_g',
+
+    // phenolics/color measured on extracted juice
+    'Total Phenolics Index (IPT, d-less)': 'ipt',
+    'tANT (ppm ME)':                       'tant',
+    'fANT (ppm ME)':                       'fant',
+    'bANT (ppm ME)':                       'bant',
+    'pTAN (ppm CE)':                       'ptan',
+    'iRPs (ppm CE)':                       'irps',
+    'L*':                                  'l_star',
+    'a*':                                  'a_star',
+    'b*':                                  'b_star',
+    'I':                                   'color_i',
+    'T':                                   'color_t',
+    'Brix (degrees %w/w: (gr sucrose/100 gr juice)*100)': 'brix',
+    'pH (pH units)':                       'ph',
+    'Titratable Acidity (TA gr/l)':        'ta',
+  },
+
   // wine_samples Supabase columns → DataStore.berryData JS field names
   supabaseToBerryJS: {
     'sample_id':       'sampleId',
