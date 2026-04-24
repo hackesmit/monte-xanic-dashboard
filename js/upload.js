@@ -177,11 +177,156 @@ export const UploadManager = {
     el.textContent = msg;
   },
 
-  _renderPreviewCard(_statusEl) {
-    // stub — Task 13 replaces this with full DOM rendering
+  _renderPreviewCard(statusEl) {
+    if (!statusEl || !this._pendingUpload) return;
+    const { parser, file, targets, excluded, rejected } = this._pendingUpload;
+    const totalRows = targets.reduce((s, t) => s + t.rows.length, 0);
+
+    while (statusEl.firstChild) statusEl.removeChild(statusEl.firstChild);
+    statusEl.dataset.state = 'preview';
+
+    const card = document.createElement('div');
+    card.className = 'upload-preview-card';
+
+    const header = document.createElement('div');
+    header.className = 'upload-preview-header';
+    header.textContent = `📄 ${file.name} · ${totalRows} filas procesables · ${parser.label}`;
+    card.appendChild(header);
+
+    const readyH = document.createElement('h4');
+    readyH.textContent = 'Listo para insertar';
+    card.appendChild(readyH);
+
+    for (const t of targets) {
+      if (!t.rows.length) continue;
+      const disp = TABLE_DISPLAY[t.table] || { emoji: '📄', label: t.table };
+      const row = document.createElement('div');
+      row.className = 'upload-preview-row';
+      row.textContent = `${disp.emoji} ${disp.label}: ${t.rows.length} (${t.newCount} nuevas · ${t.updateCount} actualizadas)`;
+      card.appendChild(row);
+    }
+
+    const hasExcluded = Object.values(excluded || {}).some(n => n > 0);
+    if (hasExcluded) {
+      const excH = document.createElement('h4');
+      excH.textContent = 'Omitidos por política';
+      card.appendChild(excH);
+      for (const [key, count] of Object.entries(excluded)) {
+        if (!count) continue;
+        const row = document.createElement('div');
+        row.className = 'upload-preview-row upload-preview-excluded';
+        row.textContent = `${EXCLUDED_LABEL[key] || key}: ${count}`;
+        card.appendChild(row);
+      }
+    }
+
+    if (rejected && rejected.length) {
+      const rejH = document.createElement('h4');
+      rejH.textContent = '⚠ Rechazados (revisar)';
+      card.appendChild(rejH);
+
+      const byMotivo = {};
+      for (const r of rejected) {
+        byMotivo[r.motivo_rechazo] = (byMotivo[r.motivo_rechazo] || 0) + 1;
+      }
+      for (const [motivo, count] of Object.entries(byMotivo)) {
+        const row = document.createElement('div');
+        row.className = 'upload-preview-row upload-preview-rejected';
+        row.textContent = `${motivo}: ${count}`;
+        card.appendChild(row);
+      }
+
+      const dlBtn = document.createElement('button');
+      dlBtn.type = 'button';
+      dlBtn.textContent = 'Descargar rechazados.csv';
+      dlBtn.className = 'btn upload-preview-download';
+      dlBtn.addEventListener('click', () => this._downloadRejected());
+      card.appendChild(dlBtn);
+    }
+
+    const actions = document.createElement('div');
+    actions.className = 'upload-preview-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancelar';
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.addEventListener('click', () => this.cancelPendingUpload(statusEl));
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.textContent = 'Confirmar e insertar';
+    confirmBtn.className = 'btn btn-primary';
+    confirmBtn.disabled = targets.every(t => !t.rows.length);
+    confirmBtn.addEventListener('click', () => this.confirmPendingUpload(statusEl));
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    card.appendChild(actions);
+
+    statusEl.appendChild(card);
   },
 
-  _renderSummary(_statusEl, _results, _rejected) {
-    // stub — Task 13 replaces this with full DOM rendering
+  _renderSummary(statusEl, results, rejected) {
+    if (!statusEl) return;
+    while (statusEl.firstChild) statusEl.removeChild(statusEl.firstChild);
+
+    const anyError = results.some(r => r.error);
+    statusEl.dataset.state = anyError ? 'partial' : 'success';
+
+    const box = document.createElement('div');
+    box.className = anyError ? 'upload-summary upload-summary-partial' : 'upload-summary upload-summary-success';
+
+    const lines = [];
+    for (const r of results) {
+      const disp = TABLE_DISPLAY[r.table] || { label: r.table };
+      if (r.error) {
+        lines.push(`✗ ${disp.label}: ${r.error}`);
+      } else {
+        lines.push(`✓ ${disp.label}: ${r.count} insertadas/actualizadas`);
+      }
+    }
+    if (rejected && rejected.length) {
+      lines.push(`Rechazadas: ${rejected.length}`);
+    }
+
+    for (const line of lines) {
+      const el = document.createElement('div');
+      el.textContent = line;
+      box.appendChild(el);
+    }
+    statusEl.appendChild(box);
+  },
+
+  _downloadRejected() {
+    if (!this._pendingUpload || !this._pendingUpload.rejected.length) return;
+    const { rejected, file } = this._pendingUpload;
+
+    const headerSet = new Set();
+    for (const r of rejected) Object.keys(r.row).forEach(k => headerSet.add(k));
+    const headers = [...headerSet, 'motivo_rechazo'];
+
+    const escape = v => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const lines = [headers.map(escape).join(',')];
+    for (const r of rejected) {
+      const vals = headers.map(h => h === 'motivo_rechazo' ? escape(r.motivo_rechazo) : escape(r.row[h]));
+      lines.push(vals.join(','));
+    }
+    const csv = lines.join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rechazados-${file.name.replace(/\.[^.]+$/, '')}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   },
 };
