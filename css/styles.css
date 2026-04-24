@@ -321,6 +321,24 @@ body.demo-mode-active .demo-banner { display: block; }
   border-color: var(--gold);
 }
 
+/* Primary controls on the Vendimias view; inline styles render them ~18–20 px
+   tall on mobile. Matches the 44 px touch-target treatment applied to
+   #map-metric-select (C17) and .btn-gold (C6). Select keeps right-side padding
+   for the .nav-select dropdown-arrow SVG. */
+@media (max-width: 768px) {
+  .weather-forecast-btn,
+  #weather-forecast-horizon {
+    min-height: 44px;
+    font-size: 12px !important;
+  }
+  .weather-forecast-btn {
+    padding: 10px 14px !important;
+  }
+  #weather-forecast-horizon {
+    padding: 10px 36px 10px 14px !important;
+  }
+}
+
 .filter-section { margin-bottom: 20px; }
 .filter-label {
   font-size: 9px;
