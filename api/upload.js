@@ -2,7 +2,7 @@ import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 
 // Allowed tables: conflict columns, max rows, column whitelist, required fields
-const ALLOWED_TABLES = {
+export const ALLOWED_TABLES = {
   wine_samples: {
     conflict: 'sample_id,sample_date,sample_seq',
     maxRows: 500,
@@ -28,11 +28,46 @@ const ALLOWED_TABLES = {
       'vintage_year'
     ])
   },
+  berry_samples: {
+    conflict: 'sample_id,sample_date,sample_seq',
+    maxRows: 1000,
+    required: ['sample_id'],
+    columns: new Set([
+      'sample_id','sample_date','sample_seq','sample_type',
+      'vintage_year','variety','appellation','crush_date','days_post_crush',
+      'batch_id','notes','below_detection',
+      'berry_count','berries_weight_g','extracted_juice_ml','extracted_juice_g',
+      'extracted_phenolics_ml','berry_fresh_weight_g','berry_anthocyanins_mg_100b',
+      'berry_sugars_mg','berry_acids_mg','berry_water_mg','berry_skins_seeds_mg',
+      'berry_sugars_pct','berry_acids_pct','berry_water_pct','berry_skins_seeds_pct',
+      'berry_sugars_g','berry_acids_g','berry_water_g','berry_skins_seeds_g',
+      'ipt','tant','fant','bant','ptan','irps',
+      'l_star','a_star','b_star','color_i','color_t',
+      'brix','ph','ta',
+    ]),
+  },
+
+  pre_receptions: {
+    conflict: 'report_code',
+    maxRows: 500,
+    required: ['report_code'],
+    columns: new Set([
+      'report_code','vintrace','reception_date','medicion_date','vintage_year',
+      'supplier','variety','lot_code',
+      'total_bins','bin_unit','tons_received','bin_temp_c','truck_temp_c',
+      'bunch_avg_weight_g','berry_length_avg_cm','berries_200_weight_g','berry_avg_weight_g',
+      'health_madura','health_inmadura','health_sobremadura','health_picadura',
+      'health_enfermedad','health_pasificada','health_aceptable','health_no_aceptable',
+      'lab_date','brix','ph','at','ag','am','polifenoles','catequinas','antocianos',
+      'notes',
+    ]),
+  },
+
   reception_lots: {
-    conflict: null,
+    conflict: 'report_code,lot_position',
     maxRows: 2000,
-    required: ['reception_id','lot_code'],
-    columns: new Set(['reception_id','lot_code','lot_position'])
+    required: ['report_code','lot_code'],
+    columns: new Set(['report_code','lot_code','lot_position','reception_id']),
   },
   prefermentativos: {
     conflict: 'report_code,measurement_date',
