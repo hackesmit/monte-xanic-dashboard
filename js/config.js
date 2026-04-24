@@ -547,6 +547,47 @@ export const CONFIG = {
     'Titratable Acidity (TA gr/l)':        'ta',
   },
 
+  // ── Pre-recepción XLSX headers → pre_receptions columns ──────────
+  // Used by js/upload/prerecepcion.js. The pre_receptions table is
+  // distinct from mediciones_tecnicas (which stays form-owned).
+  // Note: 'Longitud promedio de 10 bayas (cm)' is deliberately not
+  // mapped; the per-baya average carries the same info.
+  preReceptionsToSupabase: {
+    'Vintrace':                              'vintrace',
+    'No. Reporte':                           'report_code',
+    'Fecha recepción de uva':                'reception_date',
+    'Fecha medición técnica':                'medicion_date',
+    'Total':                                 'total_bins',
+    'Bins/Jabas':                            'bin_unit',
+    'Toneladas totales':                     'tons_received',
+    'Proveedor':                             'supplier',
+    'Variedad':                              'variety',
+    'Lote de campo':                         'lot_code',
+    'Temperatura de bins/jabas (°C)':        'bin_temp_c',
+    'Temperatura de camión (°C)':            'truck_temp_c',
+    'Peso promedio racimos (g)':             'bunch_avg_weight_g',
+    'Longitud promedio por baya (cm)':       'berry_length_avg_cm',
+    'Peso de 200 bayas (g)':                 'berries_200_weight_g',
+    'Peso promedio por baya (g)':            'berry_avg_weight_g',
+    'Bayas con picadura':                    'health_picadura',
+    'Bayas con enfermedades':                'health_enfermedad',
+    'Bayas inmaduras':                       'health_inmadura',
+    'Bayas Maduras':                         'health_madura',
+    'Bayas sobremaduras':                    'health_sobremadura',
+    'Bayas pasificadas':                     'health_pasificada',
+    'Bayas aceptables':                      'health_aceptable',
+    'Bayas No aceptables':                   'health_no_aceptable',
+    'Fecha análisis laboratorio':            'lab_date',
+    '°Brix':                                 'brix',
+    'pH':                                    'ph',
+    'AT (g/L)':                              'at',
+    'AG (g/L)':                              'ag',
+    'AM (g/L)':                              'am',
+    'Polifenoles (mg/L)':                    'polifenoles',
+    'Catequinas (mg/L)':                     'catequinas',
+    'Antocianos (mg/L)':                     'antocianos',
+  },
+
   // wine_samples Supabase columns → DataStore.berryData JS field names
   supabaseToBerryJS: {
     'sample_id':       'sampleId',
