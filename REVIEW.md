@@ -1,10 +1,10 @@
 # Code Review — Monte Xanic Dashboard
 
-> All findings from Rounds 1–19 resolved. Phase 8 merged to main. Phase 9 Stage 0 (Vite migration) and Stage 0b (Mobile hardening, Rounds 20–24) complete. Stage 5 (Quality Classification) merged to `main` at `8998656`; reception-join follow-up + Stage 6 (Modo Demo) landed in `5558da4`. Safety net: `npm test` 198/198 + `npm run test:e2e` 12/12.
+> All findings from Rounds 1–19 resolved. Phase 8 merged to main. Phase 9 Stage 0 (Vite migration) and Stage 0b (Mobile hardening, Rounds 20–24) complete. Stage 5 (Quality Classification) merged to `main` at `8998656`; reception-join follow-up + Stage 6 (Modo Demo) landed in `5558da4`. Round 24's last open item (`R24.weather`) closed in `ea1f31c` + `9380a73`. Safety net: `npm test` 198/198 + `npm run test:e2e` 14/14.
 > See TASK.md for the complete resolution table.
 > Read `CLAUDE.md` first for full project context.
 >
-> **Last updated:** 2026-04-21 (Round 26 — reception join + Modo Demo shipped in `5558da4`).
+> **Last updated:** 2026-04-24 (Round 27 — R24.weather mobile fix + e2e regression + CI repair).
 
 ---
 
@@ -675,3 +675,49 @@ None. The reception join preserves ranking integrity (cohort keying unchanged, l
 - The `sql/migration_phenolic_maturity.sql` migration from the F9 ship still needs to be applied in the Supabase SQL editor before the Madurez field is exercised in production — unchanged from prior rounds.
 - No uncommitted changes, no untracked files, working tree clean.
 - Respects the `CLAUDE.md` boundary rule added in the F9 commit: "Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`" — demo mode patches both out precisely to enforce this.
+
+---
+
+## Round 27 — Branch `main` — R24.weather closure + CI repair (2026-04-24)
+
+**Scope:** 4 commits on `main` since Round 26 (`5558da4..962a124`).
+1. `6dcabbe` — docs sync (PLAN/TASK/REVIEW/CLAUDE) — already covered in Round 26 notes; no source changes.
+2. `ea1f31c` — `fix(mobile)`: 44 px mobile media query for `.weather-forecast-btn` + `#weather-forecast-horizon`. `css/styles.css` only, +18 lines.
+3. `9380a73` — `test(e2e)`: new Playwright assertion for the two controls at both viewports. `tests/e2e/mobile-responsive.spec.js`, +20 lines.
+4. `962a124` — `ci`: add `npm ci` step + npm-cache key to `.github/workflows/ci.yml` so CI can actually install deps before `npm test`. +2 lines.
+
+**Builds/tests run locally:** `npm test` → 198/198 (1.93 s). `npx playwright test` → 14/14 (12.5 s) — the two new R24 assertions pass at 320×568 and 390×844.
+
+### What landed
+
+**R24.weather CSS fix (`ea1f31c`):**
+- New `@media (max-width: 768px)` block in `css/styles.css:324-339` targeting `.weather-forecast-btn, #weather-forecast-horizon`. Sets `min-height: 44px`, `font-size: 12px !important`, button padding `10px 14px !important`, select padding `10px 36px 10px 14px !important` (extra right-pad for the `.nav-select` dropdown-arrow SVG). `!important` is required because the inline `style=""` attributes on the button and select at `index.html:650-651` otherwise win the cascade.
+- Class / id mapping checks out: `#weather-forecast-toggle` carries `class="nav-select weather-forecast-btn"`, so the class selector matches the button that `events.js:135` / `filters.js:233` bind to by id.
+- Precedent is consistent: C17 (`#map-metric-select`) and C6 (`.btn-gold`) used the same `min-height: 44px` pattern; C15 (Mediciones inputs) additionally bumped font to 16 px to suppress iOS Safari's tap-to-zoom on form inputs.
+
+**E2E regression (`9380a73`):**
+- `tests/e2e/mobile-responsive.spec.js:155-170` — adds a per-viewport test that switches to `vintage`, reveals the horizon `<select>` via `sel.style.display = 'inline-block'` (bypassing the Open-Meteo fetch path that the click handler would otherwise trigger), then runs the existing `measureTapTargets` helper against the comma-combined selector. Clean, network-free, and matches the existing test style.
+- Verified passing here: `7 … weather forecast controls are ≥ 44 px tall (R24) (876ms)` and `14 … (1.1s)`.
+
+**CI repair (`962a124`):**
+- Root-cause fix, not a patch: the workflow previously ran `npm test` without `npm ci`, so any test file transitively importing `@supabase/supabase-js` via `js/dataLoader.js` (MT.8, MT.10) died with `ERR_MODULE_NOT_FOUND`. That made "every push to main fails" the steady-state condition on GitHub Actions — the exact symptom Round 26 Notes flagged as "CI test step remains misconfigured at the org level." It was actually misconfigured in the workflow file, not the org.
+- Also enables `cache: 'npm'` keyed on `package-lock.json`, which is the standard `actions/setup-node@v4` pattern — fine.
+
+### Priority 1 Issues
+
+None. All three source changes are narrowly scoped, reversible, and land with test evidence. R24.weather was the last open punch-list item from Rounds 20–24.
+
+### Priority 2 Improvements
+
+- **P2.1 — `font-size: 12px` on the horizon `<select>` can trigger iOS Safari tap-to-zoom.** C15 bumped Mediciones form selects to 16 px specifically to suppress this. C17's `#map-metric-select` didn't bump the font and is the precedent `ea1f31c` cites, but that one has seldom been exercised on-device as a seasonal/occasional control. If QA on an actual iPhone confirms no zoom-in on the Vendimias view, leave it; otherwise bump the select (not the button — the zoom is a form-control behavior) to 16 px and tighten its padding. Low priority; easy follow-up.
+- **P2.2 — Could remove the inline `style="…"` attributes at `index.html:650-651` to drop the four `!important`s.** Today the CSS has to fight the inline styles to win the cascade on mobile. Moving the inline font/padding into the existing `.weather-forecast-btn` / `.nav-select` rules (or into a new desktop rule) would let the media query be `!important`-free. Cosmetic — no runtime effect.
+
+### Missing Tests
+
+- None introduced. The new e2e assertion is the right level for this change; no unit-test gap opens up, because the fix is pure CSS.
+
+### Notes
+
+- Round 26's "Notes" bullet about GitHub's `Required status check "test" is failing` was misdiagnosed as org-level — `962a124` fixes the root cause. Future pushes should show CI green; if a push after this commit still shows red, the failing job output needs to be pulled (`gh run list -b main -L 1`) and diagnosed separately.
+- Nothing in this round touches `PLAN.md` / `TASK.md`. TASK.md will need a small delta to flip the `R24.weather` row from **Open** → **Done (`ea1f31c`/`9380a73`)** and bump the e2e test count from 12 to 14; deferring that to the builder/planner by convention (reviewer doesn't edit TASK.md).
+- Working tree clean after the four commits; branch matches `origin/main`.
