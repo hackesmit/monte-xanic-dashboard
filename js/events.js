@@ -195,22 +195,34 @@ export const Events = {
     });
   },
 
-  // ── Upload (3 handlers) ──
+  // ── Upload (temp loader + 3 DB upload buttons) ──
   _bindUpload() {
+    // Temp/in-memory loader (unchanged from before)
     const loaderBtn = document.querySelector('.loader-btn');
     const fileInput = document.getElementById('file-input');
     if (loaderBtn && fileInput) loaderBtn.addEventListener('click', () => fileInput.click());
 
-    const dbUploadBtn = document.getElementById('db-upload-btn');
-    const dbFileInput = document.getElementById('db-file-input');
-    if (dbUploadBtn && dbFileInput) dbUploadBtn.addEventListener('click', () => dbFileInput.click());
+    // Three explicit DB upload buttons → UploadManager.startUpload(parserId, file, statusEl)
+    const UPLOAD_BUTTONS = [
+      { btn: 'upload-btn-winexray',     input: 'upload-file-winexray',     parser: 'winexray'     },
+      { btn: 'upload-btn-recepcion',    input: 'upload-file-recepcion',    parser: 'recepcion'    },
+      { btn: 'upload-btn-prerecepcion', input: 'upload-file-prerecepcion', parser: 'prerecepcion' },
+    ];
 
-    if (dbFileInput) {
-      dbFileInput.addEventListener('change', () => {
-        if (dbFileInput.files[0]) {
-          UploadManager.handleUpload(dbFileInput.files[0], document.getElementById('db-upload-status'));
-          dbFileInput.value = '';
-        }
+    for (const { btn, input, parser } of UPLOAD_BUTTONS) {
+      const btnEl = document.getElementById(btn);
+      const inputEl = document.getElementById(input);
+      if (!btnEl || !inputEl) continue;
+
+      btnEl.addEventListener('click', () => inputEl.click());
+
+      inputEl.addEventListener('change', async (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+        const statusEl = document.getElementById('db-upload-status');
+        await UploadManager.startUpload(parser, file, statusEl);
+        // Reset input so the same file can be re-selected immediately
+        e.target.value = '';
       });
     }
   },
