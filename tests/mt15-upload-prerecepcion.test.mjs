@@ -105,7 +105,7 @@ describe('MT.15 — Pre-recepción parser', () => {
       ['VT-1','MT-25-001', new Date(Date.UTC(2024, 7, 20)), new Date(Date.UTC(2024, 7, 21)),
         18,'bins',5.5,'Monte Xanic','Cabernet Sauvignon','25CSMX-1', new Date(Date.UTC(2024, 7, 22))],
     ];
-    const sheet = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+    const sheet = XLSX.utils.aoa_to_sheet(aoa);
     // Force a DMY format code on the date columns so the bug path (raw:false
     // would have rendered "20/08/2024") is exercised by the test.
     for (const cellAddr of ['C4','D4','K4']) {
@@ -142,7 +142,7 @@ describe('MT.15 — Pre-recepción parser', () => {
       ['VT-2','MT-25-002', new Date(Date.UTC(2024, 7, 20)), new Date(Date.UTC(2024, 7, 21)),
         18,'bins',5.5,'Monte Xanic','Merlot','25MEMX-1'],
     ];
-    const sheet = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+    const sheet = XLSX.utils.aoa_to_sheet(aoa);
     for (const cellAddr of ['C4','D4']) {
       const cell = sheet[cellAddr];
       if (cell) cell.z = 'm/d/yy';
