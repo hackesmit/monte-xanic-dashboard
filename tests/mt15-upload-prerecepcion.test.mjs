@@ -158,4 +158,33 @@ describe('MT.15 — Pre-recepción parser', () => {
     assert.equal(row.reception_date, '2024-08-20');
     assert.equal(row.medicion_date, '2024-08-21');
   });
+
+  // Regression for Round 32: live `prerecepcion_actualizado (1).xlsx` row
+  // MT-24-011 has total_bins=37.5 (a half-bin / mixed-lot value). Schema is
+  // being widened from INT to NUMERIC to preserve the value. The parser must
+  // pass the fractional number through unchanged — not silently round, not
+  // reject — so the schema is the single source of truth for what's valid.
+  it('passes fractional total_bins through unchanged (no rounding, no reject)', async () => {
+    const XLSX = await import('xlsx');
+    const headers = ['Vintrace','No. Reporte','Fecha medición técnica','Total','Bins/Jabas','Variedad','Lote de campo'];
+    const aoa = [
+      ['MEDICIÓN TÉCNICA DE LA UVA','','','','','',''],
+      ['','','','','','',''],
+      headers,
+      ['VT-11','MT-24-011', new Date(Date.UTC(2024, 7, 21)), 37.5, 'bins', 'Cabernet Sauvignon', '24CSMX-11'],
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet, 'Pre-recepción');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const file = asFakeFile(Buffer.from(buf), 'fractional_total_bins.xlsx');
+
+    const result = await prerecepcionParser.parse(file);
+    const row = result.targets[0].rows.find(r => r.report_code === 'MT-24-011');
+    assert.ok(row, 'MT-24-011 row should be in targets[0].rows, not rejected');
+    assert.equal(row.total_bins, 37.5,
+      'total_bins must be preserved verbatim — schema NUMERIC accepts it');
+    assert.equal(result.rejected.find(r => r.row['No. Reporte'] === 'MT-24-011'), undefined,
+      'MT-24-011 must not be in rejected');
+  });
 });

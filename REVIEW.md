@@ -988,3 +988,161 @@ The user's exact failure mode (`Pre-recepciones: Error al insertar datos: date/t
 - The new P1.1 (prefermentativos header detection) was not in scope for Round 30 — it surfaces only because Round 31's verification step ran the new parser against the real workbook end-to-end. This is exactly what a verification step is supposed to catch; flagging it cleanly so the builder can address it as a separate small change.
 - No source/config files modified by this review. Only `REVIEW.md` appended. Per `CLAUDE.md` agent rules, the builder owns the P1.1 fix.
 - Working tree after this append: `M REVIEW.md`. Branch `main` still matches `origin/main` at `415286c`.
+
+---
+
+## Round 32 — `pre_receptions.total_bins`: integer-typed column rejecting fractional source values (2026-04-29)
+
+**User-reported error:** `✗ Pre-recepciones: Error al insertar datos: invalid input syntax for type integer: "37.5"`.
+**Mode:** Phase 1 root-cause investigation only (per Iron Law). No fix proposed; no source/config edited.
+**Working tree at start:** clean. `main` at `2f7adb1` (Round 31 prefermentativos fix). Round 30 + Round 31 both confirmed working in the previous review.
+
+### Phase 1 verdict
+
+**Single-row, single-column, schema-vs-source mismatch — not a regression.**
+
+The live file `Xanic info/prerecepcion_actualizado (1).xlsx` contains exactly **one** integer-column violation: row `MT-24-011`, column `total_bins`, value `37.5`. Every other row across all 104 records and all ten INT-typed columns is integer-clean.
+
+Postgres rejects with the exact reported error because `pre_receptions.total_bins` is declared `INT` in `sql/migration_pre_receptions.sql:22`, and Postgres' `integer` type rejects any value with a fractional component, regardless of whether it arrives as a number or a string — the `"37.5"` quoting in the error message is Postgres' standard wrapping, not a clue about the JS-side type.
+
+### Not caused by Round 30
+
+I verified this directly. The cell at `Pre-recepción!E14` in the live file has:
+```
+{ t: 'n', v: 37.5, w: '37.5', z: undefined }
+```
+- Underlying value: number `37.5`.
+- No format code (`z` is undefined → no integer-rounding mask applied).
+- Display string `"37.5"`.
+
+Under the legacy `raw: false` path, SheetJS would have returned the string `"37.5"`, which `normalizeValue` would then have coerced to the number `37.5` via `Number(str)`. Under the new `raw: true` path it returns `37.5` directly. **Same outcome either way.** Round 30's read-mode flip is causally orthogonal to this bug.
+
+The reason this is surfacing only now is that **the date error fired first on every row before Round 30**, blocking the upload before Postgres could ever evaluate the integer constraint. Now that the date pipeline is clean, the next row-rejection layer becomes visible.
+
+### Multi-component evidence trace
+
+Per the systematic-debugging "evidence in multi-component systems" step, I traced the value through every layer:
+
+| Layer | Observation |
+|---|---|
+| **Excel cell `E14`** | `{t:'n', v:37.5, z:undefined, w:'37.5'}` — underlying number 37.5, no format mask. |
+| **`XLSX.utils.sheet_to_json` (raw:true)** | Returns `37.5` (number). |
+| **`normalizeValue(37.5)`** | `js/upload/normalize.js:32` — `typeof val === 'number'` and `Number.isFinite` → returns `37.5` unchanged. |
+| **Parser column mapping** | `js/config.js:560` — `'Total' → 'total_bins'`. So `obj.total_bins = 37.5`. |
+| **API whitelist** | `api/upload.js:55–61` — `total_bins` is in the allowed-column set; pure pass-through. No type coercion. |
+| **POST → Supabase REST → Postgres** | `INSERT … VALUES (… 37.5 …) INTO total_bins INT` → **rejected**. |
+
+**Failing layer:** schema-vs-source mismatch at the database boundary. The parser, API, and JSON serialization are all behaving correctly; the type they're flowing matches the source data; only the table definition is too strict.
+
+### Cross-table sweep — does this hit any other parser?
+
+I ran the same fractional-value check across every INT-typed column in every table the upload pipeline writes, against the live files in `Xanic info/`:
+
+| Table | INT columns checked | Rows with fractional values |
+|---|---|---|
+| `pre_receptions` | `vintage_year`, `total_bins`, 8× `health_*` | **1** row: `total_bins=37.5` |
+| `tank_receptions` | (per `migration_overhaul.sql` — `vintage_year`, etc.) | **0** |
+| `reception_lots` | (none with numeric content) | **0** |
+| `prefermentativos` | `vintage_year` | **0** |
+| `wine_samples` / `berry_samples` | `vintage_year`, `days_post_crush`, `berry_count`, `sample_seq` | not exercised by current files (no fractional candidates surfaced) |
+
+So the bug is uniquely scoped to `pre_receptions.total_bins` for the moment. No other table is currently feeding fractional values into INT columns, but the structural risk (see below) applies to all of them.
+
+### `total_bins` consumers in the codebase
+
+`grep -rn 'total_bins\|totalBins' --include='*.js' --include='*.sql' --include='*.html'` returns three hits, all upload-pipeline:
+- `sql/migration_pre_receptions.sql:22` — column declaration.
+- `api/upload.js:57` — whitelist entry.
+- `js/config.js:560` — header → column mapping.
+
+**There are zero downstream JS consumers** (no KPI calc, no chart, no dataLoader query, no demo-mode reference). `total_bins` is purely a stored value at the moment. This means a schema widening from `INT` to `NUMERIC` carries no application-side risk; existing rows remain valid (Postgres trivially widens INT → NUMERIC), and the only code paths that touch the column are pass-through.
+
+### Production-reality check — should `total_bins` be fractional at all?
+
+Plausible interpretations of `MT-24-011 total_bins=37.5`:
+1. **Half-bin / mixed lot.** A lot was loaded in 37 full bins plus one half-bin (or 37 bins + a partial jaba converted to bin-equivalent). Realistic in winery operations; the value represents real production data and should be preserved.
+2. **Data-entry typo.** Should be `37` or `38`, written `37.5` by mistake.
+3. **Unit conflation.** Someone wrote `37.5` because they were thinking in tons, not bins.
+
+The reviewer cannot resolve which interpretation is correct without asking the user. The schema response should not silently destroy the value either way:
+- If (1), `INT` is the wrong type — fix schema.
+- If (2)/(3), the parser should *flag the row* with a clear error so the user corrects the source.
+
+The cleanest path covers both cases: widen `total_bins` to `NUMERIC` (which preserves the real data under interpretation 1, and stops blocking upload under 2/3), AND add parser-side type-aware validation so future INT-typed columns surface row-level errors with column names rather than opaque Postgres messages.
+
+### Proposed fix options (for the builder — Phase 4 ownership)
+
+**Option A — Schema widening (recommended, primary fix).** New migration:
+```sql
+-- sql/migration_total_bins_numeric.sql
+ALTER TABLE public.pre_receptions
+  ALTER COLUMN total_bins TYPE NUMERIC;
+```
+- Lossless for the existing row(s).
+- Aligns `total_bins` with `tons_received NUMERIC` (line 24 of the same migration).
+- Zero application-side fallout (no JS consumers).
+- Resolves the user-reported error immediately.
+- Smallest possible change.
+
+**Option B — Parser-side INT-typed-column validation (recommended, defense-in-depth).** In `js/upload/prerecepcion.js`, add an `INT_COLUMNS` set mirroring the schema, and route values through a check analogous to `DATE_COLUMNS`:
+```js
+const INT_COLUMNS = new Set([
+  'vintage_year','total_bins',
+  'health_madura','health_inmadura','health_sobremadura','health_picadura',
+  'health_enfermedad','health_pasificada','health_aceptable','health_no_aceptable',
+]);
+// inside the row loop:
+if (INT_COLUMNS.has(col) && typeof val === 'number' && !Number.isInteger(val)) {
+  rejected.push({
+    row: Object.fromEntries(headers.map((h, idx) => [h, row[idx]])),
+    motivo_rechazo: `${col}=${val}: debe ser entero`,
+  });
+  continue;  // or null-out + continue, depending on policy
+}
+```
+- Even after Option A, this catches the *next* schema mismatch (e.g., a future column added as INT) at the layer with row+column context.
+- Surfaces the offending row to the user with a Spanish message, matching the existing `Reporte faltante` / `Reporte pendiente` reject pattern at lines 100–113.
+- Ships as a tiny addition to the existing reject pipeline; no new infrastructure.
+- Should mirror to `recepcion.js` and `winexray.js` since the same architectural gap exists there (see Pattern Analysis below).
+
+**Option C — Silent rounding at parser (NOT recommended).** `if INT_COLUMN: val = Math.round(val)`. Silently lossy; hides real source-data signal from the user; violates the project's "loud over silent" debugging stance.
+
+**Option D — Source-data fix only (NOT recommended).** Telling the user to manually edit the Excel each time this surfaces is not scalable, and doesn't address the structural issue.
+
+**Recommendation order: A then B.** A unblocks the user immediately; B prevents this class of opaque-Postgres-rejection bug from recurring on any future INT column.
+
+### Pattern analysis (Phase 2)
+
+The architectural gap revealed by Round 30 (dates) and Round 32 (integers) is the same:
+
+> The upload pipeline performs **no value-type validation at the parser layer**. Each parser maps source columns to target columns and trusts whatever number / string / date emerges from `normalizeValue`. The API (`api/upload.js`) is a pure pass-through — it filters columns by whitelist and validates `required` fields, but does not validate value *types*. Postgres is therefore the only validator, and its error messages identify the offending value but neither the row (`report_code`) nor the column name.
+
+This is the **second round in a row** where the user has hit an opaque single-row Postgres rejection because the parser didn't catch a type mismatch. Round 30 fixed this for date columns by introducing column-aware `normalizeDate`. The natural next step is to extend the same pattern to integer columns (Option B above).
+
+A clean generalization would be to give each parser a typed-column-set declaration:
+```js
+const DATE_COLUMNS = new Set([...]);
+const INT_COLUMNS  = new Set([...]);
+// NUMERIC columns are unconstrained — Postgres NUMERIC accepts anything coercible.
+```
+…and route values through the appropriate normalizer/validator per column. This is the same shape Round 30 already adopted for dates; the question is just whether to extend it now (Option B) or defer until another column hits the same issue.
+
+### Missing tests (for Phase 4)
+
+If the builder adopts Option A, the fixture-level test should be:
+- Add a row to `tests/fixtures/prerecepcion_sample.xlsx` (or a new ad-hoc test) with `total_bins=37.5`. Assert the parser produces a row with `total_bins===37.5` and that the row is in `targets[0].rows` (not `rejected`). After the migration, that row should round-trip through Postgres without error.
+
+If the builder adopts Option B (alongside or instead of A), the test should be:
+- Construct a row with `total_bins=37.5`. Assert it lands in `result.rejected` with `motivo_rechazo` mentioning `total_bins`. Mirror tests for `vintage_year` and at least one `health_*` column to lock in the column-set coverage.
+
+If both A and B are taken: the test fixture should hold a fractional `total_bins` row (asserts schema accepts it post-migration) **and** a fractional `vintage_year` row (asserts parser rejects it before Postgres sees it). Together these verify the policy: fractional values are allowed where the schema permits, rejected where it doesn't, with a clear Spanish error in the latter case.
+
+### Notes for the builder
+
+- **Severity:** P1 — silently blocks the entire pre-recepción upload of any file that contains a fractional `total_bins`. Single source row blocks all 104 rows because the API treats the batch atomically (worth verifying — the current `api/upload.js` may upsert in chunks; check before estimating user impact).
+- **Scope discipline:** the user's reported error is for `pre_receptions` only. Rounds 30 and 32 collectively show that the parser-side type-validation gap is structural, but the immediate fix should be tight (Option A is one SQL line). Option B is the *strategic* follow-up; do not bundle them in one commit if the user wants the unblocker shipped fast.
+- **No regression risk for existing data.** `INT → NUMERIC` widening does not touch existing values; queries that read `total_bins` will see numbers either way.
+- **Migration filename suggestion:** `sql/migration_total_bins_numeric.sql` (matches existing naming pattern in `sql/`).
+- **Rollback plan if needed:** `ALTER TABLE pre_receptions ALTER COLUMN total_bins TYPE INT USING ROUND(total_bins)` — but this would lose the `.5` precision on row `MT-24-011`, so production data should be reviewed before any rollback.
+- **No source/config files modified by this review.** Only `REVIEW.md` appended (this Round 32 block). Per `CLAUDE.md` agent rules ("Planner/Reviewer: NEVER edit source code"), Phase 4 implementation belongs to the builder.
+- **Working tree after this append:** `M REVIEW.md`. Branch `main` still matches `origin/main` at `2f7adb1`.
