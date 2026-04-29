@@ -52,6 +52,20 @@ Do not add chart rendering to dataLoader.js. Do not add data queries to charts.j
 - New fields -> add to both Supabase schema AND `config.js` column mappings
 - `vintage_year` extracted from batch code prefix (25 -> 2025)
 
+## Adding a SQL migration (Round 36 guardrail)
+
+A code change that references a new column MUST ship with its migration applied. Three steps, no exceptions:
+
+1. Create `sql/migration_<name>.sql`. End the file with:
+   ```sql
+   INSERT INTO public.applied_migrations (name) VALUES ('migration_<name>')
+     ON CONFLICT (name) DO NOTHING;
+   ```
+2. Append the same `'migration_<name>'` to the `MIGRATIONS` array in `js/migrations-manifest.js`.
+3. Run the file in **Supabase SQL Editor** before the dependent code reaches production.
+
+The dashboard's migration banner (rendered for `lab`/`admin` users via `/api/migrations-status`) detects drift between the manifest and `public.applied_migrations` and names the missing file. If you see `Could not find the 'X' column ... in the schema cache`, a migration is unrun.
+
 ## Agent Roles
 
 See [docs/AGENT_RULES.md](docs/AGENT_RULES.md) for full rules.

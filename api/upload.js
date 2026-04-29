@@ -208,6 +208,12 @@ export default async function handler(req, res) {
         const errObj = JSON.parse(errText);
         if (errObj.message) detail += ': ' + errObj.message;
       } catch (_) { /* ignore parse error */ }
+      // Schema-cache errors → translate the opaque PostgREST message into
+      // an actionable hint pointing at the missing migration (Round 36).
+      if (/schema cache|column .+ does not exist/i.test(errText)) {
+        detail += ' — la migración correspondiente parece no estar aplicada. ' +
+          'Revisa /api/migrations-status o ejecuta los archivos pendientes en sql/.';
+      }
       return res.status(500).json({ ok: false, error: detail });
     }
 
