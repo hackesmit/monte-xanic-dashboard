@@ -187,4 +187,36 @@ describe('MT.15 — Pre-recepción parser', () => {
     assert.equal(result.rejected.find(r => r.row['No. Reporte'] === 'MT-24-011'), undefined,
       'MT-24-011 must not be in rejected');
   });
+
+  // Round 32 Option B — defense-in-depth: a row whose INT-typed column is
+  // fractional (here health_madura=150.5) must be rejected at the parser
+  // layer with a Spanish motivo_rechazo naming the column. Without this
+  // check the row would reach Postgres and trigger an opaque
+  // "invalid input syntax for type integer" rejection that blocks the
+  // whole batch — the same failure mode that drove Round 32.
+  it('rejects rows where an INT-typed column has a fractional value', async () => {
+    const XLSX = await import('xlsx');
+    const headers = ['Vintrace','No. Reporte','Fecha medición técnica','Variedad','Lote de campo','Bayas Maduras'];
+    const aoa = [
+      ['MEDICIÓN TÉCNICA','','','','',''],
+      ['','','','','',''],
+      headers,
+      ['VT-50','MT-24-050', new Date(Date.UTC(2024, 7, 21)), 'Cabernet Sauvignon', '24CSMX-50', 150.5],
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet, 'Pre-recepción');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const file = asFakeFile(Buffer.from(buf), 'fractional_int.xlsx');
+
+    const result = await prerecepcionParser.parse(file);
+    assert.equal(result.targets[0].rows.find(r => r.report_code === 'MT-24-050'), undefined,
+      'MT-24-050 must NOT be in targets[0].rows — fractional INT must be rejected');
+    const rejected = result.rejected.find(r => r.row['No. Reporte'] === 'MT-24-050');
+    assert.ok(rejected, 'MT-24-050 must appear in rejected[]');
+    assert.match(rejected.motivo_rechazo, /health_madura/,
+      'motivo_rechazo must name the offending column for the user to fix it');
+    assert.match(rejected.motivo_rechazo, /entero|integer/i,
+      'motivo_rechazo must indicate the value is not an integer');
+  });
 });

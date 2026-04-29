@@ -15,6 +15,21 @@ import { normalizeValue, normalizeDate } from './normalize.js';
 // pre_receptions table columns whose values must be ISO YYYY-MM-DD.
 const DATE_COLUMNS = new Set(['reception_date', 'medicion_date', 'lab_date']);
 
+// pre_receptions INT-typed columns. Postgres integer rejects any fractional
+// value with an opaque "invalid input syntax for type integer" message that
+// blocks the whole upload batch — Round 32 traced exactly this against
+// total_bins=37.5. We catch it at the parser instead so the user sees a
+// row+column-aware Spanish reject message.
+//
+// total_bins is intentionally NOT in this set: it was widened to NUMERIC
+// (sql/migration_total_bins_numeric.sql) so half-bin / mixed-lot values
+// like 37.5 are legitimate and must pass through unchanged.
+const INT_COLUMNS = new Set([
+  'vintage_year',
+  'health_madura', 'health_inmadura', 'health_sobremadura', 'health_picadura',
+  'health_enfermedad', 'health_pasificada', 'health_aceptable', 'health_no_aceptable',
+]);
+
 function normalizeHeader(h) {
   return String(h ?? '').trim().replace(/\s+/g, ' ');
 }
@@ -85,12 +100,16 @@ export const prerecepcionParser = {
 
       const obj = {};
       let hasData = false;
+      let intReject = null;
       headers.forEach((h, idx) => {
         const col = columnLookup[h];
         if (!col) return;
         const val = DATE_COLUMNS.has(col)
           ? normalizeDate(row[idx])
           : normalizeValue(row[idx]);
+        if (!intReject && INT_COLUMNS.has(col) && typeof val === 'number' && !Number.isInteger(val)) {
+          intReject = `${col}=${val}: debe ser entero`;
+        }
         obj[col] = val;
         if (val !== null) hasData = true;
       });
@@ -109,6 +128,13 @@ export const prerecepcionParser = {
         rejected.push({
           row: Object.fromEntries(headers.map((h, idx) => [h, row[idx]])),
           motivo_rechazo: 'Reporte pendiente',
+        });
+        continue;
+      }
+      if (intReject) {
+        rejected.push({
+          row: Object.fromEntries(headers.map((h, idx) => [h, row[idx]])),
+          motivo_rechazo: intReject,
         });
         continue;
       }
