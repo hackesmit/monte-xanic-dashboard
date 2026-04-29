@@ -10,11 +10,28 @@
 
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
-import { normalizeValue, normalizeDate } from './normalize.js';
+import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
 
 // Date columns in tank_receptions and prefermentativos tables.
 const RECEPCION_DATE_COLUMNS = new Set(['reception_date']);
 const PREFERMENT_DATE_COLUMNS = new Set(['measurement_date']);
+
+// INT- and NUMERIC-typed columns per destination table. Non-numeric values
+// (a fractional INT, or a label string typed into a numeric cell) would
+// otherwise reach Postgres as "invalid input syntax for type integer/numeric"
+// and abort the whole batch (Round 34, generalizing Round 32). We surface
+// the offending row+column with a Spanish motivo_rechazo instead.
+const RECEPCION_INT_COLUMNS = new Set(['vintage_year']);
+const RECEPCION_NUMERIC_COLUMNS = new Set([
+  'brix', 'ph', 'ta', 'ag', 'am', 'av', 'so2', 'nfa',
+  'temperature', 'solidos_pct',
+  'polifenoles_wx', 'antocianinas_wx',
+  'poli_spica', 'anto_spica', 'ipt_spica', 'p010_kg',
+]);
+const PREFERMENT_INT_COLUMNS = new Set(['vintage_year']);
+const PREFERMENT_NUMERIC_COLUMNS = new Set([
+  'brix', 'ph', 'ta', 'temperature', 'tant',
+]);
 
 function sheetToArray(wb, name) {
   return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true });
@@ -58,6 +75,7 @@ export const recepcionParser = {
     const receptions = [];
     const lots = [];
     const preferment = [];
+    const rejected = [];
 
     // ── Recepción sheet ──
     const recRows = sheetToArray(wb, recepcionSheet);
@@ -94,6 +112,21 @@ export const recepcionParser = {
           const y = 2000 + parseInt(m[1], 10);
           if (y >= 2015 && y <= 2040) obj.vintage_year = y;
         }
+      }
+
+      // Type validation (Round 34). Reject rows whose numeric/int cells
+      // hold non-numeric strings before they reach Postgres. Lot columns
+      // are still text so they're stripped after validation runs.
+      const recReject = validateColumnTypes(obj, {
+        intCols: RECEPCION_INT_COLUMNS,
+        numericCols: RECEPCION_NUMERIC_COLUMNS,
+      });
+      if (recReject) {
+        rejected.push({
+          row: Object.fromEntries(recHeaders.map((h, idx) => [h, row[idx]])),
+          motivo_rechazo: recReject,
+        });
+        continue;
       }
 
       const reportCode = obj.report_code;
@@ -145,6 +178,18 @@ export const recepcionParser = {
             if (y >= 2015 && y <= 2040) obj.vintage_year = y;
           }
         }
+
+        const prefReject = validateColumnTypes(obj, {
+          intCols: PREFERMENT_INT_COLUMNS,
+          numericCols: PREFERMENT_NUMERIC_COLUMNS,
+        });
+        if (prefReject) {
+          rejected.push({
+            row: Object.fromEntries(prefHeaders.map((h, idx) => [h, row[idx]])),
+            motivo_rechazo: prefReject,
+          });
+          continue;
+        }
         preferment.push(obj);
       }
     }
@@ -156,7 +201,7 @@ export const recepcionParser = {
         { table: 'prefermentativos', rows: preferment, conflictKey: 'report_code' },
       ],
       excluded: {},
-      rejected: [],
+      rejected,
       meta: { totalRows: recRows.length + prefRows.length - 2, filename: file.name },
     };
   },

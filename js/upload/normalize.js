@@ -105,3 +105,44 @@ export function normalizeDate(val, { dateOrder = 'dmy' } = {}) {
 
 function pad2(n) { return String(n).padStart(2, '0'); }
 function pad4(n) { return String(n).padStart(4, '0'); }
+
+/**
+ * Validate that the values in an upserted row match the destination column's
+ * Postgres numeric type, and return a row+column-aware Spanish motivo_rechazo
+ * for the first offender (or null if all values pass).
+ *
+ * Postgres rejects bad numeric input with opaque "invalid input syntax for
+ * type numeric/integer" errors that abort the entire batch upsert. Round 32
+ * caught fractional values in INT columns at the parser; Round 34 generalizes
+ * that to also reject non-numeric strings in INT or NUMERIC columns — e.g. a
+ * lab user typing "SEGUIMIENTO MADURACIÓN" into a brix cell. Surfacing the
+ * offending row+column lets the user fix the source spreadsheet while the
+ * rest of the batch lands cleanly.
+ *
+ * Allowed values per column kind:
+ *   - intCols:     null, undefined, or finite integer number
+ *   - numericCols: null, undefined, or finite number
+ *
+ * First-offender-wins so the rejection message is deterministic across runs.
+ */
+export function validateColumnTypes(obj, { intCols, numericCols } = {}) {
+  if (intCols) {
+    for (const col of intCols) {
+      const v = obj[col];
+      if (v === null || v === undefined) continue;
+      if (typeof v !== 'number' || !Number.isInteger(v)) {
+        return `${col}=${v}: debe ser entero`;
+      }
+    }
+  }
+  if (numericCols) {
+    for (const col of numericCols) {
+      const v = obj[col];
+      if (v === null || v === undefined) continue;
+      if (typeof v !== 'number' || !Number.isFinite(v)) {
+        return `${col}=${v}: debe ser numérico`;
+      }
+    }
+  }
+  return null;
+}

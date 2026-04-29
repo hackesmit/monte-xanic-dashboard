@@ -10,7 +10,7 @@
 
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
-import { normalizeValue, normalizeDate } from './normalize.js';
+import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
 
 // pre_receptions table columns whose values must be ISO YYYY-MM-DD.
 const DATE_COLUMNS = new Set(['reception_date', 'medicion_date', 'lab_date']);
@@ -28,6 +28,16 @@ const INT_COLUMNS = new Set([
   'vintage_year',
   'health_madura', 'health_inmadura', 'health_sobremadura', 'health_picadura',
   'health_enfermedad', 'health_pasificada', 'health_aceptable', 'health_no_aceptable',
+]);
+
+// pre_receptions NUMERIC-typed columns. Same defense-in-depth as INT_COLUMNS:
+// reject non-numeric strings at the parser so the whole batch doesn't fail
+// with Postgres' opaque "invalid input syntax for type numeric" (Round 34).
+// total_bins is included here (NUMERIC after migration_total_bins_numeric.sql).
+const NUMERIC_COLUMNS = new Set([
+  'total_bins', 'tons_received', 'bin_temp_c', 'truck_temp_c',
+  'bunch_avg_weight_g', 'berry_length_avg_cm', 'berries_200_weight_g', 'berry_avg_weight_g',
+  'brix', 'ph', 'at', 'ag', 'am', 'polifenoles', 'catequinas', 'antocianos',
 ]);
 
 function normalizeHeader(h) {
@@ -100,16 +110,12 @@ export const prerecepcionParser = {
 
       const obj = {};
       let hasData = false;
-      let intReject = null;
       headers.forEach((h, idx) => {
         const col = columnLookup[h];
         if (!col) return;
         const val = DATE_COLUMNS.has(col)
           ? normalizeDate(row[idx])
           : normalizeValue(row[idx]);
-        if (!intReject && INT_COLUMNS.has(col) && typeof val === 'number' && !Number.isInteger(val)) {
-          intReject = `${col}=${val}: debe ser entero`;
-        }
         obj[col] = val;
         if (val !== null) hasData = true;
       });
@@ -131,10 +137,16 @@ export const prerecepcionParser = {
         });
         continue;
       }
-      if (intReject) {
+      // Type validation (Round 32 INT + Round 34 NUMERIC). Run after the
+      // identity guards so a missing/pendiente report_code is surfaced first.
+      const typeReject = validateColumnTypes(obj, {
+        intCols: INT_COLUMNS,
+        numericCols: NUMERIC_COLUMNS,
+      });
+      if (typeReject) {
         rejected.push({
           row: Object.fromEntries(headers.map((h, idx) => [h, row[idx]])),
-          motivo_rechazo: intReject,
+          motivo_rechazo: typeReject,
         });
         continue;
       }
