@@ -111,10 +111,12 @@ CREATE TABLE IF NOT EXISTS prefermentativos (
   temperature      numeric,
   tant             numeric,
   notes            text,
+  vintage_year     integer,
   uploaded_at      timestamptz DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS prefermentativos_variety_idx ON prefermentativos (variety);
+CREATE INDEX IF NOT EXISTS prefermentativos_vintage_idx ON prefermentativos (vintage_year);
 
 -- ── meteorology ───────────────────────────────────────────────────
 -- Auto-populated from Open-Meteo API (Valle de Guadalupe 32.0°N 116.6°W)

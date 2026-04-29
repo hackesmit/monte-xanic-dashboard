@@ -4,7 +4,7 @@
 > See TASK.md for the complete resolution table.
 > Read `CLAUDE.md` first for full project context.
 >
-> **Last updated:** 2026-04-24 (Round 27 — R24.weather mobile fix + e2e regression + CI repair).
+> **Last updated:** 2026-04-29 (Round 33 — `prefermentativos` upload: heterogeneous-keys rejection + latent column-doesn't-exist drift).
 
 ---
 
@@ -1146,3 +1146,182 @@ If both A and B are taken: the test fixture should hold a fractional `total_bins
 - **Rollback plan if needed:** `ALTER TABLE pre_receptions ALTER COLUMN total_bins TYPE INT USING ROUND(total_bins)` — but this would lose the `.5` precision on row `MT-24-011`, so production data should be reviewed before any rollback.
 - **No source/config files modified by this review.** Only `REVIEW.md` appended (this Round 32 block). Per `CLAUDE.md` agent rules ("Planner/Reviewer: NEVER edit source code"), Phase 4 implementation belongs to the builder.
 - **Working tree after this append:** `M REVIEW.md`. Branch `main` still matches `origin/main` at `2f7adb1`.
+
+---
+
+## Round 33 — `prefermentativos` upload: heterogeneous-keys rejection + latent `vintage_year` column drift (2026-04-29)
+
+**User-reported error:**
+```
+✓ Recepciones de tanque: 130 insertadas/actualizadas
+✓ Lotes de recepción: 165 insertadas/actualizadas
+✗ Prefermentativos: Error al insertar datos: All object keys must match
+```
+**Mode:** Phase 1 root-cause investigation only (per Iron Law). No fix proposed; no source/config edited.
+**Working tree at start:** clean. `main` at `ef05548` (Round 32 Option A + B both shipped). Round 32 confirmed working in the previous review for `pre_receptions`.
+
+### Phase 1 verdict
+
+**Two stacked defects in the prefermentativos write path. Only the first (keys-mismatch) is currently visible because PostgREST aborts before Postgres can surface the second.**
+
+1. **Visible defect — heterogeneous-keys rejection at the PostgREST layer.** The parser produces `prefermentativos` rows whose key sets differ across rows. PostgREST requires every object in a bulk POST array to have the **identical key set**, and returns the literal string `"All object keys must match"` when it doesn't. This is the error the user is seeing.
+2. **Latent defect — column does not exist.** Even if every row had homogeneous keys, the parser is sending a `vintage_year` field to a table that has no `vintage_year` column. The schema in `sql/schema.sql:101–115` defines `prefermentativos(id, report_code, measurement_date, batch_code, tank_id, variety, brix, ph, ta, temperature, tant, notes, uploaded_at)` — no `vintage_year`. No migration file in `sql/` adds one. Yet `api/upload.js:78` whitelists `vintage_year` for this table, and the parser writes it (`js/upload/recepcion.js:133–139`). This is schema drift — either the production DB has a `vintage_year` column added out-of-band (no migration file checked in), or this code path has shipped broken under defect #1's cover.
+
+### Why the visible error fires (defect 1, root cause)
+
+`js/upload/recepcion.js:133–139` (Prefermentativos branch):
+
+```js
+if (obj.batch_code && !obj.vintage_year) {
+  const m = String(obj.batch_code).match(/^(\d{2})/);
+  if (m) {
+    const y = 2000 + parseInt(m[1], 10);
+    obj.vintage_year = (y >= 2015 && y <= 2040) ? y : null;
+  }
+}
+```
+
+- `vintage_year` is **not** in `CONFIG.prefermentToSupabase` (`js/config.js:461–475`), so the base header loop at `recepcion.js:121–129` never assigns it.
+- The block above only assigns `obj.vintage_year` when `batch_code` is truthy **and** matches `^\d{2}`.
+- Any preferment row with empty `batch_code`, or `batch_code` not starting with two digits → that row is missing the `vintage_year` key entirely while sibling rows have it.
+- The mixed-shape array is sent verbatim to `${supabaseUrl}/rest/v1/prefermentativos` at `api/upload.js:181`. PostgREST validates and rejects with `All object keys must match`.
+
+### Why receptions and lots succeeded
+
+| Target | Outcome | Why |
+|---|---|---|
+| `tank_receptions` (130 rows) | ✓ | Has the **same conditional-key defect** at `recepcion.js:86–92`, but every batch_code in this file happens to start with two digits, so `vintage_year` was set on all 130 rows. Working by data luck. |
+| `reception_lots` (165 rows) | ✓ | Constructed at `recepcion.js:98` with a fixed shape `{ report_code, lot_code, lot_position }`. No conditional keys — inherently safe. |
+| `prefermentativos` | ✗ | At least one row's `batch_code` is empty / non-digit-prefixed, breaking the key-set uniformity. |
+
+### Multi-component evidence trace (defect 1)
+
+| Layer | Observation |
+|---|---|
+| **Excel `Prefermentativos` sheet** | At least one row exists where `batch_code` is empty or does not start with two digits (the `Variedad` field can be populated without `Código (lote de bodega)`). |
+| **`XLSX.utils.sheet_to_json`** | Returns `null` for empty cells (`defval: null` at `recepcion.js:20`). |
+| **`normalizeValue(null)`** | `js/upload/normalize.js` — passes through as `null`. |
+| **Header-mapping loop (`recepcion.js:121–129`)** | Sets `obj.batch_code = null`. Every row gets the same 11 keys at this point. |
+| **vintage_year derivation (`recepcion.js:133–139`)** | `obj.batch_code` is `null` → block is skipped → `vintage_year` is **not added**. Sibling rows with valid `batch_code` get a 12th key. |
+| **`api/upload.js:134–142` strip loop** | Strips unknown keys per row; does **not** normalize the union of keys. `vintage_year` is in the allowed set, so missing-key rows pass through as-is. |
+| **`fetch(POST /rest/v1/prefermentativos, body=rows)`** | PostgREST validates: array elements have differing key sets → rejects with `All object keys must match`. |
+
+**Failing layer:** the parser's row-construction loop. Specifically, the conditional `vintage_year` assignment violates the invariant that "all rows in a `targets[i].rows` array must share the same key set."
+
+### Latent defect 2 — `vintage_year` column does not exist on `prefermentativos`
+
+Repository state (authoritative for what migrations have been applied):
+
+| Source | Says |
+|---|---|
+| `sql/schema.sql:101–115` | `CREATE TABLE prefermentativos` lists 13 columns. **No `vintage_year`.** |
+| `sql/migration_*.sql` (full sweep) | Zero hits for `prefermentativos` + `vintage_year` in any migration file. |
+| `js/config.js:461–475` (`prefermentToSupabase`) | Maps no Excel header to `vintage_year`. The column is parser-derived, not source-driven. |
+| `api/upload.js:78` | **Whitelists `vintage_year` as an allowed column** for the `prefermentativos` table. |
+| `js/upload/recepcion.js:133–139` | Writes `vintage_year` to preferment rows (when batch_code is digit-prefixed). |
+
+The whitelist + parser disagree with the schema. There are two scenarios:
+
+- **(a) Schema drift.** The production Supabase `prefermentativos` table has a `vintage_year` column added directly via the Supabase UI, with no checked-in migration. The schema files in the repo are stale. The whitelist would then be correct, and after fixing defect 1 the upload would succeed.
+- **(b) Always-broken path.** The column was never added. Defect 1 has masked defect 2 since this code shipped — once the keys-mismatch is fixed, the next request would fail with PostgREST `column "vintage_year" of relation "prefermentativos" does not exist` (HTTP 400, error message would be different from the current one).
+
+**The reviewer cannot resolve (a) vs. (b) without a database query.** The fix path needs to handle both possibilities (see Option A below).
+
+### Pattern analysis (Phase 2) — same defect class, four sites
+
+The conditional-key defect is structural across the upload pipeline. Same pattern as Round 30 (date typing) and Round 32 (integer typing): **the parser is the only place value-shape invariants are enforced, and it doesn't enforce them consistently.**
+
+| File | Line | Conditional key | Currently breaks? |
+|---|---|---|---|
+| `js/upload/recepcion.js` | 86–92 (recepción branch) | `vintage_year` | No (data luck) |
+| `js/upload/recepcion.js` | 133–139 (preferment branch) | `vintage_year` | **Yes (this report)** |
+| `js/upload/winexray.js` | 68–73 | `vintage_year` | Unknown — would surface on a CSV with at least one row whose `sample_id` doesn't yield a valid vintage |
+| `js/upload/prerecepcion.js` | 149 | `vintage_year` | Worked in Round 32 because batch_code parsing landed before this rejection mode could surface |
+
+All four sites share the shape: `obj.vintage_year` is assigned only inside an `if`, with no `else` initializing it. None of them initialize the key to `null` upfront.
+
+### Cross-table sweep — does this hit any other batch insert?
+
+Beyond the `vintage_year` family, I scanned for other parser-derived fields that could produce inconsistent key sets across rows in the same `targets[i].rows` array:
+
+- `tank_receptions._lot1.._lot4` — stripped by `recepcion.js:95–101` (always deleted, not selectively). Safe.
+- `reception_lots` — constructed with literal-shape rows. Safe.
+- `wine_samples`, `berry_samples` (winexray) — header-loop keys are uniform; the only conditional addition is `vintage_year`. Same defect, latent.
+- `pre_receptions` — `vintage_year` is the only conditional key (`prerecepcion.js:149`). Same defect, latent.
+
+**No additional defect classes surfaced.** The bug is uniform: every parser has exactly one conditional-key field, and that field is always `vintage_year`.
+
+### Proposed fix options (for the builder — Phase 4 ownership)
+
+**Option A — Initialize `vintage_year = null` upfront in every parser (recommended, primary fix).**
+In each of the four sites listed above, add `obj.vintage_year = null;` *before* the `if (obj.batch_code) …` (or `if (obj.sample_id) …`) block, then let the existing block overwrite it when derivable. Result: every row always has the `vintage_year` key, regardless of source data.
+
+```js
+// js/upload/recepcion.js — preferment branch
+obj.vintage_year = null;                                  // ← new
+if (obj.batch_code) {
+  const m = String(obj.batch_code).match(/^(\d{2})/);
+  if (m) {
+    const y = 2000 + parseInt(m[1], 10);
+    if (y >= 2015 && y <= 2040) obj.vintage_year = y;
+  }
+}
+```
+
+Apply identically to:
+- `js/upload/recepcion.js:86–92` (recepción branch — fixes the latent same-defect on `tank_receptions`)
+- `js/upload/recepcion.js:133–139` (preferment branch — fixes the user-reported error)
+- `js/upload/winexray.js:68–73`
+- `js/upload/prerecepcion.js:149`
+
+This is the smallest change that closes defect 1 across all four parsers. Does **not** address defect 2 — see Option B.
+
+**Option B — Resolve defect 2 (column drift) before/with Option A.**
+The builder must verify whether `prefermentativos.vintage_year` exists in the live database:
+1. Run in Supabase SQL editor: `SELECT column_name FROM information_schema.columns WHERE table_name = 'prefermentativos' ORDER BY ordinal_position;`
+2. **If `vintage_year` is present:** Backfill the schema by adding a migration file that documents the existing state. Suggested filename: `sql/migration_prefermentativos_vintage_year.sql` containing `ALTER TABLE prefermentativos ADD COLUMN IF NOT EXISTS vintage_year INT;` plus the supporting index. Update `sql/schema.sql:101–115` to match. Option A alone is then sufficient to unblock the user.
+3. **If `vintage_year` is absent:** Either (i) add the column via the migration above (treat the API whitelist as the source of truth) — preferred, since the parser already derives it usefully and it parallels `tank_receptions.vintage_year`; or (ii) remove `vintage_year` from `api/upload.js:78` whitelist AND from the parser writes at `recepcion.js:133–139` (treat the schema as the source of truth — but loses the derived value with no replacement).
+
+**Recommendation: A + B-(3-i).** Add the column (parallels `tank_receptions`), backfill the migration file, then ship the parser-side `vintage_year = null` initializer. This makes the schema, whitelist, parser, and downstream queries consistent.
+
+**Option C — Defense-in-depth at the API boundary (recommended as a follow-up, lower priority).**
+After Option A normalizes per-parser, also harden `api/upload.js`. After the strip loop at lines 137–141, compute the union of keys across `rows` and fill missing keys on each row with `null`. This protects against any future parser introducing a conditional key — symmetric to Round 32's Option B (parser-level INT validation), but at the layer above.
+
+```js
+// js/upload.js → api/upload.js, after the column-strip loop:
+if (rows.length > 1) {
+  const allKeys = new Set();
+  for (const r of rows) for (const k of Object.keys(r)) allKeys.add(k);
+  for (const r of rows) {
+    for (const k of allKeys) if (!(k in r)) r[k] = null;
+  }
+}
+```
+
+Defense-in-depth only; would have prevented this round's user-visible error even with the parser bugs in place. Independent of Options A and B.
+
+**Option D — Catch-and-rephrase the PostgREST error (NOT recommended).** Detecting `"All object keys must match"` and returning a Spanish-friendlier message hides the actual issue. The structural fix (A + B) makes the error impossible.
+
+**Recommendation order: A and B together (one PR), then C as a follow-up.** A alone, without B, gambles on schema drift scenario (a). B alone leaves the latent same-class defect on the other three parsers. C is strategic, not urgent.
+
+### Missing tests (for Phase 4)
+
+For Option A:
+- Unit test against each parser using a fixture with at least one row missing the source field that triggers `vintage_year` (empty `batch_code` for recepcion/preferment/prerecepcion; non-vintage-encoding `sample_id` for winexray). Assert: `Object.keys(rows[0]).sort()` deep-equals `Object.keys(rows[i]).sort()` for every `i`. Assert that the row missing the source field has `vintage_year === null`.
+- Integration test for the preferment branch specifically — given a 2-row mock `Prefermentativos` sheet (one with `batch_code = '25-XYZ'`, one with `batch_code = null`), assert `rows[0].vintage_year === 2025 && rows[1].vintage_year === null`.
+
+For Option B:
+- After the migration runs, read the schema (`information_schema.columns`) in a Vitest setup or a CI smoke test and assert that every column listed in `api/upload.js`'s whitelist for a given table actually exists on that table. Locks in schema↔whitelist consistency for the future.
+
+For Option C:
+- Unit test against the API handler's request-shaping path: feed a `rows` array with mixed key sets, assert the outgoing payload (mocked fetch) has uniform keys with `null` fill on all rows.
+
+### Notes for the builder
+
+- **Severity:** P1 — blocks every prefermentativos upload from `Recepcion_de_Tanque_*.xlsx` whenever any row has a non-digit-prefixed or empty `batch_code`. The visible error is the keys-mismatch; latent defect 2 may surface immediately after Option A ships.
+- **Pre-flight DB check is mandatory.** Before merging any fix, run the `information_schema` query above. The result determines whether Option B is "backfill a migration file" (drift case) or "ship a real ALTER" (always-broken case). Skipping this risks shipping a fix that immediately breaks with a different error.
+- **Scope discipline:** The user reported only the prefermentativos failure, but Option A's same-line change to the other three parsers is so small and so clearly correct that bundling them in one PR is preferable to leaving three latent same-class defects. The Round 32 precedent (one round = one fix family) supports this.
+- **Naming consistency:** If Option B-(3-i) is chosen, name the migration `sql/migration_prefermentativos_vintage_year.sql` (matches `sql/migration_pre_receptions.sql`, `sql/migration_total_bins_numeric.sql`).
+- **No regression risk for existing data.** Adding `vintage_year` to `prefermentativos` is additive; the column will be `NULL` for every existing row. No data movement, no constraint check.
+- **No source/config files modified by this review.** Only `REVIEW.md` appended (this Round 33 block) plus the header `Last updated` line. Per `CLAUDE.md` agent rules ("Planner/Reviewer: NEVER edit source code"), Phase 4 implementation belongs to the builder.
+- **Working tree after this append:** `M REVIEW.md`. Branch `main` still matches `origin/main` at `ef05548`.

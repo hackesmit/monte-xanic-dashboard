@@ -133,4 +133,54 @@ describe('MT.14 — Recepción parser', () => {
       'Prefermentativos measurement_date must be ISO');
     assert.equal(prefRow1.measurement_date, '2025-08-15');
   });
+
+  // Round 33 — PostgREST rejects mixed-shape arrays with "All object keys
+  // must match". Both Recepción and Prefermentativos branches conditionally
+  // assign vintage_year, so a row with empty / non-digit-prefixed batch_code
+  // currently lands without that key while sibling rows carry it. Test
+  // both branches in one fixture.
+  it('produces uniform key sets across rows on Recepción + Prefermentativos branches', async () => {
+    const XLSX = await import('xlsx');
+
+    const recAoa = [
+      ['','FL 8.5.8 rev 2','','ANÁLISIS DE RECEPCIÓN'],
+      ['Reporte','Fecha','Lote de viñedo 1','Código (lote de bodega)','Tanque','Variedad'],
+      ['RRT-200', new Date(Date.UTC(2025, 7, 8)),  'SBMX-2A', '25SBVDG-200', 'TK-A', 'Sauvignon Blanc'],
+      ['RRT-201', new Date(Date.UTC(2025, 7, 9)),  'SBMX-2B', null,           'TK-B', 'Sauvignon Blanc'],
+    ];
+    const recSheet = XLSX.utils.aoa_to_sheet(recAoa);
+
+    const prefAoa = [
+      ['FL 8.5.8 rev 2','','ANÁLISIS PREFERMENTATIVOS','',''],
+      ['Reporte','Fecha','Código (lote de bodega)','Tanque','Variedad'],
+      ['RRT-200', new Date(Date.UTC(2025, 7, 11)), '25SBVDG-200', 'TK-A', 'Sauvignon Blanc'],
+      ['RRT-201', new Date(Date.UTC(2025, 7, 12)), null,           'TK-B', 'Sauvignon Blanc'],
+    ];
+    const prefSheet = XLSX.utils.aoa_to_sheet(prefAoa);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, recSheet,  'Recepción 2025');
+    XLSX.utils.book_append_sheet(wb, prefSheet, 'Prefermentativos 2025');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const file = asFakeFile(Buffer.from(buf), 'mixed_keys.xlsx');
+
+    const result = await recepcionParser.parse(file);
+    const recRows = result.targets[0].rows;
+    const prefRows = result.targets[2].rows;
+
+    assert.equal(recRows.length, 2);
+    assert.deepEqual(Object.keys(recRows[0]).sort(), Object.keys(recRows[1]).sort(),
+      'tank_receptions rows must share the same key set');
+    assert.ok(Object.keys(recRows[0]).includes('vintage_year'));
+    const rec201 = recRows.find(r => r.report_code === 'RRT-201');
+    assert.equal(rec201.vintage_year, null,
+      'row with no batch_code must have vintage_year=null, not absent');
+
+    assert.equal(prefRows.length, 2);
+    assert.deepEqual(Object.keys(prefRows[0]).sort(), Object.keys(prefRows[1]).sort(),
+      'prefermentativos rows must share the same key set — this is the user-reported bug');
+    assert.ok(Object.keys(prefRows[0]).includes('vintage_year'));
+    const pref201 = prefRows.find(r => r.report_code === 'RRT-201');
+    assert.equal(pref201.vintage_year, null);
+  });
 });

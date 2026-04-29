@@ -170,4 +170,28 @@ describe('MT.13 — WineXRay parser', () => {
     assert.match(rejected.motivo_rechazo, /days_post_crush/);
     assert.match(rejected.motivo_rechazo, /entero|integer/i);
   });
+
+  // Round 33 — PostgREST rejects mixed-shape arrays with "All object keys
+  // must match". `applyNormalization` only assigns vintage_year inside an
+  // `if (m)` block, so a sample_id whose first chars don't match \d{2}
+  // currently lands without the vintage_year key while sibling rows carry it.
+  it('produces uniform key sets across rows even when vintage_year is not derivable', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,CrushDate (yyyy-mm-dd),Variety,Appellation',
+      '25CSMX-400,Aging Wine,2/27/2026,2/15/2026,Cabernet Sauvignon,Valle de Guadalupe',
+      'XYMX-001,Aging Wine,2/27/2026,2/15/2026,Merlot,Valle de Guadalupe',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 'mixed_keys.csv');
+    const result = await winexrayParser.parse(file);
+    const wine = result.targets.find(t => t.table === 'wine_samples').rows;
+
+    assert.equal(wine.length, 2, 'both rows must be accepted');
+    assert.deepEqual(Object.keys(wine[0]).sort(), Object.keys(wine[1]).sort(),
+      'wine_samples rows must share the same key set');
+    assert.ok(Object.keys(wine[0]).includes('vintage_year'));
+
+    const xy = wine.find(r => r.sample_id === 'XYMX-001');
+    assert.equal(xy.vintage_year, null,
+      'sample_id without 2-digit prefix must yield vintage_year=null, not absent');
+  });
 });
