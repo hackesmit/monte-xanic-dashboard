@@ -70,7 +70,7 @@ export const ALLOWED_TABLES = {
     columns: new Set(['report_code','lot_code','lot_position','reception_id']),
   },
   prefermentativos: {
-    conflict: 'report_code,measurement_date',
+    conflict: 'report_code',
     maxRows: 200,
     required: ['report_code'],
     columns: new Set([
