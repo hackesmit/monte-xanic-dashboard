@@ -219,4 +219,41 @@ describe('MT.15 — Pre-recepción parser', () => {
     assert.match(rejected.motivo_rechazo, /entero|integer/i,
       'motivo_rechazo must indicate the value is not an integer');
   });
+
+  // Round 33 — PostgREST rejects bulk inserts with "All object keys must
+  // match" when rows have heterogeneous key sets. The conditional
+  // `if (dateStr) … obj.vintage_year = y` block leaves vintage_year off
+  // any row without a usable date. All rows must carry the same key set
+  // (vintage_year may be null but must be present).
+  it('produces uniform key sets across rows even when vintage_year is not derivable', async () => {
+    const XLSX = await import('xlsx');
+    const headers = ['Vintrace','No. Reporte','Fecha medición técnica','Fecha recepción de uva','Variedad','Lote de campo'];
+    const aoa = [
+      ['MEDICIÓN TÉCNICA','','','','',''],
+      ['','','','','',''],
+      headers,
+      ['VT-A','MT-24-A01', new Date(Date.UTC(2024, 7, 21)), new Date(Date.UTC(2024, 7, 20)), 'Cabernet Sauvignon', '24CSMX-1'],
+      ['VT-B','MT-24-A02', null, null, 'Merlot', '24MEMX-1'],
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet, 'Pre-recepción');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const file = asFakeFile(Buffer.from(buf), 'mixed_dates.xlsx');
+
+    const result = await prerecepcionParser.parse(file);
+    const rows = result.targets[0].rows;
+    assert.equal(rows.length, 2, 'both rows must be accepted');
+
+    const k0 = Object.keys(rows[0]).sort();
+    const k1 = Object.keys(rows[1]).sort();
+    assert.deepEqual(k0, k1,
+      'all rows must share the same key set — PostgREST rejects mixed-shape arrays');
+    assert.ok(k0.includes('vintage_year'), 'vintage_year must be a key on every row');
+
+    const a01 = rows.find(r => r.report_code === 'MT-24-A01');
+    const a02 = rows.find(r => r.report_code === 'MT-24-A02');
+    assert.equal(a01.vintage_year, 2024, 'derivable vintage_year must populate');
+    assert.equal(a02.vintage_year, null, 'non-derivable vintage_year must be null, not absent');
+  });
 });

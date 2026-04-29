@@ -143,6 +143,10 @@ export const prerecepcionParser = {
         obj.variety = CONFIG.normalizeVariety(obj.variety);
       }
 
+      // Initialize vintage_year so all rows share the same key set —
+      // PostgREST rejects mixed-shape arrays with "All object keys must
+      // match" (Round 33). Block below overwrites when derivable.
+      obj.vintage_year = null;
       const dateStr = obj.medicion_date || obj.reception_date;
       if (dateStr) {
         const y = new Date(dateStr).getFullYear();

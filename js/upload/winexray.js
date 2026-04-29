@@ -65,6 +65,10 @@ function applyNormalization(obj) {
   if (obj.appellation !== undefined) {
     obj.appellation = CONFIG.normalizeAppellation(obj.appellation, obj.sample_id);
   }
+  // Ensure vintage_year is always a key on obj — PostgREST rejects bulk
+  // inserts with "All object keys must match" if rows differ (Round 33).
+  // Covers the case where the CSV has no `Vintage` column at all.
+  if (obj.vintage_year === undefined) obj.vintage_year = null;
   if (!obj.vintage_year && obj.sample_id) {
     const m = String(obj.sample_id).match(/^(\d{2})/);
     if (m) {
