@@ -909,3 +909,82 @@ The first three are the minimum to lock in the fix; without (1)+(2) the regressi
 - **Phase boundaries respected.** This round is Phase 1 (root cause) only. No fix proposed; no source/config edited; no schema touched. Per `CLAUDE.md` agent rules and the session's reviewer-role contract, the builder owns Phase 4 implementation.
 - **Verification trace for the audit-paranoid:** to confirm the diagnosis without trusting this review, the builder can run `node -e "import('xlsx').then(m=>{const b=require('fs').readFileSync('Xanic info/Recepcion_de_Tanque_2025.xlsx');const wb=m.read(b,{type:'buffer'});console.log(m.utils.sheet_to_json(wb.Sheets['Recepción 2025'],{header:1,raw:false})[3].slice(0,4))})"` — this prints the raw row-3 array as the parser sees it, including the offending `"12/8/2025"`-style date string. Once the fix lands, the same line should print a `Date` object (Option A) or a normalized `"2025-08-12"` (Option B).
 - **No working-tree changes other than this `REVIEW.md` append.** Branch `main` still matches `origin/main` at `4f32e0d`.
+
+---
+
+## Round 31 — Builder fix verification + new pre-existing P1 surfaced (2026-04-29)
+
+**Scope:** Reviewing commit `415286c fix(upload): convert dates to ISO in all three parsers (Round 30)`. Working tree clean; `main` is up to date with `origin/main`. Verifying the fix against (a) Round 30's prescription, (b) the unit-test suite, and (c) the real user files in `Xanic info/`.
+
+### Verdict
+
+**Round 30 fix: accepted.** The builder picked Option B (recommended), implemented it cleanly, and the date pipeline now produces ISO strings end-to-end against the real user files. The user's specific `21/08/2024` failure mode is resolved.
+
+**However, end-to-end verification surfaced an unrelated pre-existing P1 in the same parser file** — Prefermentativos rows are silently dropped from the live `Recepcion_de_Tanque_2025.xlsx` file because the parser hard-codes the header at row 0 of that sheet. This was **not introduced by Round 30** (`git blame` on the offending line points to `ab5a88c7`, the original parser commit, 2026-04-24). The user is likely to notice this the moment they try a real upload — flagging it now before they hit it.
+
+### What the builder did right
+
+1. **Option B chosen, exactly as prescribed.** New `js/upload/normalize.js` exports `normalizeValue` (deduplicated from three call sites) plus a date-aware `normalizeDate` covering: native `Date` → `YYYY-MM-DD`; numeric Excel serial via `XLSX.SSF.parse_date_code`; ISO prefix; and slash/dash strings with day-disambiguation heuristic + locale hint (`dmy` default, `mdy` opt-in). Implementation reviewed line-by-line — handles edge cases I called out (e.g. ISO-prefix match drops trailing fractional-second timestamps that exceed Postgres' 6-digit precision; numeric-serial path filters non-positive and non-finite values).
+2. **`cellDates: true` + `raw: true` flipped in all three XLSX read paths** (`prerecepcion.js:48`, `recepcion.js:41`, `winexray.js:21`), so date cells emerge as `Date` objects independent of the workbook's locale format code.
+3. **Date columns routed through `normalizeDate` correctly per table:**
+   - `prerecepcion.js`: `{reception_date, medicion_date, lab_date}` — matches all three date columns in `pre_receptions` whitelist (`api/upload.js:55–61`).
+   - `recepcion.js`: `RECEPCION_DATE_COLUMNS = {reception_date}` (matches `tank_receptions:24`); `PREFERMENT_DATE_COLUMNS = {measurement_date}` (matches `prefermentativos:77`).
+   - `winexray.js`: `{sample_date, crush_date}` with `dateOrder='mdy'` for the WineXRay tool's US-format slash strings — matches both `wine_samples` and `berry_samples` whitelists.
+4. **All four prescribed regression tests added and passing** (verified locally — `npm test` reports `tests 270 / pass 270 / fail 0`):
+   - MT.13 — WineXRay slash-format MDY → ISO.
+   - MT.14 — Recepción + Prefermentativos with **real Excel date cells** under DMY format codes; explicitly asserts the day=15 row that previously failed Postgres now lands as `2025-08-15`.
+   - MT.15 — Pre-recepción with real date cells under DMY format.
+   - MT.15 — Pre-recepción with real date cells under MDY format, asserting *identical* output to the DMY case (the locale-independence proof).
+   These tests *do* exercise real Excel date cells (built via `XLSX.utils.aoa_to_sheet(..., { cellDates: true })` with explicit `cell.z = 'dd/mm/yyyy'` / `'m/d/yy'` format codes) — they would fail against the legacy `raw: false` parser, so they meaningfully lock in the contract.
+5. **`.gitignore` adopts Round 29's safe-minimum exactly** — added `Xanic info/` and `desktop.ini` only; no global `*.xlsx` / `*.csv` rules. Verified `git ls-files | grep -E '\.(xlsx|csv)$'` still returns the three test fixtures (`tests/fixtures/{prerecepcion,recepcion}_sample.xlsx`, `tests/fixtures/winexray_mixed.csv`); they remain tracked.
+6. **Scope discipline.** Diff is exactly the intended scope (9 files, +485/−37) — parser code, shared helper, three test files, `.gitignore`, `REVIEW.md`. No drive-by refactors. No schema migrations. No changes to `api/upload.js` (server-side stays a pass-through, as it should). No changes to `dataLoader.js`, `events.js`, or unrelated modules.
+
+### End-to-end live-file verification (this round, just performed)
+
+Executed each parser against the real files in `Xanic info/` using the new code:
+
+| File | Parser | Result |
+|---|---|---|
+| `prerecepcion_actualizado (1).xlsx` | `prerecepcionParser` | 104 `pre_receptions` rows; sample `reception_date=2024-08-20`, `medicion_date=2024-08-21`, `lab_date=2024-08-21`; **all 104 rows × 3 date columns are ISO `YYYY-MM-DD`**. |
+| `Recepcion_de_Tanque_2025.xlsx` (Recepción sheet) | `recepcionParser` | 130 `tank_receptions` rows + 165 `reception_lots` rows; sample `reception_date=2025-08-08`; **all 130 rows are ISO**. |
+| `result (2).csv` | `winexrayParser` | 1222 `wine_samples` + 784 `berry_samples`; sample `sample_date=2026-02-27`, `crush_date=2025-09-01` (correct MDY interpretation); **all 2006 rows × 2 date columns are ISO**. |
+
+The user's exact failure mode (`Pre-recepciones: Error al insertar datos: date/time field value out of range: "21/08/2024"`) now produces `medicion_date=2024-08-21` — correct ISO output. **Resolved.**
+
+### Priority 1 Issues
+
+**P1.1 — Prefermentativos sheet rows silently disappear from the live `Recepcion_de_Tanque_2025.xlsx` file. Pre-existing bug, surfaced by Round 31's e2e check, not introduced by Round 30.**
+
+- **File / line:** `js/upload/recepcion.js:107–109`. Origin: commit `ab5a88c7` (2026-04-24, original parser).
+  ```js
+  const prefRows = sheetToArray(wb, prefermSheet);
+  if (prefRows.length >= 2) {
+    const prefHeaders = prefRows[0].map(h => String(h ?? '').trim());
+    for (let i = 1; i < prefRows.length; i++) { ... }
+  ```
+- **Bug:** Prefermentativos parsing assumes the header is at row 0. The Recepción sheet (line 64) correctly uses `findHeaderRow(recRows)` to auto-detect, but the Prefermentativos branch was never updated to do the same.
+- **Live-file impact:** `Recepcion_de_Tanque_2025.xlsx` has the title `"FL 8.5.8 rev 2 / ANÁLISIS PREFERMENTATIVOS"` at row 0 and the actual headers (`Reporte`, `Reporte ` (with trailing space), `Fecha`, …) at row 1. The parser reads row 0 as headers (none match `CONFIG.prefermentToSupabase`), then iterates rows 1+ — every row's mapped `obj` ends up empty, fails `!hasData || !obj.report_code`, and is skipped. Live file: **0 prefermentativos rows produced** (out of ~28 non-empty data rows visible in the sheet).
+- **Why it didn't fail tests:** `tests/fixtures/recepcion_sample.xlsx` puts the Prefermentativos header at row 0. So MT.14 has always parsed prefermentativos correctly, but only because the fixture was authored to match the parser's hard-coded assumption — not the layout the production export tool actually produces.
+- **Why it didn't fail Round 30's MT.14 addition either:** the new test I'm pleased the builder added (`parses real Excel date cells on both Recepción + Prefermentativos sheets`) builds the Prefermentativos sheet with header at row 0, mirroring the existing fixture rather than the live file.
+- **Suggested fix (for the builder, not me):** replace `prefRows[0]` with the same `findHeaderRow(prefRows)` pattern already used three lines up for Recepción. Then update the test fixture (and/or add a new test case) to put the title row above the headers, matching what the production export looks like. This is a ~3-line code change plus a test.
+- **Severity:** P1 because it silently drops production data with no error surfaced to the user. Worse than the date bug Round 30 fixed (which at least failed loudly).
+
+### Priority 2 Improvements
+
+**P2.1 — `recepcion.js` Prefermentativos branch also uses `prefRows[0].trim()` only, while the Recepción branch normalizes whitespace via `.trim().replace(/\s+/g, ' ')` (line 66).** Once P1.1 is fixed, this cosmetic inconsistency should also be reconciled — the Prefermentativos sheet has a duplicate `"Reporte "` column with trailing whitespace that requires the same whitespace-collapsing the Recepción branch already does, otherwise the column lookup will miss it.
+
+**P2.2 — `XLSX.utils.aoa_to_sheet(..., { cellDates: true })` is a SheetJS *write*-side option, not a read-side one.** In MT.14 / MT.15 the new tests pass `{ cellDates: true }` to `aoa_to_sheet`, which has no effect (SheetJS ignores unknown options on write). The tests still pass because `XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true })` does take effect and stores the cells as date types. So the tests are correct, but the `aoa_to_sheet` cellDates argument is a no-op and could be removed for clarity. Not blocking.
+
+**P2.3 — `normalizeDate`'s 2-digit-year handling assumes 21st century.** `if (year < 100) year += 2000` — fine for current production data (all winery records are post-2015) but worth documenting. If anyone ever uploads historical data with `8/21/95`, it'll land as `2095-08-21`. Low priority; the column-aware approach already drops anything Postgres would reject, and a year=2095 winery sample would surface as obviously wrong.
+
+### Missing Tests
+
+- **MT.14 needs a test case that mirrors the live file's Prefermentativos layout** (title at row 0, headers at row 1), asserting that valid rows are produced. Right now the test fixture matches the parser's hard-coded assumption rather than the production export layout — the very gap that hid P1.1. This should land alongside the P1.1 fix.
+- **No other test gaps in this round.** The 4 new tests Round 30 added are well-targeted and would catch a date-handling regression.
+
+### Notes
+
+- Round 30 fix completes the systematic-debugging Phase 4 cycle for the user's reported issue. Test-before-fix discipline followed (the 4 regression tests would fail against the legacy `raw: false` parser).
+- The new P1.1 (prefermentativos header detection) was not in scope for Round 30 — it surfaces only because Round 31's verification step ran the new parser against the real workbook end-to-end. This is exactly what a verification step is supposed to catch; flagging it cleanly so the builder can address it as a separate small change.
+- No source/config files modified by this review. Only `REVIEW.md` appended. Per `CLAUDE.md` agent rules, the builder owns the P1.1 fix.
+- Working tree after this append: `M REVIEW.md`. Branch `main` still matches `origin/main` at `415286c`.

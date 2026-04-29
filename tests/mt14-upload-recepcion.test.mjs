@@ -92,21 +92,24 @@ describe('MT.14 — Recepción parser', () => {
       ['RRT-100', new Date(Date.UTC(2025, 7, 8)),  'SBMX-2A', '25SBVDG-100', 'TK-A', 'Sauvignon Blanc'],
       ['RRT-101', new Date(Date.UTC(2025, 7, 15)), 'SBMX-1C', '25SBVDG-101', 'TK-B', 'Sauvignon Blanc'],
     ];
-    const recSheet = XLSX.utils.aoa_to_sheet(recAoa, { cellDates: true });
+    const recSheet = XLSX.utils.aoa_to_sheet(recAoa);
     // Force DMY display so the legacy raw:false path would have produced
     // "8/8/2025" / "15/8/2025" — exactly the values that broke prod.
     for (const addr of ['B3','B4']) {
       const c = recSheet[addr]; if (c) c.z = 'dd/mm/yyyy';
     }
 
-    // Prefermentativos sheet — header at row 0
+    // Prefermentativos sheet — title at row 0, headers at row 1 (matches the
+    // live `Recepcion_de_Tanque_2025.xlsx` layout). One header has trailing
+    // whitespace ('Reporte ') to lock in the whitespace-collapsing fix.
     const prefAoa = [
-      ['Reporte','Fecha','Código (lote de bodega)','Tanque','Variedad'],
+      ['FL 8.5.8 rev 2','','ANÁLISIS PREFERMENTATIVOS','',''],
+      ['Reporte ','Fecha','Código (lote de bodega)','Tanque','Variedad'],
       ['RRT-100', new Date(Date.UTC(2025, 7, 11)), '25SBVDG-100', 'TK-A', 'Sauvignon Blanc'],
       ['RRT-101', new Date(Date.UTC(2025, 7, 15)), '25SBVDG-101', 'TK-B', 'Sauvignon Blanc'],
     ];
-    const prefSheet = XLSX.utils.aoa_to_sheet(prefAoa, { cellDates: true });
-    for (const addr of ['B2','B3']) {
+    const prefSheet = XLSX.utils.aoa_to_sheet(prefAoa);
+    for (const addr of ['B3','B4']) {
       const c = prefSheet[addr]; if (c) c.z = 'dd/mm/yyyy';
     }
 
