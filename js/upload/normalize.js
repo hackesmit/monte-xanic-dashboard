@@ -87,6 +87,9 @@ export function normalizeDate(val, { dateOrder = 'dmy' } = {}) {
     const a = parseInt(slashMatch[1], 10);
     const b = parseInt(slashMatch[2], 10);
     let year = parseInt(slashMatch[3], 10);
+    // 2-digit years assume 21st century. All winery records are post-2015;
+    // a stray '8/21/95' would land as 2095-08-21, which is obviously wrong
+    // and surfaces immediately in the UI rather than corrupting silently.
     if (year < 100) year += 2000;
     let day, month;
     if (a > 12 && b <= 12)      { day = a; month = b; }
