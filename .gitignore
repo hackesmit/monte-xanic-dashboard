@@ -42,6 +42,7 @@ logs/
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Editor
 .vscode/
@@ -56,6 +57,9 @@ PROJECT_SUMMARY.md
 
 # Local scratch/backup files
 *.local
+
+# Local data inputs for upload-pipeline testing — never commit
+Xanic info/
 
 # Claude Code
 .claude/

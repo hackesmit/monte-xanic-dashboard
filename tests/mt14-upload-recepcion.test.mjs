@@ -76,4 +76,58 @@ describe('MT.14 — Recepción parser', () => {
     const file = asFakeFile(Buffer.from(buf), 'incomplete.xlsx');
     await assert.rejects(() => recepcionParser.parse(file), /Recep/i);
   });
+
+  // Regression for Round 30: the live `Recepcion_de_Tanque_2025.xlsx` stores
+  // the Fecha column as real Excel date cells under a DMY format code.
+  // Under `raw: false` the parser used to emit `"12/8/2025"` etc. straight
+  // to Postgres, which rejected day=15 with "date/time field value out of
+  // range". Both sheets (Recepción + Prefermentativos) must yield ISO dates.
+  it('parses real Excel date cells on both Recepción + Prefermentativos sheets', async () => {
+    const XLSX = await import('xlsx');
+
+    // Recepción sheet — header at row 1 (matches the live file's layout)
+    const recAoa = [
+      ['','FL 8.5.8 rev 2','','ANÁLISIS DE RECEPCIÓN EN TANQUE'],
+      ['Reporte','Fecha','Lote de viñedo 1','Código (lote de bodega)','Tanque','Variedad'],
+      ['RRT-100', new Date(Date.UTC(2025, 7, 8)),  'SBMX-2A', '25SBVDG-100', 'TK-A', 'Sauvignon Blanc'],
+      ['RRT-101', new Date(Date.UTC(2025, 7, 15)), 'SBMX-1C', '25SBVDG-101', 'TK-B', 'Sauvignon Blanc'],
+    ];
+    const recSheet = XLSX.utils.aoa_to_sheet(recAoa, { cellDates: true });
+    // Force DMY display so the legacy raw:false path would have produced
+    // "8/8/2025" / "15/8/2025" — exactly the values that broke prod.
+    for (const addr of ['B3','B4']) {
+      const c = recSheet[addr]; if (c) c.z = 'dd/mm/yyyy';
+    }
+
+    // Prefermentativos sheet — header at row 0
+    const prefAoa = [
+      ['Reporte','Fecha','Código (lote de bodega)','Tanque','Variedad'],
+      ['RRT-100', new Date(Date.UTC(2025, 7, 11)), '25SBVDG-100', 'TK-A', 'Sauvignon Blanc'],
+      ['RRT-101', new Date(Date.UTC(2025, 7, 15)), '25SBVDG-101', 'TK-B', 'Sauvignon Blanc'],
+    ];
+    const prefSheet = XLSX.utils.aoa_to_sheet(prefAoa, { cellDates: true });
+    for (const addr of ['B2','B3']) {
+      const c = prefSheet[addr]; if (c) c.z = 'dd/mm/yyyy';
+    }
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, recSheet,  'Recepción 2025');
+    XLSX.utils.book_append_sheet(wb, prefSheet, 'Prefermentativos 2025');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const file = asFakeFile(Buffer.from(buf), 'live_recepcion.xlsx');
+
+    const result = await recepcionParser.parse(file);
+    const recRow0 = result.targets[0].rows.find(r => r.report_code === 'RRT-100');
+    const recRow1 = result.targets[0].rows.find(r => r.report_code === 'RRT-101');
+    assert.equal(recRow0.reception_date, '2025-08-08',
+      'Recepción reception_date must be ISO, not "8/8/2025"');
+    assert.equal(recRow1.reception_date, '2025-08-15',
+      'day=15 row that today fails Postgres parsing must succeed');
+
+    const prefRow0 = result.targets[2].rows.find(r => r.report_code === 'RRT-100');
+    const prefRow1 = result.targets[2].rows.find(r => r.report_code === 'RRT-101');
+    assert.equal(prefRow0.measurement_date, '2025-08-11',
+      'Prefermentativos measurement_date must be ISO');
+    assert.equal(prefRow1.measurement_date, '2025-08-15');
+  });
 });

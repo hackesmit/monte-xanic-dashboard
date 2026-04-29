@@ -10,27 +10,22 @@
 
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
+import { normalizeValue, normalizeDate } from './normalize.js';
 
 const BELOW_DETECTION_RE = /^<\s*\d+(\.\d+)?$/;
 const ABOVE_DETECTION_RE = /^>\s*(\d+(\.\d+)?)$/;
 // Matches lab-test markers anywhere in sample_id (no word boundary — handles compounds like WATERBLUEBERRY)
 const LAB_TEST_RE = /(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)/i;
 
+// WineXRay CSV columns whose values must be ISO YYYY-MM-DD. The tool emits
+// US-format slash dates ("2/27/2026"), so we hint MDY for disambiguation.
+const DATE_COLUMNS = new Set(['sample_date', 'crush_date']);
+
 async function fileToRows(file) {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array' });
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
   const sheetName = wb.SheetNames[0];
-  return XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: false });
-}
-
-function normalizeValue(val) {
-  if (val === null || val === undefined) return null;
-  if (val instanceof Date) return val.toISOString().split('T')[0];
-  if (typeof val === 'number') return val;
-  const str = String(val).trim();
-  if (str === '' || str === '-' || str === '—' || str === 'NA' || str === 'N/A') return null;
-  const n = Number(str);
-  return isNaN(n) ? str : n;
+  return XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: true });
 }
 
 function shapeRow(headers, row, columnMap) {
@@ -47,6 +42,8 @@ function shapeRow(headers, row, columnMap) {
     } else if (ABOVE_DETECTION_RE.test(str)) {
       const m = str.match(ABOVE_DETECTION_RE);
       obj[col] = m ? parseFloat(m[1]) : null;
+    } else if (DATE_COLUMNS.has(col)) {
+      obj[col] = normalizeDate(val, { dateOrder: 'mdy' });
     } else {
       obj[col] = normalizeValue(val);
     }

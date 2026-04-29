@@ -84,4 +84,78 @@ describe('MT.15 — Pre-recepción parser', () => {
     const file = asFakeFile(Buffer.from(buf), 'wrongsheet.xlsx');
     await assert.rejects(() => prerecepcionParser.parse(file), /Pre-recepci/i);
   });
+
+  // Regression for Round 30: live workbooks store dates as real Excel date
+  // cells (not ISO text). With `raw: false` SheetJS used to return locale-
+  // formatted strings ("21/08/2024"), which Postgres rejected as
+  // "date/time field value out of range". The parser must now route date
+  // columns through normalizeDate so real date cells emerge as ISO strings
+  // regardless of the workbook's locale format code.
+  it('parses real Excel date cells to ISO YYYY-MM-DD (DMY-formatted workbook)', async () => {
+    const XLSX = await import('xlsx');
+    const headers = [
+      'Vintrace','No. Reporte','Fecha recepción de uva','Fecha medición técnica',
+      'Total','Bins/Jabas','Toneladas totales','Proveedor','Variedad',
+      'Lote de campo','Fecha análisis laboratorio',
+    ];
+    const aoa = [
+      ['MEDICIÓN TÉCNICA DE LA UVA','','','','','','','','','',''],
+      ['','','','','','','','','','',''],
+      headers,
+      ['VT-1','MT-25-001', new Date(Date.UTC(2024, 7, 20)), new Date(Date.UTC(2024, 7, 21)),
+        18,'bins',5.5,'Monte Xanic','Cabernet Sauvignon','25CSMX-1', new Date(Date.UTC(2024, 7, 22))],
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+    // Force a DMY format code on the date columns so the bug path (raw:false
+    // would have rendered "20/08/2024") is exercised by the test.
+    for (const cellAddr of ['C4','D4','K4']) {
+      const cell = sheet[cellAddr];
+      if (cell) cell.z = 'dd/mm/yyyy';
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet, 'Pre-recepción');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const file = asFakeFile(Buffer.from(buf), 'live_dmy.xlsx');
+
+    const result = await prerecepcionParser.parse(file);
+    const row = result.targets[0].rows.find(r => r.report_code === 'MT-25-001');
+    assert.ok(row, 'MT-25-001 row missing');
+    assert.equal(row.reception_date, '2024-08-20',
+      'reception_date must be ISO YYYY-MM-DD, not the workbook-locale display string');
+    assert.equal(row.medicion_date, '2024-08-21',
+      'medicion_date must be ISO YYYY-MM-DD');
+    assert.equal(row.lab_date, '2024-08-22',
+      'lab_date must be ISO YYYY-MM-DD');
+  });
+
+  it('parses real Excel date cells from MDY-formatted workbooks identically (locale-independent)', async () => {
+    // Same Date underlying value, but stored under an MDY format code (the
+    // shape Round 30 saw in `Xanic info/prerecepcion_actualizado (1).xlsx`).
+    // Result must match the DMY case above — proving the fix uses the
+    // underlying date, not the locale format string.
+    const XLSX = await import('xlsx');
+    const headers = ['Vintrace','No. Reporte','Fecha recepción de uva','Fecha medición técnica','Total','Bins/Jabas','Toneladas totales','Proveedor','Variedad','Lote de campo'];
+    const aoa = [
+      ['MEDICIÓN TÉCNICA DE LA UVA','','','','','','','','',''],
+      ['','','','','','','','','',''],
+      headers,
+      ['VT-2','MT-25-002', new Date(Date.UTC(2024, 7, 20)), new Date(Date.UTC(2024, 7, 21)),
+        18,'bins',5.5,'Monte Xanic','Merlot','25MEMX-1'],
+    ];
+    const sheet = XLSX.utils.aoa_to_sheet(aoa, { cellDates: true });
+    for (const cellAddr of ['C4','D4']) {
+      const cell = sheet[cellAddr];
+      if (cell) cell.z = 'm/d/yy';
+    }
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, sheet, 'Pre-recepción');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const file = asFakeFile(Buffer.from(buf), 'live_mdy.xlsx');
+
+    const result = await prerecepcionParser.parse(file);
+    const row = result.targets[0].rows.find(r => r.report_code === 'MT-25-002');
+    assert.ok(row, 'MT-25-002 row missing');
+    assert.equal(row.reception_date, '2024-08-20');
+    assert.equal(row.medicion_date, '2024-08-21');
+  });
 });

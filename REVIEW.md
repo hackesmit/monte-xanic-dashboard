@@ -721,3 +721,191 @@ None. All three source changes are narrowly scoped, reversible, and land with te
 - Round 26's "Notes" bullet about GitHub's `Required status check "test" is failing` was misdiagnosed as org-level — `962a124` fixes the root cause. Future pushes should show CI green; if a push after this commit still shows red, the failing job output needs to be pulled (`gh run list -b main -L 1`) and diagnosed separately.
 - Nothing in this round touches `PLAN.md` / `TASK.md`. TASK.md will need a small delta to flip the `R24.weather` row from **Open** → **Done (`ea1f31c`/`9380a73`)** and bump the e2e test count from 12 to 14; deferring that to the builder/planner by convention (reviewer doesn't edit TASK.md).
 - Working tree clean after the four commits; branch matches `origin/main`.
+
+---
+
+## Round 28 — Branch `main` — Working-tree review (2026-04-28)
+
+**Scope:** No tracked-file changes. `git diff` and `git diff --cached` both empty. Branch `main` is up to date with `origin/main`. Last commit on `main` remains `4f32e0d` (Round 27 docs sync).
+
+**Untracked surface:** One new top-level directory, `Xanic info/`, containing five files (~2.5 MB total):
+
+| File | Size | Notes |
+|---|---|---|
+| `MOSTOS PHENOLICS 24-25 (1).xlsx` | 796 K | Likely the same MOSTOS phenolics dataset that `935e458` (one-off historical import script) consumed. |
+| `Recepcion_de_Tanque_2025.xlsx` | 64 K | Matches the `.xlsx` = "Recepcion de Tanque" branch of the upload pipeline (`CLAUDE.md` → Upload Pipeline Rules). |
+| `prerecepcion_actualizado (1).xlsx` | 44 K | Pre-reception sheet, likely paired with the Recepcion file (Recepcion + Prefermentativos pattern). |
+| `result (2).csv` | 1.6 M | `.csv` extension matches the WineXRay branch of the upload pipeline. |
+| `desktop.ini` | 211 B | Windows shell metadata (not project content). |
+
+There is no source-code diff to review, so the body of this round is limited to working-tree hygiene around the untracked directory.
+
+### Priority 1 Issues
+
+None — there is no code change to introduce a P1.
+
+### Priority 2 Improvements
+
+**P2.1 — `Xanic info/` is not covered by `.gitignore` and is at risk of being committed accidentally.**
+- Verified: `grep -n "Xanic info\|desktop.ini\|\.xlsx\|\.csv" .gitignore` returns nothing. The current `.gitignore` covers `node_modules/`, `.env*`, secrets, build output, and logs — no rule for raw upload-pipeline inputs.
+- Risk: a future `git add -A` (or any IDE "stage all" action) would include 2.5 MB of proprietary winery data — including a `desktop.ini` Windows artifact — into the public-ish repo. Per `CLAUDE.md` the upload pipeline expects these files to be uploaded through the UI, not committed alongside source.
+- Recommendation: append the following to `.gitignore` (no source change needed in this round, just hygiene):
+  ```
+  # Local data inputs for upload-pipeline testing — never commit
+  Xanic info/
+  *.xlsx
+  *.csv
+  desktop.ini
+  ```
+  If broad `*.xlsx` / `*.csv` rules are too aggressive (e.g., if any fixture or seed file is intentionally tracked), keep just the directory rule plus `desktop.ini`. Verified there are currently no tracked `.xlsx` or `.csv` files outside of this directory, so a global rule is safe today, but a directory-scoped rule is the safer minimum.
+- Impact: Low while files stay in `Xanic info/` (git only tracks staged work), but a single careless `git add .` can leak proprietary data. This is a one-line `.gitignore` patch.
+
+**P2.2 — `desktop.ini` should be globally ignored regardless of the `Xanic info/` decision.**
+- It is a Windows-only shell metadata file with no project meaning. Worth adding to `.gitignore` independently so it never appears in any directory listing.
+
+### Missing Tests
+
+- N/A. No code surface changed; no test obligation in this round.
+
+### Notes
+
+- Per the agent rules in `CLAUDE.md`, the reviewer does not edit `.gitignore` or any source/config — P2.1 and P2.2 are surfaced for the builder/user to action if desired.
+- Both `Xanic info/Recepcion_de_Tanque_2025.xlsx` and `Xanic info/result (2).csv` look like exact inputs the upload pipeline (`upload.js`) is designed to consume. If the intent is to dry-run an import, prefer the in-app Upload UI rather than a one-off script — the `935e458` MOSTOS one-off was already flagged as one-off in its own commit message.
+- Reception data note: `MOSTOS PHENOLICS 24-25` covers the 24/25 vintage; if any of this is intended for the production Supabase, double-check `vintage_year` extraction (per `CLAUDE.md`: `25 → 2025`) before running an import — out of scope for this review, just a heads-up given the file presence.
+- Working tree otherwise clean; nothing risky observed.
+
+---
+
+## Round 29 — Branch `main` — Review of Round 28 (2026-04-28)
+
+**Scope:** The only uncommitted change in the working tree is the Round 28 block appended to `REVIEW.md` (52 insertions, 0 deletions, no other tracked files modified). Untracked surface (`Xanic info/`) is unchanged from Round 28's snapshot. Reviewing Round 28 itself for accuracy before it is committed.
+
+### Priority 1 Issues
+
+**P1.1 — Round 28 P2.1 contains a factual error that, if acted on verbatim, would untrack the upload-pipeline test fixtures.**
+- Round 28 line: *"Verified there are currently no tracked `.xlsx` or `.csv` files outside of this directory, so a global rule is safe today."*
+- Actual state — `git ls-files | grep -E '\.(xlsx|csv)$'` returns three tracked files:
+  - `tests/fixtures/prerecepcion_sample.xlsx`
+  - `tests/fixtures/recepcion_sample.xlsx`
+  - `tests/fixtures/winexray_mixed.csv`
+- These are the upload-pipeline fixtures that back the e2e tests (`CLAUDE.md` → Upload Pipeline Rules: `.csv` = WineXRay, `.xlsx` = Recepcion / Prefermentativos). A blanket `*.xlsx` / `*.csv` rule would not delete them from history but **would cause `git status` to silently stop showing future modifications** and would block any new fixture from being added without `git add -f`. That is a real footgun.
+- Recommended correction to Round 28's suggested `.gitignore` block — drop the global globs, keep the directory + Windows-metadata rules:
+  ```
+  # Local data inputs for upload-pipeline testing — never commit
+  Xanic info/
+  desktop.ini
+  ```
+  Round 28 itself flagged this as the "safer minimum" alternative; the P1 here is just that the *primary* recommendation in Round 28 is unsafe and the alternative should be promoted to the primary.
+
+### Priority 2 Improvements
+
+**P2.1 — Round 28's other claims verified accurate.**
+- `Xanic info/` exists with the five files Round 28 lists, sizes match (`796K / 64K / 44K / 1.6M / 211B`), `.gitignore` does not currently cover any of them — confirmed via direct `ls -la` and `grep` against `.gitignore`. No correction needed beyond P1.1 above.
+- `Thumbs.db` is already in `.gitignore` (line in the `# OS` block) but `desktop.ini` is not — Round 28 P2.2 is a correct gap and the right place to add it is alongside `Thumbs.db` in the OS section, not in a new "data inputs" block.
+
+**P2.2 — Round 28 stays inside reviewer scope.**
+- Reviewer correctly did not edit `.gitignore`, `upload.js`, or any source — only appended to `REVIEW.md`. No scope creep, no risky commands, no dependency churn, no config changes. Diff is 52 lines, all in `REVIEW.md`. Within the agent rules in `CLAUDE.md`.
+
+### Missing Tests
+
+- N/A. No code surface changed in this round either; the only diff is documentation.
+
+### Notes
+
+- After P1.1 is corrected (either by editing Round 28 in place or by the builder/user simply ignoring the global-glob suggestion when they action `.gitignore`), Round 28's recommendations are safe to follow.
+- No source/config files have been modified. Branch `main` still matches `origin/main` at `4f32e0d`. Working tree change is review-doc-only and reversible.
+- Per `CLAUDE.md` agent rules, this Round 29 is appended to `REVIEW.md` only; no edits to `PLAN.md`, `TASK.md`, `.gitignore`, or any source file.
+
+---
+
+## Round 30 — Bug diagnosis: upload date parsing across all three parsers (2026-04-28)
+
+**User-reported symptom (verbatim):**
+> ✗ Pre-recepciones: Error al insertar datos: date/time field value out of range: "21/08/2024". Also get errors when trying to upload the other documents.
+
+**Verdict:** Confirmed root cause. The bug exists in **all three** XLSX/CSV parsers — `js/upload/prerecepcion.js`, `js/upload/recepcion.js`, `js/upload/winexray.js` — and is not a regression. It has been present since the parsers were authored (`b409634`/`575bf24`/`ab5a88c`/`09714ea`), but the bundled test fixtures sidestep it, so unit tests pass. No fix proposed in this round (reviewer role); a builder should pick from the options in **§ Recommended fix direction** below.
+
+### Phase 1 — Root cause
+
+**The Postgres error is a downstream symptom of a client-side parser contract bug.**
+
+1. **Where the bad value originates.** Each parser builds rows via `XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: false })`:
+   - `js/upload/prerecepcion.js:64`
+   - `js/upload/recepcion.js:25`
+   - `js/upload/winexray.js:23`
+   The `raw: false` flag tells SheetJS to return the **formatted display string** for each cell — not native JS values. For an Excel date cell, SheetJS returns the workbook's locale-formatted display (e.g. `"21/08/2024"` for a DMY-formatted workbook, `"8/21/24"` for an MDY-formatted one). It never returns a native `Date` object under `raw: false`.
+
+2. **Why it then escapes `normalizeValue` un-translated.** The shared `normalizeValue` helper is identical across all three files:
+   ```js
+   function normalizeValue(val) {
+     if (val === null || val === undefined) return null;
+     if (val instanceof Date) return val.toISOString().split('T')[0];   // dead branch under raw:false
+     if (typeof val === 'number') return val;
+     const str = String(val).trim();
+     if (str === '' || str === '-' || str === '—' || str === 'NA' || str === 'N/A') return null;
+     const n = Number(str);
+     return isNaN(n) ? str : n;                                          // <-- dates exit here, verbatim
+   }
+   ```
+   Because `raw: false` removes the `Date` path entirely, the `instanceof Date` branch is **dead code in production**. A locale-formatted date string then fails `Number(str)` and is returned as-is. The caller writes that string straight into `obj.medicion_date` / `obj.reception_date` / `obj.crush_date` / `obj.sample_date` / `obj.lab_date` / `obj.measurement_date`.
+
+3. **What Postgres sees.** `api/upload.js` (verified by re-reading lines 134–196) does not inspect or rewrite values — it strips unknown columns, validates required fields, then forwards the row body as-is in the upsert. So the literal display string `"21/08/2024"` reaches a Postgres `date` column. Default `DateStyle = 'ISO, MDY'` parses slash dates as MM/DD/YYYY → month=21 → `date/time field value out of range`.
+
+4. **Why current tests don't catch this.** Verified by inspecting `tests/fixtures/prerecepcion_sample.xlsx` directly with SheetJS: its date columns are stored as **literal text cells already in ISO format** (`"2024-08-15"`, `"2024-08-16"`), not as Excel date cells. With both `raw: true` and `raw: false`, the fixture returns those strings unchanged — so the parser appears to "work" on the fixture. Furthermore, `tests/mt15-upload-prerecepcion.test.mjs` only asserts the **derived** `vintage_year` field (lines 69, 76); it never asserts what string `obj.medicion_date` itself contains. So the bug is invisible from the test surface.
+
+5. **User-supplied evidence (verified locally against `Xanic info/`).** Each of the three real-world files exposes the bug in a different way:
+
+   | File | Date column display under `raw: false` | Postgres outcome |
+   |---|---|---|
+   | `prerecepcion_actualizado (1).xlsx` | `"8/20/24"`, `"8/21/24"`, … (M/D/YY) | Default MDY parses **succeeds** for these specific values, but **silently misinterprets** any `dd/mm/yy` value where `dd ≤ 12` → wrong year/month written without error. The user's `"21/08/2024"` from a DMY-formatted variant of this workbook fails loudly. |
+   | `Recepcion_de_Tanque_2025.xlsx` (Recepción 2025 sheet) | `"12/8/2025"`, `"15/8/2025"` (D/M/YYYY — day=15 disambiguates) | Postgres fails on day=15 → out-of-range error identical to the user's report. |
+   | `Recepcion_de_Tanque_2025.xlsx` (Prefermentativos 2025 sheet) | `"11/8/2025"`, `"15/8/2025"` (D/M/YYYY) | Same failure mode → blocks `prefermentativos` upserts. |
+   | `result (2).csv` (WineXRay) | `Sample Date = "2/27/2026"` (M/D), `CrushDate = "9/1/2025"` (ambiguous), `UploadDate = "2026-03-03T08:57:38.1570000-08:00"` (ISO with **7** fractional digits) | CSV is always strings (no XLSX format codes), so the SheetJS flag is moot here, but the same `normalizeValue` pass-through forwards mixed-format strings to Postgres. The 7-digit fractional second on `UploadDate` exceeds Postgres' 6-digit timestamp precision → separate but related failure. |
+
+   The user's reported `"21/08/2024"` matches the Recepción/Prefermentativos sheet behaviour exactly. The "Pre-recepciones" label in the error toast is the upload-pipeline display name (`js/upload.js:23 — pre_receptions: { emoji: '📋', label: 'Pre-recepciones' }`), so the error string ties to the `pre_receptions` table — but the same root cause hits all three parsers.
+
+### Priority 1 Issues
+
+**P1.1 — `raw: false` + `instanceof Date` is structurally broken; date columns ship locale-formatted strings to Postgres.**
+- **Files:** `js/upload/prerecepcion.js:16,64`; `js/upload/recepcion.js:16,25`; `js/upload/winexray.js:23,28`.
+- **Impact:** All three upload paths break on any Excel date cell whose locale-formatted display is not unambiguously parseable by Postgres' default `DateStyle`. The Recepción file in `Xanic info/` will fail today even before the user touches another sheet. Files that *happen* to render as MDY pass through, but with a silent month/day swap risk for any value where day ≤ 12.
+- **Why critical:** This is the upload pipeline's primary contract with the database. It is the documented user-facing entry point per `CLAUDE.md` ("Upload Pipeline Rules"), and it is currently non-functional for production winery data.
+
+**P1.2 — `api/upload.js` performs no value-level validation.**
+- **File:** `api/upload.js:134–154`.
+- The server only validates *required field presence* and strips columns not in the per-table whitelist. It does not validate value shape (e.g. that `*_date` columns parse as ISO dates, that timestamp columns fit Postgres precision). Defense-in-depth would catch parser bugs like P1.1 before they hit Postgres and surface as opaque `date/time field value out of range` errors.
+- Note: per the systematic-debugging skill's *defense-in-depth* guidance, this is a layer worth hardening **after** the parser fix lands, not as a substitute for it.
+
+### Priority 2 Improvements
+
+**P2.1 — `UploadDate`'s 7-digit fractional seconds will fail any Postgres `timestamp[tz]` column.**
+- **File:** `js/upload/winexray.js` (column mapping for `UploadDate (yyyy-mm-dd)`).
+- The CSV emits `2026-03-03T08:57:38.1570000-08:00` (7 fractional digits, with timezone offset). Postgres `timestamp` / `timestamptz` accept up to 6 fractional digits — the value will be rejected with `invalid input syntax for type timestamp`. Verified by inspecting `Xanic info/result (2).csv` directly. Whichever WineXRay schema column receives this value should either (a) truncate to 6 digits in the parser, or (b) document it as ignored if the value isn't actually used.
+- This is independent of P1.1 but in the same family: parser does not normalize boundary value formats.
+
+**P2.2 — `normalizeValue` is duplicated three times verbatim.**
+- The same 9-line helper appears in all three parser files. Once a date-aware version is written, it should live in one shared module (e.g. `js/upload/normalize.js`) — otherwise the next maintainer will fix one parser and forget the others, exactly as today's situation. *Not a fix in itself, but the right place to put the fix.*
+
+**P2.3 — `normalizeVariety` etc. flag column-level transformation needs are real.**
+- The codebase already accepts the column-aware-transform pattern (`obj.variety = CONFIG.normalizeVariety(obj.variety)`). Adding column-aware date normalization is consistent with that pattern, not a new abstraction.
+
+### Missing Tests
+
+These tests must exist before the fix lands (to fulfill systematic-debugging Phase 4 step 1 — failing test before fix):
+
+1. **MT.15 (`tests/mt15-upload-prerecepcion.test.mjs`)** — add a fixture where `Fecha medición técnica` and `Fecha recepción de uva` are stored as **real Excel date cells** (not text cells in ISO format), authored under a DMY format code. Assert `obj.medicion_date === '2024-08-21'` and `obj.reception_date === '2024-08-20'` literally — not just `vintage_year`.
+2. **MT.14 (`tests/mt14-upload-recepcion.test.mjs`)** — same shape: real Excel date cells under DMY formatting on both Recepción and Prefermentativos sheets. Assert `obj.reception_date` and `obj.measurement_date` are ISO `YYYY-MM-DD`.
+3. **MT.13 (`tests/mt13-upload-winexray.test.mjs`)** — add a row with `UploadDate = '2026-03-03T08:57:38.1570000-08:00'` and assert the parser truncates / normalizes to a value Postgres accepts (≤6 fractional digits).
+4. **API-level (likely `tests/mt17-upload-whitelist.test.mjs` or new):** if P1.2 (server-side date validation) is adopted, add a test rejecting a payload whose `*_date` column is not ISO.
+
+The first three are the minimum to lock in the fix; without (1)+(2) the regression *will* return because the existing fixtures don't exercise the broken path.
+
+### Notes
+
+- **Recommended fix direction (for the builder, not implemented here):**
+  - **Option A (smallest diff, addresses XLSX paths only).** Change `XLSX.read(..., { type: 'array' })` to `XLSX.read(..., { type: 'array', cellDates: true })` and flip `sheet_to_json(..., { raw: false })` to `raw: true` in all three parsers. With both options, SheetJS returns native `Date` objects for date cells; the existing `if (val instanceof Date)` branch then fires correctly. **Risk:** anywhere the parsers depended on the *formatted display* of a non-date cell (e.g. percentage cells displayed as `"50%"` becoming the raw `0.5`), behavior changes. Quick grep through `recepcion.js` / `prerecepcion.js` shows numeric cells are coerced via `Number(str)` only, and there are no percentage columns mapped — so this risk looks low, but the builder should grep for `%` and any "string-form" assertion in tests before flipping. Does **not** fix WineXRay's CSV path or the `UploadDate` precision issue (P2.1).
+  - **Option B (column-aware, fixes everything).** Introduce a shared `normalizeDate(val)` in `js/upload/normalize.js` that handles: native `Date` → `YYYY-MM-DD`; Excel serial number (numbers in `~30000–60000` range) via `XLSX.SSF.parse_date_code`; ISO `YYYY-MM-DD[Tttt]` strings (truncating fractional seconds to ≤6 digits); and slash-separated strings under an explicit DMY assumption (this codebase services a Mexican winery — assume DMY, document it). Each parser then routes its known date columns through this helper. **Pros:** locale-independent, robust to format-code drift, fixes WineXRay's mixed-format CSV in one pass, deduplicates the `normalizeValue` triplet. **Cons:** larger diff, requires the builder to enumerate date columns per table (already known from the column whitelists in `api/upload.js:11–86`).
+  - I'd lean Option B if the builder is willing to take a slightly larger PR, because Option A leaves WineXRay's `UploadDate` and any future format-code change as latent bugs.
+- **Phase boundaries respected.** This round is Phase 1 (root cause) only. No fix proposed; no source/config edited; no schema touched. Per `CLAUDE.md` agent rules and the session's reviewer-role contract, the builder owns Phase 4 implementation.
+- **Verification trace for the audit-paranoid:** to confirm the diagnosis without trusting this review, the builder can run `node -e "import('xlsx').then(m=>{const b=require('fs').readFileSync('Xanic info/Recepcion_de_Tanque_2025.xlsx');const wb=m.read(b,{type:'buffer'});console.log(m.utils.sheet_to_json(wb.Sheets['Recepción 2025'],{header:1,raw:false})[3].slice(0,4))})"` — this prints the raw row-3 array as the parser sees it, including the offending `"12/8/2025"`-style date string. Once the fix lands, the same line should print a `Date` object (Option A) or a normalized `"2025-08-12"` (Option B).
+- **No working-tree changes other than this `REVIEW.md` append.** Branch `main` still matches `origin/main` at `4f32e0d`.
