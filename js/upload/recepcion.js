@@ -104,10 +104,15 @@ export const recepcionParser = {
     }
 
     // ── Prefermentativos sheet ──
+    // Live `Recepcion_de_Tanque_2025.xlsx` puts a title row at row 0 and the
+    // actual headers at row 1, so we auto-detect via findHeaderRow (same as
+    // the Recepción branch above). Headers also get whitespace collapsed so
+    // a column like 'Reporte ' (trailing space) still matches the config.
     const prefRows = sheetToArray(wb, prefermSheet);
-    if (prefRows.length >= 2) {
-      const prefHeaders = prefRows[0].map(h => String(h ?? '').trim());
-      for (let i = 1; i < prefRows.length; i++) {
+    const prefHeaderIdx = findHeaderRow(prefRows);
+    if (prefHeaderIdx >= 0) {
+      const prefHeaders = prefRows[prefHeaderIdx].map(h => String(h ?? '').trim().replace(/\s+/g, ' '));
+      for (let i = prefHeaderIdx + 1; i < prefRows.length; i++) {
         const row = prefRows[i];
         if (!row || row.every(c => c === null || String(c).trim() === '')) continue;
 
