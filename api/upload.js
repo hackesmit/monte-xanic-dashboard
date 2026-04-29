@@ -47,6 +47,11 @@ export const ALLOWED_TABLES = {
     ]),
   },
 
+  // DEPRECATED (Round 35): pre_receptions was unified into mediciones_tecnicas
+  // (sql/migration_unify_mediciones.sql). The Pre-recepción parser now writes
+  // to mediciones_tecnicas with source='upload'. This whitelist is preserved
+  // only to avoid breaking ad-hoc historical inserts; remove once the
+  // pre_receptions audit table is dropped.
   pre_receptions: {
     conflict: 'report_code',
     maxRows: 500,
@@ -78,16 +83,29 @@ export const ALLOWED_TABLES = {
       'brix','ph','ta','temperature','tant','notes','vintage_year'
     ])
   },
+  // Round 35: unified table — accepts both form-entered (source='form') and
+  // Pre-recepción upload-entered (source='upload') rows. Schema expanded to
+  // a superset of the legacy pre_receptions table by
+  // sql/migration_unify_mediciones.sql.
   mediciones_tecnicas: {
     conflict: 'medicion_code',
-    maxRows: 200,
+    maxRows: 500,
     required: ['medicion_code'],
     columns: new Set([
-      'medicion_code','medicion_date','vintage_year','variety','appellation',
+      // Identity / provenance
+      'medicion_code','source',
+      // Form-original columns
+      'medicion_date','vintage_year','variety','appellation',
       'lot_code','tons_received','berry_count_sample','berry_avg_weight_g',
       'berry_diameter_mm','health_grade','health_madura','health_inmadura',
       'health_sobremadura','health_picadura','health_enfermedad',
-      'health_quemadura','phenolic_maturity','measured_by','notes'
+      'health_quemadura','phenolic_maturity','measured_by','notes',
+      // Round 35 — absorbed from pre_receptions
+      'vintrace','reception_date','supplier',
+      'total_bins','bin_unit','bin_temp_c','truck_temp_c',
+      'bunch_avg_weight_g','berry_length_avg_cm','berries_200_weight_g',
+      'health_pasificada','health_aceptable','health_no_aceptable',
+      'lab_date','brix','ph','at','ag','am','polifenoles','catequinas','antocianos',
     ])
   }
 };
