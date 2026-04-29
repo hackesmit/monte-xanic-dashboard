@@ -547,14 +547,15 @@ export const CONFIG = {
     'Titratable Acidity (TA gr/l)':        'ta',
   },
 
-  // ── Pre-recepción XLSX headers → pre_receptions columns ──────────
-  // Used by js/upload/prerecepcion.js. The pre_receptions table is
-  // distinct from mediciones_tecnicas (which stays form-owned).
+  // ── Pre-recepción XLSX headers → mediciones_tecnicas columns ─────
+  // Used by js/upload/prerecepcion.js. Round 35 unified pre_receptions
+  // into mediciones_tecnicas — uploads now land in the same canonical
+  // table as the form, distinguished by source='upload' vs source='form'.
   // Note: 'Longitud promedio de 10 bayas (cm)' is deliberately not
   // mapped; the per-baya average carries the same info.
   preReceptionsToSupabase: {
     'Vintrace':                              'vintrace',
-    'No. Reporte':                           'report_code',
+    'No. Reporte':                           'medicion_code',
     'Fecha recepción de uva':                'reception_date',
     'Fecha medición técnica':                'medicion_date',
     'Total':                                 'total_bins',

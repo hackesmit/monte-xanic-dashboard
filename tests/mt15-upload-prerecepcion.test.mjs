@@ -1,6 +1,8 @@
-// MT.15 — Pre-recepción parser: XLSX → pre_receptions.
+// MT.15 — Pre-recepción parser: XLSX → mediciones_tecnicas (unified).
 // Header row auto-detected; PENDIENTE and missing reporte → rejected.
-// Never touches mediciones_tecnicas.
+// Round 34 unified pre_receptions into mediciones_tecnicas — uploaded rows
+// land in the same canonical table as form-entered ones, distinguished by
+// `source: 'upload'` vs the form's `source: 'form'`.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -21,12 +23,21 @@ async function loadFixture() {
 }
 
 describe('MT.15 — Pre-recepción parser', () => {
-  it('targets pre_receptions, not mediciones_tecnicas', async () => {
+  it('targets mediciones_tecnicas with medicion_code conflict key (R35 unification)', async () => {
     const file = await loadFixture();
     const result = await prerecepcionParser.parse(file);
     assert.equal(result.targets.length, 1);
-    assert.equal(result.targets[0].table, 'pre_receptions');
-    assert.equal(result.targets[0].conflictKey, 'report_code');
+    assert.equal(result.targets[0].table, 'mediciones_tecnicas');
+    assert.equal(result.targets[0].conflictKey, 'medicion_code');
+  });
+
+  it("tags every row with source: 'upload' for provenance (R35)", async () => {
+    const file = await loadFixture();
+    const result = await prerecepcionParser.parse(file);
+    const rows = result.targets[0].rows;
+    assert.ok(rows.length > 0, 'fixture must produce at least one row');
+    assert.ok(rows.every(r => r.source === 'upload'),
+      "every parser-emitted row must carry source: 'upload' so it's distinguishable from form-entered rows");
   });
 
   it('auto-detects the header row', async () => {
@@ -54,7 +65,7 @@ describe('MT.15 — Pre-recepción parser', () => {
   it('maps all source columns correctly on a valid row', async () => {
     const file = await loadFixture();
     const result = await prerecepcionParser.parse(file);
-    const first = result.targets[0].rows.find(r => r.report_code === 'MT-24-001');
+    const first = result.targets[0].rows.find(r => r.medicion_code === 'MT-24-001');
     assert.ok(first, 'MT-24-001 row missing');
     assert.equal(first.variety, 'Chardonnay');
     assert.equal(first.supplier, 'Monte Xanic');
@@ -118,7 +129,7 @@ describe('MT.15 — Pre-recepción parser', () => {
     const file = asFakeFile(Buffer.from(buf), 'live_dmy.xlsx');
 
     const result = await prerecepcionParser.parse(file);
-    const row = result.targets[0].rows.find(r => r.report_code === 'MT-25-001');
+    const row = result.targets[0].rows.find(r => r.medicion_code === 'MT-25-001');
     assert.ok(row, 'MT-25-001 row missing');
     assert.equal(row.reception_date, '2024-08-20',
       'reception_date must be ISO YYYY-MM-DD, not the workbook-locale display string');
@@ -153,7 +164,7 @@ describe('MT.15 — Pre-recepción parser', () => {
     const file = asFakeFile(Buffer.from(buf), 'live_mdy.xlsx');
 
     const result = await prerecepcionParser.parse(file);
-    const row = result.targets[0].rows.find(r => r.report_code === 'MT-25-002');
+    const row = result.targets[0].rows.find(r => r.medicion_code === 'MT-25-002');
     assert.ok(row, 'MT-25-002 row missing');
     assert.equal(row.reception_date, '2024-08-20');
     assert.equal(row.medicion_date, '2024-08-21');
@@ -180,7 +191,7 @@ describe('MT.15 — Pre-recepción parser', () => {
     const file = asFakeFile(Buffer.from(buf), 'fractional_total_bins.xlsx');
 
     const result = await prerecepcionParser.parse(file);
-    const row = result.targets[0].rows.find(r => r.report_code === 'MT-24-011');
+    const row = result.targets[0].rows.find(r => r.medicion_code === 'MT-24-011');
     assert.ok(row, 'MT-24-011 row should be in targets[0].rows, not rejected');
     assert.equal(row.total_bins, 37.5,
       'total_bins must be preserved verbatim — schema NUMERIC accepts it');
@@ -210,7 +221,7 @@ describe('MT.15 — Pre-recepción parser', () => {
     const file = asFakeFile(Buffer.from(buf), 'fractional_int.xlsx');
 
     const result = await prerecepcionParser.parse(file);
-    assert.equal(result.targets[0].rows.find(r => r.report_code === 'MT-24-050'), undefined,
+    assert.equal(result.targets[0].rows.find(r => r.medicion_code === 'MT-24-050'), undefined,
       'MT-24-050 must NOT be in targets[0].rows — fractional INT must be rejected');
     const rejected = result.rejected.find(r => r.row['No. Reporte'] === 'MT-24-050');
     assert.ok(rejected, 'MT-24-050 must appear in rejected[]');
@@ -250,9 +261,11 @@ describe('MT.15 — Pre-recepción parser', () => {
     assert.deepEqual(k0, k1,
       'all rows must share the same key set — PostgREST rejects mixed-shape arrays');
     assert.ok(k0.includes('vintage_year'), 'vintage_year must be a key on every row');
+    assert.ok(k0.includes('source'),
+      "source must be a key on every row (R35 — required for the unified mediciones_tecnicas insert to share keys with form-entered rows)");
 
-    const a01 = rows.find(r => r.report_code === 'MT-24-A01');
-    const a02 = rows.find(r => r.report_code === 'MT-24-A02');
+    const a01 = rows.find(r => r.medicion_code === 'MT-24-A01');
+    const a02 = rows.find(r => r.medicion_code === 'MT-24-A02');
     assert.equal(a01.vintage_year, 2024, 'derivable vintage_year must populate');
     assert.equal(a02.vintage_year, null, 'non-derivable vintage_year must be null, not absent');
   });

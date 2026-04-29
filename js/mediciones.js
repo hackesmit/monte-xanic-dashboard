@@ -58,6 +58,7 @@ export const Mediciones = {
 
     const row = {
       medicion_code: code,
+      source: 'form',
       medicion_date: date,
       vintage_year: vintage,
       variety,
