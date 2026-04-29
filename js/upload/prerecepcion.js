@@ -10,16 +10,10 @@
 
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
+import { normalizeValue, normalizeDate } from './normalize.js';
 
-function normalizeValue(val) {
-  if (val === null || val === undefined) return null;
-  if (val instanceof Date) return val.toISOString().split('T')[0];
-  if (typeof val === 'number') return val;
-  const str = String(val).trim();
-  if (str === '' || str === '-' || str === '—' || str === 'NA' || str === 'N/A') return null;
-  const n = Number(str);
-  return isNaN(n) ? str : n;
-}
+// pre_receptions table columns whose values must be ISO YYYY-MM-DD.
+const DATE_COLUMNS = new Set(['reception_date', 'medicion_date', 'lab_date']);
 
 function normalizeHeader(h) {
   return String(h ?? '').trim().replace(/\s+/g, ' ');
@@ -51,7 +45,10 @@ export const prerecepcionParser = {
 
   async parse(file) {
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array' });
+    // cellDates:true keeps real Excel date cells as Date objects; raw:true
+    // below then surfaces them un-formatted. Together they bypass the
+    // workbook's locale format code so dates stay locale-independent.
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
 
     // Find the Pre-recepción sheet (case-insensitive substring match on 'prerecep')
     const sheetName = wb.SheetNames.find(n =>
@@ -61,7 +58,7 @@ export const prerecepcionParser = {
     }
 
     const allRows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
-      header: 1, defval: null, raw: false,
+      header: 1, defval: null, raw: true,
     });
 
     const headerIdx = findHeaderRow(allRows);
@@ -91,7 +88,9 @@ export const prerecepcionParser = {
       headers.forEach((h, idx) => {
         const col = columnLookup[h];
         if (!col) return;
-        const val = normalizeValue(row[idx]);
+        const val = DATE_COLUMNS.has(col)
+          ? normalizeDate(row[idx])
+          : normalizeValue(row[idx]);
         obj[col] = val;
         if (val !== null) hasData = true;
       });

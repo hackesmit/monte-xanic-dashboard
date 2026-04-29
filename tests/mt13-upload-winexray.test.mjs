@@ -118,4 +118,30 @@ describe('MT.13 — WineXRay parser', () => {
       /no parece ser un export de WineXRay/i
     );
   });
+
+  // Regression for Round 30: WineXRay CSV exports always use M/D/YYYY
+  // (US-format slash dates). Under the legacy `raw:false` + non-date-aware
+  // normalizeValue, those strings reached Postgres verbatim. With `date`
+  // columns the rows would land only because Postgres' default DateStyle is
+  // MDY — fragile and silently wrong if the server style ever changes.
+  // The parser must convert slash dates to ISO YYYY-MM-DD itself.
+  it('converts WineXRay slash-format dates (MDY) to ISO YYYY-MM-DD', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,CrushDate (yyyy-mm-dd),Vintage,Variety,Appellation',
+      '25CSMX-100,Aging Wine,2/27/2026,9/15/2025,2025,Cabernet Sauvignon,Valle de Guadalupe',
+      '25MEMX-100,Berries,8/21/2024,9/1/2024,2024,Merlot,Valle de Guadalupe',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 'live_dates.csv');
+    const result = await winexrayParser.parse(file);
+    const wine  = result.targets.find(t => t.table === 'wine_samples').rows[0];
+    const berry = result.targets.find(t => t.table === 'berry_samples').rows[0];
+    assert.equal(wine.sample_id,  '25CSMX-100');
+    assert.equal(wine.sample_date, '2026-02-27',
+      'sample_date must be ISO YYYY-MM-DD, not "2/27/2026"');
+    assert.equal(wine.crush_date,  '2025-09-15',
+      'crush_date must be ISO YYYY-MM-DD, not "9/15/2025"');
+    assert.equal(berry.sample_id,   '25MEMX-100');
+    assert.equal(berry.sample_date, '2024-08-21');
+    assert.equal(berry.crush_date,  '2024-09-01');
+  });
 });

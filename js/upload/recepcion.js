@@ -10,19 +10,14 @@
 
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
+import { normalizeValue, normalizeDate } from './normalize.js';
 
-function normalizeValue(val) {
-  if (val === null || val === undefined) return null;
-  if (val instanceof Date) return val.toISOString().split('T')[0];
-  if (typeof val === 'number') return val;
-  const str = String(val).trim();
-  if (str === '' || str === '-' || str === '—' || str === 'NA' || str === 'N/A') return null;
-  const n = Number(str);
-  return isNaN(n) ? str : n;
-}
+// Date columns in tank_receptions and prefermentativos tables.
+const RECEPCION_DATE_COLUMNS = new Set(['reception_date']);
+const PREFERMENT_DATE_COLUMNS = new Set(['measurement_date']);
 
 function sheetToArray(wb, name) {
-  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: false });
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true });
 }
 
 function findHeaderRow(rows, minNonNull = 5) {
@@ -40,7 +35,10 @@ export const recepcionParser = {
 
   async parse(file) {
     const buf = await file.arrayBuffer();
-    const wb = XLSX.read(buf, { type: 'array' });
+    // cellDates:true returns Date objects for date-typed cells regardless of
+    // the workbook's locale format code; raw:true on sheet_to_json keeps
+    // them unformatted so normalizeDate can produce ISO YYYY-MM-DD.
+    const wb = XLSX.read(buf, { type: 'array', cellDates: true });
 
     let recepcionSheet = null;
     let prefermSheet = null;
@@ -76,7 +74,9 @@ export const recepcionParser = {
       recHeaders.forEach((h, idx) => {
         const col = CONFIG.recepcionToSupabase[h];
         if (!col) return;
-        const val = normalizeValue(row[idx]);
+        const val = RECEPCION_DATE_COLUMNS.has(col)
+          ? normalizeDate(row[idx])
+          : normalizeValue(row[idx]);
         obj[col] = val;
         if (val !== null) hasData = true;
       });
@@ -116,7 +116,9 @@ export const recepcionParser = {
         prefHeaders.forEach((h, idx) => {
           const col = CONFIG.prefermentToSupabase[h];
           if (!col) return;
-          const val = normalizeValue(row[idx]);
+          const val = PREFERMENT_DATE_COLUMNS.has(col)
+            ? normalizeDate(row[idx])
+            : normalizeValue(row[idx]);
           obj[col] = val;
           if (val !== null) hasData = true;
         });
