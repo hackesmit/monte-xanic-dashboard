@@ -39,7 +39,7 @@ describe('MT.14 — Recepción parser', () => {
     const result = await recepcionParser.parse(file);
     assert.equal(result.targets[0].conflictKey, 'report_code');
     assert.equal(result.targets[1].conflictKey, 'report_code,lot_position');
-    assert.equal(result.targets[2].conflictKey, 'report_code,measurement_date');
+    assert.equal(result.targets[2].conflictKey, 'report_code');
   });
 
   it('emits lot rows with report_code (no reception_id)', async () => {

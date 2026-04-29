@@ -153,7 +153,7 @@ export const recepcionParser = {
       targets: [
         { table: 'tank_receptions',  rows: receptions, conflictKey: 'report_code' },
         { table: 'reception_lots',   rows: lots,       conflictKey: 'report_code,lot_position' },
-        { table: 'prefermentativos', rows: preferment, conflictKey: 'report_code,measurement_date' },
+        { table: 'prefermentativos', rows: preferment, conflictKey: 'report_code' },
       ],
       excluded: {},
       rejected: [],
