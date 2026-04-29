@@ -171,6 +171,50 @@ describe('MT.13 — WineXRay parser', () => {
     assert.match(rejected.motivo_rechazo, /entero|integer/i);
   });
 
+  // Round 34 — defense-in-depth: a non-numeric string (e.g. a section label
+  // typed into a brix cell) in a NUMERIC-typed column must be rejected at
+  // the parser with a Spanish motivo_rechazo naming the column. Without this
+  // check the value reaches Postgres as "invalid input syntax for type
+  // numeric" and aborts the whole batch.
+  it('rejects rows where a NUMERIC-typed column has a non-numeric string', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,Brix (degrees %w/w: (gr sucrose/100 gr juice)*100),Vintage,Variety,Appellation',
+      '25CSMX-400,Aging Wine,2/27/2026,SEGUIMIENTO MADURACIÓN,2025,Cabernet Sauvignon,Valle de Guadalupe',
+      '25CSMX-401,Aging Wine,2/27/2026,24.3,2025,Cabernet Sauvignon,Valle de Guadalupe',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 'numeric_string.csv');
+    const result = await winexrayParser.parse(file);
+    const wine = result.targets.find(t => t.table === 'wine_samples').rows;
+
+    assert.equal(wine.find(r => r.sample_id === '25CSMX-400'), undefined,
+      '25CSMX-400 with non-numeric brix must be rejected');
+    assert.ok(wine.find(r => r.sample_id === '25CSMX-401'),
+      '25CSMX-401 with numeric brix must pass');
+
+    const rejected = result.rejected.find(r => r.row['Sample Id'] === '25CSMX-400');
+    assert.ok(rejected, 'non-numeric NUMERIC row must appear in rejected[]');
+    assert.match(rejected.motivo_rechazo, /brix/);
+    assert.match(rejected.motivo_rechazo, /numérico|numeric/i);
+  });
+
+  // Round 34 — string in an INT column is the symmetric case: e.g. a
+  // section-header label in the Vintage cell.
+  it('rejects rows where an INT-typed column has a non-numeric string', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,Vintage,Variety,Appellation',
+      'NOPREFIX-CSMX-500,Aging Wine,2/27/2026,SEGUIMIENTO MADURACIÓN,Cabernet Sauvignon,Valle de Guadalupe',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 'int_string.csv');
+    const result = await winexrayParser.parse(file);
+    const wine = result.targets.find(t => t.table === 'wine_samples').rows;
+    assert.equal(wine.find(r => r.sample_id === 'NOPREFIX-CSMX-500'), undefined,
+      'row with non-numeric vintage must be rejected');
+    const rejected = result.rejected.find(r => r.row['Sample Id'] === 'NOPREFIX-CSMX-500');
+    assert.ok(rejected, 'non-numeric INT row must appear in rejected[]');
+    assert.match(rejected.motivo_rechazo, /vintage_year/);
+    assert.match(rejected.motivo_rechazo, /entero|integer/i);
+  });
+
   // Round 33 — PostgREST rejects mixed-shape arrays with "All object keys
   // must match". `applyNormalization` only assigns vintage_year inside an
   // `if (m)` block, so a sample_id whose first chars don't match \d{2}
