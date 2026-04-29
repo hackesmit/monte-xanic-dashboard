@@ -102,3 +102,18 @@ UPDATE public.mediciones_tecnicas SET source = 'form' WHERE source IS NULL;
 -- needed; the rows now live in mediciones_tecnicas).
 COMMENT ON TABLE public.pre_receptions
   IS 'DEPRECATED 2026-04-29 (Round 35): Use mediciones_tecnicas with source=''upload''. Kept as audit trail.';
+
+-- ── 5. Register in applied_migrations log ─────────────────────────
+-- Skipped silently if the log table doesn't exist yet (i.e. user runs this
+-- before migration_applied_log.sql). The log migration's bootstrap inserts
+-- a row for unify_mediciones too, with ON CONFLICT DO NOTHING for safety.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables
+             WHERE table_schema = 'public' AND table_name = 'applied_migrations') THEN
+    INSERT INTO public.applied_migrations (name)
+      VALUES ('migration_unify_mediciones')
+      ON CONFLICT (name) DO NOTHING;
+  END IF;
+END
+$$;

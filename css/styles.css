@@ -1546,6 +1546,32 @@ canvas { max-width: 100%; }
   opacity: 1;
 }
 
+/* ── Migration Drift Banner ── */
+.migrations-banner {
+  background: #fff8e1;
+  color: #6b4f00;
+  border-bottom: 1px solid #d4a900;
+  padding: 12px 20px;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+}
+.migrations-banner strong { color: #4a3500; }
+.migrations-banner code {
+  background: rgba(0,0,0,0.06);
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+[data-theme="dark"] .migrations-banner {
+  background: #3a2e0c;
+  color: #f0d480;
+  border-bottom-color: #b08a00;
+}
+[data-theme="dark"] .migrations-banner strong { color: #fff3c0; }
+[data-theme="dark"] .migrations-banner code { background: rgba(255,255,255,0.08); }
+
 /* ── Login screen entrance animation ── */
 @keyframes loginFadeIn {
   from { opacity: 0; transform: translateY(12px); }

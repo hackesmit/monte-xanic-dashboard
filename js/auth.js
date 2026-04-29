@@ -149,6 +149,61 @@ export const Auth = {
   applyRole() {
     const uploadSection = document.getElementById('db-upload-section');
     if (uploadSection) uploadSection.style.display = this.canUpload() ? '' : 'none';
+    // Schema-drift banner: only meaningful for users who can upload, since
+    // the banner names a SQL migration to run in Supabase.
+    if (this.role === 'lab' || this.role === 'admin') this.checkMigrationsDrift();
+  },
+
+  // Fire-and-forget. Renders a banner only when the deployed code's
+  // expected migrations don't all appear in public.applied_migrations.
+  // Closes the recurring failure mode where uploads error out with
+  // "Could not find the 'X' column ... in the schema cache" because a
+  // migration committed to the repo was never run on Supabase (Round 36).
+  async checkMigrationsDrift() {
+    const banner = document.getElementById('migrations-banner');
+    if (!banner) return;
+    try {
+      const token = this.getToken();
+      if (!token) return;
+      const resp = await fetch('/api/migrations-status', {
+        headers: { 'x-session-token': token },
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (!data.ok) return;
+
+      if (data.bootstrapped === false) {
+        banner.innerHTML =
+          '<strong>Falta inicializar el registro de migraciones.</strong> ' +
+          'Ejecuta <code>sql/migration_applied_log.sql</code> en Supabase ' +
+          'para activar el monitor de migraciones, y revisa que el resto de migraciones estén aplicadas.';
+        banner.style.display = '';
+        return;
+      }
+
+      if (data.missing && data.missing.length) {
+        const list = data.missing
+          .map(m => `<code>sql/${this._esc(m)}.sql</code>`)
+          .join(', ');
+        const noun = data.missing.length === 1 ? 'migración pendiente' : 'migraciones pendientes';
+        banner.innerHTML =
+          `<strong>${data.missing.length} ${noun}.</strong> ` +
+          `Ejecuta en Supabase SQL Editor: ${list}. ` +
+          `Las cargas que dependan de columnas nuevas fallarán hasta que se apliquen.`;
+        banner.style.display = '';
+        return;
+      }
+
+      banner.style.display = 'none';
+    } catch (_) {
+      // Endpoint unreachable (local dev without Vercel) — silent.
+    }
+  },
+
+  _esc(s) {
+    const d = document.createElement('div');
+    d.textContent = String(s);
+    return d.innerHTML;
   },
 
   _formBound: false,
