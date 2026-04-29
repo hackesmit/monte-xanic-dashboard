@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS public.pre_receptions (
   lot_code          TEXT,                   -- Lote de campo
 
   -- load characteristics
-  total_bins        INT,                    -- Total bins/jabas
+  total_bins        INT,                    -- Total bins/jabas — widened to NUMERIC by migration_total_bins_numeric.sql (R32)
   bin_unit          TEXT,                   -- "bins" | "jabas"
   tons_received     NUMERIC,                -- Toneladas totales
   bin_temp_c        NUMERIC,                -- Temperatura bins/jabas
