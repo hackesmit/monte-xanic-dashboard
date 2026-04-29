@@ -21,6 +21,14 @@ const LAB_TEST_RE = /(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY
 // US-format slash dates ("2/27/2026"), so we hint MDY for disambiguation.
 const DATE_COLUMNS = new Set(['sample_date', 'crush_date']);
 
+// INT-typed columns in wine_samples / berry_samples. Fractional source
+// values would trigger Postgres "invalid input syntax for type integer"
+// (Round 32 pattern) — catch at the parser instead with a row+column-aware
+// reject. vintage_year is parser-derived from sample_id when absent, so it
+// can never be fractional via that path; including it here covers the
+// 'Vintage' source-column path.
+const INT_COLUMNS = new Set(['vintage_year', 'days_post_crush', 'berry_count']);
+
 async function fileToRows(file) {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array', cellDates: true });
@@ -147,6 +155,25 @@ export const winexrayParser = {
       // California late-filter
       if (obj.appellation === 'California') {
         excluded.california++;
+        continue;
+      }
+
+      // INT-typed column validation (Round 32 Option B). Run AFTER
+      // applyNormalization so a vintage_year derived from sample_id is also
+      // checked. First offender wins so the user sees a deterministic message.
+      let intReject = null;
+      for (const col of INT_COLUMNS) {
+        const v = obj[col];
+        if (typeof v === 'number' && !Number.isInteger(v)) {
+          intReject = `${col}=${v}: debe ser entero`;
+          break;
+        }
+      }
+      if (intReject) {
+        rejected.push({
+          row: Object.fromEntries(headers.map((h, idx) => [h, row[idx]])),
+          motivo_rechazo: intReject,
+        });
         continue;
       }
 

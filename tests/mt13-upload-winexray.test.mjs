@@ -144,4 +144,30 @@ describe('MT.13 — WineXRay parser', () => {
     assert.equal(berry.sample_date, '2024-08-21');
     assert.equal(berry.crush_date,  '2024-09-01');
   });
+
+  // Round 32 Option B — defense-in-depth: a row whose INT-typed column
+  // (here days_post_crush=12.5) is fractional must be rejected at the
+  // parser layer with a Spanish motivo_rechazo naming the column. Without
+  // this check the row would reach Postgres and trigger an opaque
+  // "invalid input syntax for type integer" rejection blocking the batch.
+  it('rejects rows where an INT-typed column has a fractional value', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,CrushDate (yyyy-mm-dd),DaysPostCrush (number),Vintage,Variety,Appellation',
+      '25CSMX-300,Aging Wine,2/27/2026,2/15/2026,12.5,2025,Cabernet Sauvignon,Valle de Guadalupe',
+      '25CSMX-301,Aging Wine,2/27/2026,2/15/2026,12,2025,Cabernet Sauvignon,Valle de Guadalupe',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 'fractional_int.csv');
+    const result = await winexrayParser.parse(file);
+    const wine = result.targets.find(t => t.table === 'wine_samples').rows;
+
+    assert.equal(wine.find(r => r.sample_id === '25CSMX-300'), undefined,
+      '25CSMX-300 with fractional days_post_crush must be rejected');
+    assert.ok(wine.find(r => r.sample_id === '25CSMX-301'),
+      '25CSMX-301 with integer days_post_crush must pass');
+
+    const rejected = result.rejected.find(r => r.row['Sample Id'] === '25CSMX-300');
+    assert.ok(rejected, 'fractional INT row must appear in rejected[]');
+    assert.match(rejected.motivo_rechazo, /days_post_crush/);
+    assert.match(rejected.motivo_rechazo, /entero|integer/i);
+  });
 });
