@@ -613,7 +613,9 @@ export const CONFIG = {
     'vessel_id':       'tanque',
     'notes':           'notes',
     'below_detection': 'belowDetection',
-    'sample_seq':      'sampleSeq'
+    'sample_seq':      'sampleSeq',
+    'last_edited_at':  'lastEditedAt',
+    'last_edited_by':  'lastEditedBy'
   },
 
   // wine_samples Supabase columns → DataStore.wineRecepcion JS field names
@@ -641,7 +643,9 @@ export const CONFIG = {
     'b_star':          'colorB',
     'color_i':         'colorI',
     'color_t':         'colorT',
-    'notes':           'notes'
+    'notes':           'notes',
+    'last_edited_at':  'lastEditedAt',
+    'last_edited_by':  'lastEditedBy'
   },
 
   // prefermentativos Supabase columns → DataStore.winePreferment JS field names
@@ -656,7 +660,9 @@ export const CONFIG = {
     'ta':               'at',
     'temperature':      'temp',
     'tant':             'antoWX',
-    'notes':            'notes'
+    'notes':            'notes',
+    'last_edited_at':   'lastEditedAt',
+    'last_edited_by':   'lastEditedBy'
   },
 
   // ── Explorer Metric Registry ──────────────────────────────────
