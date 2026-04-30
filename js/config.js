@@ -644,6 +644,7 @@ export const CONFIG = {
     'color_i':         'colorI',
     'color_t':         'colorT',
     'notes':           'notes',
+    'sample_seq':      'sampleSeq',
     'last_edited_at':  'lastEditedAt',
     'last_edited_by':  'lastEditedBy'
   },
@@ -1226,4 +1227,34 @@ export const JS_TO_DB_BERRY = {
   colorT:         'color_t',
   belowDetection: 'below_detection',
   notes:          'notes',
+};
+
+export const JS_TO_DB_WINE = {
+  // composite key
+  codigoBodega:  'sample_id',
+  fecha:         'sample_date',
+  sampleSeq:     'sample_seq',
+  // editable wine_samples columns (tank_receptions joined fields are
+  // intentionally excluded — Stage 7.6 deferral)
+  vintage:       'vintage_year',
+  variedad:      'variety',
+  proveedor:     'appellation',
+  tanque:        'vessel_id',
+  crushDate:     'crush_date',
+  daysPostCrush: 'days_post_crush',
+  brix:          'brix',
+  pH:            'ph',
+  at:            'ta',
+  antoWX:        'tant',
+  freeANT:       'fant',
+  boundANT:      'bant',
+  pTAN:          'ptan',
+  iRPs:          'irps',
+  iptSpica:      'ipt',
+  colorL:        'l_star',
+  colorA:        'a_star',
+  colorB:        'b_star',
+  colorI:        'color_i',
+  colorT:        'color_t',
+  notes:         'notes',
 };

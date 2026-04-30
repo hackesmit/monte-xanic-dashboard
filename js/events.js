@@ -10,6 +10,7 @@ import { UploadManager } from './upload.js';
 import { Mediciones } from './mediciones.js';
 import { Tables } from './tables.js';
 import { BerryEdit } from './berryEdit.js';
+import { WineEdit } from './wineEdit.js';
 import { DataStore } from './dataLoader.js';
 
 export const Events = {
@@ -28,6 +29,7 @@ export const Events = {
     this._bindLegendDelegation();
     this._bindMediciones();
     this._bindBerryEdit();
+    this._bindWineEdit();
     this._bindPageExport();
   },
 
@@ -532,6 +534,49 @@ export const Events = {
 
     document.getElementById('berry-edit-form')?.addEventListener('input',
       () => BerryEdit.refreshDirty());
+  },
+
+  // ── Wine-Recepción row editing (Phase 10 / Stage 7.4) ──
+  _bindWineEdit() {
+    const tbody = document.getElementById('wine-table-body');
+    if (tbody) tbody.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.row-clickable');
+      if (!tr) return;
+      const sampleId   = tr.dataset.sampleId;
+      const sampleDate = tr.dataset.sampleDate;
+      const sampleSeq  = tr.dataset.sampleSeq;
+      if (!sampleId || !sampleDate) return;
+      const row = (DataStore.wineRecepcion || []).find(r =>
+        String(r.codigoBodega) === String(sampleId) &&
+        String(r.fecha)        === String(sampleDate) &&
+        String(r.sampleSeq)    === String(sampleSeq)
+      );
+      if (row) WineEdit.open(row);
+    });
+
+    document.getElementById('wine-edit-close')?.addEventListener('click',
+      () => WineEdit.close());
+    document.getElementById('wine-edit-cancel')?.addEventListener('click',
+      () => WineEdit.close());
+
+    const modal = document.getElementById('wine-edit-modal');
+    if (modal) {
+      modal.addEventListener('cancel', (e) => {
+        e.preventDefault();
+        WineEdit.close();
+      });
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) WineEdit.close();
+      });
+    }
+
+    document.getElementById('wine-edit-save')?.addEventListener('click',
+      () => WineEdit.submit());
+    document.getElementById('wine-edit-delete')?.addEventListener('click',
+      () => WineEdit.remove());
+
+    document.getElementById('wine-edit-form')?.addEventListener('input',
+      () => WineEdit.refreshDirty());
   },
 
   _bindPageExport() {
