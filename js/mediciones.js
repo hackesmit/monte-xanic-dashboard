@@ -4,6 +4,8 @@ import { CONFIG } from './config.js';
 import { DataStore } from './dataLoader.js';
 import { DemoMode } from './demoMode.js';
 import { Charts } from './charts.js';
+import { Filters } from './filters.js';
+import { Auth } from './auth.js';
 
 // ── Pure helpers (exported for tests; used by methods on Mediciones below) ──
 
@@ -33,6 +35,9 @@ export function shouldShowSourceBanner(row) {
 export const Mediciones = {
   _sortField: 'date',
   _sortAsc: false,
+
+  // Search state — populated by events.js on input.
+  _searchTerm: '',
 
   initDropdowns() {
     const varietyEl = document.getElementById('med-variety');
@@ -402,7 +407,24 @@ export const Mediciones = {
     if (!tbody) return;
 
     if (countEl) countEl.textContent = `${data.length} registros`;
-    if (noData) noData.style.display = data.length ? 'none' : '';
+    if (noData) {
+      noData.style.display = data.length ? 'none' : '';
+      const hasFilter = (Filters.state?.vintages?.size || Filters.state?.varieties?.size ||
+                        Filters.state?.origins?.size || Filters.state?.lots?.size ||
+                        (this._searchTerm || '').trim().length > 0);
+      noData.textContent = hasFilter
+        ? 'No hay mediciones que coincidan con los filtros actuales.'
+        : 'No hay mediciones registradas. Use el formulario para agregar la primera.';
+    }
+
+    // Sort indicator — driven by aria-sort, styled in CSS
+    const table = document.getElementById('mediciones-table');
+    if (table) {
+      table.querySelectorAll('th[data-sort]').forEach(th => th.removeAttribute('aria-sort'));
+      const active = table.querySelector(`th[data-sort="${this._sortField}"]`);
+      const sort = ariaSortFor(this._sortField, this._sortAsc, this._sortField);
+      if (active && sort) active.setAttribute('aria-sort', sort);
+    }
 
     const sorted = [...data].sort((a, b) => {
       let va = a[this._sortField], vb = b[this._sortField];
@@ -433,7 +455,7 @@ export const Mediciones = {
           `<span class="hb-quemadura" style="width:${pct(d.healthQuemadura)}%"></span>` +
           `</div>`
         : '—';
-      return `<tr>
+      return `<tr class="${Auth.canWrite() && !DemoMode.isActive() ? 'row-clickable' : ''}" data-code="${esc(d.code)}">
         <td>${esc(d.code)}</td>
         <td>${esc(d.date)}</td>
         <td>${esc(d.variety)}</td>
@@ -494,10 +516,39 @@ export const Mediciones = {
   // ── Refresh ──
 
   refresh() {
-    const data = DataStore.medicionesData || [];
-    this.updateKPIs(data);
-    this.renderTable(data);
-    this.renderCharts(data);
+    const raw = DataStore.medicionesData || [];
+    const filtered = this._applyGlobalFilters(raw);
+    this.updateKPIs(filtered);
+    this.renderCharts(filtered);
+    this.renderTable(this._applySearch(filtered));  // search affects table only
+  },
+
+  _applyGlobalFilters(rows) {
+    const s = Filters.state || {};
+    return rows.filter(r => {
+      if (s.vintages?.size  && !s.vintages.has(String(r.vintage))) return false;
+      if (s.varieties?.size && !s.varieties.has(r.variety))        return false;
+      if (s.origins?.size   && !s.origins.has(r.appellation))      return false;
+      // Lot filter is more permissive — match either lotCode or appellation prefix
+      if (s.lots?.size      && r.lotCode && !s.lots.has(r.lotCode)) return false;
+      return true;
+    });
+  },
+
+  _applySearch(rows) {
+    const term = (this._searchTerm || '').trim().toLowerCase();
+    if (!term) return rows;
+    return rows.filter(r => {
+      const haystack = [r.code, r.variety, r.appellation, r.lotCode, r.notes, r.measuredBy]
+        .filter(Boolean).join(' ').toLowerCase();
+      return haystack.includes(term);
+    });
+  },
+
+  setSearch(term) {
+    this._searchTerm = term;
+    // Re-render only the table (KPIs / charts already reflect the filtered set).
+    this.renderTable(this._applySearch(this._applyGlobalFilters(DataStore.medicionesData || [])));
   },
 
   // ── Charts ──
