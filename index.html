@@ -880,7 +880,13 @@
         </div>
       </div>
 
-      <div class="section-label" style="margin-top:24px">Registro de Mediciones · <span id="med-table-count"></span></div>
+      <div class="table-toolbar" style="margin-top:24px">
+        <div class="section-label">Registro de Mediciones</div>
+        <input id="med-search" type="search" class="table-search"
+               placeholder="Buscar por código, variedad, lote, notas…"
+               aria-label="Buscar en mediciones">
+        <span class="table-toolbar-count" id="med-table-count"></span>
+      </div>
       <div class="table-wrap">
         <div class="table-scroll">
           <table class="data-table" id="mediciones-table">
@@ -907,6 +913,113 @@
         No hay mediciones registradas. Use el formulario para agregar la primera.
       </div>
     </div>
+
+  <dialog id="med-edit-modal" class="row-edit-modal" aria-labelledby="med-edit-title">
+    <form method="dialog" id="med-edit-form" class="medicion-form">
+      <header class="modal-header">
+        <h2 id="med-edit-title">Editar medición · <span id="med-edit-code">—</span></h2>
+        <p id="med-edit-audit" class="modal-audit-line">—</p>
+        <button type="button" class="modal-close" id="med-edit-close" aria-label="Cerrar">×</button>
+      </header>
+
+      <div id="med-edit-source-banner" class="source-banner" hidden>
+        Esta medición fue importada desde Pre-recepción. Si el archivo origen
+        se vuelve a subir, los cambios se sobrescribirán.
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Código</label>
+          <input type="text" id="med-edit-code-input" disabled>
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="med-edit-date">
+        </div>
+        <div class="form-group">
+          <label>Vendimia</label>
+          <input type="number" id="med-edit-vintage" min="2020" max="2030">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Variedad</label>
+          <select id="med-edit-variety"><option value="">—</option></select>
+        </div>
+        <div class="form-group">
+          <label>Origen</label>
+          <select id="med-edit-origin"><option value="">—</option></select>
+        </div>
+        <div class="form-group">
+          <label>Lote</label>
+          <input type="text" id="med-edit-lot">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Toneladas</label>
+          <input type="number" id="med-edit-tons" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Peso Prom. Baya (g)</label>
+          <input type="number" id="med-edit-weight" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Diámetro Prom. (mm)</label>
+          <input type="number" id="med-edit-diameter" step="0.01" min="0">
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:12px;font-size:11px">Sorteo Sanitario</div>
+      <div class="form-row health-row">
+        <div class="form-group form-group-sm"><label>Madura</label>      <input type="number" id="med-edit-h-madura"      min="0"></div>
+        <div class="form-group form-group-sm"><label>Inmadura</label>    <input type="number" id="med-edit-h-inmadura"    min="0"></div>
+        <div class="form-group form-group-sm"><label>Sobremad.</label>   <input type="number" id="med-edit-h-sobremadura" min="0"></div>
+        <div class="form-group form-group-sm"><label>Picadura</label>    <input type="number" id="med-edit-h-picadura"    min="0"></div>
+        <div class="form-group form-group-sm"><label>Enferm.</label>     <input type="number" id="med-edit-h-enfermedad"  min="0"></div>
+        <div class="form-group form-group-sm"><label>Quemad.</label>     <input type="number" id="med-edit-h-quemadura"   min="0"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Grado Sanitario</label>
+          <select id="med-edit-grade">
+            <option value="">— Seleccionar —</option>
+            <option value="Excelente">Excelente</option>
+            <option value="Bueno">Bueno</option>
+            <option value="Regular">Regular</option>
+            <option value="Malo">Malo</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Madurez Fenólica</label>
+          <select id="med-edit-phenolic-maturity">
+            <option value="">—</option>
+            <option value="Sobresaliente">Sobresaliente (+3)</option>
+            <option value="Parcial">Parcial (0)</option>
+            <option value="No sobresaliente">No sobresaliente (−3)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Medido por</label>
+          <input type="text" id="med-edit-by">
+        </div>
+        <div class="form-group">
+          <label>Notas</label>
+          <input type="text" id="med-edit-notes">
+        </div>
+      </div>
+
+      <footer class="modal-footer">
+        <button type="button" class="btn-danger" id="med-edit-delete">Eliminar</button>
+        <span id="med-edit-status" class="form-status"></span>
+        <button type="button" class="btn-secondary" id="med-edit-cancel">Cancelar</button>
+        <button type="button" class="btn-gold"      id="med-edit-save" disabled>Guardar cambios</button>
+      </footer>
+    </form>
+  </dialog>
 
   </main>
 </div>
