@@ -32,6 +32,7 @@ export const Events = {
     this._bindBerryEdit();
     this._bindWineEdit();
     this._bindPrefermentEdit();
+    this._bindExtractionEdit();
     this._bindPageExport();
   },
 
@@ -637,6 +638,31 @@ export const Events = {
 
     document.getElementById('pref-edit-form')?.addEventListener('input',
       () => PrefermentEdit.refreshDirty());
+  },
+
+  // ── Extraction-row redirect (Phase 10 / Stage 7.7) ──
+  // The extraction table is a join row (berry side + wine side). Clicking
+  // a row opens the BerryEdit modal pre-populated with the underlying
+  // berry sample — the user can then re-click into the wine row from
+  // the Wine view if they want to edit the wine side. Avoids inventing
+  // a third "join edit" path.
+  _bindExtractionEdit() {
+    const tbody = document.getElementById('extraction-table-body');
+    if (!tbody) return;
+    tbody.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.row-clickable');
+      if (!tr) return;
+      const sampleId   = tr.dataset.sampleId;
+      const sampleDate = tr.dataset.sampleDate;
+      const sampleSeq  = tr.dataset.sampleSeq;
+      if (!sampleId || !sampleDate) return;
+      const row = (DataStore.berryData || []).find(r =>
+        String(r.sampleId)   === String(sampleId) &&
+        String(r.sampleDate) === String(sampleDate) &&
+        String(r.sampleSeq)  === String(sampleSeq)
+      );
+      if (row) BerryEdit.open(row);
+    });
   },
 
   _bindPageExport() {
