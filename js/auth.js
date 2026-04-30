@@ -119,6 +119,7 @@ export const Auth = {
     localStorage.removeItem(this._tokenKey);
     localStorage.removeItem(this._roleKey);
     this.role = 'viewer';
+    this._applyRoleClasses();
     DataStore.clearCache();
     App.initialized = false;
     const dashboard = document.getElementById('dashboard-content');
@@ -146,12 +147,21 @@ export const Auth = {
     return this.role === 'lab';
   },
 
+  canWrite()  { return this.role === 'lab'; },
+  canExport() { return this.role === 'lab' || this.role === 'admin'; },
+
+  _applyRoleClasses() {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('can-write',  this.canWrite());
+    document.body.classList.toggle('can-export', this.canExport());
+  },
+
   applyRole() {
     const uploadSection = document.getElementById('db-upload-section');
     if (uploadSection) uploadSection.style.display = this.canUpload() ? '' : 'none';
-    // Schema-drift banner: only meaningful for users who can upload, since
-    // the banner names a SQL migration to run in Supabase.
-    if (this.role === 'lab' || this.role === 'admin') this.checkMigrationsDrift();
+    // Schema-drift banner: only meaningful for lab users who manage migrations.
+    if (this.role === 'lab') this.checkMigrationsDrift();
+    this._applyRoleClasses();
   },
 
   // Fire-and-forget. Renders a banner only when the deployed code's
