@@ -1,6 +1,8 @@
 // ── Table Rendering ──
 import { CONFIG } from './config.js';
 import { App } from './app.js';
+import { Auth } from './auth.js';
+import { DemoMode } from './demoMode.js';
 
 export const Tables = {
   sortField: null,
@@ -54,13 +56,18 @@ export const Tables = {
     }
 
     let hasBelowDetection = false;
+    const editable = Auth.canWrite() && !DemoMode.isActive();
     container.innerHTML = display.map(d => {
       const varColor = CONFIG.varietyColors[d.variety] || '#888';
       const origColor = CONFIG.resolveOriginColor(d.appellation);
       const bdMark = d.belowDetection ? '<span title="Valores bajo límite de detección" style="color:var(--gold);cursor:help"> †</span>' : '';
+      const editMark = (editable && d.lastEditedAt) ? '<span title="Editado" style="color:var(--gold);margin-left:4px">✎</span>' : '';
       if (d.belowDetection) hasBelowDetection = true;
-      return `<tr>
-        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.sampleId) || '—'}${bdMark}</td>
+      const trAttrs = editable
+        ? `class="row-clickable" data-sample-id="${this._esc(d.sampleId)}" data-sample-date="${this._esc(d.sampleDate)}" data-sample-seq="${this._esc(d.sampleSeq)}"`
+        : '';
+      return `<tr ${trAttrs}>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.sampleId) || '—'}${bdMark}${editMark}</td>
         <td>${this._esc(d.sampleDate) || '—'}</td>
         <td>${this._esc(d.vintage) || '—'}</td>
         <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variety) || '—'}</span></td>

@@ -9,6 +9,8 @@ import { WeatherStore } from './weather.js';
 import { UploadManager } from './upload.js';
 import { Mediciones } from './mediciones.js';
 import { Tables } from './tables.js';
+import { BerryEdit } from './berryEdit.js';
+import { DataStore } from './dataLoader.js';
 
 export const Events = {
   bindAll() {
@@ -25,6 +27,7 @@ export const Events = {
     this._bindExplorerDelegation();
     this._bindLegendDelegation();
     this._bindMediciones();
+    this._bindBerryEdit();
     this._bindPageExport();
   },
 
@@ -482,6 +485,53 @@ export const Events = {
         t = setTimeout(() => Mediciones.setSearch(searchEl.value), 200);
       });
     }
+  },
+
+  // ── Berry-row editing (Phase 10 / Stage 7.3) ──
+  // Mirrors _bindMediciones structure: row click on .row-clickable opens
+  // the modal with the matching DataStore.berryData row; modal close /
+  // save / delete / live-dirty inputs all route through BerryEdit, which
+  // delegates to RowEditor.
+  _bindBerryEdit() {
+    const tbody = document.getElementById('berry-table-body');
+    if (tbody) tbody.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.row-clickable');
+      if (!tr) return;
+      const sampleId   = tr.dataset.sampleId;
+      const sampleDate = tr.dataset.sampleDate;
+      const sampleSeq  = tr.dataset.sampleSeq;
+      if (!sampleId || !sampleDate) return;
+      const row = (DataStore.berryData || []).find(r =>
+        String(r.sampleId)   === String(sampleId) &&
+        String(r.sampleDate) === String(sampleDate) &&
+        String(r.sampleSeq)  === String(sampleSeq)
+      );
+      if (row) BerryEdit.open(row);
+    });
+
+    document.getElementById('berry-edit-close')?.addEventListener('click',
+      () => BerryEdit.close());
+    document.getElementById('berry-edit-cancel')?.addEventListener('click',
+      () => BerryEdit.close());
+
+    const modal = document.getElementById('berry-edit-modal');
+    if (modal) {
+      modal.addEventListener('cancel', (e) => {
+        e.preventDefault();
+        BerryEdit.close();
+      });
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) BerryEdit.close();
+      });
+    }
+
+    document.getElementById('berry-edit-save')?.addEventListener('click',
+      () => BerryEdit.submit());
+    document.getElementById('berry-edit-delete')?.addEventListener('click',
+      () => BerryEdit.remove());
+
+    document.getElementById('berry-edit-form')?.addEventListener('input',
+      () => BerryEdit.refreshDirty());
   },
 
   _bindPageExport() {

@@ -1021,6 +1021,90 @@
     </form>
   </dialog>
 
+  <dialog id="berry-edit-modal" class="row-edit-modal" aria-labelledby="berry-edit-title">
+    <form method="dialog" id="berry-edit-form" class="medicion-form">
+      <header class="modal-header">
+        <h2 id="berry-edit-title">Editar muestra · <span id="berry-edit-sample-id">—</span></h2>
+        <p id="berry-edit-audit" class="modal-audit-line">—</p>
+        <button type="button" class="modal-close" id="berry-edit-close" aria-label="Cerrar">×</button>
+      </header>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Sample ID</label>
+          <input type="text" id="berry-edit-sample-id-input" disabled>
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="text" id="berry-edit-sample-date" disabled>
+        </div>
+        <div class="form-group">
+          <label>Sec.</label>
+          <input type="text" id="berry-edit-sample-seq" disabled>
+        </div>
+        <div class="form-group">
+          <label>Vendimia</label>
+          <input type="number" id="berry-edit-vintage" min="2020" max="2030">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Variedad</label>
+          <select id="berry-edit-variety"><option value="">—</option></select>
+        </div>
+        <div class="form-group">
+          <label>Origen</label>
+          <select id="berry-edit-origin"><option value="">—</option></select>
+        </div>
+        <div class="form-group">
+          <label>Fecha de Envero</label>
+          <input type="date" id="berry-edit-crush-date">
+        </div>
+        <div class="form-group">
+          <label>Días Post-Envero</label>
+          <input type="number" id="berry-edit-dpc" step="1">
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:12px;font-size:11px">Química</div>
+      <div class="form-row">
+        <div class="form-group form-group-sm"><label>Brix</label> <input type="number" id="berry-edit-brix" step="0.1"></div>
+        <div class="form-group form-group-sm"><label>pH</label>   <input type="number" id="berry-edit-ph"   step="0.01"></div>
+        <div class="form-group form-group-sm"><label>AT (g/L)</label> <input type="number" id="berry-edit-ta" step="0.1"></div>
+        <div class="form-group form-group-sm"><label>tANT</label> <input type="number" id="berry-edit-tant" step="1"></div>
+        <div class="form-group form-group-sm"><label>Peso Baya (g)</label> <input type="number" id="berry-edit-fw" step="0.01"></div>
+        <div class="form-group form-group-sm"><label>Antocianinas</label>  <input type="number" id="berry-edit-antho" step="0.01"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:12px;font-size:11px">Color</div>
+      <div class="form-row">
+        <div class="form-group form-group-sm"><label>L*</label>     <input type="number" id="berry-edit-l"  step="0.01"></div>
+        <div class="form-group form-group-sm"><label>a*</label>     <input type="number" id="berry-edit-a"  step="0.01"></div>
+        <div class="form-group form-group-sm"><label>b*</label>     <input type="number" id="berry-edit-b"  step="0.01"></div>
+        <div class="form-group form-group-sm"><label>Color I</label><input type="number" id="berry-edit-ci" step="0.01"></div>
+        <div class="form-group form-group-sm"><label>Color T</label><input type="number" id="berry-edit-ct" step="0.01"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label><input type="checkbox" id="berry-edit-bd"> Bajo límite de detección</label>
+        </div>
+        <div class="form-group" style="flex:2">
+          <label>Notas</label>
+          <input type="text" id="berry-edit-notes">
+        </div>
+      </div>
+
+      <footer class="modal-footer">
+        <button type="button" class="btn-danger" id="berry-edit-delete">Eliminar</button>
+        <span id="berry-edit-status" class="form-status"></span>
+        <button type="button" class="btn-secondary" id="berry-edit-cancel">Cancelar</button>
+        <button type="button" class="btn-gold"      id="berry-edit-save" disabled>Guardar cambios</button>
+      </footer>
+    </form>
+  </dialog>
+
   </main>
 </div>
 

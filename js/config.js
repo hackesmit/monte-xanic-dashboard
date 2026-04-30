@@ -1193,3 +1193,37 @@ export const CONFIG = {
     { re: /San Vicente|VSV|\(SV\)/i,         valley: 'Valle de San Vicente' }
   ]
 };
+
+// ── Inverse JS→DB column maps (Phase 10 / Stage 7) ────────────────
+// Used by js/rowEditor.js descriptors to translate dirty JS-shape rows
+// back to the column names expected by /api/row's table whitelist
+// (see api/upload.js ALLOWED_TABLES). Audit columns last_edited_at /
+// last_edited_by are intentionally absent — the server is the only writer.
+
+export const JS_TO_DB_BERRY = {
+  // composite key — read-only on the form; helper builds the WHERE clause
+  // from the snapshot of these.
+  sampleId:       'sample_id',
+  sampleDate:     'sample_date',
+  sampleSeq:      'sample_seq',
+  // editable scalar fields (subset of supabaseToBerryJS that the berry
+  // edit form exposes)
+  vintage:        'vintage_year',
+  variety:        'variety',
+  appellation:    'appellation',
+  crushDate:      'crush_date',
+  daysPostCrush:  'days_post_crush',
+  brix:           'brix',
+  pH:             'ph',
+  ta:             'ta',
+  tANT:           'tant',
+  berryFW:        'berry_weight',
+  anthocyanins:   'berry_anthocyanins',
+  colorL:         'l_star',
+  colorA:         'a_star',
+  colorB:         'b_star',
+  colorI:         'color_i',
+  colorT:         'color_t',
+  belowDetection: 'below_detection',
+  notes:          'notes',
+};
