@@ -109,6 +109,29 @@ export default async function handler(req, res) {
     }
   }
 
-  // delete branch — Task 8
-  return res.status(501).json({ ok: false, error: 'No implementado' });
+  if (action === 'delete') {
+    try {
+      const supaRes = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Prefer': 'return=representation',
+        },
+      });
+      const body = await supaRes.json();
+      if (!supaRes.ok) {
+        return res.status(supaRes.status).json({
+          ok: false, error: body?.message || 'Error al eliminar',
+        });
+      }
+      const count = Array.isArray(body) ? body.length : 0;
+      return res.status(200).json({ ok: true, deleted: count });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: 'Error de red al eliminar' });
+    }
+  }
+
+  // Should be unreachable — ALLOWED_ACTIONS guards above.
+  return res.status(400).json({ ok: false, error: 'Acción no válida' });
 }
