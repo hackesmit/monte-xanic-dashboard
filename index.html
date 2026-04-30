@@ -1204,6 +1204,69 @@
     </form>
   </dialog>
 
+  <dialog id="pref-edit-modal" class="row-edit-modal" aria-labelledby="pref-edit-title">
+    <form method="dialog" id="pref-edit-form" class="medicion-form">
+      <header class="modal-header">
+        <h2 id="pref-edit-title">Editar pre-fermentativo · <span id="pref-edit-code">—</span></h2>
+        <p id="pref-edit-audit" class="modal-audit-line">—</p>
+        <button type="button" class="modal-close" id="pref-edit-close" aria-label="Cerrar">×</button>
+      </header>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Report Code</label>
+          <input type="text" id="pref-edit-code-input" disabled>
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="date" id="pref-edit-date">
+        </div>
+        <div class="form-group">
+          <label>Vendimia</label>
+          <input type="number" id="pref-edit-vintage" min="2020" max="2030">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Lote</label>
+          <input type="text" id="pref-edit-batch">
+        </div>
+        <div class="form-group">
+          <label>Tanque</label>
+          <input type="text" id="pref-edit-tanque">
+        </div>
+        <div class="form-group">
+          <label>Variedad</label>
+          <select id="pref-edit-variety"><option value="">—</option></select>
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:12px;font-size:11px">Química</div>
+      <div class="form-row">
+        <div class="form-group form-group-sm"><label>Brix</label> <input type="number" id="pref-edit-brix" step="0.1"></div>
+        <div class="form-group form-group-sm"><label>pH</label>   <input type="number" id="pref-edit-ph"   step="0.01"></div>
+        <div class="form-group form-group-sm"><label>AT (g/L)</label> <input type="number" id="pref-edit-ta" step="0.1"></div>
+        <div class="form-group form-group-sm"><label>Temp (°C)</label> <input type="number" id="pref-edit-temp" step="0.1"></div>
+        <div class="form-group form-group-sm"><label>tANT</label> <input type="number" id="pref-edit-tant" step="1"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Notas</label>
+          <input type="text" id="pref-edit-notes">
+        </div>
+      </div>
+
+      <footer class="modal-footer">
+        <button type="button" class="btn-danger" id="pref-edit-delete">Eliminar</button>
+        <span id="pref-edit-status" class="form-status"></span>
+        <button type="button" class="btn-secondary" id="pref-edit-cancel">Cancelar</button>
+        <button type="button" class="btn-gold"      id="pref-edit-save" disabled>Guardar cambios</button>
+      </footer>
+    </form>
+  </dialog>
+
   </main>
 </div>
 
