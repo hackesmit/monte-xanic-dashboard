@@ -31,4 +31,5 @@ export const MIGRATIONS = [
   'migration_unify_mediciones',
   'migration_applied_log',
   'migration_mediciones_audit',
+  'migration_row_audit_columns',
 ];
