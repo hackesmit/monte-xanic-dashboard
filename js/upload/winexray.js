@@ -11,6 +11,7 @@
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
 import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
+import { COLUMN_TYPES } from '../validation.js';
 
 const BELOW_DETECTION_RE = /^<\s*\d+(\.\d+)?$/;
 const ABOVE_DETECTION_RE = /^>\s*(\d+(\.\d+)?)$/;
@@ -21,33 +22,6 @@ const LAB_TEST_RE = /(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY
 // US-format slash dates ("2/27/2026"), so we hint MDY for disambiguation.
 const DATE_COLUMNS = new Set(['sample_date', 'crush_date']);
 
-// INT-typed columns in wine_samples / berry_samples. Fractional source
-// values would trigger Postgres "invalid input syntax for type integer"
-// (Round 32 pattern) — catch at the parser instead with a row+column-aware
-// reject. vintage_year is parser-derived from sample_id when absent, so it
-// can never be fractional via that path; including it here covers the
-// 'Vintage' source-column path.
-const INT_COLUMNS = new Set(['vintage_year', 'days_post_crush', 'berry_count']);
-
-// NUMERIC-typed columns across wine_samples and berry_samples. Non-numeric
-// strings (e.g. a section-header label like "SEGUIMIENTO MADURACIÓN" typed
-// into a brix cell) would otherwise reach Postgres as "invalid input syntax
-// for type numeric" and abort the whole batch (Round 34). A union set is
-// safe because each shaped row only carries the keys it routes for.
-const NUMERIC_COLUMNS = new Set([
-  // wine_samples + shared with berry_samples
-  'brix', 'ph', 'ta', 'ipt',
-  'tant', 'fant', 'bant', 'ptan', 'irps',
-  'l_star', 'a_star', 'b_star', 'color_i', 'color_t',
-  'alcohol', 'va', 'malic_acid', 'rs',
-  'berry_weight', 'berry_anthocyanins', 'berry_sugars_mg',
-  // berry_samples only
-  'berries_weight_g', 'extracted_juice_ml', 'extracted_juice_g',
-  'extracted_phenolics_ml', 'berry_fresh_weight_g', 'berry_anthocyanins_mg_100b',
-  'berry_acids_mg', 'berry_water_mg', 'berry_skins_seeds_mg',
-  'berry_sugars_pct', 'berry_acids_pct', 'berry_water_pct', 'berry_skins_seeds_pct',
-  'berry_sugars_g', 'berry_acids_g', 'berry_water_g', 'berry_skins_seeds_g',
-]);
 
 async function fileToRows(file) {
   const buf = await file.arrayBuffer();
@@ -185,10 +159,7 @@ export const winexrayParser = {
       // Type validation (Round 32 INT + Round 34 NUMERIC). Run AFTER
       // applyNormalization so a vintage_year derived from sample_id is also
       // checked. First offender wins so the user sees a deterministic message.
-      const reject = validateColumnTypes(obj, {
-        intCols: INT_COLUMNS,
-        numericCols: NUMERIC_COLUMNS,
-      });
+      const reject = validateColumnTypes(obj, COLUMN_TYPES.wine_samples);
       if (reject) {
         rejected.push({
           row: Object.fromEntries(headers.map((h, idx) => [h, row[idx]])),

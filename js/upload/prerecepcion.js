@@ -12,34 +12,11 @@
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
 import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
+import { COLUMN_TYPES } from '../validation.js';
 
 // mediciones_tecnicas columns whose values must be ISO YYYY-MM-DD.
 const DATE_COLUMNS = new Set(['reception_date', 'medicion_date', 'lab_date']);
 
-// mediciones_tecnicas INT-typed columns. Postgres integer rejects any
-// fractional value with an opaque "invalid input syntax for type integer"
-// message that blocks the whole upload batch — Round 32 traced exactly this
-// against total_bins=37.5. We catch it at the parser instead so the user
-// sees a row+column-aware Spanish reject message.
-//
-// total_bins is intentionally NOT in this set: it was widened to NUMERIC
-// (sql/migration_total_bins_numeric.sql) so half-bin / mixed-lot values
-// like 37.5 are legitimate and must pass through unchanged.
-const INT_COLUMNS = new Set([
-  'vintage_year',
-  'health_madura', 'health_inmadura', 'health_sobremadura', 'health_picadura',
-  'health_enfermedad', 'health_pasificada', 'health_aceptable', 'health_no_aceptable',
-]);
-
-// mediciones_tecnicas NUMERIC-typed columns. Same defense-in-depth as
-// INT_COLUMNS: reject non-numeric strings at the parser so the whole batch
-// doesn't fail with Postgres' opaque "invalid input syntax for type numeric"
-// (Round 34). total_bins is included here (NUMERIC after R32 migration).
-const NUMERIC_COLUMNS = new Set([
-  'total_bins', 'tons_received', 'bin_temp_c', 'truck_temp_c',
-  'bunch_avg_weight_g', 'berry_length_avg_cm', 'berries_200_weight_g', 'berry_avg_weight_g',
-  'brix', 'ph', 'at', 'ag', 'am', 'polifenoles', 'catequinas', 'antocianos',
-]);
 
 function normalizeHeader(h) {
   return String(h ?? '').trim().replace(/\s+/g, ' ');
@@ -140,10 +117,7 @@ export const prerecepcionParser = {
       }
       // Type validation (Round 32 INT + Round 34 NUMERIC). Run after the
       // identity guards so a missing/pendiente medicion_code is surfaced first.
-      const typeReject = validateColumnTypes(obj, {
-        intCols: INT_COLUMNS,
-        numericCols: NUMERIC_COLUMNS,
-      });
+      const typeReject = validateColumnTypes(obj, COLUMN_TYPES.mediciones_tecnicas);
       if (typeReject) {
         rejected.push({
           row: Object.fromEntries(headers.map((h, idx) => [h, row[idx]])),
