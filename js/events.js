@@ -432,6 +432,56 @@ export const Events = {
       const th = e.target.closest('th[data-sort]');
       if (th) Mediciones.sortBy(th.dataset.sort);
     });
+
+    // Row click → open edit modal (only on `.row-clickable` rows)
+    const tbody = document.getElementById('med-table-body');
+    if (tbody) tbody.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.row-clickable');
+      if (!tr) return;
+      const code = tr.dataset.code;
+      if (code) Mediciones.openEditModal(code);
+    });
+
+    // Modal close — close button, Cancel button, ESC (native via <dialog>),
+    // backdrop click. Each path routes through closeEditModal so the
+    // discard-confirm fires on dirty state.
+    document.getElementById('med-edit-close')?.addEventListener('click',
+      () => Mediciones.closeEditModal());
+    document.getElementById('med-edit-cancel')?.addEventListener('click',
+      () => Mediciones.closeEditModal());
+    const modal = document.getElementById('med-edit-modal');
+    if (modal) {
+      modal.addEventListener('cancel', (e) => {
+        // ESC fires this — intercept so we can run the dirty-discard check
+        e.preventDefault();
+        Mediciones.closeEditModal();
+      });
+      modal.addEventListener('click', (e) => {
+        // Backdrop click: <dialog> reports e.target === modal when the
+        // user clicks outside the form's bounding box.
+        if (e.target === modal) Mediciones.closeEditModal();
+      });
+    }
+
+    // Save + Delete buttons
+    document.getElementById('med-edit-save')?.addEventListener('click',
+      () => Mediciones.submitEdit());
+    document.getElementById('med-edit-delete')?.addEventListener('click',
+      () => Mediciones.submitDelete());
+
+    // Live dirty tracking — every input inside the modal triggers a refresh
+    document.getElementById('med-edit-form')?.addEventListener('input',
+      () => Mediciones._refreshDirtyState());
+
+    // Search input (debounced)
+    const searchEl = document.getElementById('med-search');
+    if (searchEl) {
+      let t;
+      searchEl.addEventListener('input', () => {
+        clearTimeout(t);
+        t = setTimeout(() => Mediciones.setSearch(searchEl.value), 200);
+      });
+    }
   },
 
   _bindPageExport() {
