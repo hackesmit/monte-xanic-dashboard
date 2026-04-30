@@ -129,7 +129,10 @@ export const DataStore = {
       healthQuemadura: row.health_quemadura || 0,
       phenolicMaturity: row.phenolic_maturity || null,
       measuredBy: row.measured_by,
-      notes: row.notes
+      notes: row.notes,
+      lastEditedAt: row.last_edited_at || null,
+      lastEditedBy: row.last_edited_by || null,
+      source:       row.source || 'form',
     };
   },
 
