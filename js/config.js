@@ -409,7 +409,8 @@ export const CONFIG = {
     'a*':                     'a_star',
     'b*':                     'b_star',
     'I':                      'color_i',
-    'T':                      'color_t',
+    // 'T' column intentionally unmapped: lab uses it for free-form
+    // operator notes, not numeric color-T values.
     'Berry Fresh Weight (gr)': 'berry_weight',
     'Berry Extractable Anthocyanins (mg/100b)': 'berry_anthocyanins',
     'Berry (extractable) Anthocyanins (mg/100b me)': 'berry_anthocyanins',
@@ -541,7 +542,8 @@ export const CONFIG = {
     'a*':                                  'a_star',
     'b*':                                  'b_star',
     'I':                                   'color_i',
-    'T':                                   'color_t',
+    // 'T' column intentionally unmapped: lab uses it for free-form
+    // operator notes, not numeric color-T values.
     'Brix (degrees %w/w: (gr sucrose/100 gr juice)*100)': 'brix',
     'pH (pH units)':                       'ph',
     'Titratable Acidity (TA gr/l)':        'ta',

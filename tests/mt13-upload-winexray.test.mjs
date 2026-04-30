@@ -238,4 +238,38 @@ describe('MT.13 — WineXRay parser', () => {
     assert.equal(xy.vintage_year, null,
       'sample_id without 2-digit prefix must yield vintage_year=null, not absent');
   });
+
+  // The lab uses the WineXRay 'T' column for free-form operator notes,
+  // not as a numeric color-T value. The parser must ignore it entirely
+  // so non-numeric content does not reject otherwise valid rows.
+  it('ignores the T column on wine rows (operator-comment field)', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,Vintage,Variety,Appellation,T,Brix (degrees %w/w: (gr sucrose/100 gr juice)*100)',
+      '25CSMX-700,Aging Wine,2/27/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,observación del operador,24.3',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 't_column_comment.csv');
+    const result = await winexrayParser.parse(file);
+    const wine = result.targets.find(t => t.table === 'wine_samples').rows;
+    const row = wine.find(r => r.sample_id === '25CSMX-700');
+    assert.ok(row, 'row with non-numeric T value must be accepted');
+    assert.equal(row.color_t, undefined,
+      'color_t must not be present in payload — T column is intentionally unmapped');
+    const rejected = result.rejected.find(r => r.row['Sample Id'] === '25CSMX-700');
+    assert.equal(rejected, undefined,
+      'row must not appear in rejected[] for a non-numeric T value');
+  });
+
+  it('ignores the T column on berry rows (operator-comment field)', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,Vintage,Variety,Appellation,T',
+      '25CSMX-B1,Berries,2/15/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,nota del operador',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 't_column_berry_comment.csv');
+    const result = await winexrayParser.parse(file);
+    const berry = result.targets.find(t => t.table === 'berry_samples').rows;
+    const row = berry.find(r => r.sample_id === '25CSMX-B1');
+    assert.ok(row, 'berry row with non-numeric T value must be accepted');
+    assert.equal(row.color_t, undefined,
+      'color_t must not be present on berry payload — T column is intentionally unmapped');
+  });
 });
