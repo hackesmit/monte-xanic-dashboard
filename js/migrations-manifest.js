@@ -30,4 +30,5 @@ export const MIGRATIONS = [
   'migration_prefermentativos_vintage_year',
   'migration_unify_mediciones',
   'migration_applied_log',
+  'migration_mediciones_audit',
 ];
