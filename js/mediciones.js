@@ -2,6 +2,7 @@
 import Chart from 'chart.js/auto';
 import { CONFIG } from './config.js';
 import { DataStore } from './dataLoader.js';
+import { DemoMode } from './demoMode.js';
 import { Charts } from './charts.js';
 
 // ── Pure helpers (exported for tests; used by methods on Mediciones below) ──
@@ -300,6 +301,96 @@ export const Mediciones = {
       if (!group) return;
       group.classList.toggle('field-dirty', rowKey in dirty);
     });
+  },
+
+  async submitEdit() {
+    if (!this._editingId) return;
+    if (DemoMode.isActive()) {
+      this._editStatus('Modo demo — no se pueden guardar cambios', 'error');
+      return;
+    }
+    const dirty = this._collectFormDirty();
+    if (!Object.keys(dirty).length) return;
+
+    // Map UI keys → DB columns
+    const dbRow = { medicion_code: this._editingId };
+    if ('date'             in dirty) dbRow.medicion_date     = dirty.date;
+    if ('vintage'          in dirty) dbRow.vintage_year      = dirty.vintage;
+    if ('variety'          in dirty) dbRow.variety           = dirty.variety;
+    if ('appellation'      in dirty) dbRow.appellation       = dirty.appellation;
+    if ('lotCode'          in dirty) dbRow.lot_code          = dirty.lotCode;
+    if ('tons'             in dirty) dbRow.tons_received     = dirty.tons;
+    if ('berryWeight'      in dirty) dbRow.berry_avg_weight_g = dirty.berryWeight;
+    if ('berryDiameter'    in dirty) dbRow.berry_diameter_mm = dirty.berryDiameter;
+    if ('healthMadura'     in dirty) dbRow.health_madura     = dirty.healthMadura;
+    if ('healthInmadura'   in dirty) dbRow.health_inmadura   = dirty.healthInmadura;
+    if ('healthSobremadura' in dirty) dbRow.health_sobremadura = dirty.healthSobremadura;
+    if ('healthPicadura'   in dirty) dbRow.health_picadura   = dirty.healthPicadura;
+    if ('healthEnfermedad' in dirty) dbRow.health_enfermedad = dirty.healthEnfermedad;
+    if ('healthQuemadura'  in dirty) dbRow.health_quemadura  = dirty.healthQuemadura;
+    if ('healthGrade'      in dirty) dbRow.health_grade      = dirty.healthGrade;
+    if ('phenolicMaturity' in dirty) dbRow.phenolic_maturity = dirty.phenolicMaturity;
+    if ('measuredBy'       in dirty) dbRow.measured_by       = dirty.measuredBy;
+    if ('notes'            in dirty) dbRow.notes             = dirty.notes;
+
+    const saveBtn = document.getElementById('med-edit-save');
+    if (saveBtn) saveBtn.disabled = true;
+    this._editStatus('Guardando...', '');
+
+    try {
+      const token = localStorage.getItem('xanic_session_token');
+      const res = await fetch('/api/row', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': token || '' },
+        body: JSON.stringify({ table: 'mediciones_tecnicas', action: 'update', row: dbRow }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await DataStore.loadMediciones();   // re-fetch so the join with berry data re-runs
+        this.refresh();
+        this.closeEditModal({ force: true });
+      } else {
+        this._editStatus(data.error || `Error (${res.status})`, 'error');
+        if (saveBtn) saveBtn.disabled = false;
+      }
+    } catch (e) {
+      console.error('[Mediciones] submitEdit network error:', e);
+      this._editStatus('Error de conexión: ' + e.message, 'error');
+      if (saveBtn) saveBtn.disabled = false;
+    }
+  },
+
+  async submitDelete() {
+    if (!this._editingId) return;
+    if (DemoMode.isActive()) {
+      this._editStatus('Modo demo — no se pueden guardar cambios', 'error');
+      return;
+    }
+    if (!confirm(`¿Eliminar medición ${this._editingId}? Esta acción no se puede deshacer.`)) return;
+
+    this._editStatus('Eliminando...', '');
+    try {
+      const token = localStorage.getItem('xanic_session_token');
+      const res = await fetch('/api/row', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': token || '' },
+        body: JSON.stringify({
+          table: 'mediciones_tecnicas', action: 'delete',
+          row: { medicion_code: this._editingId },
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        await DataStore.loadMediciones();
+        this.refresh();
+        this.closeEditModal({ force: true });
+      } else {
+        this._editStatus(data.error || `Error (${res.status})`, 'error');
+      }
+    } catch (e) {
+      console.error('[Mediciones] submitDelete network error:', e);
+      this._editStatus('Error de conexión: ' + e.message, 'error');
+    }
   },
 
   // ── Table ──
