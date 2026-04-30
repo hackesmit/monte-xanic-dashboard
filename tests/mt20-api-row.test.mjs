@@ -200,3 +200,42 @@ describe('MT.20 — /api/row update', () => {
     assert.equal(sentBody.last_edited_by, 'lab');
   });
 });
+
+describe('MT.20 — /api/row delete', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; });
+
+  it('DELETEs from Supabase and reports deleted: 1', async () => {
+    let captured = null;
+    globalThis.fetch = async (url, opts) => {
+      if (url.includes('blacklist')) return { ok: true, json: async () => [] };
+      captured = { url, opts };
+      return { ok: true, status: 200, json: async () => [{ medicion_code: 'X' }] };
+    };
+    const req = makeReq({ body: {
+      table: 'mediciones_tecnicas', action: 'delete', row: { medicion_code: 'X' },
+    }});
+    const res = makeRes();
+    await handler(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.deleted, 1);
+    assert.equal(captured.opts.method, 'DELETE');
+    assert.match(captured.url, /medicion_code=eq\.X/);
+  });
+
+  it('returns deleted: 0 when no row matches', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.includes('blacklist')) return { ok: true, json: async () => [] };
+      return { ok: true, status: 200, json: async () => [] };
+    };
+    const req = makeReq({ body: {
+      table: 'mediciones_tecnicas', action: 'delete', row: { medicion_code: 'NOPE' },
+    }});
+    const res = makeRes();
+    await handler(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.deleted, 0);
+  });
+});
