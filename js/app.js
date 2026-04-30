@@ -637,14 +637,26 @@ export const App = {
         const berryTANT = berry.tANT;
         const wineTANT = wine?.antoWX;
         const extraction = (wineTANT && berryTANT) ? ((wineTANT / berryTANT) * 100) : null;
-        rows.push({ berryLot, wineLot: wl, variety: berry.variety, appellation: berry.appellation, berryTANT, wineTANT, extraction });
+        rows.push({
+          berryLot, wineLot: wl,
+          variety: berry.variety, appellation: berry.appellation,
+          berryTANT, wineTANT, extraction,
+          berrySampleId:   berry.sampleId,
+          berrySampleDate: berry.sampleDate,
+          berrySampleSeq:  berry.sampleSeq,
+        });
       });
     });
 
+    const editable = Auth.canWrite() && !DemoMode.isActive();
+    const esc = Tables._esc.bind(Tables);
     container.innerHTML = rows.map(r => {
       const varColor = CONFIG.varietyColors[r.variety] || '#888';
       const extColor = r.extraction ? (r.extraction > 60 ? '#7EC87A' : r.extraction > 40 ? '#C4A060' : '#E05050') : '';
-      return `<tr>
+      const trAttrs = (editable && r.berrySampleId)
+        ? `class="row-clickable" data-sample-id="${esc(r.berrySampleId)}" data-sample-date="${esc(r.berrySampleDate)}" data-sample-seq="${esc(r.berrySampleSeq)}"`
+        : '';
+      return `<tr ${trAttrs}>
         <td style="font-weight:400;color:var(--gold-lt)">${r.berryLot}</td>
         <td>${r.wineLot}</td>
         <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${r.variety || '—'}</span></td>
