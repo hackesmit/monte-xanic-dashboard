@@ -1105,6 +1105,105 @@
     </form>
   </dialog>
 
+  <dialog id="wine-edit-modal" class="row-edit-modal" aria-labelledby="wine-edit-title">
+    <form method="dialog" id="wine-edit-form" class="medicion-form">
+      <header class="modal-header">
+        <h2 id="wine-edit-title">Editar recepción · <span id="wine-edit-code">—</span></h2>
+        <p id="wine-edit-audit" class="modal-audit-line">—</p>
+        <button type="button" class="modal-close" id="wine-edit-close" aria-label="Cerrar">×</button>
+      </header>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Código</label>
+          <input type="text" id="wine-edit-code-input" disabled>
+        </div>
+        <div class="form-group">
+          <label>Fecha</label>
+          <input type="text" id="wine-edit-fecha" disabled>
+        </div>
+        <div class="form-group">
+          <label>Sec.</label>
+          <input type="text" id="wine-edit-seq" disabled>
+        </div>
+        <div class="form-group">
+          <label>Tipo</label>
+          <input type="text" id="wine-edit-type-badge" disabled>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Vendimia</label>
+          <input type="number" id="wine-edit-vintage" min="2020" max="2030">
+        </div>
+        <div class="form-group">
+          <label>Variedad</label>
+          <select id="wine-edit-variety"><option value="">—</option></select>
+        </div>
+        <div class="form-group">
+          <label>Origen</label>
+          <select id="wine-edit-origin"><option value="">—</option></select>
+        </div>
+        <div class="form-group">
+          <label>Tanque</label>
+          <input type="text" id="wine-edit-tanque">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fecha de Envero</label>
+          <input type="date" id="wine-edit-crush-date">
+        </div>
+        <div class="form-group">
+          <label>Días Post-Envero</label>
+          <input type="number" id="wine-edit-dpc" step="1">
+        </div>
+      </div>
+
+      <div class="section-label" style="margin-top:12px;font-size:11px">Química</div>
+      <div class="form-row">
+        <div class="form-group form-group-sm"><label>Brix</label> <input type="number" id="wine-edit-brix" step="0.1"></div>
+        <div class="form-group form-group-sm"><label>pH</label>   <input type="number" id="wine-edit-ph"   step="0.01"></div>
+        <div class="form-group form-group-sm"><label>AT (g/L)</label> <input type="number" id="wine-edit-ta" step="0.1"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:12px;font-size:11px">Antocianinas / Taninos / IPT</div>
+      <div class="form-row">
+        <div class="form-group form-group-sm"><label>tANT</label> <input type="number" id="wine-edit-tant" step="1"></div>
+        <div class="form-group form-group-sm"><label>fANT</label> <input type="number" id="wine-edit-fant" step="1"></div>
+        <div class="form-group form-group-sm"><label>bANT</label> <input type="number" id="wine-edit-bant" step="1"></div>
+        <div class="form-group form-group-sm"><label>pTAN</label> <input type="number" id="wine-edit-ptan" step="1"></div>
+        <div class="form-group form-group-sm"><label>iRPs</label> <input type="number" id="wine-edit-irps" step="1"></div>
+        <div class="form-group form-group-sm"><label>IPT</label>  <input type="number" id="wine-edit-ipt"  step="0.01"></div>
+      </div>
+
+      <div class="section-label" style="margin-top:12px;font-size:11px">Color</div>
+      <div class="form-row">
+        <div class="form-group form-group-sm"><label>L*</label>     <input type="number" id="wine-edit-l"  step="0.01"></div>
+        <div class="form-group form-group-sm"><label>a*</label>     <input type="number" id="wine-edit-a"  step="0.01"></div>
+        <div class="form-group form-group-sm"><label>b*</label>     <input type="number" id="wine-edit-b"  step="0.01"></div>
+        <div class="form-group form-group-sm"><label>Color I</label><input type="number" id="wine-edit-ci" step="0.01"></div>
+        <div class="form-group form-group-sm"><label>Color T</label><input type="number" id="wine-edit-ct" step="0.01"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label>Notas</label>
+          <input type="text" id="wine-edit-notes">
+        </div>
+      </div>
+
+      <footer class="modal-footer">
+        <button type="button" class="btn-danger" id="wine-edit-delete">Eliminar</button>
+        <span id="wine-edit-status" class="form-status"></span>
+        <button type="button" class="btn-secondary" id="wine-edit-cancel">Cancelar</button>
+        <button type="button" class="btn-gold"      id="wine-edit-save" disabled>Guardar cambios</button>
+      </footer>
+    </form>
+  </dialog>
+
   </main>
 </div>
 
