@@ -2464,3 +2464,75 @@ canvas { max-width: 100%; }
 }
 .upload-summary-success { background: #e8f5e9; border: 1px solid #81c784; color: #1b5e20; }
 .upload-summary-partial { background: #fff3e0; border: 1px solid #ffb74d; color: #b85c00; }
+
+/* ── Round 37: editable-table styles ── */
+
+/* Sort arrows (driven by aria-sort, set by mediciones.js after each render) */
+.data-table th[data-sort]                   { cursor: pointer; user-select: none; }
+.data-table th[aria-sort="ascending"]::after  { content: " ▲"; opacity: 0.7; font-size: 0.85em; }
+.data-table th[aria-sort="descending"]::after { content: " ▼"; opacity: 0.7; font-size: 0.85em; }
+
+/* Hover + clickable affordance (the row gets `row-clickable` only when the
+   user is `lab` and demo mode is inactive — see mediciones.js:renderTable) */
+.data-table tbody tr.row-clickable          { cursor: pointer; }
+.data-table tbody tr:hover                  { background: rgba(212, 175, 55, 0.08); }
+
+/* Table toolbar (search + heading + count) */
+.table-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 12px; flex-wrap: wrap;
+}
+.table-toolbar .section-label    { margin: 0; }
+.table-toolbar .table-toolbar-count { margin-left: auto; color: var(--muted); font-size: 11px; }
+.table-search {
+  flex: 1 1 240px; min-width: 200px;
+  padding: 6px 10px; border: 1px solid var(--border, #ddd); border-radius: 4px;
+  font-size: 12px;
+}
+
+/* Edit modal */
+.row-edit-modal              { padding: 0; border: none; border-radius: 6px; max-width: 800px; width: 90vw; }
+.row-edit-modal::backdrop    { background: rgba(0,0,0,0.45); }
+.row-edit-modal form         { padding: 20px 24px; }
+.row-edit-modal .modal-header   { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border, #ddd); padding-bottom: 12px; }
+.row-edit-modal .modal-header h2 { margin: 0; font-size: 16px; flex: 1 1 auto; }
+.row-edit-modal .modal-audit-line { margin: 4px 0 0 0; font-size: 11px; color: var(--muted); flex-basis: 100%; }
+.row-edit-modal .modal-close   { background: none; border: none; font-size: 22px; cursor: pointer; line-height: 1; }
+.row-edit-modal .modal-footer  { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border, #ddd); }
+.row-edit-modal .modal-footer .btn-secondary { margin-left: auto; }
+.btn-danger {
+  background: #c0392b; color: #fff; border: none; padding: 8px 14px;
+  border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+.btn-danger:hover { background: #a93226; }
+.btn-secondary {
+  background: transparent; color: var(--text, #333); border: 1px solid var(--border, #ddd);
+  padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 12px;
+}
+
+/* Source-banner (only visible for source='upload' rows) */
+.source-banner {
+  background: rgba(245, 197, 66, 0.18); border-left: 3px solid #F5C542;
+  padding: 8px 12px; margin-bottom: 12px; font-size: 11px; color: #6B5A1A;
+}
+
+/* Dirty-field marker */
+.field-dirty input,
+.field-dirty select { border-left: 3px solid #d4af37; }
+
+/* Permission-driven hides (body classes set by auth.js) */
+body:not(.can-write)  #medicion-form,
+body:not(.can-write)  .row-clickable        { display: none; }
+body:not(.can-export) .page-export-btn      { display: none; }
+
+/* Demo-mode hides write affordances even for lab users */
+body.demo-mode-active #medicion-form,
+body.demo-mode-active .row-clickable        { display: none; }
+
+/* Mobile: modal full-screen */
+@media (max-width: 720px) {
+  .row-edit-modal      { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
+  .row-edit-modal form { padding: 16px; }
+  .table-toolbar       { gap: 8px; }
+  .table-search        { font-size: 13px; }
+}
