@@ -146,6 +146,162 @@ export const Mediciones = {
     el.className = 'form-status' + (type ? ' ' + type : '');
   },
 
+  // ── Edit modal ──
+  _editing: null,        // the row being edited (deep-clone snapshot)
+  _editingId: null,      // medicion_code (immutable while modal is open)
+
+  openEditModal(medicion_code) {
+    const row = (DataStore.medicionesData || []).find(r => r.code === medicion_code);
+    if (!row) return;
+    this._editing = JSON.parse(JSON.stringify(row));
+    this._editingId = medicion_code;
+
+    document.getElementById('med-edit-code').textContent = medicion_code;
+    document.getElementById('med-edit-code-input').value = medicion_code;
+
+    // Audit line
+    const auditEl = document.getElementById('med-edit-audit');
+    if (row.lastEditedAt) {
+      const dt = new Date(row.lastEditedAt).toLocaleString('es-MX', {
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit',
+      });
+      auditEl.textContent = `Última edición: ${dt}${row.lastEditedBy ? ' por ' + row.lastEditedBy : ''}`;
+    } else {
+      auditEl.textContent = 'Sin ediciones previas';
+    }
+
+    // Source banner
+    const banner = document.getElementById('med-edit-source-banner');
+    if (banner) banner.hidden = !shouldShowSourceBanner({ source: row.source });
+
+    // Populate fields from the row
+    document.getElementById('med-edit-date').value     = row.date || '';
+    document.getElementById('med-edit-vintage').value  = row.vintage ?? '';
+    this._populateEditDropdowns(row);
+    document.getElementById('med-edit-lot').value      = row.lotCode || '';
+    document.getElementById('med-edit-tons').value     = row.tons ?? '';
+    document.getElementById('med-edit-weight').value   = row.berryWeight ?? '';
+    document.getElementById('med-edit-diameter').value = row.berryDiameter ?? '';
+    document.getElementById('med-edit-h-madura').value      = row.healthMadura      ?? 0;
+    document.getElementById('med-edit-h-inmadura').value    = row.healthInmadura    ?? 0;
+    document.getElementById('med-edit-h-sobremadura').value = row.healthSobremadura ?? 0;
+    document.getElementById('med-edit-h-picadura').value    = row.healthPicadura    ?? 0;
+    document.getElementById('med-edit-h-enfermedad').value  = row.healthEnfermedad  ?? 0;
+    document.getElementById('med-edit-h-quemadura').value   = row.healthQuemadura   ?? 0;
+    document.getElementById('med-edit-grade').value           = row.healthGrade      || '';
+    document.getElementById('med-edit-phenolic-maturity').value = row.phenolicMaturity || '';
+    document.getElementById('med-edit-by').value    = row.measuredBy || '';
+    document.getElementById('med-edit-notes').value = row.notes      || '';
+
+    this._editStatus('', '');
+    this._refreshDirtyState();
+
+    document.getElementById('med-edit-modal').showModal();
+  },
+
+  closeEditModal({ force = false } = {}) {
+    const dirtyKeys = Object.keys(this._collectFormDirty());
+    if (!force && dirtyKeys.length) {
+      if (!confirm('Hay cambios sin guardar. ¿Descartar?')) return;
+    }
+    this._editing = null;
+    this._editingId = null;
+    document.getElementById('med-edit-modal').close();
+  },
+
+  _populateEditDropdowns(row) {
+    const varietyEl = document.getElementById('med-edit-variety');
+    const originEl  = document.getElementById('med-edit-origin');
+    if (!varietyEl.options.length || varietyEl.options.length < 2) {
+      const allVarieties = [...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white].sort();
+      varietyEl.innerHTML = '<option value="">— Seleccionar —</option>' +
+        allVarieties.map(v => `<option value="${v}">${v}</option>`).join('');
+      const origins = Object.keys(CONFIG.originColors).sort();
+      originEl.innerHTML = '<option value="">— Seleccionar —</option>' +
+        origins.map(o => `<option value="${o}">${o}</option>`).join('');
+    }
+    varietyEl.value = row.variety || '';
+    originEl.value  = row.appellation || '';
+  },
+
+  _editStatus(msg, type) {
+    const el = document.getElementById('med-edit-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.className = 'form-status' + (type ? ' ' + type : '');
+  },
+
+  // Read current form values, mapped to the same shape as DataStore.medicionesData.
+  _readEditForm() {
+    const num = (id) => {
+      const v = document.getElementById(id)?.value;
+      return v === '' || v == null ? null : parseFloat(v);
+    };
+    const intv = (id) => {
+      const v = document.getElementById(id)?.value;
+      return v === '' || v == null ? null : parseInt(v, 10);
+    };
+    const str = (id) => {
+      const v = document.getElementById(id)?.value;
+      return v === '' || v == null ? null : v.trim();
+    };
+    return {
+      date:           document.getElementById('med-edit-date').value || null,
+      vintage:        intv('med-edit-vintage'),
+      variety:        str('med-edit-variety'),
+      appellation:    str('med-edit-origin'),
+      lotCode:        str('med-edit-lot'),
+      tons:           num('med-edit-tons'),
+      berryWeight:    num('med-edit-weight'),
+      berryDiameter: num('med-edit-diameter'),
+      healthMadura:      intv('med-edit-h-madura')      ?? 0,
+      healthInmadura:    intv('med-edit-h-inmadura')    ?? 0,
+      healthSobremadura: intv('med-edit-h-sobremadura') ?? 0,
+      healthPicadura:    intv('med-edit-h-picadura')    ?? 0,
+      healthEnfermedad:  intv('med-edit-h-enfermedad')  ?? 0,
+      healthQuemadura:   intv('med-edit-h-quemadura')   ?? 0,
+      healthGrade:       str('med-edit-grade'),
+      phenolicMaturity: str('med-edit-phenolic-maturity'),
+      measuredBy: str('med-edit-by'),
+      notes:      str('med-edit-notes'),
+    };
+  },
+
+  // Compare current form against the snapshot taken at openEditModal.
+  _collectFormDirty() {
+    if (!this._editing) return {};
+    return collectDirty(this._editing, this._readEditForm());
+  },
+
+  // Update Save button + dirty-class outlines on every input event.
+  _refreshDirtyState() {
+    const dirty = this._collectFormDirty();
+    const saveBtn = document.getElementById('med-edit-save');
+    if (saveBtn) saveBtn.disabled = Object.keys(dirty).length === 0;
+
+    // Toggle .field-dirty on the form-group of each dirty input. Map of
+    // dirty-row-key → DOM element id is tracked here for clarity.
+    const fieldMap = {
+      date: 'med-edit-date',                vintage: 'med-edit-vintage',
+      variety: 'med-edit-variety',          appellation: 'med-edit-origin',
+      lotCode: 'med-edit-lot',              tons: 'med-edit-tons',
+      berryWeight: 'med-edit-weight',       berryDiameter: 'med-edit-diameter',
+      healthMadura: 'med-edit-h-madura',    healthInmadura: 'med-edit-h-inmadura',
+      healthSobremadura: 'med-edit-h-sobremadura', healthPicadura: 'med-edit-h-picadura',
+      healthEnfermedad: 'med-edit-h-enfermedad',   healthQuemadura: 'med-edit-h-quemadura',
+      healthGrade: 'med-edit-grade',        phenolicMaturity: 'med-edit-phenolic-maturity',
+      measuredBy: 'med-edit-by',            notes: 'med-edit-notes',
+    };
+    Object.entries(fieldMap).forEach(([rowKey, inputId]) => {
+      const el = document.getElementById(inputId);
+      if (!el) return;
+      const group = el.closest('.form-group');
+      if (!group) return;
+      group.classList.toggle('field-dirty', rowKey in dirty);
+    });
+  },
+
   // ── Table ──
 
   renderTable(data) {
