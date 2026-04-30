@@ -103,3 +103,100 @@ describe('MT.20 — /api/row gates', () => {
     assert.equal(res.statusCode, 400);
   });
 });
+
+describe('MT.20 — /api/row update', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; });
+
+  it('PATCHes Supabase with the right URL+filter and returns the updated row', async () => {
+    let captured = null;
+    globalThis.fetch = async (url, opts) => {
+      // First call may be the verifyToken blacklist check — distinguish by URL
+      if (url.includes('blacklist')) return { ok: true, json: async () => [] };
+      captured = { url, opts };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{ medicion_code: 'MT-2025-001', berry_avg_weight_g: 1.92,
+                              last_edited_at: '2026-04-29T00:00:00Z', last_edited_by: 'labuser' }],
+      };
+    };
+    const req = makeReq({ body: {
+      table: 'mediciones_tecnicas', action: 'update',
+      row: { medicion_code: 'MT-2025-001', berry_avg_weight_g: 1.92 },
+    }});
+    const res = makeRes();
+    await handler(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.row.medicion_code, 'MT-2025-001');
+    assert.match(captured.url, /\/rest\/v1\/mediciones_tecnicas\?medicion_code=eq\.MT-2025-001/);
+    assert.equal(captured.opts.method, 'PATCH');
+    assert.equal(captured.opts.headers.Prefer, 'return=representation');
+    const sentBody = JSON.parse(captured.opts.body);
+    assert.equal(sentBody.berry_avg_weight_g, 1.92);
+    assert.ok(sentBody.last_edited_at, 'server should stamp last_edited_at');
+    assert.equal(sentBody.last_edited_by, 'labuser');
+  });
+
+  it('strips client-supplied audit fields and re-applies server values', async () => {
+    let captured = null;
+    globalThis.fetch = async (url, opts) => {
+      if (url.includes('blacklist')) return { ok: true, json: async () => [] };
+      captured = { url, opts };
+      return { ok: true, status: 200, json: async () => [{ medicion_code: 'X' }] };
+    };
+    const req = makeReq({ body: {
+      table: 'mediciones_tecnicas', action: 'update',
+      row: {
+        medicion_code: 'X',
+        last_edited_by: 'forged-attacker',
+        last_edited_at: '1999-01-01T00:00:00Z',
+      },
+    }});
+    const res = makeRes();
+    await handler(req, res);
+    const sentBody = JSON.parse(captured.opts.body);
+    assert.notEqual(sentBody.last_edited_by, 'forged-attacker');
+    assert.notEqual(sentBody.last_edited_at, '1999-01-01T00:00:00Z');
+    assert.equal(sentBody.last_edited_by, 'labuser');
+  });
+
+  it('returns 400 when validateRow fails (bad numeric)', async () => {
+    globalThis.fetch = async () => ({ ok: true, json: async () => [] });
+    const req = makeReq({ body: {
+      table: 'mediciones_tecnicas', action: 'update',
+      row: { medicion_code: 'X', brix: 'foo' },
+    }});
+    const res = makeRes();
+    await handler(req, res);
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.error, /brix/);
+  });
+
+  it('falls back to last_edited_by="lab" if token lacks user', async () => {
+    let captured = null;
+    globalThis.fetch = async (url, opts) => {
+      if (url.includes('blacklist')) return { ok: true, json: async () => [] };
+      captured = { url, opts };
+      return { ok: true, status: 200, json: async () => [{ medicion_code: 'X' }] };
+    };
+    // Hand-craft a token without `user`
+    const payloadB64 = Buffer.from(JSON.stringify({
+      exp: Date.now() + 60_000, role: 'lab', nonce: 'n',
+    })).toString('base64url');
+    const sig = crypto.createHmac('sha256', TEST_SECRET).update(payloadB64).digest('base64url');
+    const legacyToken = `${payloadB64}.${sig}`;
+    const req = {
+      method: 'POST',
+      headers: { 'x-session-token': legacyToken },
+      body: { table: 'mediciones_tecnicas', action: 'update', row: { medicion_code: 'X' } },
+      socket: { remoteAddress: '127.0.0.1' },
+    };
+    const res = makeRes();
+    await handler(req, res);
+    const sentBody = JSON.parse(captured.opts.body);
+    assert.equal(sentBody.last_edited_by, 'lab');
+  });
+});

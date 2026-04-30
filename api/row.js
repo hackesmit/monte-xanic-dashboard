@@ -66,6 +66,49 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: validation.error });
   }
 
-  // ── Update / delete bodies land in Tasks 7 and 8 ──
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey  = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    return res.status(500).json({ ok: false, error: 'Configuración de base de datos incompleta' });
+  }
+
+  const filter = conflictCols
+    .map(c => `${c}=eq.${encodeURIComponent(row[c])}`)
+    .join('&');
+  const url = `${supabaseUrl}/rest/v1/${table}?${filter}`;
+
+  if (action === 'update') {
+    // Server-authoritative audit stamp (overrides anything the client sent)
+    row.last_edited_at = new Date().toISOString();
+    row.last_edited_by = result.payload.user || 'lab';
+
+    try {
+      const supaRes = await fetch(url, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify(row),
+      });
+      const updated = await supaRes.json();
+      if (!supaRes.ok) {
+        return res.status(supaRes.status).json({
+          ok: false, error: updated?.message || 'Error al actualizar',
+        });
+      }
+      const updatedRow = Array.isArray(updated) ? updated[0] : updated;
+      if (!updatedRow) {
+        return res.status(404).json({ ok: false, error: 'Fila no encontrada' });
+      }
+      return res.status(200).json({ ok: true, row: updatedRow });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: 'Error de red al actualizar' });
+    }
+  }
+
+  // delete branch — Task 8
   return res.status(501).json({ ok: false, error: 'No implementado' });
 }
