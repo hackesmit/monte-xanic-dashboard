@@ -115,15 +115,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  let matchedRole = null;
+  let matchedAccount = null;
   for (const acct of accounts) {
     const userMatch = crypto.timingSafeEqual(
       Buffer.from(username.toLowerCase().padEnd(64, '\0')),
       Buffer.from(acct.user.toLowerCase().padEnd(64, '\0'))
     );
     const passMatch = await bcrypt.compare(password, acct.hash);
-    if (userMatch && passMatch) { matchedRole = acct.role; break; }
+    if (userMatch && passMatch) { matchedAccount = acct; break; }
   }
+  const matchedRole = matchedAccount?.role ?? null;
 
   if (!matchedRole) {
     // Always check all accounts to avoid timing leaks
@@ -135,6 +136,7 @@ export default async function handler(req, res) {
   // Create signed session token with role
   const payload = JSON.stringify({
     exp: Date.now() + 2 * 60 * 60 * 1000, // 2 hours
+    user: matchedAccount.user,
     role: matchedRole,
     nonce: crypto.randomBytes(16).toString('hex')
   });
