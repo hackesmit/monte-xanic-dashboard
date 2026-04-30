@@ -59,6 +59,10 @@ export const Mediciones = {
   },
 
   async submitForm() {
+    if (DemoMode.isActive()) {
+      this._setStatus('Modo demo — no se pueden guardar cambios', 'error');
+      return;
+    }
     const code = document.getElementById('med-code')?.value.trim();
     const date = document.getElementById('med-date')?.value;
     const vintage = parseInt(document.getElementById('med-vintage')?.value, 10);
