@@ -4,6 +4,31 @@ import { CONFIG } from './config.js';
 import { DataStore } from './dataLoader.js';
 import { Charts } from './charts.js';
 
+// ── Pure helpers (exported for tests; used by methods on Mediciones below) ──
+
+export function collectDirty(initial, current) {
+  const out = {};
+  const keys = new Set([...Object.keys(initial || {}), ...Object.keys(current || {})]);
+  for (const k of keys) {
+    const a = initial?.[k];
+    const b = current?.[k];
+    // Treat null/undefined as equivalent so a never-touched blank field
+    // doesn't register as dirty when the input emits an empty-string value.
+    if ((a === null || a === undefined) && (b === null || b === undefined)) continue;
+    if (a !== b) out[k] = b;
+  }
+  return out;
+}
+
+export function ariaSortFor(activeField, ascending, columnField) {
+  if (activeField !== columnField) return null;
+  return ascending ? 'ascending' : 'descending';
+}
+
+export function shouldShowSourceBanner(row) {
+  return !!row && row.source === 'upload';
+}
+
 export const Mediciones = {
   _sortField: 'date',
   _sortAsc: false,
