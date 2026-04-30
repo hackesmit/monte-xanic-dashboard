@@ -158,10 +158,22 @@ export const Tables = {
 
     if (countEl) countEl.textContent = `${data.length} registros`;
 
+    const editable = Auth.canWrite() && !DemoMode.isActive();
     container.innerHTML = data.map(d => {
       const varColor = CONFIG.varietyColors[d.variedad] || '#888';
-      return `<tr>
-        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}</td>
+      const editMark = (editable && d.lastEditedAt) ? '<span title="Editado" style="color:var(--gold);margin-left:4px">✎</span>' : '';
+      let trAttrs = '';
+      if (editable) {
+        if (d.reportCode) {
+          // prefermentativos row → preferment-edit modal
+          trAttrs = `class="row-clickable" data-pref-code="${this._esc(d.reportCode)}"`;
+        } else if (d.codigoBodega) {
+          // wine_samples Must row → reuses wine-edit modal
+          trAttrs = `class="row-clickable" data-sample-id="${this._esc(d.codigoBodega)}" data-sample-date="${this._esc(d.fecha)}" data-sample-seq="${this._esc(d.sampleSeq)}"`;
+        }
+      }
+      return `<tr ${trAttrs}>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}${editMark}</td>
         <td>${this._esc(d.fecha) || '—'}</td>
         <td>${this._esc(d.tanque) || '—'}</td>
         <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '—'}</span></td>

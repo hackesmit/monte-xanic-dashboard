@@ -11,6 +11,7 @@ import { Mediciones } from './mediciones.js';
 import { Tables } from './tables.js';
 import { BerryEdit } from './berryEdit.js';
 import { WineEdit } from './wineEdit.js';
+import { PrefermentEdit } from './prefermentEdit.js';
 import { DataStore } from './dataLoader.js';
 
 export const Events = {
@@ -30,6 +31,7 @@ export const Events = {
     this._bindMediciones();
     this._bindBerryEdit();
     this._bindWineEdit();
+    this._bindPrefermentEdit();
     this._bindPageExport();
   },
 
@@ -577,6 +579,64 @@ export const Events = {
 
     document.getElementById('wine-edit-form')?.addEventListener('input',
       () => WineEdit.refreshDirty());
+  },
+
+  // ── Prefermentativos row editing (Phase 10 / Stage 7.5) ──
+  // The preferment table is a merged dataset: wine_samples Must rows
+  // (data-sample-id|date|seq) plus prefermentativos rows
+  // (data-pref-code). Each shape routes to its own modal — wine_samples
+  // Must rows reuse WineEdit; prefermentativos rows go to PrefermentEdit.
+  _bindPrefermentEdit() {
+    const tbody = document.getElementById('preferment-table-body');
+    if (tbody) tbody.addEventListener('click', (e) => {
+      const tr = e.target.closest('tr.row-clickable');
+      if (!tr) return;
+
+      const prefCode = tr.dataset.prefCode;
+      if (prefCode) {
+        const row = (DataStore.winePreferment || []).find(r =>
+          String(r.reportCode) === String(prefCode)
+        );
+        if (row) PrefermentEdit.open(row);
+        return;
+      }
+
+      const sampleId   = tr.dataset.sampleId;
+      const sampleDate = tr.dataset.sampleDate;
+      const sampleSeq  = tr.dataset.sampleSeq;
+      if (!sampleId || !sampleDate) return;
+      const row = (DataStore.winePreferment || []).find(r =>
+        !r.reportCode &&
+        String(r.codigoBodega) === String(sampleId) &&
+        String(r.fecha)        === String(sampleDate) &&
+        String(r.sampleSeq)    === String(sampleSeq)
+      );
+      if (row) WineEdit.open(row);
+    });
+
+    document.getElementById('pref-edit-close')?.addEventListener('click',
+      () => PrefermentEdit.close());
+    document.getElementById('pref-edit-cancel')?.addEventListener('click',
+      () => PrefermentEdit.close());
+
+    const modal = document.getElementById('pref-edit-modal');
+    if (modal) {
+      modal.addEventListener('cancel', (e) => {
+        e.preventDefault();
+        PrefermentEdit.close();
+      });
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) PrefermentEdit.close();
+      });
+    }
+
+    document.getElementById('pref-edit-save')?.addEventListener('click',
+      () => PrefermentEdit.submit());
+    document.getElementById('pref-edit-delete')?.addEventListener('click',
+      () => PrefermentEdit.remove());
+
+    document.getElementById('pref-edit-form')?.addEventListener('input',
+      () => PrefermentEdit.refreshDirty());
   },
 
   _bindPageExport() {

@@ -662,6 +662,7 @@ export const CONFIG = {
     'temperature':      'temp',
     'tant':             'antoWX',
     'notes':            'notes',
+    'vintage_year':     'vintage',
     'last_edited_at':   'lastEditedAt',
     'last_edited_by':   'lastEditedBy'
   },
@@ -1256,5 +1257,22 @@ export const JS_TO_DB_WINE = {
   colorB:        'b_star',
   colorI:        'color_i',
   colorT:        'color_t',
+  notes:         'notes',
+};
+
+export const JS_TO_DB_PREF = {
+  // single conflict key — much simpler than wine_samples
+  reportCode:    'report_code',
+  // editable prefermentativos columns
+  fecha:         'measurement_date',
+  codigoBodega:  'batch_code',
+  tanque:        'tank_id',
+  variedad:      'variety',
+  vintage:       'vintage_year',
+  brix:          'brix',
+  pH:            'ph',
+  at:            'ta',
+  temp:          'temperature',
+  antoWX:        'tant',
   notes:         'notes',
 };
