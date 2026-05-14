@@ -84,6 +84,8 @@
 [data-theme="light"] .logo-light { display: inline !important; }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
+/* Re-establish native <dialog> centering nuked by the universal margin reset. */
+dialog[open] { inset: 0; margin: auto; }
 body {
   background: var(--black);
   color: var(--text);
