@@ -90,8 +90,11 @@
 </div>
 
 <!-- Loading spinner (shown between login and data ready) -->
+<!-- dotlottie-wc renders the Lottie animation; .spinner-ring is a CSS fallback
+     shown only while the web component is still registering (see styles.css). -->
 <div id="loading-spinner" class="loading-spinner">
-  <div class="spinner-ring"></div>
+  <dotlottie-wc class="lottie-loader" src="/animations/wine-grapes-loader.json" autoplay loop></dotlottie-wc>
+  <div class="spinner-ring spinner-fallback"></div>
   <div class="spinner-text">Cargando datos...</div>
 </div>
 
