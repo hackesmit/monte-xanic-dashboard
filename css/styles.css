@@ -41,6 +41,22 @@
   --error-color: #E05050;
   --bar-track: rgba(255,255,255,0.08);
   --tooltip-bg: #1a1a1a;
+
+  /* ── Motion tokens ──
+     Theme-agnostic. Use these instead of hardcoded durations/easings.
+       --motion-fast  : micro-interactions (hover, focus, chip toggles)
+       --motion-base  : default for state transitions
+       --motion-slow  : view transitions, sheet open/close, deliberate motion
+       --ease-standard: flat default — fast acceleration, fast settle
+       --ease-entrance: pronounced deceleration for things appearing
+     prefers-reduced-motion override (further down in this file at the
+     @media block) collapses durations to 0.01ms globally, so any
+     transition/animation using these tokens respects user preferences. */
+  --motion-fast:   120ms;
+  --motion-base:   200ms;
+  --motion-slow:   320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* ══ LIGHT THEME ══ */
