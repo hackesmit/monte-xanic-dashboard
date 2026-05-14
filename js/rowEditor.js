@@ -8,6 +8,8 @@
 // not refactored onto this helper (Phase 10 plan: kept as the proven
 // reference). See PLAN.md "Stage 7.2".
 
+import { attachModalHygiene } from './modalHygiene.js';
+
 // Pure helper: dirty diff with union semantics. Mirrors collectDirty in
 // js/mediciones.js so MT.21 can verify parity.
 export function collectDirty(initial, current) {
@@ -85,7 +87,14 @@ export const RowEditor = {
     setStatus(descriptor, '', '');
     this.refreshDirty(descriptor);
     const modal = $(descriptor.modalId);
-    if (modal && typeof modal.showModal === 'function') modal.showModal();
+    if (!modal || typeof modal.showModal !== 'function') return;
+    modal.showModal();
+    const fieldMap = descriptor.fieldMap || {};
+    const firstKey = Object.keys(fieldMap)[0];
+    attachModalHygiene(modal, {
+      firstFieldId: firstKey ? fieldMap[firstKey] : null,
+      onDismiss: () => this.close(descriptor),
+    });
   },
 
   close(descriptor, { force = false } = {}) {
