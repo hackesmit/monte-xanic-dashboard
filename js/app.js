@@ -1,4 +1,10 @@
 // ── Main Application Logic ──
+// Lottie web component loaded only in browser context (HTMLElement is undefined
+// in Node, which would break tests that transitively import app.js via charts.js
+// etc.). Dynamic side-effect import keeps the test suite green.
+if (typeof window !== 'undefined' && typeof customElements !== 'undefined') {
+  import('@lottiefiles/dotlottie-wc');
+}
 import { CONFIG } from './config.js';
 import { Auth } from './auth.js';
 import { DataStore } from './dataLoader.js';

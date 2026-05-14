@@ -1521,6 +1521,12 @@ canvas { max-width: 100%; }
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* Lottie loader (dotlottie-wc). Hide tag until the web component is defined;
+   when it is, the CSS spinner-ring fallback below auto-hides. */
+.lottie-loader { width: 160px; height: 160px; display: block; }
+.lottie-loader:not(:defined) { display: none; }
+.lottie-loader:defined ~ .spinner-fallback { display: none; }
 .spinner-text {
   font-family: 'Sackers Gothic Medium', sans-serif;
   font-size: 10px;

@@ -14,6 +14,7 @@
     "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
+    "@lottiefiles/dotlottie-wc": "^0.9.14",
     "@supabase/supabase-js": "^2.103.2",
     "bcryptjs": "^2.4.3",
     "chart.js": "^4.5.1",
