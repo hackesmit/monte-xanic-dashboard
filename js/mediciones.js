@@ -6,6 +6,7 @@ import { DemoMode } from './demoMode.js';
 import { Charts } from './charts.js';
 import { Filters } from './filters.js';
 import { Auth } from './auth.js';
+import { attachModalHygiene } from './modalHygiene.js';
 
 // ── Pure helpers (exported for tests; used by methods on Mediciones below) ──
 
@@ -207,7 +208,12 @@ export const Mediciones = {
     this._editStatus('', '');
     this._refreshDirtyState();
 
-    document.getElementById('med-edit-modal').showModal();
+    const modal = document.getElementById('med-edit-modal');
+    modal.showModal();
+    // ESC + backdrop click are wired in js/events.js (route through closeEditModal
+    // to fire dirty-state confirm). Hygiene helper handles scroll lock, focus
+    // trap, and autofocus only.
+    attachModalHygiene(modal, { firstFieldId: 'med-edit-date' });
   },
 
   closeEditModal({ force = false } = {}) {

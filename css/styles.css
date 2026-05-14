@@ -86,6 +86,15 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 /* Re-establish native <dialog> centering nuked by the universal margin reset. */
 dialog[open] { inset: 0; margin: auto; }
+/* Body scroll lock while any modal is open. iOS-safe via position:fixed + restored scrollY. */
+body.modal-open {
+  overflow: hidden;
+  position: fixed;
+  top: var(--modal-scroll-y, 0);
+  left: 0;
+  right: 0;
+  width: 100%;
+}
 body {
   background: var(--black);
   color: var(--text);
@@ -1653,7 +1662,7 @@ canvas { max-width: 100%; }
   display: block;
   width: 100%;
   padding: 12px 14px;
-  font-family: 'Jost', sans-serif;
+  font-family: sans-serif;
   font-size: 14px;
   color: var(--text);
   background: var(--black);
@@ -2250,7 +2259,7 @@ canvas { max-width: 100%; }
 .form-row { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .form-group { flex: 1; min-width: 140px; }
 .form-group label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; font-family: 'Sackers Gothic Medium', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
-.form-group input, .form-group select { width: 100%; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 13px; font-family: 'Jost', sans-serif; box-sizing: border-box; }
+.form-group input, .form-group select { width: 100%; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 13px; font-family: sans-serif; box-sizing: border-box; }
 .form-group input:focus, .form-group select:focus { border-color: var(--gold); outline: none; }
 .form-group-sm { min-width: 80px; flex: 0 1 100px; }
 .health-row { background: var(--surface); border-radius: 6px; padding: 10px 12px; }
