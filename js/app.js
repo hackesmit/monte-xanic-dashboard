@@ -211,7 +211,12 @@ export const App = {
   hideDataLoader() {
     const modal = document.getElementById('data-loader');
     if (modal) modal.style.display = 'none';
-    document.getElementById('dashboard-content')?.style.removeProperty('display');
+    const dash = document.getElementById('dashboard-content');
+    if (dash) {
+      dash.style.removeProperty('display');
+      // Defer to next frame so display change settles before opacity transition.
+      requestAnimationFrame(() => dash.classList.add('content-ready'));
+    }
   },
 
   _hideSpinner() {
