@@ -1035,7 +1035,14 @@ body.demo-mode-active .demo-banner { display: block; }
 
 /* ── VIEW PANELS ── */
 .view-panel { display: none; }
-.view-panel.active { display: block; }
+.view-panel.active {
+  display: block;
+  animation: viewEnter var(--motion-base) var(--ease-entrance);
+}
+@keyframes viewEnter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
 
 
 /* ── HELP MODAL ── */
