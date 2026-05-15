@@ -1034,6 +1034,15 @@ body.demo-mode-active .demo-banner { display: block; }
 .tooltip-box .tt-val { color: var(--white); font-weight: 400; }
 
 /* ── VIEW PANELS ── */
+/* Dashboard initial fade-in after data is ready. JS adds .content-ready in
+   hideDataLoader(); auth.showLoginScreen removes it on logout so the next
+   login fades fresh. prefers-reduced-motion collapses the duration. */
+#dashboard-content { opacity: 0; }
+#dashboard-content.content-ready {
+  opacity: 1;
+  transition: opacity var(--motion-slow) var(--ease-entrance);
+}
+
 .view-panel { display: none; }
 .view-panel.active {
   display: block;

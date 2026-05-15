@@ -59,7 +59,11 @@ export const Auth = {
     const loader = document.getElementById('data-loader');
 
     if (login) login.style.display = 'flex';
-    if (dashboard) dashboard.style.display = 'none';
+    if (dashboard) {
+      dashboard.style.display = 'none';
+      // Reset fade-in so the next login transitions in fresh.
+      dashboard.classList.remove('content-ready');
+    }
     if (loader) loader.classList.remove('active');
   },
 
