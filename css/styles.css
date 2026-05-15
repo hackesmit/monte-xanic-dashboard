@@ -119,7 +119,7 @@ body {
   min-height: 100vh;
   font-size: 13px;
   line-height: 1.5;
-  transition: background 0.3s, color 0.3s;
+  transition: background var(--motion-base), color var(--motion-base);
 }
 
 /* ── HEADER ── */
@@ -130,7 +130,7 @@ header {
   display: grid;
   grid-template-columns: 1fr auto;
   align-items: stretch;
-  transition: background 0.3s;
+  transition: background var(--motion-base);
 }
 .header-left {
   padding: 20px 0;
@@ -199,7 +199,7 @@ header {
   cursor: pointer;
   font-size: 18px;
   color: var(--muted);
-  transition: color 0.2s, background 0.2s;
+  transition: color var(--motion-base), background var(--motion-base);
 }
 .theme-toggle:hover, .help-toggle:hover {
   color: var(--gold);
@@ -226,7 +226,7 @@ header {
   font-size: 11px;
   letter-spacing: 0.06em;
   color: var(--muted);
-  transition: color 0.2s, background 0.2s;
+  transition: color var(--motion-base), background var(--motion-base);
 }
 .demo-toggle:hover {
   color: var(--gold);
@@ -267,7 +267,7 @@ body.demo-mode-active .demo-banner { display: block; }
   padding: 28px 20px;
   overflow-y: auto;
   max-height: calc(100vh - 97px);
-  transition: background 0.3s;
+  transition: background var(--motion-base);
 }
 .nav-tabs {
   display: flex;
@@ -287,7 +287,7 @@ body.demo-mode-active .demo-banner { display: block; }
   background: transparent;
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  transition: color var(--motion-base), border-color var(--motion-base), background var(--motion-base);
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
 }
@@ -337,7 +337,7 @@ body.demo-mode-active .demo-banner { display: block; }
 .weather-forecast-btn {
   background-image: none !important;
   padding-right: 10px !important;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition: background var(--motion-fast) var(--ease-standard), color var(--motion-fast) var(--ease-standard), border-color var(--motion-fast) var(--ease-standard);
 }
 .weather-forecast-btn.active {
   background: var(--gold);
@@ -397,7 +397,7 @@ body.demo-mode-active .demo-banner { display: block; }
   cursor: pointer;
   font-family: 'Sackers Gothic Medium';
   margin-bottom: 8px;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .clear-btn:hover {
   border-color: var(--gold);
@@ -420,7 +420,7 @@ body.demo-mode-active .demo-banner { display: block; }
   font-family: 'Sackers Gothic Medium';
   color: var(--muted);
   background: transparent;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
   letter-spacing: 0.04em;
 }
 .chip:hover {
@@ -467,7 +467,7 @@ body.demo-mode-active .demo-banner { display: block; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
   text-align: center;
 }
 .type-btn:hover { border-color: var(--gold-dim); color: var(--text); }
@@ -502,7 +502,7 @@ body.demo-mode-active .demo-banner { display: block; }
   color: var(--text);
   margin-bottom: 6px;
   outline: none;
-  transition: background 0.3s, color 0.3s;
+  transition: background var(--motion-base), color var(--motion-base);
 }
 .lot-search:focus { border-color: var(--gold-dim); }
 
@@ -512,7 +512,7 @@ body.demo-mode-active .demo-banner { display: block; }
   padding: 28px 32px;
   overflow-y: auto;
   max-height: calc(100vh - 97px);
-  transition: background 0.3s;
+  transition: background var(--motion-base);
 }
 .section-label {
   font-size: 9px;
@@ -547,7 +547,7 @@ body.demo-mode-active .demo-banner { display: block; }
   background: var(--card);
   padding: 20px 18px 16px;
   position: relative;
-  transition: background 0.3s;
+  transition: background var(--motion-base);
 }
 .kpi-card::before {
   content: '';
@@ -556,7 +556,7 @@ body.demo-mode-active .demo-banner { display: block; }
   height: 1px;
   background: var(--gold);
   opacity: 0;
-  transition: opacity 0.2s;
+  transition: opacity var(--motion-base);
 }
 .kpi-card:hover::before { opacity: 1; }
 .kpi-label {
@@ -593,7 +593,7 @@ body.demo-mode-active .demo-banner { display: block; }
 .chart-card {
   background: var(--card);
   padding: 22px 22px 18px;
-  transition: background 0.3s;
+  transition: background var(--motion-base);
   position: relative;
 }
 .chart-export-btn {
@@ -609,7 +609,7 @@ body.demo-mode-active .demo-banner { display: block; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all var(--motion-base);
   opacity: 0;
   z-index: 2;
 }
@@ -640,7 +640,7 @@ body.demo-mode-active .demo-banner { display: block; }
   border: none;
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.15s, color 0.15s;
+  transition: background var(--motion-fast), color var(--motion-fast);
 }
 .chart-export-menu button:hover {
   background: rgba(196,160,96,0.12);
@@ -684,7 +684,7 @@ body.demo-mode-active .demo-banner { display: block; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
   white-space: nowrap;
   position: relative;
 }
@@ -707,7 +707,7 @@ body.demo-mode-active .demo-banner { display: block; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .chart-toggle:hover { border-color: var(--gold-dim); color: var(--text); }
 .chart-toggle.active {
@@ -725,7 +725,7 @@ body.demo-mode-active .demo-banner { display: block; }
   padding: 12px 16px;
   background: var(--card);
   border: 1px solid var(--border);
-  transition: background 0.3s;
+  transition: background var(--motion-base);
 }
 .legend-item {
   display: flex;
@@ -734,7 +734,7 @@ body.demo-mode-active .demo-banner { display: block; }
   font-size: 10px;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--motion-fast);
 }
 .legend-item:hover { color: var(--text); }
 .legend-item.dimmed { opacity: 0.3; }
@@ -762,7 +762,7 @@ body.demo-mode-active .demo-banner { display: block; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .color-mode-btn:hover { border-color: var(--gold-dim); }
 .color-mode-btn.active {
@@ -776,7 +776,7 @@ body.demo-mode-active .demo-banner { display: block; }
   background: var(--card);
   border: 1px solid var(--border-gold);
   margin-top: 1px;
-  transition: background 0.3s;
+  transition: background var(--motion-base);
 }
 .table-head-row {
   display: flex;
@@ -813,7 +813,7 @@ body.demo-mode-active .demo-banner { display: block; }
   font-family: 'Sackers Gothic Medium';
   white-space: nowrap;
   cursor: pointer;
-  transition: background 0.3s;
+  transition: background var(--motion-base);
 }
 .data-table th:hover { color: var(--gold); }
 .data-table th .sort-arrow { margin-left: 4px; font-size: 8px; }
@@ -891,7 +891,7 @@ body.demo-mode-active .demo-banner { display: block; }
   width: 90vw;
   max-height: 85vh;
   overflow-y: auto;
-  transition: border-color 0.2s, background 0.3s;
+  transition: border-color var(--motion-base), background var(--motion-base);
 }
 .loader-close {
   position: absolute;
@@ -904,7 +904,7 @@ body.demo-mode-active .demo-banner { display: block; }
   cursor: pointer;
   line-height: 1;
   padding: 4px 8px;
-  transition: color 0.15s;
+  transition: color var(--motion-fast);
 }
 .loader-close:hover { color: var(--gold); }
 .loader-card.dragover {
@@ -939,7 +939,7 @@ body.demo-mode-active .demo-banner { display: block; }
   letter-spacing: 0.16em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background var(--motion-fast);
 }
 .loader-btn:hover { background: var(--gold-lt); }
 
@@ -1015,7 +1015,7 @@ body.demo-mode-active .demo-banner { display: block; }
   color: var(--text);
   max-width: 300px;
   opacity: 0;
-  transition: opacity 0.15s;
+  transition: opacity var(--motion-fast);
 }
 .tooltip-box.visible { opacity: 1; }
 .tooltip-box .tt-id {
@@ -1088,7 +1088,7 @@ body.demo-mode-active .demo-banner { display: block; }
   font-size: 24px;
   cursor: pointer;
   padding: 4px 8px;
-  transition: color 0.15s;
+  transition: color var(--motion-fast);
 }
 .help-close:hover { color: var(--gold); }
 .help-body {
@@ -1278,7 +1278,7 @@ canvas { max-width: 100%; }
     border: 1px solid var(--border);
     border-radius: 50%;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color var(--motion-fast), border-color var(--motion-fast);
     -webkit-tap-highlight-color: transparent;
   }
   .sheet-close:hover {
@@ -1370,13 +1370,13 @@ canvas { max-width: 100%; }
     background: var(--card);
     border: 1px solid var(--border-gold);
     cursor: pointer;
-    transition: background 0.2s;
+    transition: background var(--motion-base);
   }
   .mobile-section-toggle:hover { background: rgba(196,160,96,0.06); }
   .mobile-section-toggle::after {
     content: '\25BC';
     font-size: 8px;
-    transition: transform 0.25s;
+    transition: transform var(--motion-base);
   }
   .mobile-section-group.expanded .mobile-section-toggle::after {
     transform: rotate(180deg);
@@ -1384,7 +1384,7 @@ canvas { max-width: 100%; }
   .mobile-section-body {
     max-height: 0;
     overflow: hidden;
-    transition: max-height 0.35s ease;
+    transition: max-height var(--motion-slow) var(--ease-standard);
   }
   .mobile-section-group.expanded .mobile-section-body {
     max-height: 3000px;
@@ -1451,7 +1451,7 @@ canvas { max-width: 100%; }
   box-shadow: 0 4px 16px rgba(0,0,0,0.4);
   align-items: center;
   gap: 6px;
-  transition: background 0.15s;
+  transition: background var(--motion-fast);
 }
 .mobile-fab:hover { background: var(--gold-lt); }
 .mobile-fab .fab-badge {
@@ -1503,7 +1503,7 @@ canvas { max-width: 100%; }
   padding: 2px 8px;
   cursor: pointer;
   font-family: 'Sackers Gothic Medium', sans-serif;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .mobile-filter-summary .summary-clear:hover {
   border-color: var(--gold);
@@ -1574,7 +1574,7 @@ canvas { max-width: 100%; }
   border-radius: 2px;
   z-index: 9000;
   opacity: 0;
-  transition: transform 0.3s ease, opacity 0.3s ease;
+  transition: transform var(--motion-base) var(--ease-standard), opacity var(--motion-base) var(--ease-standard);
   pointer-events: none;
   white-space: nowrap;
   max-width: 90vw;
@@ -1685,7 +1685,7 @@ canvas { max-width: 100%; }
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 6px;
-  transition: color 0.2s;
+  transition: color var(--motion-base);
 }
 .login-input {
   display: block;
@@ -1699,7 +1699,7 @@ canvas { max-width: 100%; }
   border-radius: 2px;
   outline: none;
   margin-bottom: 20px;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color var(--motion-base), box-shadow var(--motion-base);
   box-sizing: border-box;
 }
 .login-input:focus {
@@ -1727,7 +1727,7 @@ canvas { max-width: 100%; }
   border: none;
   border-radius: 2px;
   cursor: pointer;
-  transition: background 0.2s, transform 0.1s, box-shadow 0.2s;
+  transition: background var(--motion-base), transform var(--motion-fast), box-shadow var(--motion-base);
   margin-top: 8px;
   -webkit-appearance: none;
   -webkit-tap-highlight-color: transparent;
@@ -1788,11 +1788,11 @@ canvas { max-width: 100%; }
   border: 1px solid var(--border-gold);
   background: var(--card);
   margin-bottom: 12px;
-  transition: background 0.3s;
+  transition: background var(--motion-base);
   position: relative;
 }
 .explorer-canvas-wrap {
-  transition: height 0.3s ease;
+  transition: height var(--motion-base) var(--ease-standard);
 }
 .explorer-slot-expanded .explorer-canvas-wrap {
   height: 500px !important;
@@ -1815,7 +1815,7 @@ canvas { max-width: 100%; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .explorer-toggle-btn:hover {
   border-color: var(--gold);
@@ -1840,7 +1840,7 @@ canvas { max-width: 100%; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .explorer-remove-btn:hover {
   border-color: var(--flag-error);
@@ -1870,7 +1870,7 @@ canvas { max-width: 100%; }
   font-size: 10px;
   color: var(--muted);
   cursor: pointer;
-  transition: color 0.15s;
+  transition: color var(--motion-fast);
 }
 .explorer-legend .legend-item:hover { color: var(--text); }
 .explorer-legend .legend-item.dimmed { opacity: 0.3; }
@@ -1917,7 +1917,7 @@ canvas { max-width: 100%; }
   border: 1px solid var(--border);
   color: var(--muted);
   cursor: pointer;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .lot-picker-btn:hover {
   border-color: var(--gold-dim);
@@ -1976,7 +1976,7 @@ canvas { max-width: 100%; }
   outline: none;
   min-width: 120px;
   cursor: pointer;
-  transition: border-color 0.15s;
+  transition: border-color var(--motion-fast);
 }
 .explorer-select:focus {
   border-color: var(--gold-dim);
@@ -1996,7 +1996,7 @@ canvas { max-width: 100%; }
   border: none;
   cursor: pointer;
   font-weight: 500;
-  transition: background 0.15s;
+  transition: background var(--motion-fast);
 }
 .explorer-render-btn:hover {
   background: var(--gold-lt);
@@ -2017,7 +2017,7 @@ canvas { max-width: 100%; }
   color: var(--gold);
   cursor: pointer;
   margin-top: 8px;
-  transition: all 0.15s;
+  transition: all var(--motion-fast);
 }
 .explorer-add-btn:hover {
   border-color: var(--gold);
@@ -2042,7 +2042,7 @@ canvas { max-width: 100%; }
   padding: 3px 8px;
   border: 1px solid var(--border);
   border-radius: 4px;
-  transition: all 0.15s ease;
+  transition: all var(--motion-fast) var(--ease-standard);
   user-select: none;
 }
 .evo-toggle-label:hover {
@@ -2090,7 +2090,7 @@ canvas { max-width: 100%; }
   font-size: 11px;
   letter-spacing: 0.5px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--motion-fast) var(--ease-standard);
 }
 .ranch-tab:hover {
   border-color: var(--gold);
