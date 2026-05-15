@@ -7,6 +7,14 @@ import { Filters } from './filters.js';
 import { WeatherStore } from './weather.js';
 import { App } from './app.js';
 
+// Motion-token-aligned global Chart.js defaults. Mirrors CSS --motion-slow
+// (320ms) + an easing close to --ease-entrance. Set once at module load so
+// every chart inherits without per-instance overrides. The legend-toggle
+// path at line ~147 still sets its own 400ms easeOutQuart for that
+// specific interaction.
+Chart.defaults.animation.duration = 320;
+Chart.defaults.animation.easing = 'easeOutQuart';
+
 // Shared jitter helper: offsets x by sample_seq + deterministic lot hash
 function _applyDaysJitter(x, d) {
   if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
@@ -304,7 +312,6 @@ export const Charts = {
           tooltip: this.tooltipConfig()
         },
         scales: this.axisOpts(xLabel, yLabel),
-        animation: { duration: 300 }
       },
       plugins: []
     });
@@ -365,7 +372,6 @@ export const Charts = {
           tooltip: this.tooltipConfig()
         },
         scales: this.axisOpts(xLabel, yLabel),
-        animation: { duration: 300 }
       }
     });
   },
@@ -437,7 +443,6 @@ export const Charts = {
             grid: { color: 'transparent' }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -506,7 +511,6 @@ export const Charts = {
             grid: { color: 'transparent' }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -571,7 +575,6 @@ export const Charts = {
             grid: { color: 'transparent' }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -673,7 +676,6 @@ export const Charts = {
           tooltip: this.tooltipConfig()
         },
         scales: this.axisOpts('Días Post-Envero', yLabel),
-        animation: { duration: 300 }
       }
     });
   },
@@ -792,7 +794,6 @@ export const Charts = {
             grid: { color: CONFIG.chartDefaults.gridColor }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -880,7 +881,6 @@ export const Charts = {
             grid: { color: 'transparent' }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -965,7 +965,6 @@ export const Charts = {
             grid: { color: 'transparent' }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -1156,7 +1155,6 @@ export const Charts = {
             grid: { color: CONFIG.chartDefaults.gridColor }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -1248,7 +1246,6 @@ export const Charts = {
             grid:  { color: CONFIG.chartDefaults.gridColor }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -1341,7 +1338,6 @@ export const Charts = {
             grid:  { color: CONFIG.chartDefaults.gridColor }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -1472,7 +1468,6 @@ export const Charts = {
             grid: { color: CONFIG.chartDefaults.gridColor }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -1662,7 +1657,6 @@ export const Charts = {
             beginAtZero: true
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -1712,7 +1706,6 @@ export const Charts = {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: this.tooltipConfig() },
         scales: this.axisOpts('Temperatura media °C (día de muestreo)', 'Brix (°Bx)'),
-        animation: { duration: 300 }
       }
     });
   },
@@ -1762,7 +1755,6 @@ export const Charts = {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { display: false }, tooltip: this.tooltipConfig() },
         scales: this.axisOpts('Lluvia acumulada desde 1 Jul (mm)', 'tANT (ppm ME)'),
-        animation: { duration: 300 }
       }
     });
   },
@@ -2273,7 +2265,6 @@ export const Charts = {
           tooltip: this.tooltipConfig()
         },
         scales: this.axisOpts(xLabel, yLabel),
-        animation: { duration: 300 }
       }
     });
   },
@@ -2339,7 +2330,6 @@ export const Charts = {
             grid: { color: 'transparent' }
           }
         },
-        animation: { duration: 300 }
       }
     });
   },
@@ -2645,7 +2635,6 @@ export const Charts = {
             max: 30
           }
         },
-        animation: { duration: 300 }
       }
     });
 
