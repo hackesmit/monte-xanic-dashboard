@@ -127,3 +127,19 @@ export function confidenceBand({
   const sigmaEta = Math.sqrt(noiseTerm ** 2 + horizonTerm ** 2);
   return 1.96 * sigmaEta;
 }
+
+// ── Confidence label (§5.7) ──────────────────────────────────────────
+export function confidenceLabel({ V, nCurrent, horizonDays }) {
+  const freshnessScore = Math.min(1, nCurrent / 6);
+  const horizonPenalty = Math.max(0, 1 - horizonDays / 60);
+  let score;
+  if (V > 0) {
+    const trainingScore = Math.min(1, V / 5);
+    score = trainingScore * freshnessScore * horizonPenalty;
+  } else {
+    score = freshnessScore * horizonPenalty;
+  }
+  let label = score >= 0.66 ? 'Alta' : score >= 0.33 ? 'Media' : 'Baja';
+  if (V === 0 && label === 'Alta') label = 'Media';
+  return label;
+}

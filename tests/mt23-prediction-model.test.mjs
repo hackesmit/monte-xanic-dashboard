@@ -146,3 +146,25 @@ test('MT.23 confidenceBand: widens with smaller sumWttBar2 (sparser data)', () =
   const sparse = confidenceBand({ ...base, sumWttBar2: 10  });
   assert.ok(sparse > dense, `sparse=${sparse} should exceed dense=${dense}`);
 });
+
+import { confidenceLabel } from '../js/prediction.js';
+
+test('MT.23 confidenceLabel: high training + dense + short horizon → Alta', () => {
+  const lab = confidenceLabel({ V: 5, nCurrent: 8, horizonDays: 5 });
+  assert.equal(lab, 'Alta');
+});
+
+test('MT.23 confidenceLabel: V=0 caps at Media even with strong data', () => {
+  const lab = confidenceLabel({ V: 0, nCurrent: 10, horizonDays: 3 });
+  assert.equal(lab, 'Media');
+});
+
+test('MT.23 confidenceLabel: thin data low → Baja', () => {
+  const lab = confidenceLabel({ V: 1, nCurrent: 2, horizonDays: 45 });
+  assert.equal(lab, 'Baja');
+});
+
+test('MT.23 confidenceLabel: horizon >= 60 ⇒ Baja regardless', () => {
+  const lab = confidenceLabel({ V: 5, nCurrent: 10, horizonDays: 65 });
+  assert.equal(lab, 'Baja');
+});
