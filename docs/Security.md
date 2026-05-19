@@ -51,6 +51,12 @@
 - `SUPABASE_SERVICE_KEY` (bypasses RLS): used only in `/api/*` server functions
 - `SUPABASE_ANON_KEY`: used by frontend Supabase JS SDK
 - `SESSION_SECRET`: used only server-side for HMAC signing
+- `CRON_SECRET`: used only server-side to gate `/api/ping` against non-Vercel callers; rotate by replacing in Vercel env vars and redeploying — old value stops working immediately
+
+**Cron endpoint (`/api/ping`):**
+- Auth model differs from the session-token endpoints. The only legit caller is Vercel's own cron scheduler, which injects `Authorization: Bearer <CRON_SECRET>` automatically when the env var is set. No session token, no role check.
+- Fails closed: if `CRON_SECRET` is unset, every request returns `401` (including Vercel's own cron). This prevents an unprovisioned deploy from accidentally exposing an open keep-alive endpoint.
+- The handler runs one fixed read (`applied_migrations limit=1`); no user input is forwarded to Supabase, so the endpoint can't be repurposed as a DB read amplifier even if the secret leaks.
 
 ## Content Security Policy
 

@@ -14,6 +14,7 @@ All required for production. Store in `.env.local` locally, add to Vercel Settin
 | `AUTH_PASSWORD_HASH` | Yes | /api/login | Admin bcrypt hash |
 | `LAB_USERNAME` | Yes | /api/login | Lab user username |
 | `LAB_PASSWORD_HASH` | Yes | /api/login | Lab user bcrypt hash |
+| `CRON_SECRET` | Yes (Production) | /api/ping | Bearer token Vercel injects on cron-triggered requests. Generate with `openssl rand -hex 32`. Rotate by replacing the value in Vercel and redeploying — old value stops working immediately. |
 
 **Generate a bcrypt hash:**
 ```bash
@@ -53,6 +54,9 @@ This bypasses /api/config. Auth will not work in this mode.
 - Environment variables must be set in Vercel dashboard (Settings > Environment Variables)
 - All env vars must match `.env.local` keys exactly
 - `vercel.json` defines security headers and CSP rules
+
+**Scheduled jobs (`crons` in `vercel.json`):**
+- `/api/ping` daily at `0 12 * * *` (12:00 UTC, ~07:00 Mexico City) — keep-alive ping that runs one read against `applied_migrations` so Supabase doesn't auto-pause the free-tier project after 7 idle days. Gated by `CRON_SECRET` bearer auth; unauthorized callers get `401` before any DB work. Cron run history visible in Vercel dashboard → Settings → Cron Jobs.
 
 **Files excluded from deploy** (via `.vercelignore`):
 ```

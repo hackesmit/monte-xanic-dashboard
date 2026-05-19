@@ -147,6 +147,30 @@ Inserts data rows into a Supabase table (server-side, using service key).
 - Uses Supabase REST API with `Prefer: resolution=merge-duplicates` for upsert behavior.
 - Service key (`SUPABASE_SERVICE_KEY`) is used server-side only.
 
+## GET /api/ping
+
+Daily Supabase keep-alive endpoint. Vercel cron (declared in `vercel.json`) invokes this once a day so the free-tier Supabase project doesn't auto-pause after 7 idle days. Not intended for any other caller.
+
+**Auth:** `Authorization: Bearer <CRON_SECRET>` header. Vercel injects this automatically on cron-triggered requests when `CRON_SECRET` is set as an env var.
+**Rate limit:** None — the only legit caller is Vercel's own cron, and the auth gate fails closed without the secret.
+
+**Success (200):**
+```json
+{ "ok": true, "pinged_at": "2026-05-19T12:00:00.123Z", "latency_ms": 142 }
+```
+
+**Errors:**
+- `401` - Missing or wrong bearer token (also fires when `CRON_SECRET` env var is unset — fails closed)
+- `405` - Method not GET
+- `500` - Supabase env vars missing or PostgREST returned an error
+
+**Implementation notes:**
+- Runs a single `GET applied_migrations?select=name&limit=1` against PostgREST — minimal bytes, real schema-touching activity (which is what Supabase counts toward the inactivity timer).
+- `pinged_at` anchors to request start (not response completion) for clean log correlation.
+- Response body from Supabase is drained (`await resp.text()`) so the Node fetch runtime releases the stream deterministically.
+- Logs `[ping] ok latency_ms=<n>` on success; `console.error` with status + body on failure. No secrets ever logged.
+- Cron schedule: `0 12 * * *` (12:00 UTC daily). See `vercel.json` → `crons`.
+
 ## Shared Modules
 
 ### api/lib/verifyToken.js

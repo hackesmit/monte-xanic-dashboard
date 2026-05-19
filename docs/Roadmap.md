@@ -14,6 +14,7 @@
 | 6 | Polish (PDF/PNG export, mobile filters, vintage trends, harvest calendar) | Yes |
 | -- | Security Hardening (server upload, token blacklist, persistent rate limits) | Yes |
 | 7 | Mediciones Tecnicas (form entry, table, charts) | Yes |
+| -- | Supabase keep-alive (`/api/ping` daily Vercel cron, `CRON_SECRET`-gated) | Yes (2026-05-19) |
 
 ## Deferred: Phase 7b -- Photographic Evidence
 
