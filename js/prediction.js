@@ -158,3 +158,153 @@ export function resolveTarget({ rubric, override }) {
   const antTarget  = ovr.anthocyanin_target ?? ra?.a ?? null;
   return { brixLower, brixUpper, brixTarget, antTarget };
 }
+
+// ── Edge-case detection (§5.8) ───────────────────────────────────────
+// Returns a reason string or null. Order matters: pocos-datos checked
+// at the caller before regression runs (so n is real here).
+export function detectEdgeCase({
+  yhatBrixToday, yhatAntToday, betaPostBrix, betaPostAnt,
+  brixLower, brixUpper, antTarget,
+  brixMidEta, antEta, brixWindowCloses,
+}) {
+  if (betaPostBrix <= 0) return 'sin-tendencia-positiva';
+  if (antTarget != null && betaPostAnt <= 0) return 'antocianinas-estancadas';
+  const brixInWindow = yhatBrixToday >= brixLower && yhatBrixToday <= brixUpper;
+  const antOver      = antTarget == null || (yhatAntToday >= antTarget);
+  if (brixInWindow && antOver) return 'ya-en-ventana';
+  // antEta > brixWindowCloses → ANT crosses target after Brix exits range
+  if (antEta != null && Number.isFinite(antEta)
+      && Number.isFinite(brixWindowCloses)
+      && antEta > brixWindowCloses) return 'no-alcanzar-A';
+  // recommendedDate sits after Brix exits the upper bound
+  const recommendedEta = antEta != null ? Math.max(brixMidEta, antEta) : brixMidEta;
+  if (Number.isFinite(brixWindowCloses) && recommendedEta > brixWindowCloses) {
+    return 'riesgo-sobremadurez';
+  }
+  return null;
+}
+
+// ── computeOne orchestrator (§5.5) ───────────────────────────────────
+// Inputs:
+//   current:              [{ sampleDate (ISO string|Date), tDays, brix, ant }]
+//   historicalByVintage:  [ [{ tDays, brix, ant }], ... ]
+//   target:               { brixLower, brixUpper, brixTarget, antTarget|null }
+//   today:                Date instance
+//   recencyBoostWindow:   default 14 days, last-N samples get weight 1.5
+// Output: { reason, recommendedDate|null, brixWindowCloses|null,
+//           bandDays|Infinity, label, nCurrent, V, brixHoy, antHoy,
+//           samplesProjected:{ brixEta, antEta } }
+export function computeOne({
+  current, historicalByVintage, target, today,
+  recencyBoostWindow = 14,
+}) {
+  const nCurrent = current.length;
+  if (nCurrent < 2) {
+    return {
+      reason: 'pocos-datos-temporada',
+      recommendedDate: null, brixWindowCloses: null,
+      bandDays: Infinity, label: 'Baja',
+      nCurrent, V: 0, brixHoy: current[0]?.brix ?? null,
+      antHoy: current[0]?.ant ?? null,
+      samplesProjected: { brixEta: null, antEta: null },
+    };
+  }
+
+  // Order by tDays asc; the last entry's tDays is "today's t"
+  const sorted = [...current].sort((a, b) => a.tDays - b.tDays);
+  const tToday = sorted[sorted.length - 1].tDays;
+
+  // Per-sample weights: 1.5 if within recencyBoostWindow of t_today, else 1.0
+  const wOf = s => (tToday - s.tDays) <= recencyBoostWindow ? 1.5 : 1.0;
+
+  const brixSamples = sorted.map(s => ({ t: s.tDays, y: s.brix, w: wOf(s) }));
+  const brixFit = weightedRegression(brixSamples);
+  const brixPrior = historicalSlopePrior(
+    historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.brix })))
+  );
+  const brixComb = bayesianCombine({
+    betaHat: brixFit.beta, sigmaBeta2: brixFit.sigmaBeta2,
+    betaHist: brixPrior.betaHist, tau2Hist: brixPrior.tau2Hist,
+  });
+
+  let antFit = null, antPrior = { V: 0, tau2Hist: Infinity, betaHist: null },
+      antComb = { betaPost: NaN, sigmaBeta2Post: NaN };
+  if (target.antTarget != null) {
+    const antSamples = sorted.map(s => ({ t: s.tDays, y: s.ant, w: wOf(s) }));
+    antFit = weightedRegression(antSamples);
+    antPrior = historicalSlopePrior(
+      historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.ant })))
+    );
+    antComb = bayesianCombine({
+      betaHat: antFit.beta, sigmaBeta2: antFit.sigmaBeta2,
+      betaHist: antPrior.betaHist, tau2Hist: antPrior.tau2Hist,
+    });
+  }
+
+  // ŷ at today using *this-season* fit (not posterior — the posterior
+  // adjusts the slope only; intercept stays from this-season data).
+  const yhatBrixToday = brixFit.alpha + brixFit.beta * tToday;
+  const yhatAntToday  = antFit ? antFit.alpha + antFit.beta * tToday : null;
+
+  // ETA in days from today using posterior slope
+  const brixMidEta = etaDays({
+    alpha: yhatBrixToday - brixComb.betaPost * tToday,
+    beta: brixComb.betaPost, tToday, target: target.brixTarget,
+  });
+  const brixWindowOpensDays = etaDays({
+    alpha: yhatBrixToday - brixComb.betaPost * tToday,
+    beta: brixComb.betaPost, tToday, target: target.brixLower,
+  });
+  const brixWindowClosesDays = etaDays({
+    alpha: yhatBrixToday - brixComb.betaPost * tToday,
+    beta: brixComb.betaPost, tToday, target: target.brixUpper,
+  });
+  const antEta = target.antTarget != null ? etaDays({
+    alpha: yhatAntToday - antComb.betaPost * tToday,
+    beta: antComb.betaPost, tToday, target: target.antTarget,
+  }) : null;
+
+  // Edge-case detection (uses raw posterior slopes + ŷ_today checks)
+  const reason = detectEdgeCase({
+    yhatBrixToday, yhatAntToday,
+    betaPostBrix: brixComb.betaPost, betaPostAnt: antComb.betaPost,
+    brixLower: target.brixLower, brixUpper: target.brixUpper,
+    antTarget: target.antTarget,
+    brixMidEta, antEta, brixWindowCloses: brixWindowClosesDays,
+  });
+
+  const dayMs = 86_400_000;
+  const recommendedEtaDays = (antEta != null)
+    ? Math.max(brixMidEta, antEta) : brixMidEta;
+  const horizonDays = Math.max(0, recommendedEtaDays);
+  const bandDays = confidenceBand({
+    sigma2: brixFit.sigma2, n: brixFit.n,
+    tToday, tBarW: brixFit.tBarW, sumWttBar2: brixFit.sumWttBar2,
+    betaPost: brixComb.betaPost, sigmaBeta2Post: brixComb.sigmaBeta2Post,
+    horizonDays,
+  });
+  const label = confidenceLabel({
+    V: brixPrior.V, nCurrent, horizonDays,
+  });
+
+  const recommendedDate = (reason && reason !== 'ya-en-ventana')
+    ? null
+    : (reason === 'ya-en-ventana' ? today
+       : new Date(today.getTime() + recommendedEtaDays * dayMs));
+  const brixWindowCloses = Number.isFinite(brixWindowClosesDays)
+    ? new Date(today.getTime() + brixWindowClosesDays * dayMs)
+    : null;
+
+  return {
+    reason, recommendedDate, brixWindowCloses,
+    bandDays, label,
+    nCurrent, V: brixPrior.V,
+    brixHoy: yhatBrixToday, antHoy: yhatAntToday,
+    samplesProjected: {
+      brixEta: brixMidEta, antEta,
+      brixWindowOpensDays, brixWindowClosesDays,
+    },
+    // Diagnostics passthrough — view needs these for the chart
+    brixFit, brixComb, antFit, antComb,
+  };
+}

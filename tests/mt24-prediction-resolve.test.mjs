@@ -53,3 +53,164 @@ test('MT.24 resolveTarget: white rubric without anthocyanins → antTarget null'
   const t = resolveTarget({ rubric: RUBRIC_SB_VDG, override: null });
   assert.equal(t.antTarget, null);
 });
+
+import { computeOne } from '../js/prediction.js';
+
+// Build a realistic season-to-date Brix + ANT sequence
+const mkSeries = (slopeBrix, slopeAnt, n, lastT = 25) => ({
+  current: Array.from({ length: n }, (_, i) => {
+    const t = i * (lastT / (n - 1));
+    return {
+      sampleDate: `2026-08-${String(1 + i).padStart(2, '0')}`,
+      tDays: t,
+      brix: 19 + slopeBrix * t,
+      ant:  600 + slopeAnt * t,
+    };
+  }),
+  historicalByVintage: [
+    // 3 prior vintages, each with ~8 samples in the last 21 days, slope ~slopeBrix
+    Array.from({ length: 8 }, (_, i) => ({
+      tDays: 60 + i * 3,
+      brix: 20 + slopeBrix * (60 + i * 3 - 60),
+      ant:  700 + slopeAnt * (60 + i * 3 - 60),
+    })),
+    Array.from({ length: 8 }, (_, i) => ({
+      tDays: 60 + i * 3,
+      brix: 19.5 + (slopeBrix * 0.95) * (60 + i * 3 - 60),
+      ant:  680  + (slopeAnt  * 0.95) * (60 + i * 3 - 60),
+    })),
+    Array.from({ length: 8 }, (_, i) => ({
+      tDays: 60 + i * 3,
+      brix: 20.5 + (slopeBrix * 1.05) * (60 + i * 3 - 60),
+      ant:  720  + (slopeAnt  * 1.05) * (60 + i * 3 - 60),
+    })),
+  ],
+});
+
+test('MT.24 computeOne: produces all expected fields when n_current=6 and V=3', () => {
+  const { current, historicalByVintage } = mkSeries(0.14, 12, 6);
+  const target = { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 };
+  const today = new Date('2026-09-01');
+  const out = computeOne({ current, historicalByVintage, target, today });
+  assert.ok(out.recommendedDate instanceof Date);
+  assert.ok(out.brixWindowCloses instanceof Date);
+  assert.ok(Number.isFinite(out.bandDays));
+  assert.ok(['Alta', 'Media', 'Baja'].includes(out.label));
+  assert.equal(out.nCurrent, 6);
+  assert.equal(out.V, 3);
+  assert.equal(out.reason, null);
+});
+
+test('MT.24 computeOne: nCurrent<2 → reason=pocos-datos-temporada', () => {
+  const out = computeOne({
+    current: [{ sampleDate: '2026-08-01', tDays: 0, brix: 20, ant: 600 }],
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-08-01'),
+  });
+  assert.equal(out.reason, 'pocos-datos-temporada');
+  assert.equal(out.recommendedDate, null);
+});
+
+test('MT.24 computeOne: ya-en-ventana when ŷ already in [lower,upper] and ANT≥target', () => {
+  // Build a series where the latest is exactly in window and ANT comfortably over target.
+  const current = Array.from({ length: 5 }, (_, i) => ({
+    sampleDate: `2026-09-${String(1 + i).padStart(2,'0')}`,
+    tDays: i,
+    brix: 23.5 + 0.05 * i,    // ŷ_today ≈ 23.7 ⇒ in [23.5, 24.2]
+    ant:  1000 + 5 * i,       // > 950
+  }));
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-09-05'),
+  });
+  assert.equal(out.reason, 'ya-en-ventana');
+});
+
+test('MT.24 computeOne: β_post_brix ≤ 0 → sin-tendencia-positiva', () => {
+  const current = Array.from({ length: 5 }, (_, i) => ({
+    sampleDate: `2026-08-${String(1 + i).padStart(2,'0')}`,
+    tDays: i,
+    brix: 22 - 0.1 * i,        // declining
+    ant:  700 + 5 * i,
+  }));
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-08-05'),
+  });
+  assert.equal(out.reason, 'sin-tendencia-positiva');
+});
+
+test('MT.24 computeOne: V=0 caps label at Media even with strong current data', () => {
+  const current = Array.from({ length: 8 }, (_, i) => ({
+    sampleDate: `2026-08-${String(20 + i).padStart(2,'0')}`,
+    tDays: i,
+    brix: 22 + 0.3 * i,        // strong upward
+    ant:  800 + 30 * i,
+  }));
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-08-27'),
+  });
+  assert.ok(out.label !== 'Alta', `label=${out.label} must not be Alta when V=0`);
+});
+
+test('MT.24 computeOne: β_post_ant ≤ 0 → antocianinas-estancadas', () => {
+  const current = Array.from({ length: 5 }, (_, i) => ({
+    sampleDate: `2026-08-${String(1 + i).padStart(2,'0')}`,
+    tDays: i,
+    brix: 21 + 0.4 * i,         // brix climbing fine
+    ant:  900 - 5 * i,          // ANT declining
+  }));
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-08-05'),
+  });
+  assert.equal(out.reason, 'antocianinas-estancadas');
+});
+
+test('MT.24 computeOne: ANT crosses target after Brix exits upper → no-alcanzar-A', () => {
+  // Brix climbs fast (will exit upper soon); ANT climbs very slowly (won't
+  // reach target before Brix is past 24.2).
+  const current = Array.from({ length: 5 }, (_, i) => ({
+    sampleDate: `2026-08-${String(20 + i).padStart(2,'0')}`,
+    tDays: i,
+    brix: 23.5 + 0.4 * i,       // ŷ_today ≈ 25.1 → already above upper
+    ant:  650 + 5 * i,          // very slow ANT
+  }));
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-08-24'),
+  });
+  assert.ok(['no-alcanzar-A', 'riesgo-sobremadurez'].includes(out.reason),
+    `reason=${out.reason}`);
+});
+
+test('MT.24 computeOne: recommendedDate past brixWindowCloses → riesgo-sobremadurez', () => {
+  // Brix climbs fast (closes window soon); ANT climbs slowly (recommended
+  // date sits after window closes).
+  const current = Array.from({ length: 5 }, (_, i) => ({
+    sampleDate: `2026-08-${String(1 + i).padStart(2,'0')}`,
+    tDays: i,
+    brix: 22 + 0.3 * i,          // ŷ_today ≈ 23.2; closes ≈ 3.3 d later
+    ant:  600 + 12 * i,          // ANT will need ~30 d to reach 950
+  }));
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-08-05'),
+  });
+  assert.ok(['riesgo-sobremadurez', 'no-alcanzar-A'].includes(out.reason),
+    `reason=${out.reason}`);
+});
