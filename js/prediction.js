@@ -101,3 +101,29 @@ export function bayesianCombine({ betaHat, sigmaBeta2, betaHist, tau2Hist }) {
   const betaPost = numerator / denom;
   return { betaPost, sigmaBeta2Post };
 }
+
+// ── ETA solve (§5.5) ────────────────────────────────────────────────
+// Returns days FROM t_today until the fitted line crosses `target`.
+// Negative result is clamped to 0 (already past target); β≤0 returns Infinity.
+export function etaDays({ alpha, beta, tToday, target }) {
+  if (!Number.isFinite(beta) || beta <= 0) return Infinity;
+  const yhatToday = alpha + beta * tToday;
+  const days = (target - yhatToday) / beta;
+  return days < 0 ? 0 : days;
+}
+
+// ── Confidence band (§5.6) ──────────────────────────────────────────
+// σ_eta is RMS of (regression noise at today) and (extrapolation noise
+// proportional to horizon). Returns ±days (1.96·σ_eta).
+export function confidenceBand({
+  sigma2, n, tToday, tBarW, sumWttBar2,
+  betaPost, sigmaBeta2Post, horizonDays,
+}) {
+  if (!Number.isFinite(betaPost) || betaPost === 0) return Infinity;
+  const sigmaYhat2 = sigma2 * (1 / n + ((tToday - tBarW) ** 2) / sumWttBar2);
+  const noiseTerm = Math.sqrt(Math.max(0, sigmaYhat2)) / Math.abs(betaPost);
+  const horizonTerm = (Math.abs(horizonDays) * Math.sqrt(sigmaBeta2Post))
+                    / Math.abs(betaPost);
+  const sigmaEta = Math.sqrt(noiseTerm ** 2 + horizonTerm ** 2);
+  return 1.96 * sigmaEta;
+}

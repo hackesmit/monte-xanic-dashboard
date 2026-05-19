@@ -111,3 +111,38 @@ test('MT.23 bayesianCombine: equal precisions ⇒ posterior == midpoint', () => 
   assert.ok(Math.abs(out.betaPost - 0.4) < 1e-9);
   assert.ok(Math.abs(out.sigmaBeta2Post - 0.005) < 1e-9);
 });
+
+import { etaDays, confidenceBand } from '../js/prediction.js';
+
+test('MT.23 etaDays: anchored to fitted value at t_today', () => {
+  // α=18, β=0.2  ⇒ ŷ_today (t=20) = 22. Target 23 ⇒ ETA = 5 days
+  const days = etaDays({ alpha: 18, beta: 0.2, tToday: 20, target: 23 });
+  assert.ok(Math.abs(days - 5) < 1e-9, `days=${days}`);
+});
+
+test('MT.23 etaDays: target already reached ⇒ negative or zero', () => {
+  const days = etaDays({ alpha: 18, beta: 0.2, tToday: 20, target: 22 });
+  assert.ok(Math.abs(days - 0) < 1e-9);
+});
+
+test('MT.23 etaDays: β=0 ⇒ Infinity', () => {
+  const days = etaDays({ alpha: 18, beta: 0, tToday: 20, target: 23 });
+  assert.equal(days, Infinity);
+});
+
+test('MT.23 confidenceBand: widens with horizon', () => {
+  const args = { sigma2: 0.04, n: 6, tToday: 20, tBarW: 15, sumWttBar2: 50,
+                 betaPost: 0.2, sigmaBeta2Post: 0.001 };
+  const band10 = confidenceBand({ ...args, horizonDays: 10 });
+  const band30 = confidenceBand({ ...args, horizonDays: 30 });
+  assert.ok(band30 > band10,
+    `expected band30 (${band30}) > band10 (${band10})`);
+});
+
+test('MT.23 confidenceBand: widens with smaller sumWttBar2 (sparser data)', () => {
+  const base = { sigma2: 0.04, n: 6, tToday: 20, tBarW: 15,
+                 betaPost: 0.2, sigmaBeta2Post: 0.001, horizonDays: 20 };
+  const dense  = confidenceBand({ ...base, sumWttBar2: 100 });
+  const sparse = confidenceBand({ ...base, sumWttBar2: 10  });
+  assert.ok(sparse > dense, `sparse=${sparse} should exceed dense=${dense}`);
+});
