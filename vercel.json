@@ -1,6 +1,9 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "crons": [
+    { "path": "/api/ping", "schedule": "0 12 * * *" }
+  ],
   "headers": [
     {
       "source": "/(.*)",
