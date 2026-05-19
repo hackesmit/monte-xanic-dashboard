@@ -222,11 +222,6 @@ describe('MT.20 — /api/row upsert', () => {
   });
 
   it('POSTs to PostgREST with merge-duplicates Prefer + on_conflict cols and stamps updated_at/updated_by', async () => {
-    // NOTE: Uses mediciones_tecnicas (in validation.js COLUMN_TYPES) because
-    // harvest_target_overrides is not yet registered there — validateRow would
-    // reject the upsert as "Tabla no soportada" before reaching this branch.
-    // The upsert branch logic itself (Prefer header, on_conflict URL, audit
-    // stamping) is what's under test here.
     let captured = null;
     globalThis.fetch = async (url, opts) => {
       if (url.includes('blacklist')) return { ok: true, json: async () => [] };
@@ -234,21 +229,23 @@ describe('MT.20 — /api/row upsert', () => {
       return {
         ok: true,
         status: 200,
-        json: async () => [{ medicion_code: 'MT-2025-099',
+        json: async () => [{ variety: 'Cabernet', valley: 'Guadalupe',
+                             brix_target: 24.1,
                              updated_at: '2026-05-19T00:00:00Z', updated_by: 'labuser' }],
       };
     };
     const req = makeReq({ body: {
-      table: 'mediciones_tecnicas', action: 'upsert',
-      row: { medicion_code: 'MT-2025-099', brix: 24.1 },
+      table: 'harvest_target_overrides', action: 'upsert',
+      row: { variety: 'Cabernet', valley: 'Guadalupe', brix_target: 24.1 },
     }});
     const res = makeRes();
     await handler(req, res);
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.ok, true);
-    assert.equal(res.body.row.medicion_code, 'MT-2025-099');
+    assert.equal(res.body.row.variety, 'Cabernet');
+    assert.equal(res.body.row.valley, 'Guadalupe');
     assert.equal(captured.opts.method, 'POST');
-    assert.match(captured.url, /\?on_conflict=medicion_code/);
+    assert.match(captured.url, /\?on_conflict=variety,valley/);
     assert.equal(captured.opts.headers.Prefer, 'resolution=merge-duplicates,return=representation');
     const sentBody = JSON.parse(captured.opts.body);
     assert.ok(sentBody.updated_at, 'server should stamp updated_at');

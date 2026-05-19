@@ -57,6 +57,13 @@ export const COLUMN_TYPES = {
     ]),
     requiredOnInsert: new Set(['report_code']),
   },
+  harvest_target_overrides: {
+    intCols: new Set(),
+    numericCols: new Set([
+      'brix_target', 'brix_target_lower', 'brix_upper', 'anthocyanin_target',
+    ]),
+    requiredOnInsert: new Set(['variety', 'valley']),
+  },
 };
 
 export { validateColumnTypes };
