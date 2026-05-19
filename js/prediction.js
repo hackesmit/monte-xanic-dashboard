@@ -143,3 +143,18 @@ export function confidenceLabel({ V, nCurrent, horizonDays }) {
   if (V === 0 && label === 'Alta') label = 'Media';
   return label;
 }
+
+// ── Effective target resolution (§5.1) ───────────────────────────────
+// override fields are nullable; null/undefined falls back to the rubric.
+// rubric is the per-(variety,valley) entry from CONFIG.rubrics.
+export function resolveTarget({ rubric, override }) {
+  const ovr = override || {};
+  const rb = rubric?.params?.brix;
+  const ra = rubric?.params?.anthocyanins;
+  const brixLower  = ovr.brix_target_lower ?? rb?.a?.[0] ?? null;
+  const brixUpper  = ovr.brix_upper        ?? rb?.a?.[1] ?? null;
+  const brixTarget = ovr.brix_target
+    ?? (rb?.a ? (rb.a[0] + rb.a[1]) / 2 : null);
+  const antTarget  = ovr.anthocyanin_target ?? ra?.a ?? null;
+  return { brixLower, brixUpper, brixTarget, antTarget };
+}
