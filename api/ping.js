@@ -35,6 +35,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, error: 'Configuración de base de datos incompleta' });
   }
 
+  const pingedAt = new Date().toISOString();
   const startedAt = Date.now();
   try {
     const url = `${supabaseUrl}/rest/v1/applied_migrations?select=name&limit=1`;
@@ -48,11 +49,12 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, error: 'No se pudo consultar Supabase' });
     }
 
+    await resp.text();
     const latency_ms = Date.now() - startedAt;
     console.log(`[ping] ok latency_ms=${latency_ms}`);
     return res.status(200).json({
       ok: true,
-      pinged_at: new Date().toISOString(),
+      pinged_at: pingedAt,
       latency_ms,
     });
   } catch (err) {
