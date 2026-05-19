@@ -3,7 +3,7 @@ import { rateLimit } from './lib/rateLimit.js';
 import { ALLOWED_TABLES } from './upload.js';
 import { validateRow } from '../js/validation.js';
 
-const ALLOWED_ACTIONS = new Set(['update', 'delete']);
+const ALLOWED_ACTIONS = new Set(['update', 'delete', 'upsert']);
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -129,6 +129,34 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, deleted: count });
     } catch (e) {
       return res.status(500).json({ ok: false, error: 'Error de red al eliminar' });
+    }
+  }
+
+  if (action === 'upsert') {
+    row.updated_at = new Date().toISOString();
+    row.updated_by = result.payload.user || 'lab';
+    const upsertUrl = `${supabaseUrl}/rest/v1/${table}?on_conflict=${conflictCols.join(',')}`;
+    try {
+      const supaRes = await fetch(upsertUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Prefer': 'resolution=merge-duplicates,return=representation',
+        },
+        body: JSON.stringify(row),
+      });
+      const upserted = await supaRes.json();
+      if (!supaRes.ok) {
+        return res.status(supaRes.status).json({
+          ok: false, error: upserted?.message || 'Error al guardar',
+        });
+      }
+      const upsertedRow = Array.isArray(upserted) ? upserted[0] : upserted;
+      return res.status(200).json({ ok: true, row: upsertedRow });
+    } catch (e) {
+      return res.status(500).json({ ok: false, error: 'Error de red al guardar' });
     }
   }
 
