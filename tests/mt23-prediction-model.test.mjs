@@ -48,3 +48,44 @@ test('MT.23 weightedRegression: n=2 returns slope through both points and sigma2
   assert.ok(Math.abs(alpha - 1) < 1e-9);
   assert.equal(sigma2, 0);   // n - 2 = 0, define as 0
 });
+
+import { historicalSlopePrior } from '../js/prediction.js';
+
+// Helper: build a vintage of {t, y} samples spaced 3 days apart
+const mkVintage = (lateSlope, n, lastT = 80, noise = 0) => {
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    const t = lastT - (n - 1 - i) * 3;     // last sample at t=80
+    const y = 20 + lateSlope * (t - 60) + (noise ? (Math.sin(i) * noise) : 0);
+    out.push({ t, y });
+  }
+  return out;
+};
+
+test('MT.23 historicalSlopePrior: averages last-21-day slopes across vintages', () => {
+  const vintages = [
+    mkVintage(0.10, 8),   // slope 0.10
+    mkVintage(0.20, 8),   // slope 0.20
+    mkVintage(0.30, 8),   // slope 0.30
+  ];
+  const { betaHist, tau2Hist, V } = historicalSlopePrior(vintages);
+  assert.equal(V, 3);
+  assert.ok(Math.abs(betaHist - 0.2) < 1e-9, `betaHist=${betaHist}`);
+  assert.ok(tau2Hist > 0);
+});
+
+test('MT.23 historicalSlopePrior: drops vintages with <3 samples in last-21-day window', () => {
+  const vintages = [
+    mkVintage(0.10, 8),                          // kept
+    [{ t: 60, y: 20 }, { t: 80, y: 22 }],        // only 2 in window → dropped
+  ];
+  const { V } = historicalSlopePrior(vintages);
+  assert.equal(V, 1);
+});
+
+test('MT.23 historicalSlopePrior: V=0 returns betaHist=null, tau2Hist=Infinity', () => {
+  const { betaHist, tau2Hist, V } = historicalSlopePrior([]);
+  assert.equal(V, 0);
+  assert.equal(betaHist, null);
+  assert.equal(tau2Hist, Infinity);
+});

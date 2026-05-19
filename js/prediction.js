@@ -55,3 +55,29 @@ export function weightedRegression(samples) {
 
   return { alpha, beta, sigma2, sigmaBeta2, n, tBarW, sumWttBar2 };
 }
+
+// ── Historical slope prior (§5.3) ────────────────────────────────────
+// Per prior vintage, fit OLS on the last 21 days before the vintage's
+// max-y sample. Drop vintages with <3 samples in that window. Return
+// mean slope (prior mean) and sample variance (prior variance, τ²).
+export function historicalSlopePrior(vintages) {
+  const slopes = [];
+  for (const samples of vintages) {
+    if (!samples || samples.length === 0) continue;
+    const tMax = Math.max(...samples.map(s => s.t));
+    const windowed = samples
+      .filter(s => s.t >= tMax - 21 && s.t <= tMax)
+      .map(s => ({ ...s, w: 1 }));
+    if (windowed.length < 3) continue;
+    const { beta } = weightedRegression(windowed);
+    if (Number.isFinite(beta)) slopes.push(beta);
+  }
+  const V = slopes.length;
+  if (V === 0) return { betaHist: null, tau2Hist: Infinity, V: 0 };
+  const mean = slopes.reduce((a, b) => a + b, 0) / V;
+  // Sample variance (Bessel-corrected when V > 1; tiny epsilon when V = 1)
+  let varSum = 0;
+  for (const s of slopes) varSum += (s - mean) ** 2;
+  const tau2Hist = V > 1 ? varSum / (V - 1) : 1e-6;
+  return { betaHist: mean, tau2Hist, V };
+}
