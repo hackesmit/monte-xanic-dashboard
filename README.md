@@ -53,6 +53,9 @@ api/                    Vercel serverless functions
   upload.js             Data insertion (auth-gated)
   lib/verifyToken.js    Shared HMAC verification
   lib/rateLimit.js      In-memory rate limiter
+  ping.js               Daily Supabase keep-alive (Vercel cron)
+  migrations-status.js  Migration drift diff for lab banner
+  row.js                Generic row edit/delete (lab role)
 css/styles.css          All styling, dark/light themes
 sql/                    Database migrations
 tests/                  Unit tests (47 tests, 5 suites)
@@ -80,7 +83,10 @@ AUTH_USERNAME=...
 AUTH_PASSWORD_HASH=...
 LAB_USERNAME=...
 LAB_PASSWORD_HASH=...
+CRON_SECRET=...
 ```
+
+`CRON_SECRET` gates `/api/ping`, the daily Supabase keep-alive endpoint invoked by Vercel cron. Production-scope only — not needed in `.env.local` for local dev. Generate with `openssl rand -hex 32`.
 
 See [docs/Operations.md](docs/Operations.md) for full setup instructions.
 

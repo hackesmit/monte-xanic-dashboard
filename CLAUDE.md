@@ -31,8 +31,9 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `maps.js` | SVG vineyard map |
 | `classification.js` | Quality rubric scoring and percentile only |
 | `demoMode.js` | In-memory demo-data overlay (no DB/cache writes while active) |
+| `api/ping.js` | Daily Supabase keep-alive (Vercel cron, `CRON_SECRET`-gated). One read against `applied_migrations`. Nothing else. |
 
-Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js. Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`.
+Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js. Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`. Do not add any business logic, table reads, or session-token checks to `api/ping.js`.
 
 ## Upload Pipeline Rules
 
