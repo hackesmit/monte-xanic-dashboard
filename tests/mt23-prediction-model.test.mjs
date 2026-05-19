@@ -89,3 +89,25 @@ test('MT.23 historicalSlopePrior: V=0 returns betaHist=null, tau2Hist=Infinity',
   assert.equal(betaHist, null);
   assert.equal(tau2Hist, Infinity);
 });
+
+import { bayesianCombine } from '../js/prediction.js';
+
+test('MT.23 bayesianCombine: V=0 ⇒ posterior == data estimate', () => {
+  const out = bayesianCombine({ betaHat: 0.5, sigmaBeta2: 0.04,
+                                betaHist: null, tau2Hist: Infinity });
+  assert.ok(Math.abs(out.betaPost - 0.5) < 1e-9);
+  assert.ok(Math.abs(out.sigmaBeta2Post - 0.04) < 1e-9);
+});
+
+test('MT.23 bayesianCombine: data variance → 0 ⇒ posterior == data estimate', () => {
+  const out = bayesianCombine({ betaHat: 0.5, sigmaBeta2: 1e-12,
+                                betaHist: 0.1, tau2Hist: 0.01 });
+  assert.ok(Math.abs(out.betaPost - 0.5) < 1e-6);
+});
+
+test('MT.23 bayesianCombine: equal precisions ⇒ posterior == midpoint', () => {
+  const out = bayesianCombine({ betaHat: 0.6, sigmaBeta2: 0.01,
+                                betaHist: 0.2, tau2Hist: 0.01 });
+  assert.ok(Math.abs(out.betaPost - 0.4) < 1e-9);
+  assert.ok(Math.abs(out.sigmaBeta2Post - 0.005) < 1e-9);
+});

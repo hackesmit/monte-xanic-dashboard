@@ -81,3 +81,23 @@ export function historicalSlopePrior(vintages) {
   const tau2Hist = V > 1 ? varSum / (V - 1) : 1e-6;
   return { betaHist: mean, tau2Hist, V };
 }
+
+// ── Bayesian-style posterior slope (§5.4) ────────────────────────────
+// Precision-weighted Gaussian combine. Handles V=0 (tau2=Infinity) and
+// degenerate data variance gracefully.
+export function bayesianCombine({ betaHat, sigmaBeta2, betaHist, tau2Hist }) {
+  const dataPrec = sigmaBeta2 > 0 ? 1 / sigmaBeta2 : Infinity;
+  const priorPrec = (betaHist != null && Number.isFinite(tau2Hist) && tau2Hist > 0)
+    ? 1 / tau2Hist
+    : 0;
+  const totPrec = dataPrec + priorPrec;
+  if (!Number.isFinite(totPrec) || totPrec === 0) {
+    return { betaPost: betaHat, sigmaBeta2Post: sigmaBeta2 };
+  }
+  const sigmaBeta2Post = 1 / totPrec;
+  const numerator = (Number.isFinite(dataPrec) ? betaHat * dataPrec : betaHat * 1e18)
+                  + (priorPrec > 0 ? betaHist * priorPrec : 0);
+  const denom    = Number.isFinite(dataPrec) ? (dataPrec + priorPrec) : (1e18 + priorPrec);
+  const betaPost = numerator / denom;
+  return { betaPost, sigmaBeta2Post };
+}
