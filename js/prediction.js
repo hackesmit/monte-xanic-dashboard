@@ -308,3 +308,92 @@ export function computeOne({
     brixFit, brixComb, antFit, antComb,
   };
 }
+
+// ── computeAll grouping helper ───────────────────────────────────────
+// Groups berryData by (variety, appellation), splits each group into
+// current vintage vs historical vintages, resolves the effective target,
+// and calls computeOne. Returns one object per group, ordered by
+// recommendedDate ascending (cards in the view will use this order).
+export function computeAll({
+  berryData, today, currentVintage,
+  overrides, rubricFor, valleyFor,
+}) {
+  const overrideByKey = new Map();
+  for (const o of overrides) {
+    overrideByKey.set(`${o.variety}|${o.valley}`, o);
+  }
+  const groups = new Map();
+  for (const row of berryData) {
+    if (!row.variety || !row.appellation) continue;
+    const key = `${row.variety}|${row.appellation}`;
+    if (!groups.has(key)) {
+      groups.set(key, { variety: row.variety, appellation: row.appellation,
+                        current: [], historicalByVintage: new Map() });
+    }
+    const g = groups.get(key);
+    const sampleDate = row.sampleDate instanceof Date
+      ? row.sampleDate
+      : new Date(row.sampleDate);
+    if (!Number.isFinite(sampleDate.getTime())) continue;
+    const sample = {
+      sampleDate,
+      brix: Number(row.brix),
+      ant:  Number(row.tant ?? row.anthocyanins ?? row.ant),
+    };
+    if (!Number.isFinite(sample.brix)) continue;
+    if (row.vintage === currentVintage) {
+      g.current.push(sample);
+    } else {
+      const arr = g.historicalByVintage.get(row.vintage) ?? [];
+      arr.push(sample);
+      g.historicalByVintage.set(row.vintage, arr);
+    }
+  }
+  const results = [];
+  for (const g of groups.values()) {
+    // Normalise to tDays relative to first current sample
+    g.current.sort((a, b) => a.sampleDate - b.sampleDate);
+    const t0 = g.current[0]?.sampleDate?.getTime() ?? today.getTime();
+    const dayMs = 86_400_000;
+    const current = g.current.map(s => ({
+      sampleDate: s.sampleDate,
+      tDays: (s.sampleDate.getTime() - t0) / dayMs,
+      brix: s.brix, ant: s.ant,
+    }));
+    const historicalByVintage = [];
+    for (const arr of g.historicalByVintage.values()) {
+      arr.sort((a, b) => a.sampleDate - b.sampleDate);
+      const tv0 = arr[0].sampleDate.getTime();
+      historicalByVintage.push(arr.map(s => ({
+        tDays: (s.sampleDate.getTime() - tv0) / dayMs,
+        brix: s.brix, ant: s.ant,
+      })));
+    }
+    const valley = valleyFor({ appellation: g.appellation });
+    const rubric = rubricFor({ variety: g.variety, appellation: g.appellation });
+    const override = overrideByKey.get(`${g.variety}|${valley}`) ?? null;
+    const target = resolveTarget({ rubric, override });
+    const tToday = (today.getTime() - t0) / dayMs;
+    // Re-stamp tDays so 'today' aligns to the last sample for the view
+    const prediction = computeOne({
+      current, historicalByVintage, target,
+      today: new Date(today),
+    });
+    results.push({
+      variety: g.variety, appellation: g.appellation, valley,
+      target, prediction, tToday,
+    });
+  }
+  // Sort: ya-en-ventana first, then by recommendedDate ascending, then by
+  // appellation for stability. Cards with reason=pocos-datos-temporada go last.
+  const rank = r => {
+    if (r.prediction.reason === 'ya-en-ventana') return -1;
+    if (r.prediction.reason === 'pocos-datos-temporada') return 1e15;
+    return r.prediction.recommendedDate
+      ? r.prediction.recommendedDate.getTime()
+      : 1e14;
+  };
+  results.sort((a, b) => rank(a) - rank(b)
+    || a.appellation.localeCompare(b.appellation));
+  return results;
+}

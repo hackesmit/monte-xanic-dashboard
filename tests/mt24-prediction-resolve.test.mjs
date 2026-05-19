@@ -214,3 +214,51 @@ test('MT.24 computeOne: recommendedDate past brixWindowCloses → riesgo-sobrema
   assert.ok(['riesgo-sobremadurez', 'no-alcanzar-A'].includes(out.reason),
     `reason=${out.reason}`);
 });
+
+import { computeAll } from '../js/prediction.js';
+
+test('MT.24 computeAll: groups berry samples by (variety, appellation) and computes each', () => {
+  const today = new Date('2026-09-01');
+  const mkRow = (variety, appellation, vintage, dayOffset, brix, ant) => ({
+    variety, appellation, vintage,
+    sampleDate: new Date('2026-08-01').getTime() + dayOffset * 86_400_000,
+    brix, tant: ant,
+  });
+  const berryData = [
+    // CS Kompali current vintage (2026), 5 samples
+    mkRow('Cabernet Sauvignon', 'Kompali (VON)', 2026,  0, 19.5, 600),
+    mkRow('Cabernet Sauvignon', 'Kompali (VON)', 2026,  7, 20.5, 650),
+    mkRow('Cabernet Sauvignon', 'Kompali (VON)', 2026, 14, 21.5, 720),
+    mkRow('Cabernet Sauvignon', 'Kompali (VON)', 2026, 21, 22.5, 800),
+    mkRow('Cabernet Sauvignon', 'Kompali (VON)', 2026, 28, 23.0, 870),
+    // CS Kompali 2025 (historical), 8 samples in last 21 days
+    ...Array.from({ length: 8 }, (_, i) => mkRow(
+      'Cabernet Sauvignon', 'Kompali (VON)', 2025, 60 + i * 3, 20 + 0.1 * i * 3, 700 + 10 * i * 3,
+    )),
+  ];
+  const rubricMap = {
+    'Cabernet Sauvignon|Valle de Ojos Negros': {
+      params: {
+        brix: { kind: 'range', a: [23.5, 24.2] },
+        anthocyanins: { kind: 'ge-a-ge-b', a: 950, b: 700 },
+      },
+    },
+  };
+  const valleyOf = appellation =>
+    appellation.includes('VON') ? 'Valle de Ojos Negros'
+      : appellation.includes('VDG') ? 'Valle de Guadalupe'
+      : appellation.includes('VSV') ? 'Valle de San Vicente' : null;
+
+  const result = computeAll({
+    berryData, today, currentVintage: 2026,
+    overrides: [],
+    rubricFor: ({ variety, appellation }) =>
+      rubricMap[`${variety}|${valleyOf(appellation)}`] ?? null,
+    valleyFor: ({ appellation }) => valleyOf(appellation),
+  });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].variety, 'Cabernet Sauvignon');
+  assert.equal(result[0].appellation, 'Kompali (VON)');
+  assert.equal(result[0].prediction.nCurrent, 5);
+  assert.equal(result[0].prediction.V, 1);
+});
