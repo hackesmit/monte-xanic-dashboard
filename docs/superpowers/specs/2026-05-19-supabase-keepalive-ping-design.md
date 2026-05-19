@@ -24,11 +24,14 @@ A single Vercel serverless function. On GET:
 
 1. Verify the request carries `Authorization: Bearer <CRON_SECRET>`. If the env var `CRON_SECRET` is unset or the header doesn't match, return `401`.
 2. Connect to Supabase with `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` (the same env vars `api/migrations-status.js` already uses).
-3. Run one lightweight read via the `@supabase/supabase-js` client:
+3. Run one lightweight read via raw `fetch()` against Supabase's PostgREST endpoint (matching the existing pattern in `api/migrations-status.js`):
    ```js
-   await supabase.from('applied_migrations').select('name', { count: 'exact', head: true });
+   const url = `${supabaseUrl}/rest/v1/applied_migrations?select=name&limit=1`;
+   const resp = await fetch(url, {
+     headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
+   });
    ```
-   This issues a HEAD request that returns no rows but forces PostgREST to query the table for an exact count — minimal bytes over the wire, real schema-touching activity on the DB side.
+   A `GET ... limit=1` against a tiny table returns at most one row — minimal bytes over the wire while still being a real schema-touching read on the DB side.
 4. Measure round-trip latency and respond:
    - Success: `200 { ok: true, pinged_at: <iso>, latency_ms: <int> }`
    - Failure: `500 { ok: false, error: <message> }`
