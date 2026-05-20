@@ -186,7 +186,7 @@ function rebuildCurrent(r) {
       sampleDate: row.sampleDate instanceof Date ? row.sampleDate
                   : new Date(row.sampleDate),
       brix: Number(row.brix),
-      ant:  Number(row.tant ?? row.anthocyanins ?? row.ant),
+      ant:  Number(row.tANT ?? row.tant ?? row.anthocyanins ?? row.ant),
     }))
     .sort((a, b) => a.sampleDate - b.sampleDate);
 }

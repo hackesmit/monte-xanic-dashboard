@@ -338,7 +338,7 @@ export function computeAll({
     const sample = {
       sampleDate,
       brix: Number(row.brix),
-      ant:  Number(row.tant ?? row.anthocyanins ?? row.ant),
+      ant:  Number(row.tANT ?? row.tant ?? row.anthocyanins ?? row.ant),
     };
     if (!Number.isFinite(sample.brix)) continue;
     if (row.vintage === currentVintage) {

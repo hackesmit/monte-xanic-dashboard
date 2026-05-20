@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     }
   }
 
-  const validation = validateRow(table, row, { action: 'update' });
+  const validation = validateRow(table, row, { action });
   if (!validation.ok) {
     return res.status(400).json({ ok: false, error: validation.error });
   }

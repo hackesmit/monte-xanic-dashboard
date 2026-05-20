@@ -262,3 +262,31 @@ test('MT.24 computeAll: groups berry samples by (variety, appellation) and compu
   assert.equal(result[0].prediction.nCurrent, 5);
   assert.equal(result[0].prediction.V, 1);
 });
+
+test('MT.24 computeAll: reads anthocyanins from production `tANT` field, not lowercase `tant`', () => {
+  const today = new Date('2026-09-01');
+  const t0 = new Date('2026-08-01').getTime();
+  const dayMs = 86_400_000;
+  // Use the PRODUCTION field name `tANT` (per CONFIG.supabaseToBerryJS in config.js)
+  const berryData = [
+    { variety: 'CS', appellation: 'X (VON)', vintage: 2026,
+      sampleDate: t0,             brix: 19.0, tANT: 600 },
+    { variety: 'CS', appellation: 'X (VON)', vintage: 2026,
+      sampleDate: t0 + 14*dayMs,  brix: 21.0, tANT: 800 },
+  ];
+  const result = computeAll({
+    berryData, today, currentVintage: 2026,
+    overrides: [],
+    rubricFor: () => ({ params: {
+      brix:         { kind: 'range', a: [23.5, 24.2] },
+      anthocyanins: { kind: 'ge-a-ge-b', a: 950, b: 700 },
+    }}),
+    valleyFor: () => 'VON',
+  });
+  assert.equal(result.length, 1);
+  const p = result[0].prediction;
+  // antHoy is computed from this-season ANT fit; should be a finite number,
+  // not NaN — proving the tANT field was read.
+  assert.ok(Number.isFinite(p.antHoy),
+    `antHoy=${p.antHoy} — production tANT field was not extracted`);
+});
