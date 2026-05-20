@@ -51,6 +51,7 @@ export const App = {
         DataStore.loadMediciones().then(() => {
           if (this.initialized) this.refresh();
         });
+        DataStore.loadHarvestTargetOverrides();
 
         // Weather: load from Supabase meteorology table now that connection is ready
         WeatherStore.load().then(hasCache => {
@@ -70,6 +71,7 @@ export const App = {
       await DataStore.initSupabase();
       const supaLoaded = await DataStore.loadFromSupabase();
       DataStore.loadMediciones();
+      DataStore.loadHarvestTargetOverrides();
       this._updateDbStatus();
       if (supaLoaded) {
         this.onDataLoaded();

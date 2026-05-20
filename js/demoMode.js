@@ -29,7 +29,8 @@ export const DemoMode = {
       // Functions we'll monkey-patch so demo stays sealed off from Supabase
       cacheData:        DataStore.cacheData,
       loadFromSupabase: DataStore.loadFromSupabase,
-      loadMediciones:   DataStore.loadMediciones
+      loadMediciones:   DataStore.loadMediciones,
+      loadHarvestTargetOverrides: DataStore.loadHarvestTargetOverrides,
     };
 
     const demo = generateDemoData();
@@ -44,6 +45,7 @@ export const DemoMode = {
     DataStore.cacheData        = () => {};
     DataStore.loadFromSupabase = async () => true;
     DataStore.loadMediciones   = async () => {};
+    DataStore.loadHarvestTargetOverrides = async () => {};
 
     // Rebuild the joins so berry rows see their matching medicion + reception.
     DataStore._enrichData();
@@ -65,6 +67,7 @@ export const DemoMode = {
     DataStore.cacheData        = s.cacheData;
     DataStore.loadFromSupabase = s.loadFromSupabase;
     DataStore.loadMediciones   = s.loadMediciones;
+    DataStore.loadHarvestTargetOverrides = s.loadHarvestTargetOverrides;
     DataStore._enrichData();
 
     STATE.active = false;
