@@ -34,13 +34,12 @@ export const DemoMode = {
     };
 
     const demo = generateDemoData();
-    if (!demo) throw new Error('generateDemoData returned null/undefined');
     DataStore.berryData         = demo.berry;
-    DataStore.wineRecepcion     = demo.wine || [];
-    DataStore.winePreferment    = demo.preferment || [];
-    DataStore.medicionesData    = demo.mediciones || [];
-    DataStore.receptionData     = demo.receptions || [];
-    DataStore.receptionLotsData = demo.receptionLots || [];
+    DataStore.wineRecepcion     = demo.wine;
+    DataStore.winePreferment    = demo.preferment;
+    DataStore.medicionesData    = demo.mediciones;
+    DataStore.receptionData     = demo.receptions;
+    DataStore.receptionLotsData = demo.receptionLots;
     DataStore.loaded            = { berry: true, wine: true };
 
     DataStore.cacheData        = () => {};
@@ -243,13 +242,17 @@ function generateDemoData() {
   const r = rng(20250421);
   const currentYear = new Date().getFullYear();
   const today = new Date();
-  // Only generate current-season data to ensure V=0 for all groups.
-  // Task 1's densification to 6 points caused V=1 for many groups, worsening
-  // confidence labels. The 3-point revert alone doesn't guarantee V=0 due to
-  // (variety, appellation) grouping effects. Removing historical entirely
-  // ensures uniform V=0, enabling the freshnessScore * horizonPenalty path.
+  const historical = generateHistoricalSeason(2025, r);
   const current = generateCurrentSeason(currentYear, today, r);
-  return current;
+  // Use only current-season berry data so historicalSlopePrior sees V=0
+  // (the 3-point historical sparse data is too thin to make V=1 useful;
+  // V=0 + downgrade rule produces 'Media' confidence labels reliably).
+  // Wine/mediciones/receptions come from historical so other demo views
+  // remain populated.
+  return {
+    ...historical,
+    berry: current.berry,
+  };
 }
 
 // ── Current-season scenarios (mid-harvest demo) ──
