@@ -7,6 +7,7 @@ import { DataStore } from './dataLoader.js';
 import { Charts } from './charts.js';
 import * as Prediction from './prediction.js';
 import { resolveValley } from './classification.js';
+import { attachModalHygiene } from './modalHygiene.js';
 
 let activeValley = 'all';
 
@@ -23,6 +24,28 @@ export const PredictionView = {
         this.render();
       });
       chipBar._wired = true;
+    }
+    const grid = document.getElementById('prediccion-grid');
+    if (grid && !grid._predDetailWired) {
+      grid.addEventListener('click', e => {
+        if (e.target.closest('a, button, [data-pred-detail-close]')) return;
+        const card = e.target.closest('.pred-card');
+        if (!card) return;
+        const idx = Array.from(grid.children).indexOf(card);
+        if (idx < 0) return;
+        const r = this._lastResults?.[idx];
+        if (r) this.openDetail(r, new Date());
+      });
+      grid._predDetailWired = true;
+    }
+    const detailModal = document.getElementById('pred-detail-modal');
+    if (detailModal && !detailModal._predDetailWired) {
+      detailModal.addEventListener('click', e => {
+        if (e.target.closest('[data-pred-detail-close]')) {
+          detailModal.close();
+        }
+      });
+      detailModal._predDetailWired = true;
     }
     // Wire any link-buttons inside the Predicción view that switch view
     document.querySelectorAll('#view-prediccion .link-button[data-view]')
@@ -65,6 +88,7 @@ export const PredictionView = {
     const filtered = activeValley === 'all'
       ? results
       : results.filter(r => r.valley === activeValley);
+    this._lastResults = filtered;
     grid.innerHTML = '';
     if (filtered.length === 0) {
       grid.innerHTML = '<p class="empty-state">Sin datos para mostrar.</p>';
@@ -166,6 +190,163 @@ export const PredictionView = {
       });
     }
     return card;
+  },
+
+  openDetail(r, today) {
+    const modal = document.getElementById('pred-detail-modal');
+    if (!modal) return;
+    const p = r.prediction;
+    const isAlert = ['riesgo-sobremadurez', 'no-alcanzar-A',
+                     'sin-tendencia-positiva', 'antocianinas-estancadas']
+                    .includes(p.reason);
+    const isEmpty = p.reason === 'pocos-datos-temporada';
+
+    // Header
+    modal.querySelector('.pred-detail-variety').textContent = r.variety;
+    modal.querySelector('.pred-detail-appellation').textContent =
+      `${r.appellation}${r.valley ? ` (${r.valley})` : ''}`;
+    const badgeEl = modal.querySelector('.pred-detail-badge');
+    badgeEl.className = 'pred-detail-badge ' + (() => {
+      if (isAlert) return 'pred-badge pred-badge-warn';
+      if (p.label === 'Alta')  return 'pred-badge pred-badge-alta';
+      if (p.label === 'Media') return 'pred-badge pred-badge-media';
+      return 'pred-badge pred-badge-baja';
+    })();
+    badgeEl.textContent = isAlert ? '⚠ Aviso' : (isEmpty ? '' : p.label);
+
+    // Status
+    const statusEl = modal.querySelector('.pred-detail-status');
+    const subEl    = modal.querySelector('.pred-detail-sub');
+    const statusText = (() => {
+      if (isEmpty) return 'Sin datos suficientes';
+      if (p.reason === 'sin-tendencia-positiva') return 'Sin tendencia positiva';
+      if (p.reason === 'antocianinas-estancadas') return 'Antocianinas estancadas';
+      if (p.reason === 'no-alcanzar-A') return 'No alcanzará calidad A';
+      if (p.reason === 'riesgo-sobremadurez') return 'Riesgo de sobremadurez';
+      if (p.reason === 'ya-en-ventana') return 'Ya en ventana';
+      if (p.recommendedDate) {
+        return p.recommendedDate.toLocaleDateString('es-MX',
+          { weekday: 'long', day: 'numeric', month: 'long' });
+      }
+      return '—';
+    })();
+    statusEl.textContent = statusText;
+    statusEl.classList.toggle('is-reason', !!p.reason && p.reason !== 'ya-en-ventana');
+    const closesText = p.brixWindowCloses
+      ? `cierra ${p.brixWindowCloses.toLocaleDateString('es-MX',
+          { day: 'numeric', month: 'short' })}`
+      : '';
+    const horizonDays = p.recommendedDate
+      ? Math.max(0, Math.round((p.recommendedDate - today) / 86_400_000))
+      : null;
+    const subParts = [];
+    if (horizonDays != null && !isEmpty) {
+      subParts.push(`±${Math.round(p.bandDays)} d · faltan ${horizonDays} d`);
+    }
+    if (closesText) subParts.push(closesText);
+    subEl.textContent = subParts.join(' · ');
+
+    // Targets
+    const targetsBody = modal.querySelector('.pred-detail-targets-body');
+    targetsBody.innerHTML = '';
+    const addRow = (label, value) => {
+      const dt = document.createElement('dt');
+      const dd = document.createElement('dd');
+      dt.textContent = label; dd.textContent = value;
+      targetsBody.appendChild(dt); targetsBody.appendChild(dd);
+    };
+    if (r.target.brixLower != null && r.target.brixUpper != null) {
+      addRow('Ventana Brix',
+        `${r.target.brixLower.toFixed(1)}–${r.target.brixUpper.toFixed(1)} °Bx`);
+    }
+    if (r.target.brixTarget != null) {
+      addRow('Brix objetivo', `${r.target.brixTarget.toFixed(1)} °Bx`);
+    }
+    if (r.target.antTarget != null) {
+      addRow('Antocianinas objetivo', `≥ ${Math.round(r.target.antTarget)} mg/L`);
+    }
+
+    // Diagnostic
+    const diagBody = modal.querySelector('.pred-detail-diagnostic-body');
+    diagBody.innerHTML = '';
+    const addDiag = (label, value) => {
+      const dt = document.createElement('dt');
+      const dd = document.createElement('dd');
+      dt.textContent = label; dd.textContent = value;
+      diagBody.appendChild(dt); diagBody.appendChild(dd);
+    };
+    if (p.brixHoy != null) {
+      addDiag('Brix hoy (ŷ)', `${p.brixHoy.toFixed(2)} °Bx`);
+    }
+    if (p.brixComb && Number.isFinite(p.brixComb.betaPost)) {
+      addDiag('β Brix', `${p.brixComb.betaPost.toFixed(3)} °Bx/día`);
+    }
+    if (p.antHoy != null) {
+      addDiag('ANT hoy (ŷ)', `${Math.round(p.antHoy)} mg/L`);
+    }
+    if (p.antComb && Number.isFinite(p.antComb.betaPost)) {
+      addDiag('β ANT', `${p.antComb.betaPost.toFixed(2)} mg/L/día`);
+    }
+    if (Number.isFinite(p.bandDays)) {
+      addDiag('Banda confianza (95%)', `±${Math.round(p.bandDays)} días`);
+    }
+    addDiag('Muestras temporada', `n = ${p.nCurrent}`);
+    addDiag('Vintages históricos', `V = ${p.V}`);
+    addDiag('Confianza', p.label);
+
+    // Reason block
+    const reasonSection = modal.querySelector('.pred-detail-reason');
+    const reasonBody = modal.querySelector('.pred-detail-reason-body');
+    const reasonExplain = {
+      'sin-tendencia-positiva':
+        'El Brix no muestra tendencia positiva en las muestras recientes. Revisar muestreo o esperar más datos.',
+      'antocianinas-estancadas':
+        'Las antocianinas están planas o decrecen. La fruta puede no estar madurando fenólicamente.',
+      'no-alcanzar-A':
+        'Las antocianinas no alcanzarán el objetivo antes de que el Brix supere el límite alto. La calidad A no es viable este ciclo.',
+      'riesgo-sobremadurez':
+        'El Brix supera el límite alto antes de que las antocianinas alcancen el objetivo. Considera cosechar antes para evitar sobremadurez.',
+      'pocos-datos-temporada':
+        'Hay menos de 2 muestras este ciclo. Toma más muestras antes de confiar en una recomendación.',
+    };
+    if (reasonExplain[p.reason]) {
+      reasonBody.textContent = reasonExplain[p.reason];
+      reasonSection.hidden = false;
+    } else {
+      reasonSection.hidden = true;
+    }
+
+    // Charts
+    const brixCanvas = modal.querySelector('canvas[data-detail-axis="brix"]');
+    const antCanvas  = modal.querySelector('canvas[data-detail-axis="ant"]');
+    const antBlock   = modal.querySelector('[data-ant-block]');
+    if (antBlock) antBlock.style.display = r.target.antTarget != null ? '' : 'none';
+
+    modal.showModal();
+    attachModalHygiene(modal, {
+      onDismiss: () => {
+        for (const c of [brixCanvas, antCanvas]) {
+          if (!c?.id) continue;
+          const inst = Charts.instances[c.id];
+          if (inst) { inst.destroy(); delete Charts.instances[c.id]; }
+        }
+      },
+    });
+
+    requestAnimationFrame(() => {
+      if (brixCanvas) {
+        Charts.renderPredictionDetail(brixCanvas, {
+          prediction: p, target: r.target, today,
+          current: rebuildCurrent(r),
+        }, 'brix');
+      }
+      if (antCanvas && r.target.antTarget != null) {
+        Charts.renderPredictionDetail(antCanvas, {
+          prediction: p, target: r.target, today,
+          current: rebuildCurrent(r),
+        }, 'ant');
+      }
+    });
   },
 };
 
