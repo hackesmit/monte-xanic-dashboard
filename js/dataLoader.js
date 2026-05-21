@@ -9,6 +9,7 @@ export const DataStore = {
   wineRecepcion: [],
   winePreferment: [],
   medicionesData: [],
+  harvestTargetOverrides: [],
   receptionData: [],        // tank_receptions rows (snake_case, internal use)
   receptionLotsData: [],    // reception_lots rows (snake_case, internal use)
   loaded: { berry: false, wine: false },
@@ -212,6 +213,37 @@ export const DataStore = {
     } catch (e) {
       console.error('[DataStore] loadMediciones failed:', e);
     }
+  },
+
+  async loadHarvestTargetOverrides() {
+    if (!this.supabase) { this.harvestTargetOverrides = []; return; }
+    try {
+      const rows = await this._fetchAll('harvest_target_overrides', 'id');
+      this.harvestTargetOverrides = rows || [];
+    } catch (e) {
+      console.error('[DataStore] loadHarvestTargetOverrides failed:', e);
+      this.harvestTargetOverrides = [];
+    }
+  },
+
+  async upsertHarvestTargetOverride(row) {
+    const token = (typeof localStorage !== 'undefined' && localStorage)
+      ? (localStorage.getItem('xanic_session_token') || '')
+      : '';
+    const res = await fetch('/api/row', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': token },
+      body: JSON.stringify({
+        table: 'harvest_target_overrides',
+        action: 'upsert',
+        row,
+      }),
+    });
+    const data = await res.json();
+    if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    // Refresh local cache
+    await this.loadHarvestTargetOverrides();
+    return data.row;
   },
 
   parseValue(v) {

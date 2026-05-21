@@ -1195,7 +1195,20 @@ export const CONFIG = {
     { re: /Valle de Ojos Negros|\(VON\)/i,   valley: 'Valle de Ojos Negros' },
     { re: /Valle de Guadalupe|\(VDG\)|VDG/i, valley: 'Valle de Guadalupe' },
     { re: /San Vicente|VSV|\(SV\)/i,         valley: 'Valle de San Vicente' }
-  ]
+  ],
+
+  // ── Harvest predictor ───────────────────────────────────────────────────
+  harvestPredictorEnabled: false,     // flip to true after lab validation
+
+  predictionColors: {
+    line:        '#5b2d3a',           // historical/observed line
+    projection:  '#5b2d3a',           // dashed forward extension
+    cone:        'rgba(91, 45, 58, 0.08)',
+    target:      '#2e7d4f',           // dashed target line
+    etaMarker:   'rgba(91, 45, 58, 0.7)',
+    alertBg:     '#fef8f2',
+    alertBorder: '#e6cdb0',
+  },
 };
 
 // ── Inverse JS→DB column maps (Phase 10 / Stage 7) ────────────────

@@ -149,6 +149,7 @@
       <button class="nav-tab" data-view="map">Mapa</button>
       <button class="nav-tab" data-view="explorer">Explorador</button>
       <button class="nav-tab" data-view="mediciones">Mediciones</button>
+      <button class="nav-tab" data-view="prediccion">Predicción</button>
     </nav>
 
     <button class="mobile-filter-toggle" id="mobile-filter-toggle">
@@ -914,6 +915,45 @@
 
       <div style="padding:20px;text-align:center;color:var(--muted);font-size:11px" id="med-no-data">
         No hay mediciones registradas. Use el formulario para agregar la primera.
+      </div>
+    </div>
+
+    <div id="view-prediccion" class="view-panel">
+      <div class="view-export-row">
+        <div class="section-label">Predicción de cosecha</div>
+        <a class="link-button" data-view="ajustes-objetivos">⚙ Ajustes de objetivos</a>
+      </div>
+      <div class="chip-bar" id="prediccion-valley-chips">
+        <button class="chip chip-active" data-valley="all">Todas</button>
+        <button class="chip" data-valley="VDG">VDG</button>
+        <button class="chip" data-valley="VON">VON</button>
+        <button class="chip" data-valley="VSV">VSV</button>
+      </div>
+      <div class="prediccion-grid" id="prediccion-grid"></div>
+    </div>
+
+    <div id="view-ajustes-objetivos" class="view-panel">
+      <div class="view-export-row">
+        <div class="section-label">Ajustes de objetivos de cosecha</div>
+        <a class="link-button" data-view="prediccion">← Volver a Predicción</a>
+      </div>
+      <div class="settings-meta" id="ajustes-objetivos-meta"></div>
+      <table class="settings-table" id="ajustes-objetivos-table">
+        <thead>
+          <tr>
+            <th>Varietal</th><th>Valle</th>
+            <th class="num">Brix objetivo</th>
+            <th class="num">Brix mín</th>
+            <th class="num">Brix tope</th>
+            <th class="num">ANT mín (ME)</th>
+            <th>Nota</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="settings-actions">
+        <button class="btn" id="ajustes-objetivos-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="ajustes-objetivos-save">Guardar cambios</button>
       </div>
     </div>
 

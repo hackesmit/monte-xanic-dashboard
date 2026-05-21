@@ -1,0 +1,19 @@
+{
+  "variety": "Cabernet Sauvignon",
+  "appellation": "Kompali (VON)",
+  "vintage": 2024,
+  "rubricId": "CS-SY-MAL-MRS-TEM-VON",
+  "actualReceptionDate": "2024-09-22",
+  "synthetic": true,
+  "note": "Replace `samples` with real WineXRay berry rows for 2024 CS Kompali to validate the predictor against actual data. Until then this fixture exercises the integration end-to-end with a realistic ripening curve.",
+  "samples": [
+    { "sampleDate": "2024-07-29", "brix": 17.8, "ant": 320 },
+    { "sampleDate": "2024-08-05", "brix": 18.6, "ant": 410 },
+    { "sampleDate": "2024-08-12", "brix": 19.5, "ant": 510 },
+    { "sampleDate": "2024-08-19", "brix": 20.4, "ant": 610 },
+    { "sampleDate": "2024-08-26", "brix": 21.2, "ant": 700 },
+    { "sampleDate": "2024-09-02", "brix": 22.0, "ant": 790 },
+    { "sampleDate": "2024-09-09", "brix": 22.7, "ant": 870 },
+    { "sampleDate": "2024-09-16", "brix": 23.4, "ant": 940 }
+  ]
+}

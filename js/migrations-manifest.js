@@ -32,4 +32,5 @@ export const MIGRATIONS = [
   'migration_applied_log',
   'migration_mediciones_audit',
   'migration_row_audit_columns',
+  'migration_harvest_target_overrides',
 ];
