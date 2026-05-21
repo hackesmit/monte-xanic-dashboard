@@ -243,8 +243,11 @@ function generateDemoData() {
   const currentYear = new Date().getFullYear();
   const today = new Date();
   const historical = generateHistoricalSeason(2025, r);
-  // Task 3 will add: const current = generateCurrentSeason(currentYear, today, r);
-  return historical;
+  const current = generateCurrentSeason(currentYear, today, r);
+  return {
+    ...historical,
+    berry: [...historical.berry, ...current.berry],
+  };
 }
 
 // ── Current-season scenarios (mid-harvest demo) ──
@@ -375,6 +378,58 @@ function assignScenarios(nGroups, r) {
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
   return pool;
+}
+
+// Generate 5-point berry time series for each (variety, appellation)
+// group in CONFIG.vineyardSections, calibrated so Prediction.computeOne
+// lands on the assigned scenario's expected reason. Returns { berry }.
+function generateCurrentSeason(currentYear, today, r) {
+  const berry = [];
+  const groups = buildCurrentSeasonGroups();
+  const scenarios = assignScenarios(groups.length, r);
+  const offsets = [-32, -24, -16, -8, 0];  // days from today
+  const dayMs = 86_400_000;
+
+  for (let gi = 0; gi < groups.length; gi++) {
+    const g = groups[gi];
+    let scenario = scenarios[gi];
+    // White varieties without antTarget — reassign ANT-dependent scenarios
+    if (g.target.antTarget == null && ANT_DEPENDENT_SCENARIOS.has(scenario)) {
+      scenario = 'eta-media';
+    }
+    const p = scenarioParams(scenario, g.target, r);
+    if (!p) continue;
+    const yy = String(currentYear).slice(2);
+    for (let i = 0; i < offsets.length; i++) {
+      const t = offsets[i];
+      const seq = i + 1;
+      const dateObj = new Date(today.getTime() + t * dayMs);
+      const sampleDate = dateObj.toISOString().slice(0, 10);
+      const brix = p.yBrix + p.bBrix * t + (r() - 0.5) * 0.2;
+      const ant  = p.yAnt != null
+        ? Math.max(0, p.yAnt + p.bAnt * t + (r() - 0.5) * 60)
+        : null;
+      berry.push({
+        sampleId: `${yy}${g.lotCode}-c${seq}`,
+        sampleDate,
+        vintage: currentYear,
+        variety: g.variety,
+        appellation: g.appellation,
+        sampleType: 'Berries',
+        lotCode: g.lotCode,
+        brix,
+        pH: 3.5 + (r() - 0.5) * 0.3,
+        ta: 5 + (r() - 0.5) * 1.5,
+        tANT: ant != null ? Math.round(ant) : null,
+        berryFW: 1.0 + (r() - 0.5) * 0.2,
+        anthocyanins: ant != null ? Math.round(ant) : null,
+        daysPostCrush: 38 + t,  // approximate; only used by some downstream views
+        sampleSeq: seq,
+        grapeType: null,
+      });
+    }
+  }
+  return { berry };
 }
 
 function generateHistoricalSeason(VINTAGE, r) {
