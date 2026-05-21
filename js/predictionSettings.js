@@ -57,11 +57,13 @@ export const PredictionSettings = {
         const rubric = CONFIG.rubrics[rubricId];
         const rb = rubric?.params?.brix;
         const ra = rubric?.params?.anthocyanins;
+        const rp = rubric?.params?.pH;
         const inherited = {
           brixTarget: rb ? (rb.a[0] + rb.a[1]) / 2 : null,
           brixLower:  rb?.a?.[0] ?? null,
           brixUpper:  rb?.a?.[1] ?? null,
           antTarget:  ra?.a ?? null,
+          phTarget:   (rp && !ra) ? rp.a : null,
         };
         const ovr = overrides.get(`${variety}|${valley}`);
         rows.push({ variety, valley, rubric, inherited, ovr });
@@ -97,7 +99,8 @@ export const PredictionSettings = {
     );
     const ph = field => {
       const map = { brix_target: 'brixTarget', brix_target_lower: 'brixLower',
-                    brix_upper: 'brixUpper', anthocyanin_target: 'antTarget' };
+                    brix_upper: 'brixUpper', anthocyanin_target: 'antTarget',
+                    ph_target: 'phTarget' };
       const inh = r.inherited[map[field]];
       return inh != null ? String(inh) : 'n/a';
     };
@@ -112,16 +115,23 @@ export const PredictionSettings = {
       : `<td class="num"><input type="number" step="1" data-field="anthocyanin_target"
             value="${escapeHtml(String(v('anthocyanin_target')))}" placeholder="${escapeHtml(ph('anthocyanin_target'))}"
             ${canEdit ? '' : 'disabled'}></td>`;
+    const phCell = r.inherited.phTarget == null
+      ? `<td class="num" style="color:#9b9388;font-style:italic">no aplica</td>`
+      : `<td class="num"><input type="number" step="0.01" data-field="ph_target"
+            value="${escapeHtml(String(v('ph_target')))}" placeholder="${escapeHtml(ph('ph_target'))}"
+            ${canEdit ? '' : 'disabled'}></td>`;
 
     let note;
     if (!r.ovr) note = '100% de rúbrica';
     else {
-      const fields = ['brix_target','brix_target_lower','brix_upper','anthocyanin_target'];
+      const fields = ['brix_target','brix_target_lower','brix_upper','anthocyanin_target','ph_target'];
       const overridden = fields.filter(f => r.ovr[f] != null);
       if (overridden.length === fields.length) note = 'override completo';
       else if (overridden.length === 0) note = '100% de rúbrica';
       else note = `heredado: ${fields.filter(f => !overridden.includes(f))
-                    .map(f => f.replace('brix_','Brix ').replace('anthocyanin_','ANT '))
+                    .map(f => f.replace('brix_','Brix ')
+                              .replace('anthocyanin_','ANT ')
+                              .replace('ph_','pH '))
                     .join(', ')}`;
     }
 
@@ -130,6 +140,7 @@ export const PredictionSettings = {
       <td>${escapeHtml(r.valley)}</td>
       ${cells}
       ${antCell}
+      ${phCell}
       <td style="font-size:11px;color:#7a7368">${escapeHtml(note)}</td>
     `;
     if (canEdit) {
