@@ -2780,5 +2780,116 @@ export const Charts = {
         animation: { duration: 0 },
       },
     });
+  },
+
+  renderPredictionDetail(canvas, ctx, axis) {
+    if (!canvas || !ctx) return;
+    const { prediction, target, today } = ctx;
+    const C = CONFIG.predictionColors;
+
+    const sortedCurrent = ctx.current
+      .slice()
+      .sort((a, b) => a.sampleDate - b.sampleDate);
+    if (sortedCurrent.length === 0) return;
+    const dayMs = 86_400_000;
+    const t0 = sortedCurrent[0].sampleDate.getTime();
+    const dayOf = ms => (ms - t0) / dayMs;
+    const observed = sortedCurrent.map(s => ({
+      x: dayOf(s.sampleDate.getTime()),
+      y: axis === 'brix' ? s.brix : s.ant,
+    }));
+    const etaDays = axis === 'brix'
+      ? prediction.samplesProjected.brixEta
+      : prediction.samplesProjected.antEta;
+    const horizonDays = Number.isFinite(etaDays) ? Math.max(etaDays + 5, 5) : 21;
+    const todayX = dayOf(today.getTime());
+    const horizonEndX = todayX + horizonDays;
+    const fit = axis === 'brix' ? prediction.brixFit : prediction.antFit;
+    const comb = axis === 'brix' ? prediction.brixComb : prediction.antComb;
+    if (!fit || !Number.isFinite(comb?.betaPost)) return;
+    const tToday = todayX;
+    const projAtDays = d => {
+      const yhatToday = fit.alpha + fit.beta * tToday;
+      return yhatToday + comb.betaPost * d;
+    };
+    const projection = [];
+    for (let d = 0; d <= horizonDays; d += 1) {
+      projection.push({ x: todayX + d, y: projAtDays(d) });
+    }
+    const sigmaY = Math.sqrt(Math.max(0, fit.sigma2));
+    const cone = [];
+    for (let d = 0; d <= horizonDays; d += 1) {
+      const y = projAtDays(d);
+      const wY = 1.96 * Math.sqrt(sigmaY * sigmaY + (d * Math.sqrt(comb.sigmaBeta2Post)) ** 2);
+      cone.push({ x: todayX + d, yLo: y - wY, yHi: y + wY });
+    }
+
+    const targetY = axis === 'brix' ? target.brixTarget : target.antTarget;
+    const datasets = [
+      { label: 'Banda confianza',
+        type: 'line', borderColor: 'transparent',
+        backgroundColor: C.cone, fill: '+1',
+        data: cone.map(p => ({ x: p.x, y: p.yHi })),
+        pointRadius: 0, tension: 0, order: 1 },
+      { label: 'Banda inferior',
+        type: 'line', borderColor: 'transparent',
+        data: cone.map(p => ({ x: p.x, y: p.yLo })),
+        pointRadius: 0, tension: 0, order: 1 },
+      { label: 'Observado',
+        type: 'line', borderColor: C.line, borderWidth: 2,
+        backgroundColor: C.line, data: observed,
+        pointRadius: 3.5, tension: 0, order: 2 },
+      { label: 'Proyección',
+        type: 'line', borderColor: C.projection, borderWidth: 2,
+        borderDash: [4, 4], data: projection,
+        pointRadius: 0, tension: 0, order: 2 },
+    ];
+    if (targetY != null) {
+      datasets.push({
+        label: 'Objetivo', type: 'line',
+        borderColor: C.target, borderWidth: 1.5, borderDash: [3, 4],
+        data: [
+          { x: observed[0].x, y: targetY },
+          { x: horizonEndX,   y: targetY },
+        ],
+        pointRadius: 0, tension: 0, order: 0,
+      });
+    }
+
+    const canvasId = canvas.id || `pred-detail-${axis}-${Math.random().toString(36).slice(2,8)}`;
+    if (this.instances[canvasId]) { this.instances[canvasId].destroy(); }
+    const unit = axis === 'brix' ? '°Bx' : 'mg/L';
+    const fmtVal = v => axis === 'brix'
+      ? `${Number(v).toFixed(1)} ${unit}`
+      : `${Math.round(Number(v))} ${unit}`;
+    const fmtDate = xDays => new Date(t0 + xDays * dayMs)
+      .toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
+    this.instances[canvasId] = new Chart(canvas, {
+      type: 'line',
+      data: { datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false, axis: 'x' },
+        scales: {
+          x: { type: 'linear', ticks: { font: { size: 11 } } },
+          y: { ticks: { font: { size: 11 } } },
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            filter: item => {
+              const lbl = item.dataset.label;
+              return lbl === 'Observado' || lbl === 'Proyección' || lbl === 'Objetivo';
+            },
+            callbacks: {
+              title: items => fmtDate(items[0].parsed.x),
+              label: item => `${item.dataset.label}: ${fmtVal(item.parsed.y)}`,
+            },
+          },
+        },
+        animation: { duration: 300 },
+      },
+    });
   }
 };
