@@ -2620,7 +2620,11 @@ body.demo-mode-active .row-clickable        { display: none; }
 .pred-badge-media { background: #c08a2d; }
 .pred-badge-baja  { background: #b04040; }
 .pred-badge-warn  { background: #c08a2d; }
-.pred-card canvas { width: 100% !important; height: 70px !important; margin-top: 6px; }
+/* Wrapper gives Chart.js a sized container; canvas auto-fills via responsive:true.
+   Do NOT put width/height on the canvas itself — !important rules override
+   Chart.js's computed canvas.style and decouple intrinsic from display size,
+   which squashes/stretches everything drawn on the canvas (including tooltips). */
+.pred-mini        { position: relative; height: 70px; margin-top: 6px; }
 .link-button {
   font-size: 12px; color: #5b2d3a; text-decoration: underline; cursor: pointer;
   background: none; border: none; padding: 0;

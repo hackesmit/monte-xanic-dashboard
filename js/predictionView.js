@@ -135,10 +135,10 @@ export const PredictionView = {
           ${closesText ? ` · ${closesText}` : ''}
         </div>
         <div style="font-size:9px;color:#7a7368;margin-top:6px">Brix</div>
-        <canvas data-axis="brix"></canvas>
+        <div class="pred-mini"><canvas data-axis="brix"></canvas></div>
         ${r.target.antTarget != null ? `
           <div style="font-size:9px;color:#7a7368;margin-top:4px">Antocianinas</div>
-          <canvas data-axis="ant"></canvas>` : ''}
+          <div class="pred-mini"><canvas data-axis="ant"></canvas></div>` : ''}
         <div class="pred-card-foot">
           <span>Brix <b>${p.brixHoy != null ? p.brixHoy.toFixed(1) : '—'}</b></span>
           <span>ANT <b>${p.antHoy != null ? Math.round(p.antHoy) : '—'}</b></span>
