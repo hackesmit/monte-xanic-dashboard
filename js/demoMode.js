@@ -247,6 +247,136 @@ function generateDemoData() {
   return historical;
 }
 
+// ── Current-season scenarios (mid-harvest demo) ──
+// Each scenario yields (yhat_brix_today, β_brix, yhat_ant_today, β_ant)
+// calibrated against the group's rubric so Prediction.computeOne lands
+// on the intended `reason`. See spec § Scenarios.
+const SCENARIO_QUOTAS = [
+  ['ya-en-ventana',             0.25],
+  ['eta-corta',                 0.20],
+  ['eta-media',                 0.25],
+  ['riesgo-sobremadurez',       0.10],
+  ['no-alcanzar-A',             0.10],
+  ['antocianinas-estancadas',   0.10],
+];
+
+// Scenarios that require ANT machinery — reassigned to 'eta-media' when
+// the group's rubric has no anthocyanins target (white varieties).
+const ANT_DEPENDENT_SCENARIOS = new Set([
+  'no-alcanzar-A', 'antocianinas-estancadas',
+]);
+
+// Resolve (yhat_brix_today, β_brix, yhat_ant_today, β_ant) for a scenario,
+// given the group's target window. `r` is the seeded RNG.
+function scenarioParams(scenario, target, r) {
+  const { brixLower, brixUpper, brixTarget, antTarget } = target;
+  switch (scenario) {
+    case 'ya-en-ventana':
+      return {
+        yBrix: brixTarget + r() * 0.5,
+        bBrix: 0.15,
+        yAnt:  antTarget != null ? antTarget * 1.10 : null,
+        bAnt:  8,
+      };
+    case 'eta-corta':
+      return {
+        yBrix: brixLower - (2 + r()),
+        bBrix: 0.30,
+        yAnt:  antTarget != null ? antTarget * 0.85 : null,
+        bAnt:  12,
+      };
+    case 'eta-media':
+      return {
+        yBrix: brixLower - (5 + r() * 2),
+        bBrix: 0.30,
+        yAnt:  antTarget != null ? antTarget * 0.65 : null,
+        bAnt:  12,
+      };
+    case 'riesgo-sobremadurez':
+      return {
+        yBrix: brixUpper + (0.3 + r() * 0.4),
+        bBrix: 0.25,
+        yAnt:  antTarget != null ? antTarget * 0.55 : null,
+        bAnt:  6,
+      };
+    case 'no-alcanzar-A':
+      return {
+        yBrix: brixTarget - r(),
+        bBrix: 0.30,
+        yAnt:  antTarget != null ? antTarget * 0.50 : null,
+        bAnt:  1.5,
+      };
+    case 'antocianinas-estancadas':
+      return {
+        yBrix: brixLower + r(),
+        bBrix: 0.25,
+        yAnt:  antTarget != null ? antTarget * 0.70 : null,
+        bAnt:  -0.5,
+      };
+  }
+  return null;
+}
+
+// Deduplicate vineyardSections into (variety, appellation) groups with
+// their resolved rubric. Stable sort by (appellation, variety) for
+// deterministic scenario assignment.
+function buildCurrentSeasonGroups() {
+  const seen = new Map();  // key: "variety|appellation"
+  for (const section of CONFIG.vineyardSections) {
+    const variety = primaryVariety(section.variety);
+    if (!variety) continue;
+    const appellation = section.ranch;
+    const rubric = demoRubricFor(variety, appellation);
+    if (!rubric) continue;
+    const key = `${variety}|${appellation}`;
+    if (seen.has(key)) continue;
+    // Effective rubric params (variety-specific peso_overrides applied
+    // upstream; here we only need brix + anthocyanins thresholds).
+    const brixSpec = rubric.params.brix;
+    const antSpec  = rubric.params.anthocyanins;
+    const target = {
+      brixLower:  brixSpec?.a?.[0] ?? null,
+      brixUpper:  brixSpec?.a?.[1] ?? null,
+      brixTarget: brixSpec?.a ? (brixSpec.a[0] + brixSpec.a[1]) / 2 : null,
+      antTarget:  antSpec?.a ?? null,
+    };
+    if (target.brixLower == null) continue;  // can't calibrate without window
+    const ranchCode = section.ranchCode;
+    const prefix = VARIETY_PREFIX[variety] || 'XX';
+    // One representative section per group — use a stable suffix that
+    // doesn't collide with the historical lotCode pattern.
+    const lotCode = `${prefix}${ranchCode}-G`;
+    seen.set(key, { variety, appellation, target, lotCode });
+  }
+  return [...seen.values()].sort((a, b) =>
+    a.appellation.localeCompare(b.appellation)
+    || a.variety.localeCompare(b.variety));
+}
+
+// Largest-remainder quota allocation: returns an array of scenario names
+// (length === nGroups) with each scenario's count matching SCENARIO_QUOTAS,
+// shuffled deterministically.
+function assignScenarios(nGroups, r) {
+  const raw = SCENARIO_QUOTAS.map(([name, pct]) => ({
+    name, exact: pct * nGroups, floor: Math.floor(pct * nGroups),
+  }));
+  let allocated = raw.reduce((s, x) => s + x.floor, 0);
+  const remainder = nGroups - allocated;
+  // Sort by fractional part desc, add 1 to top `remainder` slots
+  const order = raw.map((x, i) => ({ i, frac: x.exact - x.floor }))
+                   .sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < remainder; k++) raw[order[k].i].floor += 1;
+  // Build pool
+  const pool = [];
+  for (const x of raw) for (let k = 0; k < x.floor; k++) pool.push(x.name);
+  // Fisher–Yates with seeded RNG
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(r() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  return pool;
+}
+
 function generateHistoricalSeason(VINTAGE, r) {
   const berry = [];
   const mediciones = [];
