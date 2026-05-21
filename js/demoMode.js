@@ -260,11 +260,13 @@ function generateDemoData() {
 // calibrated against the group's rubric so Prediction.computeOne lands
 // on the intended `reason`. See spec § Scenarios.
 const SCENARIO_QUOTAS = [
-  ['ya-en-ventana',             0.25],
+  ['ya-en-ventana',             0.20],
   ['eta-corta',                 0.20],
-  ['eta-media',                 0.35],
+  ['eta-media',                 0.30],
   ['no-alcanzar-A',             0.10],
   ['antocianinas-estancadas',   0.10],
+  ['riesgo-ph',                 0.05],
+  ['ph-temprano',               0.05],
 ];
 
 // Scenarios that require ANT machinery — reassigned to 'eta-media' when
@@ -273,52 +275,58 @@ const ANT_DEPENDENT_SCENARIOS = new Set([
   'no-alcanzar-A', 'antocianinas-estancadas',
 ]);
 
-// Resolve (yhat_brix_today, β_brix, yhat_ant_today, β_ant) for a scenario,
-// given the group's target window. `r` is the seeded RNG.
+// Scenarios that require pH-as-deadline machinery — reassigned to 'eta-media'
+// when the group's rubric has no pH target (i.e., reds in current ruleset).
+const PH_DEPENDENT_SCENARIOS = new Set([
+  'riesgo-ph', 'ph-temprano',
+]);
+
+// Resolve (yhat_brix_today, β_brix, yhat_ant_today, β_ant, yhat_ph_today, β_ph)
+// for a scenario, given the group's target window. `r` is the seeded RNG.
 function scenarioParams(scenario, target, r) {
-  const { brixLower, brixUpper, brixTarget, antTarget } = target;
+  const { brixLower, brixUpper, brixTarget, antTarget, phTarget } = target;
   switch (scenario) {
     case 'ya-en-ventana':
       return {
-        yBrix: brixTarget + r() * 0.5,
-        bBrix: 0.15,
-        yAnt:  antTarget != null ? antTarget * 1.10 : null,
-        bAnt:  8,
+        yBrix: brixTarget + r() * 0.5, bBrix: 0.15,
+        yAnt:  antTarget != null ? antTarget * 1.10 : null, bAnt: 8,
+        yPh:   phTarget  != null ? phTarget  - 0.05 : null, bPh: 0.005,
       };
     case 'eta-corta':
       return {
-        yBrix: brixLower - (2 + r()),
-        bBrix: 0.30,
-        yAnt:  antTarget != null ? antTarget * 0.85 : null,
-        bAnt:  12,
+        yBrix: brixLower - (2 + r()), bBrix: 0.30,
+        yAnt:  antTarget != null ? antTarget * 0.85 : null, bAnt: 12,
+        yPh:   phTarget  != null ? phTarget  - 0.15 : null, bPh: 0.008,
       };
     case 'eta-media':
       return {
-        yBrix: brixLower - (5 + r() * 2),
-        bBrix: 0.30,
-        yAnt:  antTarget != null ? antTarget * 0.65 : null,
-        bAnt:  12,
-      };
-    case 'riesgo-sobremadurez':
-      return {
-        yBrix: brixUpper + (0.3 + r() * 0.4),
-        bBrix: 0.25,
-        yAnt:  antTarget != null ? antTarget * 0.55 : null,
-        bAnt:  6,
+        yBrix: brixLower - (5 + r() * 2), bBrix: 0.30,
+        yAnt:  antTarget != null ? antTarget * 0.65 : null, bAnt: 12,
+        yPh:   phTarget  != null ? phTarget  - 0.20 : null, bPh: 0.008,
       };
     case 'no-alcanzar-A':
       return {
-        yBrix: brixTarget - r(),
-        bBrix: 0.30,
-        yAnt:  antTarget != null ? antTarget * 0.50 : null,
-        bAnt:  1.5,
+        yBrix: brixTarget - r(), bBrix: 0.30,
+        yAnt:  antTarget != null ? antTarget * 0.50 : null, bAnt: 1.5,
+        yPh:   null, bPh: 0,
       };
     case 'antocianinas-estancadas':
       return {
-        yBrix: brixLower + r(),
-        bBrix: 0.25,
-        yAnt:  antTarget != null ? antTarget * 0.70 : null,
-        bAnt:  -0.5,
+        yBrix: brixLower + r(), bBrix: 0.25,
+        yAnt:  antTarget != null ? antTarget * 0.70 : null, bAnt: -0.5,
+        yPh:   null, bPh: 0,
+      };
+    case 'riesgo-ph':
+      return {
+        yBrix: brixLower - (3 + r() * 0.5), bBrix: 0.25,
+        yAnt:  null, bAnt: 0,
+        yPh:   phTarget != null ? phTarget - 0.05 : null, bPh: 0.025,
+      };
+    case 'ph-temprano':
+      return {
+        yBrix: brixLower - (6 + r() * 0.5), bBrix: 0.20,
+        yAnt:  null, bAnt: 0,
+        yPh:   phTarget != null ? phTarget - 0.02 : null, bPh: 0.030,
       };
   }
   return null;
@@ -338,14 +346,16 @@ function buildCurrentSeasonGroups() {
     const key = `${variety}|${appellation}`;
     if (seen.has(key)) continue;
     // Effective rubric params (variety-specific peso_overrides applied
-    // upstream; here we only need brix + anthocyanins thresholds).
+    // upstream; here we only need brix + anthocyanins + pH thresholds).
     const brixSpec = rubric.params.brix;
     const antSpec  = rubric.params.anthocyanins;
+    const phSpec   = rubric.params.pH;
     const target = {
       brixLower:  brixSpec?.a?.[0] ?? null,
       brixUpper:  brixSpec?.a?.[1] ?? null,
       brixTarget: brixSpec?.a ? (brixSpec.a[0] + brixSpec.a[1]) / 2 : null,
       antTarget:  antSpec?.a ?? null,
+      phTarget:   (phSpec && !antSpec) ? phSpec.a : null,
     };
     if (target.brixLower == null) continue;  // can't calibrate without window
     const ranchCode = section.ranchCode;
@@ -391,19 +401,54 @@ function generateCurrentSeason(currentYear, today, r) {
   const berry = [];
   const groups = buildCurrentSeasonGroups();
   const scenarios = assignScenarios(groups.length, r);
+
+  // Realign: ANT-scenarios should land on red groups; pH-scenarios on white groups.
+  // The base shuffle is uniform across all groups, so without this swap pass the
+  // PH/ANT reassignment guards below silently demote pH/ANT scenarios to
+  // 'eta-media' whenever the RNG happens to place them on the "wrong" group type.
+  const isRed   = i => groups[i].target.antTarget != null;
+  const isWhite = i => groups[i].target.phTarget != null && groups[i].target.antTarget == null;
+  for (let i = 0; i < scenarios.length; i++) {
+    const s = scenarios[i];
+    if (ANT_DEPENDENT_SCENARIOS.has(s) && !isRed(i)) {
+      for (let j = 0; j < scenarios.length; j++) {
+        if (i === j) continue;
+        if (isRed(j) && !ANT_DEPENDENT_SCENARIOS.has(scenarios[j])
+            && !PH_DEPENDENT_SCENARIOS.has(scenarios[j])) {
+          [scenarios[i], scenarios[j]] = [scenarios[j], scenarios[i]];
+          break;
+        }
+      }
+    } else if (PH_DEPENDENT_SCENARIOS.has(s) && !isWhite(i)) {
+      for (let j = 0; j < scenarios.length; j++) {
+        if (i === j) continue;
+        if (isWhite(j) && !ANT_DEPENDENT_SCENARIOS.has(scenarios[j])
+            && !PH_DEPENDENT_SCENARIOS.has(scenarios[j])) {
+          [scenarios[i], scenarios[j]] = [scenarios[j], scenarios[i]];
+          break;
+        }
+      }
+    }
+  }
+
   const offsets = [-32, -24, -16, -8, 0];  // days from today
   const dayMs = 86_400_000;
 
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
     let scenario = scenarios[gi];
-    // White varieties without antTarget — reassign ANT-dependent scenarios
+    // White (no antTarget) — reassign ANT-dependent scenarios
     if (g.target.antTarget == null && ANT_DEPENDENT_SCENARIOS.has(scenario)) {
+      scenario = 'eta-media';
+    }
+    // Red (no phTarget) — reassign pH-dependent scenarios
+    if (g.target.phTarget == null && PH_DEPENDENT_SCENARIOS.has(scenario)) {
       scenario = 'eta-media';
     }
     const p = scenarioParams(scenario, g.target, r);
     if (!p) continue;
     const yy = String(currentYear).slice(2);
+    const isWhite = g.target.phTarget != null && g.target.antTarget == null;
     for (let i = 0; i < offsets.length; i++) {
       const t = offsets[i];
       const seq = i + 1;
@@ -413,6 +458,9 @@ function generateCurrentSeason(currentYear, today, r) {
       const ant  = p.yAnt != null
         ? Math.max(0, p.yAnt + p.bAnt * t + (r() - 0.5) * 60)
         : null;
+      const pH = isWhite && p.yPh != null
+        ? Math.max(2.5, Math.min(4.5, p.yPh + p.bPh * t + (r() - 0.5) * 0.02))
+        : 3.5 + (r() - 0.5) * 0.3;
       berry.push({
         sampleId: `${yy}${g.lotCode}-c${seq}`,
         sampleDate,
@@ -422,12 +470,12 @@ function generateCurrentSeason(currentYear, today, r) {
         sampleType: 'Berries',
         lotCode: g.lotCode,
         brix,
-        pH: 3.5 + (r() - 0.5) * 0.3,
+        pH,
         ta: 5 + (r() - 0.5) * 1.5,
         tANT: ant != null ? Math.round(ant) : null,
         berryFW: 1.0 + (r() - 0.5) * 0.2,
         anthocyanins: ant != null ? Math.round(ant) : null,
-        daysPostCrush: 38 + t,  // approximate; only used by some downstream views
+        daysPostCrush: 38 + t,
         sampleSeq: seq,
         grapeType: null,
       });
