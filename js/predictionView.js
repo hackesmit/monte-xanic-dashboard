@@ -203,8 +203,7 @@ export const PredictionView = {
 
     // Header
     modal.querySelector('.pred-detail-variety').textContent = r.variety;
-    modal.querySelector('.pred-detail-appellation').textContent =
-      `${r.appellation}${r.valley ? ` (${r.valley})` : ''}`;
+    modal.querySelector('.pred-detail-appellation').textContent = r.appellation;
     const badgeEl = modal.querySelector('.pred-detail-badge');
     badgeEl.className = 'pred-detail-badge ' + (() => {
       if (isAlert) return 'pred-badge pred-badge-warn';
