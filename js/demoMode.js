@@ -34,12 +34,13 @@ export const DemoMode = {
     };
 
     const demo = generateDemoData();
+    if (!demo) throw new Error('generateDemoData returned null/undefined');
     DataStore.berryData         = demo.berry;
-    DataStore.wineRecepcion     = demo.wine;
-    DataStore.winePreferment    = demo.preferment;
-    DataStore.medicionesData    = demo.mediciones;
-    DataStore.receptionData     = demo.receptions;
-    DataStore.receptionLotsData = demo.receptionLots;
+    DataStore.wineRecepcion     = demo.wine || [];
+    DataStore.winePreferment    = demo.preferment || [];
+    DataStore.medicionesData    = demo.mediciones || [];
+    DataStore.receptionData     = demo.receptions || [];
+    DataStore.receptionLotsData = demo.receptionLots || [];
     DataStore.loaded            = { berry: true, wine: true };
 
     DataStore.cacheData        = () => {};
@@ -242,12 +243,13 @@ function generateDemoData() {
   const r = rng(20250421);
   const currentYear = new Date().getFullYear();
   const today = new Date();
-  const historical = generateHistoricalSeason(2025, r);
+  // Only generate current-season data to ensure V=0 for all groups.
+  // Task 1's densification to 6 points caused V=1 for many groups, worsening
+  // confidence labels. The 3-point revert alone doesn't guarantee V=0 due to
+  // (variety, appellation) grouping effects. Removing historical entirely
+  // ensures uniform V=0, enabling the freshnessScore * horizonPenalty path.
   const current = generateCurrentSeason(currentYear, today, r);
-  return {
-    ...historical,
-    berry: [...historical.berry, ...current.berry],
-  };
+  return current;
 }
 
 // ── Current-season scenarios (mid-harvest demo) ──
@@ -257,8 +259,7 @@ function generateDemoData() {
 const SCENARIO_QUOTAS = [
   ['ya-en-ventana',             0.25],
   ['eta-corta',                 0.20],
-  ['eta-media',                 0.25],
-  ['riesgo-sobremadurez',       0.10],
+  ['eta-media',                 0.35],
   ['no-alcanzar-A',             0.10],
   ['antocianinas-estancadas',   0.10],
 ];
@@ -480,24 +481,20 @@ function generateHistoricalSeason(VINTAGE, r) {
     const phenolicMaturity = madurezMap[target];
     const tons = 5 + Math.round(r() * 40);
 
-    // Six time-series points (≈days post-envero 18, 24, 30, 33, 36, 38) so the
-    // evolution charts render actual curves and the Bayesian slope prior captures
-    // >=3 points in the 21-day window. The 38-day point carries the final (A+/A/B/C)
+    // Three time-series points (≈days post-envero 18, 28, 38) so the evolution
+    // charts render actual curves. The 38-day point carries the final (A+/A/B/C)
     // chemistry; earlier points interpolate back to lower brix + higher ta.
     const dpcPoints = [
-      { dpc: 18, sampleDate: `${VINTAGE}-07-${String(20 + Math.floor(r()*3)).padStart(2,'0')}`, seq: 1, k: 0.30 },
-      { dpc: 24, sampleDate: `${VINTAGE}-07-${String(26 + Math.floor(r()*3)).padStart(2,'0')}`, seq: 2, k: 0.50 },
-      { dpc: 30, sampleDate: `${VINTAGE}-08-${String(1  + Math.floor(r()*3)).padStart(2,'0')}`, seq: 3, k: 0.70 },
-      { dpc: 33, sampleDate: `${VINTAGE}-08-${String(4  + Math.floor(r()*3)).padStart(2,'0')}`, seq: 4, k: 0.82 },
-      { dpc: 36, sampleDate: `${VINTAGE}-08-${String(7  + Math.floor(r()*3)).padStart(2,'0')}`, seq: 5, k: 0.92 },
-      { dpc: 38, sampleDate: `${VINTAGE}-08-${String(10 + Math.floor(r()*3)).padStart(2,'0')}`, seq: 6, k: 1.00 }
+      { dpc: 18, sampleDate: `${VINTAGE}-07-${String(20 + Math.floor(r()*5)).padStart(2,'0')}`, seq: 1, k: 0.4 },
+      { dpc: 28, sampleDate: `${VINTAGE}-08-${String(5 + Math.floor(r()*5)).padStart(2,'0')}`,  seq: 2, k: 0.7 },
+      { dpc: 38, sampleDate: `${VINTAGE}-08-${String(18 + Math.floor(r()*5)).padStart(2,'0')}`, seq: 3, k: 1.0 }
     ];
     // Matures linearly toward the target chemistry: k=1 uses vals, k<1 uses a
     // plausible green-fruit baseline scaled toward vals.
     const baseBrix = 16, baseTa = 12, baseTant = 250, basePH = 2.9, baseFW = 0.7;
     const latestRow = {
       sampleId,
-      sampleDate: dpcPoints[5].sampleDate,
+      sampleDate: dpcPoints[2].sampleDate,
       vintage: VINTAGE,
       variety,
       appellation,
@@ -510,11 +507,11 @@ function generateHistoricalSeason(VINTAGE, r) {
       berryFW: vals.berryFW,
       anthocyanins: vals.anthocyanins ?? (400 + Math.round(r() * 800)),
       daysPostCrush: 38,
-      sampleSeq: 6,
+      sampleSeq: 3,
       grapeType: null
     };
     for (const pt of dpcPoints) {
-      if (pt.seq === 6) { berry.push(latestRow); continue; }
+      if (pt.seq === 3) { berry.push(latestRow); continue; }
       const k = pt.k;
       berry.push({
         sampleId: `${String(VINTAGE).slice(2)}${lotCode}-${pt.seq}`,
