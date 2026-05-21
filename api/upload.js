@@ -113,7 +113,7 @@ export const ALLOWED_TABLES = {
     columns: new Set([
       'variety', 'valley',
       'brix_target', 'brix_target_lower', 'brix_upper',
-      'anthocyanin_target',
+      'anthocyanin_target', 'ph_target',
       'updated_by', 'updated_at',
     ]),
   },
