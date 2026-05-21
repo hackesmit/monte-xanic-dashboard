@@ -61,6 +61,7 @@ export const COLUMN_TYPES = {
     intCols: new Set(),
     numericCols: new Set([
       'brix_target', 'brix_target_lower', 'brix_upper', 'anthocyanin_target',
+      'ph_target',
     ]),
     requiredOnInsert: new Set(['variety', 'valley']),
   },

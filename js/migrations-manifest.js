@@ -33,4 +33,5 @@ export const MIGRATIONS = [
   'migration_mediciones_audit',
   'migration_row_audit_columns',
   'migration_harvest_target_overrides',
+  'migration_harvest_target_overrides_ph',
 ];
