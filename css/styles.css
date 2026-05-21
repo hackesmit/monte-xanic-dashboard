@@ -2585,3 +2585,49 @@ body.demo-mode-active .row-clickable        { display: none; }
   .table-toolbar       { gap: 8px; }
   .table-search        { font-size: 13px; }
 }
+
+/* ── Harvest predictor view ─────────────────────────────────────────── */
+.prediccion-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+.chip-bar {
+  display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px 0;
+}
+.chip {
+  background: #fff; border: 1px solid #d8d3ca; border-radius: 16px;
+  padding: 4px 12px; font-size: 12px; color: #5a534a; cursor: pointer;
+}
+.chip.chip-active { background: #5b2d3a; color: #fff; border-color: #5b2d3a; }
+.pred-card {
+  background: #fff; border-radius: 10px; padding: 14px;
+  border: 1px solid #e6e3dc;
+}
+.pred-card-alert  { background: #fef8f2; border-color: #e6cdb0; }
+.pred-card-empty  { background: #f7f5f1; border-style: dashed; }
+.pred-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.pred-card-date   { font-size: 22px; font-weight: 600; color: #5b2d3a; margin-top: 8px; }
+.pred-card-sub    { font-size: 11px; color: #7a7368; }
+.pred-card-foot   { display: flex; justify-content: space-between; font-size: 11px;
+                    color: #5a534a; padding-top: 8px; border-top: 1px solid #f0ebe4;
+                    margin-top: 10px; }
+.pred-badge       { font-size: 11px; padding: 3px 8px; border-radius: 10px; color: #fff; }
+.pred-badge-alta  { background: #2e7d4f; }
+.pred-badge-media { background: #c08a2d; }
+.pred-badge-baja  { background: #b04040; }
+.pred-badge-warn  { background: #c08a2d; }
+.pred-card canvas { width: 100% !important; height: 70px !important; margin-top: 6px; }
+.link-button {
+  font-size: 12px; color: #5b2d3a; text-decoration: underline; cursor: pointer;
+  background: none; border: none; padding: 0;
+}
+.settings-table   { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
+.settings-table th, .settings-table td { padding: 8px 10px; border-bottom: 1px solid #f0ebe4; }
+.settings-table th { background: #f7f5f1; font-size: 11px; text-transform: uppercase;
+                     letter-spacing: .5px; color: #5a534a; text-align: left; }
+.settings-table th.num, .settings-table td.num { text-align: right; }
+.settings-table input { width: 70px; padding: 4px 6px; border: 1px solid #d8d3ca;
+                        border-radius: 4px; font-size: 13px; }
+.settings-meta { font-size: 12px; color: #7a7368; margin: 6px 0 8px 0; }
+.settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }

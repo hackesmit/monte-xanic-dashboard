@@ -201,6 +201,58 @@ describe('MT.20 — /api/row update', () => {
   });
 });
 
+describe('MT.20 — /api/row upsert', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; });
+
+  it('rejects non-lab role with 403 for upsert', async () => {
+    globalThis.fetch = async () => ({ ok: true, json: async () => [] });
+    const req = makeReq({
+      role: 'viewer',
+      body: {
+        table: 'harvest_target_overrides',
+        action: 'upsert',
+        row: { variety: 'Cabernet', valley: 'Guadalupe', brix_target: 24 },
+      },
+    });
+    const res = makeRes();
+    await handler(req, res);
+    assert.equal(res.statusCode, 403);
+  });
+
+  it('POSTs to PostgREST with merge-duplicates Prefer + on_conflict cols and stamps updated_at/updated_by', async () => {
+    let captured = null;
+    globalThis.fetch = async (url, opts) => {
+      if (url.includes('blacklist')) return { ok: true, json: async () => [] };
+      captured = { url, opts };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{ variety: 'Cabernet', valley: 'Guadalupe',
+                             brix_target: 24.1,
+                             updated_at: '2026-05-19T00:00:00Z', updated_by: 'labuser' }],
+      };
+    };
+    const req = makeReq({ body: {
+      table: 'harvest_target_overrides', action: 'upsert',
+      row: { variety: 'Cabernet', valley: 'Guadalupe', brix_target: 24.1 },
+    }});
+    const res = makeRes();
+    await handler(req, res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.row.variety, 'Cabernet');
+    assert.equal(res.body.row.valley, 'Guadalupe');
+    assert.equal(captured.opts.method, 'POST');
+    assert.match(captured.url, /\?on_conflict=variety,valley/);
+    assert.equal(captured.opts.headers.Prefer, 'resolution=merge-duplicates,return=representation');
+    const sentBody = JSON.parse(captured.opts.body);
+    assert.ok(sentBody.updated_at, 'server should stamp updated_at');
+    assert.equal(sentBody.updated_by, 'labuser');
+  });
+});
+
 describe('MT.20 — /api/row delete', () => {
   let originalFetch;
   beforeEach(() => { originalFetch = globalThis.fetch; });

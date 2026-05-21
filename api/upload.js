@@ -107,7 +107,16 @@ export const ALLOWED_TABLES = {
       'health_pasificada','health_aceptable','health_no_aceptable',
       'lab_date','brix','ph','at','ag','am','polifenoles','catequinas','antocianos',
     ])
-  }
+  },
+  harvest_target_overrides: {
+    conflict: 'variety,valley',
+    columns: new Set([
+      'variety', 'valley',
+      'brix_target', 'brix_target_lower', 'brix_upper',
+      'anthocyanin_target',
+      'updated_by', 'updated_at',
+    ]),
+  },
 };
 
 export default async function handler(req, res) {

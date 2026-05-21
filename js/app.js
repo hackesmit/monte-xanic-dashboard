@@ -51,6 +51,7 @@ export const App = {
         DataStore.loadMediciones().then(() => {
           if (this.initialized) this.refresh();
         });
+        DataStore.loadHarvestTargetOverrides();
 
         // Weather: load from Supabase meteorology table now that connection is ready
         WeatherStore.load().then(hasCache => {
@@ -70,6 +71,7 @@ export const App = {
       await DataStore.initSupabase();
       const supaLoaded = await DataStore.loadFromSupabase();
       DataStore.loadMediciones();
+      DataStore.loadHarvestTargetOverrides();
       this._updateDbStatus();
       if (supaLoaded) {
         this.onDataLoaded();
@@ -85,6 +87,9 @@ export const App = {
       }
     }
     this.bindGlobalEvents();
+
+    const chipPred = document.querySelector('.nav-tab[data-view="prediccion"]');
+    if (chipPred && !CONFIG.harvestPredictorEnabled) chipPred.hidden = true;
   },
 
   // Update the DB status badge in the header
@@ -305,6 +310,10 @@ export const App = {
       if (berryFilters) berryFilters.style.display = 'none';
       if (wineFilters) wineFilters.style.display = 'none';
     }
+    if (view === 'prediccion' || view === 'ajustes-objetivos') {
+      if (berryFilters) berryFilters.style.display = 'none';
+      if (wineFilters) wineFilters.style.display = 'none';
+    }
 
     // Re-sync filter chip UI to reflect preserved state
     Filters.syncChipUI();
@@ -411,6 +420,14 @@ export const App = {
       case 'mediciones':
         Mediciones.initDropdowns();
         Mediciones.refresh();
+        break;
+
+      case 'prediccion':
+        import('./predictionView.js').then(m => m.PredictionView.mount());
+        break;
+
+      case 'ajustes-objetivos':
+        import('./predictionSettings.js').then(m => m.PredictionSettings.mount());
         break;
     }
 
