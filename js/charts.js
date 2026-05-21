@@ -2747,16 +2747,36 @@ export const Charts = {
 
     const canvasId = canvas.id || `pred-${axis}-${Math.random().toString(36).slice(2,8)}`;
     if (this.instances[canvasId]) { this.instances[canvasId].destroy(); }
+    const unit = axis === 'brix' ? '°Bx' : 'mg/L';
+    const fmtVal = v => axis === 'brix'
+      ? `${Number(v).toFixed(1)} ${unit}`
+      : `${Math.round(Number(v))} ${unit}`;
+    const fmtDate = xDays => new Date(t0 + xDays * dayMs)
+      .toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
     this.instances[canvasId] = new Chart(canvas, {
       type: 'line',
       data: { datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'nearest', intersect: false, axis: 'x' },
         scales: {
           x: { type: 'linear', ticks: { font: { size: 9 } } },
           y: { ticks: { font: { size: 9 } } },
         },
-        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            filter: item => {
+              const lbl = item.dataset.label;
+              return lbl === 'Observado' || lbl === 'Proyección';
+            },
+            callbacks: {
+              title: items => fmtDate(items[0].parsed.x),
+              label: item => `${item.dataset.label}: ${fmtVal(item.parsed.y)}`,
+            },
+          },
+        },
         animation: { duration: 0 },
       },
     });
