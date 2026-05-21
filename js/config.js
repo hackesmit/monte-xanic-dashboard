@@ -1198,7 +1198,7 @@ export const CONFIG = {
   ],
 
   // ── Harvest predictor ───────────────────────────────────────────────────
-  harvestPredictorEnabled: false,     // flip to true after lab validation
+  harvestPredictorEnabled: true,      // flip to true after lab validation
 
   predictionColors: {
     line:        '#5b2d3a',           // historical/observed line
