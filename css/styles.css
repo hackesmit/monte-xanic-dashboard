@@ -2631,7 +2631,8 @@ body.demo-mode-active .row-clickable        { display: none; }
   width: min(880px, 92vw);
   max-height: 90vh;
   padding: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid #e6e3dc;
   border-radius: 12px;
   background: #fff;
@@ -2670,7 +2671,7 @@ body.demo-mode-active .row-clickable        { display: none; }
 }
 
 .pred-detail-modal > * { padding: 0 24px; }
-.pred-detail-modal > .pred-detail-header { padding-top: 24px; }
+.pred-detail-modal > .pred-detail-header { padding-top: 24px; padding-right: 64px; }
 .pred-detail-modal > section:last-child,
 .pred-detail-modal > .pred-detail-grid + section:last-of-type { padding-bottom: 24px; }
 
