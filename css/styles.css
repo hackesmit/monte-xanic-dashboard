@@ -2589,7 +2589,7 @@ body.demo-mode-active .row-clickable        { display: none; }
 /* ── Harvest predictor view ─────────────────────────────────────────── */
 .prediccion-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 14px;
 }
 .chip-bar {
@@ -2607,7 +2607,10 @@ body.demo-mode-active .row-clickable        { display: none; }
 .pred-card-alert  { background: #fef8f2; border-color: #e6cdb0; }
 .pred-card-empty  { background: #f7f5f1; border-style: dashed; }
 .pred-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.pred-card-date   { font-size: 22px; font-weight: 600; color: #5b2d3a; margin-top: 8px; }
+.pred-card-date   { font-size: 20px; font-weight: 600; color: #5b2d3a; margin-top: 8px;
+                    line-height: 1.15; }
+.pred-card-status { font-size: 14px; font-weight: 600; color: #5b2d3a; margin-top: 8px;
+                    line-height: 1.2; }
 .pred-card-sub    { font-size: 11px; color: #7a7368; }
 .pred-card-foot   { display: flex; justify-content: space-between; font-size: 11px;
                     color: #5a534a; padding-top: 8px; border-top: 1px solid #f0ebe4;

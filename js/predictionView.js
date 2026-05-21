@@ -97,6 +97,8 @@ export const PredictionView = {
       return p.recommendedDate.toLocaleDateString('es-MX',
         { day: 'numeric', month: 'short' });
     })();
+    const dateClass = (p.reason && p.reason !== null)
+      ? 'pred-card-status' : 'pred-card-date';
 
     const badgeClass = (() => {
       if (isAlert) return 'pred-badge pred-badge-warn';
@@ -127,7 +129,7 @@ export const PredictionView = {
           Pocos datos esta temporada<br>
           <span style="font-size:10px">se requiere n ≥ 2</span>
         </div>` : `
-        <div class="pred-card-date">${dateText ? escapeHtml(dateText) : '—'}</div>
+        <div class="${dateClass}">${dateText ? escapeHtml(dateText) : '—'}</div>
         <div class="pred-card-sub">
           ${horizonDays != null ? `±${Math.round(p.bandDays)} d · faltan ${horizonDays} d` : ''}
           ${closesText ? ` · ${closesText}` : ''}
