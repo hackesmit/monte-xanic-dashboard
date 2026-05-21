@@ -151,12 +151,16 @@ export function resolveTarget({ rubric, override }) {
   const ovr = override || {};
   const rb = rubric?.params?.brix;
   const ra = rubric?.params?.anthocyanins;
+  const rp = rubric?.params?.pH;
   const brixLower  = ovr.brix_target_lower ?? rb?.a?.[0] ?? null;
   const brixUpper  = ovr.brix_upper        ?? rb?.a?.[1] ?? null;
   const brixTarget = ovr.brix_target
     ?? (rb?.a ? (rb.a[0] + rb.a[1]) / 2 : null);
   const antTarget  = ovr.anthocyanin_target ?? ra?.a ?? null;
-  return { brixLower, brixUpper, brixTarget, antTarget };
+  // pH is only consumed by the predictor when the rubric has NO anthocyanins
+  // (i.e., whites). Reds keep phTarget = null even though their rubric has pH.
+  const phTarget   = ovr.ph_target ?? ((rp && !ra) ? rp.a : null);
+  return { brixLower, brixUpper, brixTarget, antTarget, phTarget };
 }
 
 // ── Edge-case detection (§5.8) ───────────────────────────────────────
@@ -339,6 +343,7 @@ export function computeAll({
       sampleDate,
       brix: Number(row.brix),
       ant:  Number(row.tANT ?? row.tant ?? row.anthocyanins ?? row.ant),
+      pH:   Number(row.pH ?? row.ph),
     };
     if (!Number.isFinite(sample.brix)) continue;
     if (row.vintage === currentVintage) {
@@ -358,7 +363,7 @@ export function computeAll({
     const current = g.current.map(s => ({
       sampleDate: s.sampleDate,
       tDays: (s.sampleDate.getTime() - t0) / dayMs,
-      brix: s.brix, ant: s.ant,
+      brix: s.brix, ant: s.ant, pH: s.pH,
     }));
     const historicalByVintage = [];
     for (const arr of g.historicalByVintage.values()) {
@@ -366,7 +371,7 @@ export function computeAll({
       const tv0 = arr[0].sampleDate.getTime();
       historicalByVintage.push(arr.map(s => ({
         tDays: (s.sampleDate.getTime() - tv0) / dayMs,
-        brix: s.brix, ant: s.ant,
+        brix: s.brix, ant: s.ant, pH: s.pH,
       })));
     }
     const valley = valleyFor({ appellation: g.appellation });
