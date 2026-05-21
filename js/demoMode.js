@@ -240,7 +240,14 @@ function demoRubricFor(variety, appellation) {
 
 function generateDemoData() {
   const r = rng(20250421);
-  const VINTAGE = 2025;
+  const currentYear = new Date().getFullYear();
+  const today = new Date();
+  const historical = generateHistoricalSeason(2025, r);
+  // Task 3 will add: const current = generateCurrentSeason(currentYear, today, r);
+  return historical;
+}
+
+function generateHistoricalSeason(VINTAGE, r) {
   const berry = [];
   const mediciones = [];
   const receptions = [];
