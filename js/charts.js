@@ -2672,7 +2672,6 @@ export const Charts = {
     const { prediction, target, today } = ctx;
     const C = CONFIG.predictionColors;
 
-    // Build observed series points (x = days since first sample).
     const sortedCurrent = ctx.current
       .slice()
       .sort((a, b) => a.sampleDate - b.sampleDate);
@@ -2680,23 +2679,25 @@ export const Charts = {
     const dayMs = 86_400_000;
     const t0 = sortedCurrent[0].sampleDate.getTime();
     const dayOf = ms => (ms - t0) / dayMs;
-    const observed = sortedCurrent.map(s => ({
-      x: dayOf(s.sampleDate.getTime()),
-      y: axis === 'brix' ? s.brix : s.ant,
-    }));
-    // Build projection segment: from today to ETA + buffer
-    const etaDays = axis === 'brix'
-      ? prediction.samplesProjected.brixEta
-      : prediction.samplesProjected.antEta;
+    const yOf = s => axis === 'brix' ? s.brix
+                   : axis === 'ant'  ? s.ant
+                   : s.pH;
+    const observed = sortedCurrent
+      .filter(s => Number.isFinite(yOf(s)))
+      .map(s => ({ x: dayOf(s.sampleDate.getTime()), y: yOf(s) }));
+    if (observed.length === 0) return;
+
+    const etaDays = axis === 'brix' ? prediction.samplesProjected.brixEta
+                  : axis === 'ant'  ? prediction.samplesProjected.antEta
+                  : prediction.samplesProjected.phEta;
     const horizonDays = Number.isFinite(etaDays) ? Math.max(etaDays + 5, 5) : 21;
     const todayX = dayOf(today.getTime());
     const horizonEndX = todayX + horizonDays;
-    const fit = axis === 'brix' ? prediction.brixFit : prediction.antFit;
-    const comb = axis === 'brix' ? prediction.brixComb : prediction.antComb;
+    const fit  = axis === 'brix' ? prediction.brixFit  : axis === 'ant' ? prediction.antFit  : prediction.phFit;
+    const comb = axis === 'brix' ? prediction.brixComb : axis === 'ant' ? prediction.antComb : prediction.phComb;
     if (!fit || !Number.isFinite(comb?.betaPost)) return;
     const tToday = todayX;
     const projAtDays = d => {
-      // Use *posterior* slope, anchored to ŷ_today from this-season fit.
       const yhatToday = fit.alpha + fit.beta * tToday;
       return yhatToday + comb.betaPost * d;
     };
@@ -2704,7 +2705,6 @@ export const Charts = {
     for (let d = 0; d <= horizonDays; d += 1) {
       projection.push({ x: todayX + d, y: projAtDays(d) });
     }
-    // Confidence cone polygon: ±1.96·sqrt(sigmaY^2 + (d·sigmaBeta)^2).
     const sigmaY = Math.sqrt(Math.max(0, fit.sigma2));
     const cone = [];
     for (let d = 0; d <= horizonDays; d += 1) {
@@ -2713,7 +2713,9 @@ export const Charts = {
       cone.push({ x: todayX + d, yLo: y - wY, yHi: y + wY });
     }
 
-    const targetY = axis === 'brix' ? target.brixTarget : target.antTarget;
+    const targetY = axis === 'brix' ? target.brixTarget
+                  : axis === 'ant'  ? target.antTarget
+                  : target.phTarget;
     const datasets = [
       { label: 'Banda confianza',
         type: 'line', borderColor: 'transparent',
@@ -2747,10 +2749,10 @@ export const Charts = {
 
     const canvasId = canvas.id || `pred-${axis}-${Math.random().toString(36).slice(2,8)}`;
     if (this.instances[canvasId]) { this.instances[canvasId].destroy(); }
-    const unit = axis === 'brix' ? '°Bx' : 'mg/L';
-    const fmtVal = v => axis === 'brix'
-      ? `${Number(v).toFixed(1)} ${unit}`
-      : `${Math.round(Number(v))} ${unit}`;
+    const unit = axis === 'brix' ? '°Bx' : axis === 'ant' ? 'mg/L' : '';
+    const fmtVal = v => axis === 'brix' ? `${Number(v).toFixed(1)} ${unit}`
+                  : axis === 'ant' ? `${Math.round(Number(v))} ${unit}`
+                  : Number(v).toFixed(2);
     const fmtDate = xDays => new Date(t0 + xDays * dayMs)
       .toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
     this.instances[canvasId] = new Chart(canvas, {
@@ -2794,18 +2796,21 @@ export const Charts = {
     const dayMs = 86_400_000;
     const t0 = sortedCurrent[0].sampleDate.getTime();
     const dayOf = ms => (ms - t0) / dayMs;
-    const observed = sortedCurrent.map(s => ({
-      x: dayOf(s.sampleDate.getTime()),
-      y: axis === 'brix' ? s.brix : s.ant,
-    }));
-    const etaDays = axis === 'brix'
-      ? prediction.samplesProjected.brixEta
-      : prediction.samplesProjected.antEta;
+    const yOf = s => axis === 'brix' ? s.brix
+                   : axis === 'ant'  ? s.ant
+                   : s.pH;
+    const observed = sortedCurrent
+      .filter(s => Number.isFinite(yOf(s)))
+      .map(s => ({ x: dayOf(s.sampleDate.getTime()), y: yOf(s) }));
+    if (observed.length === 0) return;
+    const etaDays = axis === 'brix' ? prediction.samplesProjected.brixEta
+                  : axis === 'ant'  ? prediction.samplesProjected.antEta
+                  : prediction.samplesProjected.phEta;
     const horizonDays = Number.isFinite(etaDays) ? Math.max(etaDays + 5, 5) : 21;
     const todayX = dayOf(today.getTime());
     const horizonEndX = todayX + horizonDays;
-    const fit = axis === 'brix' ? prediction.brixFit : prediction.antFit;
-    const comb = axis === 'brix' ? prediction.brixComb : prediction.antComb;
+    const fit  = axis === 'brix' ? prediction.brixFit  : axis === 'ant' ? prediction.antFit  : prediction.phFit;
+    const comb = axis === 'brix' ? prediction.brixComb : axis === 'ant' ? prediction.antComb : prediction.phComb;
     if (!fit || !Number.isFinite(comb?.betaPost)) return;
     const tToday = todayX;
     const projAtDays = d => {
@@ -2824,7 +2829,9 @@ export const Charts = {
       cone.push({ x: todayX + d, yLo: y - wY, yHi: y + wY });
     }
 
-    const targetY = axis === 'brix' ? target.brixTarget : target.antTarget;
+    const targetY = axis === 'brix' ? target.brixTarget
+                  : axis === 'ant'  ? target.antTarget
+                  : target.phTarget;
     const datasets = [
       { label: 'Banda confianza',
         type: 'line', borderColor: 'transparent',
@@ -2858,10 +2865,10 @@ export const Charts = {
 
     const canvasId = canvas.id || `pred-detail-${axis}-${Math.random().toString(36).slice(2,8)}`;
     if (this.instances[canvasId]) { this.instances[canvasId].destroy(); }
-    const unit = axis === 'brix' ? '°Bx' : 'mg/L';
-    const fmtVal = v => axis === 'brix'
-      ? `${Number(v).toFixed(1)} ${unit}`
-      : `${Math.round(Number(v))} ${unit}`;
+    const unit = axis === 'brix' ? '°Bx' : axis === 'ant' ? 'mg/L' : '';
+    const fmtVal = v => axis === 'brix' ? `${Number(v).toFixed(1)} ${unit}`
+                  : axis === 'ant' ? `${Math.round(Number(v))} ${unit}`
+                  : Number(v).toFixed(2);
     const fmtDate = xDays => new Date(t0 + xDays * dayMs)
       .toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short' });
     this.instances[canvasId] = new Chart(canvas, {
