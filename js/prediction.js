@@ -167,20 +167,39 @@ export function resolveTarget({ rubric, override }) {
 // Returns a reason string or null. Order matters: pocos-datos checked
 // at the caller before regression runs (so n is real here).
 export function detectEdgeCase({
-  yhatBrixToday, yhatAntToday, betaPostBrix, betaPostAnt,
-  brixLower, brixUpper, antTarget,
-  brixMidEta, antEta, brixWindowCloses,
+  yhatBrixToday, yhatAntToday, yhatPhToday,
+  betaPostBrix, betaPostAnt, betaPostPh,
+  brixLower, brixUpper, antTarget, phTarget,
+  brixMidEta, brixLowerEta, antEta, phEta, brixWindowCloses,
 }) {
   if (betaPostBrix <= 0) return 'sin-tendencia-positiva';
+
+  // White-mode checks (phTarget != null AND antTarget == null)
+  if (phTarget != null && antTarget == null) {
+    if (yhatPhToday > phTarget) return 'ph-excedido';
+    const brixInWindow = yhatBrixToday >= brixLower && yhatBrixToday <= brixUpper;
+    if (brixInWindow) return 'ya-en-ventana';
+    if (Number.isFinite(phEta) && Number.isFinite(brixLowerEta)
+        && phEta < brixLowerEta) return 'ph-temprano';
+    const effectiveCloses = Math.min(
+      Number.isFinite(brixWindowCloses) ? brixWindowCloses : Infinity,
+      Number.isFinite(phEta) ? phEta : Infinity
+    );
+    if (Number.isFinite(effectiveCloses) && brixMidEta > effectiveCloses) {
+      return 'riesgo-sobremadurez';
+    }
+    if (Number.isFinite(phEta) && phEta < brixMidEta) return 'riesgo-ph';
+    return null;
+  }
+
+  // Red-mode checks (existing behavior)
   if (antTarget != null && betaPostAnt <= 0) return 'antocianinas-estancadas';
   const brixInWindow = yhatBrixToday >= brixLower && yhatBrixToday <= brixUpper;
   const antOver      = antTarget == null || (yhatAntToday >= antTarget);
   if (brixInWindow && antOver) return 'ya-en-ventana';
-  // antEta > brixWindowCloses → ANT crosses target after Brix exits range
   if (antEta != null && Number.isFinite(antEta)
       && Number.isFinite(brixWindowCloses)
       && antEta > brixWindowCloses) return 'no-alcanzar-A';
-  // recommendedDate sits after Brix exits the upper bound
   const recommendedEta = antEta != null ? Math.max(brixMidEta, antEta) : brixMidEta;
   if (Number.isFinite(brixWindowCloses) && recommendedEta > brixWindowCloses) {
     return 'riesgo-sobremadurez';
@@ -208,9 +227,11 @@ export function computeOne({
       reason: 'pocos-datos-temporada',
       recommendedDate: null, brixWindowCloses: null,
       bandDays: Infinity, label: 'Baja',
-      nCurrent, V: 0, brixHoy: current[0]?.brix ?? null,
-      antHoy: current[0]?.ant ?? null,
-      samplesProjected: { brixEta: null, antEta: null },
+      nCurrent, V: 0,
+      brixHoy: current[0]?.brix ?? null,
+      antHoy:  current[0]?.ant ?? null,
+      phHoy:   current[0]?.pH ?? null,
+      samplesProjected: { brixEta: null, antEta: null, phEta: null },
     };
   }
 
@@ -245,20 +266,40 @@ export function computeOne({
     });
   }
 
-  // ŷ at today using *this-season* fit (not posterior — the posterior
-  // adjusts the slope only; intercept stays from this-season data).
+  let phFit = null, phPrior = { V: 0, tau2Hist: Infinity, betaHist: null },
+      phComb = { betaPost: NaN, sigmaBeta2Post: NaN };
+  if (target.phTarget != null) {
+    const phSamples = sorted
+      .filter(s => Number.isFinite(s.pH))
+      .map(s => ({ t: s.tDays, y: s.pH, w: wOf(s) }));
+    phFit = weightedRegression(phSamples);
+    phPrior = historicalSlopePrior(
+      historicalByVintage.map(v => v
+        .filter(s => Number.isFinite(s.pH))
+        .map(s => ({ t: s.tDays, y: s.pH }))
+      )
+    );
+    phComb = bayesianCombine({
+      betaHat: phFit.beta, sigmaBeta2: phFit.sigmaBeta2,
+      betaHist: phPrior.betaHist, tau2Hist: phPrior.tau2Hist,
+    });
+  }
+
+  // ŷ at today using *this-season* fit
   const yhatBrixToday = brixFit.alpha + brixFit.beta * tToday;
   const yhatAntToday  = antFit ? antFit.alpha + antFit.beta * tToday : null;
+  const yhatPhToday   = phFit  ? phFit.alpha  + phFit.beta  * tToday : null;
 
   // ETA in days from today using posterior slope
   const brixMidEta = etaDays({
     alpha: yhatBrixToday - brixComb.betaPost * tToday,
     beta: brixComb.betaPost, tToday, target: target.brixTarget,
   });
-  const brixWindowOpensDays = etaDays({
+  const brixLowerEta = etaDays({
     alpha: yhatBrixToday - brixComb.betaPost * tToday,
     beta: brixComb.betaPost, tToday, target: target.brixLower,
   });
+  const brixWindowOpensDays = brixLowerEta;
   const brixWindowClosesDays = etaDays({
     alpha: yhatBrixToday - brixComb.betaPost * tToday,
     beta: brixComb.betaPost, tToday, target: target.brixUpper,
@@ -267,19 +308,40 @@ export function computeOne({
     alpha: yhatAntToday - antComb.betaPost * tToday,
     beta: antComb.betaPost, tToday, target: target.antTarget,
   }) : null;
+  const phEta  = target.phTarget != null ? etaDays({
+    alpha: yhatPhToday - phComb.betaPost * tToday,
+    beta: phComb.betaPost, tToday, target: target.phTarget,
+  }) : null;
 
-  // Edge-case detection (uses raw posterior slopes + ŷ_today checks)
+  // Edge-case detection
   const reason = detectEdgeCase({
-    yhatBrixToday, yhatAntToday,
-    betaPostBrix: brixComb.betaPost, betaPostAnt: antComb.betaPost,
+    yhatBrixToday, yhatAntToday, yhatPhToday,
+    betaPostBrix: brixComb.betaPost,
+    betaPostAnt: antComb.betaPost,
+    betaPostPh: phComb.betaPost,
     brixLower: target.brixLower, brixUpper: target.brixUpper,
-    antTarget: target.antTarget,
-    brixMidEta, antEta, brixWindowCloses: brixWindowClosesDays,
+    antTarget: target.antTarget, phTarget: target.phTarget,
+    brixMidEta, brixLowerEta, antEta, phEta,
+    brixWindowCloses: brixWindowClosesDays,
   });
 
   const dayMs = 86_400_000;
-  const recommendedEtaDays = (antEta != null)
-    ? Math.max(brixMidEta, antEta) : brixMidEta;
+  // White mode: recommendedEta = min(brixMidEta, effectiveWindowCloses)
+  // Red mode: recommendedEta = max(brixMidEta, antEta)
+  // Brix-only fallback: recommendedEta = brixMidEta
+  const isWhite = target.phTarget != null && target.antTarget == null;
+  let recommendedEtaDays;
+  if (isWhite) {
+    const phEffective = Number.isFinite(phEta) ? phEta : Infinity;
+    const brixUpperEffective = Number.isFinite(brixWindowClosesDays)
+      ? brixWindowClosesDays : Infinity;
+    const effectiveCloses = Math.min(phEffective, brixUpperEffective);
+    recommendedEtaDays = Math.min(brixMidEta, effectiveCloses);
+  } else if (antEta != null) {
+    recommendedEtaDays = Math.max(brixMidEta, antEta);
+  } else {
+    recommendedEtaDays = brixMidEta;
+  }
   const horizonDays = Math.max(0, recommendedEtaDays);
   const bandDays = confidenceBand({
     sigma2: brixFit.sigma2, n: brixFit.n,
@@ -291,7 +353,11 @@ export function computeOne({
     V: brixPrior.V, nCurrent, horizonDays,
   });
 
-  const recommendedDate = (reason && reason !== 'ya-en-ventana')
+  // White-mode recommended date set even when reason fires for soft alerts
+  // (riesgo-ph, riesgo-sobremadurez): still useful to show "harvest by X".
+  const isSoftWhiteAlert = isWhite
+    && (reason === 'riesgo-ph' || reason === 'riesgo-sobremadurez');
+  const recommendedDate = (reason && reason !== 'ya-en-ventana' && !isSoftWhiteAlert)
     ? null
     : (reason === 'ya-en-ventana' ? today
        : new Date(today.getTime() + recommendedEtaDays * dayMs));
@@ -303,13 +369,13 @@ export function computeOne({
     reason, recommendedDate, brixWindowCloses,
     bandDays, label,
     nCurrent, V: brixPrior.V,
-    brixHoy: yhatBrixToday, antHoy: yhatAntToday,
+    brixHoy: yhatBrixToday, antHoy: yhatAntToday, phHoy: yhatPhToday,
     samplesProjected: {
-      brixEta: brixMidEta, antEta,
+      brixEta: brixMidEta, antEta, phEta,
       brixWindowOpensDays, brixWindowClosesDays,
     },
     // Diagnostics passthrough — view needs these for the chart
-    brixFit, brixComb, antFit, antComb,
+    brixFit, brixComb, antFit, antComb, phFit, phComb,
   };
 }
 
