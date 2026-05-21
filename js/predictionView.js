@@ -103,7 +103,8 @@ export const PredictionView = {
     const card = document.createElement('div');
     const p = r.prediction;
     const isAlert = ['riesgo-sobremadurez', 'no-alcanzar-A',
-                     'sin-tendencia-positiva', 'antocianinas-estancadas']
+                     'sin-tendencia-positiva', 'antocianinas-estancadas',
+                     'ph-excedido', 'ph-temprano', 'riesgo-ph']
                     .includes(p.reason);
     const isEmpty = p.reason === 'pocos-datos-temporada';
     card.className = 'pred-card'
@@ -117,6 +118,9 @@ export const PredictionView = {
       if (p.reason === 'no-alcanzar-A') return 'No alcanzará A';
       if (p.reason === 'riesgo-sobremadurez') return 'Riesgo de sobremadurez';
       if (p.reason === 'ya-en-ventana') return 'Ya en ventana';
+      if (p.reason === 'ph-excedido') return 'pH excedido';
+      if (p.reason === 'ph-temprano') return 'pH temprano';
+      if (p.reason === 'riesgo-ph') return 'Riesgo pH';
       if (!p.recommendedDate) return null;
       return p.recommendedDate.toLocaleDateString('es-MX',
         { day: 'numeric', month: 'short' });
@@ -162,10 +166,15 @@ export const PredictionView = {
         <div class="pred-mini"><canvas data-axis="brix"></canvas></div>
         ${r.target.antTarget != null ? `
           <div style="font-size:9px;color:#7a7368;margin-top:4px">Antocianinas</div>
-          <div class="pred-mini"><canvas data-axis="ant"></canvas></div>` : ''}
+          <div class="pred-mini"><canvas data-axis="ant"></canvas></div>`
+        : r.target.phTarget != null ? `
+          <div style="font-size:9px;color:#7a7368;margin-top:4px">pH</div>
+          <div class="pred-mini"><canvas data-axis="ph"></canvas></div>` : ''}
         <div class="pred-card-foot">
           <span>Brix <b>${p.brixHoy != null ? p.brixHoy.toFixed(1) : '—'}</b></span>
-          <span>ANT <b>${p.antHoy != null ? Math.round(p.antHoy) : '—'}</b></span>
+          ${r.target.antTarget != null
+            ? `<span>ANT <b>${p.antHoy != null ? Math.round(p.antHoy) : '—'}</b></span>`
+            : `<span>pH <b>${p.phHoy != null ? p.phHoy.toFixed(2) : '—'}</b></span>`}
           <span>n=${p.nCurrent} · ${p.V}v</span>
         </div>`}
     `;
@@ -187,6 +196,13 @@ export const PredictionView = {
             current: rebuildCurrent(r),
           }, 'ant');
         }
+        const phCanvas = card.querySelector('canvas[data-axis="ph"]');
+        if (phCanvas) {
+          Charts.renderPredictionMini(phCanvas, {
+            prediction: p, target: r.target, today,
+            current: rebuildCurrent(r),
+          }, 'ph');
+        }
       });
     }
     return card;
@@ -197,7 +213,8 @@ export const PredictionView = {
     if (!modal) return;
     const p = r.prediction;
     const isAlert = ['riesgo-sobremadurez', 'no-alcanzar-A',
-                     'sin-tendencia-positiva', 'antocianinas-estancadas']
+                     'sin-tendencia-positiva', 'antocianinas-estancadas',
+                     'ph-excedido', 'ph-temprano', 'riesgo-ph']
                     .includes(p.reason);
     const isEmpty = p.reason === 'pocos-datos-temporada';
 
@@ -223,6 +240,9 @@ export const PredictionView = {
       if (p.reason === 'no-alcanzar-A') return 'No alcanzará calidad A';
       if (p.reason === 'riesgo-sobremadurez') return 'Riesgo de sobremadurez';
       if (p.reason === 'ya-en-ventana') return 'Ya en ventana';
+      if (p.reason === 'ph-excedido') return 'pH excedido';
+      if (p.reason === 'ph-temprano') return 'pH temprano antes del Brix';
+      if (p.reason === 'riesgo-ph') return 'Riesgo: pH apretará la ventana';
       if (p.recommendedDate) {
         return p.recommendedDate.toLocaleDateString('es-MX',
           { weekday: 'long', day: 'numeric', month: 'long' });
@@ -264,6 +284,9 @@ export const PredictionView = {
     if (r.target.antTarget != null) {
       addRow('Antocianinas objetivo', `≥ ${Math.round(r.target.antTarget)} mg/L`);
     }
+    if (r.target.phTarget != null && r.target.antTarget == null) {
+      addRow('pH tope', `≤ ${r.target.phTarget.toFixed(2)}`);
+    }
 
     // Diagnostic
     const diagBody = modal.querySelector('.pred-detail-diagnostic-body');
@@ -280,11 +303,18 @@ export const PredictionView = {
     if (p.brixComb && Number.isFinite(p.brixComb.betaPost)) {
       addDiag('β Brix', `${p.brixComb.betaPost.toFixed(3)} °Bx/día`);
     }
-    if (p.antHoy != null) {
+    if (p.antHoy != null && r.target.antTarget != null) {
       addDiag('ANT hoy (ŷ)', `${Math.round(p.antHoy)} mg/L`);
     }
-    if (p.antComb && Number.isFinite(p.antComb.betaPost)) {
+    if (p.antComb && Number.isFinite(p.antComb.betaPost) && r.target.antTarget != null) {
       addDiag('β ANT', `${p.antComb.betaPost.toFixed(2)} mg/L/día`);
+    }
+    if (p.phHoy != null && r.target.phTarget != null && r.target.antTarget == null) {
+      addDiag('pH hoy (ŷ)', `${p.phHoy.toFixed(2)}`);
+    }
+    if (p.phComb && Number.isFinite(p.phComb.betaPost) && r.target.phTarget != null
+        && r.target.antTarget == null) {
+      addDiag('β pH', `${p.phComb.betaPost.toFixed(3)} /día`);
     }
     if (Number.isFinite(p.bandDays)) {
       addDiag('Banda confianza (95%)', `±${Math.round(p.bandDays)} días`);
@@ -307,6 +337,12 @@ export const PredictionView = {
         'El Brix supera el límite alto antes de que las antocianinas alcancen el objetivo. Considera cosechar antes para evitar sobremadurez.',
       'pocos-datos-temporada':
         'Hay menos de 2 muestras este ciclo. Toma más muestras antes de confiar en una recomendación.',
+      'ph-excedido':
+        'El pH ya superó el umbral de calidad A. Las uvas se cosecharán en grado B/C.',
+      'ph-temprano':
+        'El pH cruzará el umbral antes de que el Brix entre en la ventana ideal. Calidad A no es viable este ciclo.',
+      'riesgo-ph':
+        'El pH apretará la ventana — habrá que cosechar antes del Brix ideal para no perder calidad A.',
     };
     if (reasonExplain[p.reason]) {
       reasonBody.textContent = reasonExplain[p.reason];
@@ -317,14 +353,27 @@ export const PredictionView = {
 
     // Charts
     const brixCanvas = modal.querySelector('canvas[data-detail-axis="brix"]');
-    const antCanvas  = modal.querySelector('canvas[data-detail-axis="ant"]');
-    const antBlock   = modal.querySelector('[data-ant-block]');
-    if (antBlock) antBlock.style.display = r.target.antTarget != null ? '' : 'none';
+    const secondaryBlock = modal.querySelector('[data-secondary-block]');
+    const secondaryLabel = modal.querySelector('[data-secondary-label]');
+    const secondaryCanvasContainer = secondaryBlock?.querySelector('.pred-detail-mini');
+    const isRed   = r.target.antTarget != null;
+    const isWhite = r.target.phTarget != null && r.target.antTarget == null;
+    if (secondaryBlock) {
+      secondaryBlock.style.display = (isRed || isWhite) ? '' : 'none';
+    }
+    if (secondaryLabel) {
+      secondaryLabel.textContent = isRed ? 'Antocianinas' : 'pH';
+    }
+    if (secondaryCanvasContainer) {
+      secondaryCanvasContainer.innerHTML =
+        `<canvas data-detail-axis="${isRed ? 'ant' : 'ph'}"></canvas>`;
+    }
+    const secondaryCanvas = secondaryBlock?.querySelector('canvas');
 
     modal.showModal();
     attachModalHygiene(modal, {
       onDismiss: () => {
-        for (const c of [brixCanvas, antCanvas]) {
+        for (const c of [brixCanvas, secondaryCanvas]) {
           if (!c?.id) continue;
           const inst = Charts.instances[c.id];
           if (inst) { inst.destroy(); delete Charts.instances[c.id]; }
@@ -339,11 +388,11 @@ export const PredictionView = {
           current: rebuildCurrent(r),
         }, 'brix');
       }
-      if (antCanvas && r.target.antTarget != null) {
-        Charts.renderPredictionDetail(antCanvas, {
+      if (secondaryCanvas && (isRed || isWhite)) {
+        Charts.renderPredictionDetail(secondaryCanvas, {
           prediction: p, target: r.target, today,
           current: rebuildCurrent(r),
-        }, 'ant');
+        }, isRed ? 'ant' : 'ph');
       }
     });
   },
@@ -369,6 +418,7 @@ function rebuildCurrent(r) {
                   : new Date(row.sampleDate),
       brix: Number(row.brix),
       ant:  Number(row.tANT ?? row.tant ?? row.anthocyanins ?? row.ant),
+      pH:   Number(row.pH ?? row.ph),
     }))
     .sort((a, b) => a.sampleDate - b.sampleDate);
 }
