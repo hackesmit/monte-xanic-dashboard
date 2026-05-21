@@ -2625,6 +2625,116 @@ body.demo-mode-active .row-clickable        { display: none; }
    Chart.js's computed canvas.style and decouple intrinsic from display size,
    which squashes/stretches everything drawn on the canvas (including tooltips). */
 .pred-mini        { position: relative; height: 70px; margin-top: 6px; }
+
+/* ── Predicción detail modal ─────────────────────────────────────────── */
+.pred-detail-modal {
+  width: min(880px, 92vw);
+  max-height: 90vh;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #e6e3dc;
+  border-radius: 12px;
+  background: #fff;
+  /* Animatable closed state — applies when [open] is not present */
+  opacity: 0;
+  transform: translateY(8px) scale(0.96);
+  transition:
+    opacity      var(--motion-slow) var(--ease-entrance),
+    transform    var(--motion-slow) var(--ease-entrance),
+    overlay      var(--motion-slow) allow-discrete,
+    display      var(--motion-slow) allow-discrete;
+}
+.pred-detail-modal[open] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+@starting-style {
+  .pred-detail-modal[open] {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+.pred-detail-modal::backdrop {
+  background: rgba(20, 16, 14, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  opacity: 0;
+  transition:
+    opacity     var(--motion-base) var(--ease-standard),
+    overlay     var(--motion-base) allow-discrete,
+    display     var(--motion-base) allow-discrete;
+}
+.pred-detail-modal[open]::backdrop { opacity: 1; }
+@starting-style {
+  .pred-detail-modal[open]::backdrop { opacity: 0; }
+}
+
+.pred-detail-modal > * { padding: 0 24px; }
+.pred-detail-modal > .pred-detail-header { padding-top: 24px; }
+.pred-detail-modal > section:last-child,
+.pred-detail-modal > .pred-detail-grid + section:last-of-type { padding-bottom: 24px; }
+
+.pred-detail-header {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  gap: 16px; padding-bottom: 4px;
+}
+.pred-detail-variety {
+  margin: 0; font-size: 20px; font-weight: 600; color: #2d2520;
+  line-height: 1.2;
+}
+.pred-detail-appellation {
+  margin-top: 4px; font-size: 13px; color: #7a7368;
+}
+.pred-detail-badge { /* badges reuse .pred-badge classes via JS */ }
+
+.pred-detail-status {
+  font-size: 22px; font-weight: 600; color: #5b2d3a;
+  margin-top: 14px; line-height: 1.2;
+}
+.pred-detail-status.is-reason { font-size: 16px; color: #7a4250; }
+.pred-detail-sub {
+  font-size: 12px; color: #7a7368; margin-top: 4px; padding-bottom: 14px;
+}
+
+.pred-detail-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+  padding-bottom: 16px;
+}
+@media (max-width: 700px) {
+  .pred-detail-grid { grid-template-columns: 1fr; }
+}
+.pred-detail-axis-label {
+  font-size: 10px; color: #7a7368; text-transform: uppercase;
+  letter-spacing: .04em; margin-bottom: 4px;
+}
+.pred-detail-mini { position: relative; height: 220px; }
+
+.pred-detail-targets, .pred-detail-diagnostic, .pred-detail-reason {
+  border-top: 1px solid #f0ebe4; padding-top: 14px; padding-bottom: 14px;
+}
+.pred-detail-targets h3, .pred-detail-diagnostic h3, .pred-detail-reason h3 {
+  margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase;
+  letter-spacing: .05em; color: #5a534a;
+}
+.pred-detail-targets-body, .pred-detail-diagnostic-body {
+  display: grid; grid-template-columns: auto 1fr;
+  column-gap: 16px; row-gap: 4px; font-size: 13px; color: #2d2520;
+}
+.pred-detail-targets-body dt, .pred-detail-diagnostic-body dt {
+  color: #7a7368;
+}
+.pred-detail-reason-body {
+  margin: 0; font-size: 13px; line-height: 1.45; color: #5b2d3a;
+}
+
+.row-edit-close {
+  position: absolute; top: 12px; right: 12px;
+  width: 32px; height: 32px; border: none; background: transparent;
+  font-size: 20px; line-height: 1; color: #5a534a; cursor: pointer;
+  border-radius: 6px; transition: background var(--motion-fast);
+}
+.row-edit-close:hover { background: #f0ebe4; }
+
 .link-button {
   font-size: 12px; color: #5b2d3a; text-decoration: underline; cursor: pointer;
   background: none; border: none; padding: 0;
