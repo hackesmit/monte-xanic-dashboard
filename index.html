@@ -1310,6 +1310,44 @@
     </form>
   </dialog>
 
+  <!-- Predicción — expanded detail modal -->
+  <dialog id="pred-detail-modal" class="row-edit-modal pred-detail-modal"
+          aria-labelledby="pred-detail-title">
+    <button type="button" class="row-edit-close" data-pred-detail-close
+            aria-label="Cerrar">×</button>
+    <header class="pred-detail-header">
+      <div>
+        <h2 id="pred-detail-title" class="pred-detail-variety"></h2>
+        <div class="pred-detail-appellation"></div>
+      </div>
+      <div class="pred-detail-badge"></div>
+    </header>
+    <div class="pred-detail-status"></div>
+    <div class="pred-detail-sub"></div>
+    <div class="pred-detail-grid">
+      <div>
+        <div class="pred-detail-axis-label">Brix</div>
+        <div class="pred-detail-mini"><canvas data-detail-axis="brix"></canvas></div>
+      </div>
+      <div data-ant-block>
+        <div class="pred-detail-axis-label">Antocianinas</div>
+        <div class="pred-detail-mini"><canvas data-detail-axis="ant"></canvas></div>
+      </div>
+    </div>
+    <section class="pred-detail-targets">
+      <h3>Objetivos</h3>
+      <div class="pred-detail-targets-body"></div>
+    </section>
+    <section class="pred-detail-diagnostic">
+      <h3>Diagnóstico</h3>
+      <div class="pred-detail-diagnostic-body"></div>
+    </section>
+    <section class="pred-detail-reason" hidden>
+      <h3>Razón</h3>
+      <p class="pred-detail-reason-body"></p>
+    </section>
+  </dialog>
+
   </main>
 </div>
 
