@@ -244,14 +244,22 @@ function generateDemoData() {
   const today = new Date();
   const historical = generateHistoricalSeason(2025, r);
   const current = generateCurrentSeason(currentYear, today, r);
-  // Use only current-season berry data so historicalSlopePrior sees V=0
-  // (the 3-point historical sparse data is too thin to make V=1 useful;
-  // V=0 + downgrade rule produces 'Media' confidence labels reliably).
-  // Wine/mediciones/receptions come from historical so other demo views
-  // remain populated.
+  // Berry uses current-season only so the predictor's historicalSlopePrior
+  // sees V=0 (3-point historical data is too sparse; V=0 + downgrade rule
+  // produces reliable 'Media' confidence labels).
+  //
+  // Mediciones / receptions / wine concatenate both vintages so that:
+  //  - Predictor views still see historical 2025 context.
+  //  - Calidad map's joinBerryWithMediciones (keyed on lotCode + vintage)
+  //    finds current-vintage matches for current-vintage berries → grades
+  //    populate instead of all-grey "Sin clasificar".
   return {
-    ...historical,
     berry: current.berry,
+    mediciones:    [...historical.mediciones,    ...current.mediciones],
+    receptions:    [...historical.receptions,    ...current.receptions],
+    receptionLots: [...historical.receptionLots, ...current.receptionLots],
+    wine:          [...historical.wine,          ...current.wine],
+    preferment:    historical.preferment,
   };
 }
 
@@ -399,6 +407,11 @@ function assignScenarios(nGroups, r) {
 // lands on the assigned scenario's expected reason. Returns { berry }.
 function generateCurrentSeason(currentYear, today, r) {
   const berry = [];
+  const mediciones = [];
+  const receptions = [];
+  const receptionLots = [];
+  const wine = [];
+  let receptionId = 1;
   const groups = buildCurrentSeasonGroups();
   const scenarios = assignScenarios(groups.length, r);
 
@@ -480,8 +493,85 @@ function generateCurrentSeason(currentYear, today, r) {
         grapeType: null,
       });
     }
+    const latestSampleDate = berry[berry.length - 1].sampleDate;
+
+    // NOTE: chemistry/health values below are hand-calibrated to the rubric's
+    // 3-pts thresholds (see CONFIG.rubrics). If rubric thresholds shift, this
+    // demo will silently drift to lower grades. Follow-up: refactor to use
+    // valueForPts(spec, 3, r) like generateHistoricalSeason — out of scope
+    // for the Wave 1 #2 fix.
+
+    // Current-season mediciones row — targets a "good" grade so the demo
+    // calidad map renders colors. Health distribution heavy on madura/buena.
+    const totalBerries = 100;
+    mediciones.push({
+      id: 1000 + receptionId,
+      code: `M-CUR-${g.lotCode}`,
+      date: latestSampleDate,
+      vintage: currentYear,
+      variety: g.variety,
+      appellation: g.appellation,
+      lotCode: g.lotCode,
+      tons: 5 + r() * 8,                        // 5–13 tons (realistic lot size)
+      berryCount: totalBerries,
+      berryWeight: 1.0 + (r() - 0.5) * 0.15,
+      berryDiameter: 12 + r(),
+      healthGrade: 'Excelente',                 // visual score = 3
+      healthMadura: 88 + Math.floor(r() * 10),  // ~92% madura
+      healthInmadura: Math.floor(r() * 4),
+      healthSobremadura: Math.floor(r() * 3),
+      healthPicadura: Math.floor(r() * 2),
+      healthEnfermedad: 0,
+      healthQuemadura: Math.floor(r() * 2),
+      phenolicMaturity: r() < 0.7 ? 'Sobresaliente' : 'Parcial',
+      measuredBy: 'Demo',
+      notes: null
+    });
+
+    // Current-season tank reception — supplies av/ag/polyphenols via
+    // joinBerryWithReceptions so the rubric's chemistry params fill.
+    const rid = receptionId++;
+    receptions.push({
+      id: 10000 + rid,
+      report_code: `RC-CUR-${rid}`,
+      reception_date: latestSampleDate,
+      batch_code: `${String(currentYear).slice(2)}${g.lotCode}-T${rid}`,
+      tank_id: `T-CUR-${rid}`,
+      supplier: g.appellation,
+      variety: g.variety,
+      brix: 24 + r(),
+      ph: 3.6 + (r() - 0.5) * 0.3,
+      ta: 5.5 + (r() - 0.5) * 1.0,
+      av: 0.20 + r() * 0.10,                    // <= 0.30 = 3pts in rubric
+      ag: 0.30 + r() * 0.15,                    // <= 0.40 = 3pts
+      polifenoles_wx: 2200 + Math.round(r() * 600),  // >= 2200 = 3pts in most rubrics
+      antocianinas_wx: 1100 + Math.round(r() * 300),
+      vintage_year: currentYear
+    });
+    receptionLots.push({
+      reception_id: 10000 + rid,
+      lot_code: g.lotCode,
+      lot_position: 1
+    });
+
+    // Wine row mirrors historical-season shape so the wine table renders.
+    wine.push({
+      codigoBodega: `${String(currentYear).slice(2)}${g.lotCode}-W`,
+      fecha: latestSampleDate,
+      tanque: `T-CUR-${rid}`,
+      variedad: g.variety,
+      proveedor: g.appellation,
+      sampleType: 'Wine',
+      vintage: currentYear,
+      brix: 24 + r(),
+      pH: 3.6 + (r() - 0.5) * 0.3,
+      at: 5.5 + (r() - 0.5) * 1.0,
+      antoWX: 1100 + Math.round(r() * 300),
+      iptSpica: 60 + Math.round(r() * 15),
+      grapeType: null
+    });
   }
-  return { berry };
+  return { berry, mediciones, receptions, receptionLots, wine };
 }
 
 function generateHistoricalSeason(VINTAGE, r) {
