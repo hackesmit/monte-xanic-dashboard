@@ -30,13 +30,14 @@ test('MT.32 demo: berries with attached medicion exceed 80%', () => {
   assert.ok(pct >= 0.8, `Only ${withMed}/${total} (${(pct*100).toFixed(1)}%) berries have a medicion; expected >= 80%`);
 });
 
-test('MT.32 demo: scoreAll returns >= 50 graded lots', () => {
+test('MT.32 demo: scoreAll grades ≥ 80% of lots', () => {
   resetDataStore();
   DemoMode.enable();
   const scored = scoreAll(DataStore.berryData, { cohort: 'vintage-variety' });
   const graded = scored.filter(s => s.grade !== null);
+  const pct = scored.length > 0 ? graded.length / scored.length : 0;
   DemoMode.disable();
-  assert.ok(graded.length >= 50, `Only ${graded.length} of ${scored.length} lots graded; expected >= 50`);
+  assert.ok(pct >= 0.8, `Only ${graded.length}/${scored.length} (${(pct*100).toFixed(1)}%) lots graded; expected ≥ 80%`);
 });
 
 test('MT.32 demo: grade distribution covers at least 2 of A+/A/B/C', () => {

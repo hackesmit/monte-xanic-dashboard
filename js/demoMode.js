@@ -493,6 +493,13 @@ function generateCurrentSeason(currentYear, today, r) {
         grapeType: null,
       });
     }
+    const latestSampleDate = berry[berry.length - 1].sampleDate;
+
+    // NOTE: chemistry/health values below are hand-calibrated to the rubric's
+    // 3-pts thresholds (see CONFIG.rubrics). If rubric thresholds shift, this
+    // demo will silently drift to lower grades. Follow-up: refactor to use
+    // valueForPts(spec, 3, r) like generateHistoricalSeason — out of scope
+    // for the Wave 1 #2 fix.
 
     // Current-season mediciones row — targets a "good" grade so the demo
     // calidad map renders colors. Health distribution heavy on madura/buena.
@@ -500,7 +507,7 @@ function generateCurrentSeason(currentYear, today, r) {
     mediciones.push({
       id: 1000 + receptionId,
       code: `M-CUR-${g.lotCode}`,
-      date: berry[berry.length - 1].sampleDate,
+      date: latestSampleDate,
       vintage: currentYear,
       variety: g.variety,
       appellation: g.appellation,
@@ -527,9 +534,9 @@ function generateCurrentSeason(currentYear, today, r) {
     receptions.push({
       id: 10000 + rid,
       report_code: `RC-CUR-${rid}`,
-      reception_date: berry[berry.length - 1].sampleDate,
+      reception_date: latestSampleDate,
       batch_code: `${String(currentYear).slice(2)}${g.lotCode}-T${rid}`,
-      tank_id: `T${rid}`,
+      tank_id: `T-CUR-${rid}`,
       supplier: g.appellation,
       variety: g.variety,
       brix: 24 + r(),
@@ -550,8 +557,8 @@ function generateCurrentSeason(currentYear, today, r) {
     // Wine row mirrors historical-season shape so the wine table renders.
     wine.push({
       codigoBodega: `${String(currentYear).slice(2)}${g.lotCode}-W`,
-      fecha: berry[berry.length - 1].sampleDate,
-      tanque: `T${rid}`,
+      fecha: latestSampleDate,
+      tanque: `T-CUR-${rid}`,
       variedad: g.variety,
       proveedor: g.appellation,
       sampleType: 'Wine',
