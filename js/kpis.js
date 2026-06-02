@@ -1,17 +1,26 @@
 // ── KPI Calculations ──
+import { weightedMean } from './aggregations.js';
 
 export const KPIs = {
+  // Unweighted arithmetic mean — legacy path for callers without row context.
   avg(arr) {
     const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
     return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
   },
 
+  // Tonnage-weighted mean over sample rows. Uses row._weight (tagged in
+  // dataLoader._tagSampleWeights from mediciones.tons_received). Rows without
+  // a matching medicion fall back to weight=1 via aggregations.weightedMean.
+  weightedAvg(rows, key) {
+    return weightedMean(rows, key);
+  },
+
   updateBerryKPIs(data) {
-    const avgBrix = this.avg(data.map(d => d.brix));
-    const avgPH = this.avg(data.map(d => d.pH));
-    const avgTA = this.avg(data.map(d => d.ta));
-    const avgTANT = this.avg(data.map(d => d.tANT));
-    const avgFW = this.avg(data.map(d => d.berryFW));
+    const avgBrix = this.weightedAvg(data, 'brix');
+    const avgPH = this.weightedAvg(data, 'pH');
+    const avgTA = this.weightedAvg(data, 'ta');
+    const avgTANT = this.weightedAvg(data, 'tANT');
+    const avgFW = this.weightedAvg(data, 'berryFW');
 
     this.setKPI('kpi-avg-brix', avgBrix, 1, '°Bx');
     this.setKPI('kpi-avg-ph', avgPH, 2, '');
@@ -39,10 +48,10 @@ export const KPIs = {
   },
 
   updateWineKPIs(recepcion) {
-    const avgTANT = this.avg(recepcion.map(d => d.antoWX));
-    const avgFANT = this.avg(recepcion.map(d => d.freeANT));
-    const avgPTAN = this.avg(recepcion.map(d => d.pTAN));
-    const avgIPT = this.avg(recepcion.map(d => d.iptSpica));
+    const avgTANT = this.weightedAvg(recepcion, 'antoWX');
+    const avgFANT = this.weightedAvg(recepcion, 'freeANT');
+    const avgPTAN = this.weightedAvg(recepcion, 'pTAN');
+    const avgIPT = this.weightedAvg(recepcion, 'iptSpica');
 
     this.setKPI('wine-kpi-tant', avgTANT, 0, 'ppm');
     this.setKPI('wine-kpi-fant', avgFANT, 0, 'ppm');

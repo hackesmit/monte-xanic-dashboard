@@ -1,6 +1,7 @@
 // ── Chart Rendering ──
 import Chart from 'chart.js/auto';
 import { jsPDF } from 'jspdf';
+import { weightedMean } from './aggregations.js';
 import { CONFIG } from './config.js';
 import { DataStore } from './dataLoader.js';
 import { Filters } from './filters.js';
@@ -389,14 +390,14 @@ export const Charts = {
       const val = d[valueField];
       if (v && typeof val === 'number' && !isNaN(val)) {
         if (!byVar[v]) byVar[v] = [];
-        byVar[v].push(val);
+        byVar[v].push(d);   // ← row, not val (Wave 1 #1 weighted means)
       }
     });
 
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const labels = Object.keys(byVar).sort((a, b) => avg(byVar[b]) - avg(byVar[a]));
+    const wmean = rows => weightedMean(rows, valueField) ?? 0;
+    const labels = Object.keys(byVar).sort((a, b) => wmean(byVar[b]) - wmean(byVar[a]));
     const displayLabels = labels.map(v => `${v} (n=${byVar[v].length})`);
-    const values = labels.map(v => parseFloat(avg(byVar[v]).toFixed(2)));
+    const values = labels.map(v => parseFloat(wmean(byVar[v]).toFixed(2)));
     const bgColors = labels.map(v => (CONFIG.varietyColors[v] || '#888') + '66');
     const bdColors = labels.map(v => CONFIG.varietyColors[v] || '#888');
 
@@ -460,13 +461,13 @@ export const Charts = {
       const val = d[valueField];
       if (o && typeof val === 'number' && !isNaN(val)) {
         if (!byOrigin[o]) byOrigin[o] = [];
-        byOrigin[o].push(val);
+        byOrigin[o].push(d);   // ← row, not val (Wave 1 #1 weighted means)
       }
     });
 
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const origins = Object.keys(byOrigin).sort((a, b) => avg(byOrigin[b]) - avg(byOrigin[a]));
-    const values = origins.map(o => parseFloat(avg(byOrigin[o]).toFixed(2)));
+    const wmean = rows => weightedMean(rows, valueField) ?? 0;
+    const origins = Object.keys(byOrigin).sort((a, b) => wmean(byOrigin[b]) - wmean(byOrigin[a]));
+    const values = origins.map(o => parseFloat(wmean(byOrigin[o]).toFixed(2)));
     const shortLabels = origins.map(o => Filters.shortenOrigin(o));
     const bgColors = origins.map(o => CONFIG.resolveOriginColor(o) + '66');
     const bdColors = origins.map(o => CONFIG.resolveOriginColor(o));
@@ -901,29 +902,31 @@ export const Charts = {
       { key: 'iptSpica', label: 'IPT', color: '#60A8C0' }
     ];
 
-    // Group by variety
+    // Group by variety — keep rows array for weighted means (Wave 1 #1) plus
+    // per-compound numeric arrays for the populated-key filter below.
     const byVar = {};
     wineData.forEach(d => {
       const v = d.variety || d.variedad;
       if (!v) return;
-      if (!byVar[v]) byVar[v] = { antoWX: [], freeANT: [], pTAN: [], iptSpica: [] };
+      if (!byVar[v]) byVar[v] = { rows: [], antoWX: [], freeANT: [], pTAN: [], iptSpica: [] };
+      byVar[v].rows.push(d);
       compounds.forEach(c => {
         const val = d[c.key];
         if (typeof val === 'number' && !isNaN(val)) byVar[v][c.key].push(val);
       });
     });
 
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
+    const wmean = (rows, key) => weightedMean(rows, key) ?? 0;
     // Sort varieties by total phenolic magnitude (tANT avg descending)
     const varieties = Object.keys(byVar)
       .filter(v => compounds.some(c => byVar[v][c.key].length > 0))
-      .sort((a, b) => avg(byVar[b].antoWX) - avg(byVar[a].antoWX));
+      .sort((a, b) => wmean(byVar[b].rows, 'antoWX') - wmean(byVar[a].rows, 'antoWX'));
 
     if (!varieties.length) { this._drawNoData(canvas, 'No hay datos fenólicos disponibles'); return; }
 
     const datasets = compounds.map(c => ({
       label: c.label,
-      data: varieties.map(v => parseFloat(avg(byVar[v][c.key]).toFixed(1))),
+      data: varieties.map(v => parseFloat(wmean(byVar[v].rows, c.key).toFixed(1))),
       backgroundColor: c.color + '88',
       borderColor: c.color,
       borderWidth: 1
@@ -1490,29 +1493,31 @@ export const Charts = {
       if (v !== Number(vintage)) return;
       const day = WeatherStore ? WeatherStore.dayOfSeason(d.crushDate) : null;
       if (!day || day < 1 || day > 150) return;
-      events.push({ variety: d.variety, day, brix: d.brix, tANT: d.tANT, lotCode: d.lotCode, appellation: d.appellation });
+      // Carry _weight (Wave 1 #1) so downstream weighted means honor tons.
+      events.push({ variety: d.variety, day, brix: d.brix, tANT: d.tANT, lotCode: d.lotCode, appellation: d.appellation, _weight: d._weight });
     });
 
     if (!events.length) { this._drawNoData(canvas, 'Sin fechas de cosecha para esta vendimia'); return; }
 
-    // Group by variety → earliest/latest day, averages
+    // Group by variety → earliest/latest day, averages.
+    // Keep row references (brixRows/tANTRows) so weighted means can use _weight.
     const byVar = {};
     events.forEach(e => {
-      if (!byVar[e.variety]) byVar[e.variety] = { days: [], brix: [], tANT: [], lots: new Set() };
+      if (!byVar[e.variety]) byVar[e.variety] = { days: [], brixRows: [], tANTRows: [], lots: new Set() };
       byVar[e.variety].days.push(e.day);
-      if (typeof e.brix === 'number') byVar[e.variety].brix.push(e.brix);
-      if (typeof e.tANT === 'number') byVar[e.variety].tANT.push(e.tANT);
+      if (typeof e.brix === 'number') byVar[e.variety].brixRows.push(e);
+      if (typeof e.tANT === 'number') byVar[e.variety].tANTRows.push(e);
       if (e.lotCode) byVar[e.variety].lots.add(e.lotCode);
     });
 
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    const wmean = (rows, key) => weightedMean(rows, key);
     const varieties = Object.keys(byVar).sort((a, b) => Math.min(...byVar[a].days) - Math.min(...byVar[b].days));
     const harvestMeta = varieties.map(v => ({
       variety: v,
       start: Math.min(...byVar[v].days),
       end: Math.max(...byVar[v].days),
-      avgBrix: avg(byVar[v].brix),
-      avgTANT: avg(byVar[v].tANT),
+      avgBrix: wmean(byVar[v].brixRows, 'brix'),
+      avgTANT: wmean(byVar[v].tANTRows, 'tANT'),
       lotCount: byVar[v].lots.size
     }));
 
@@ -2283,13 +2288,13 @@ export const Charts = {
       const val = d[valueField];
       if (typeof val === 'number' && !isNaN(val)) {
         if (!byGroup[g]) byGroup[g] = [];
-        byGroup[g].push(val);
+        byGroup[g].push(d);   // ← row, not val (Wave 1 #1 weighted means)
       }
     });
 
-    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
-    const labels = Object.keys(byGroup).sort((a, b) => avg(byGroup[b]) - avg(byGroup[a]));
-    const values = labels.map(g => parseFloat(avg(byGroup[g]).toFixed(2)));
+    const wmean = rows => weightedMean(rows, valueField) ?? 0;
+    const labels = Object.keys(byGroup).sort((a, b) => wmean(byGroup[b]) - wmean(byGroup[a]));
+    const values = labels.map(g => parseFloat(wmean(byGroup[g]).toFixed(2)));
     const bgColors = labels.map(g => colorResolver(g) + '66');
     const bdColors = labels.map(g => colorResolver(g));
 
