@@ -368,9 +368,16 @@ function buildCurrentSeasonGroups() {
     if (target.brixLower == null) continue;  // can't calibrate without window
     const ranchCode = section.ranchCode;
     const prefix = VARIETY_PREFIX[variety] || 'XX';
-    // One representative section per group — use a stable suffix that
-    // doesn't collide with the historical lotCode pattern.
-    const lotCode = `${prefix}${ranchCode}-G`;
+    // Use the section's real label so MapStore.resolveSection maps the lot
+    // back onto an existing CONFIG.vineyardSections id — otherwise the SVG
+    // polygons can't find their data and render grey. Kompali's lot-code
+    // convention puts K first ("KCS-S8"); every other ranch puts the variety
+    // prefix first ("CSMX-1A"). Vintage disambiguates from historical so
+    // there's no collision with same-named historical lots.
+    const suffix = section.sectionLabel;
+    const lotCode = ranchCode === 'K'
+      ? `K${prefix}-${suffix}`
+      : `${prefix}${ranchCode}-${suffix}`;
     seen.set(key, { variety, appellation, target, lotCode });
   }
   return [...seen.values()].sort((a, b) =>
@@ -596,8 +603,12 @@ function generateHistoricalSeason(VINTAGE, r) {
     const ranchCode = section.ranchCode;
 
     // Lot code convention matches fieldLotRanchPatterns: e.g. CSMX-5B, SYDA-L5.
-    // Kompali sections keep their S prefix in sectionLabel, so "KCS-S2B" works.
-    const lotCode = `${prefix}${ranchCode}-${suffix}`;
+    // Kompali ('K') puts the ranch code FIRST: KCS-S2B (regex /^K[A-Z]{2,3}-/),
+    // so the variety prefix has to follow K — otherwise the resolver returns
+    // null and historical Kompali lots never map to a section.
+    const lotCode = ranchCode === 'K'
+      ? `K${prefix}-${suffix}`
+      : `${prefix}${ranchCode}-${suffix}`;
     const sampleId = `${String(VINTAGE).slice(2)}${lotCode}-1`;
 
     const target = pickGradeTarget(r);
