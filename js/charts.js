@@ -1179,7 +1179,9 @@ export const Charts = {
     const forecastRows = showForecast ? WeatherStore.getForecast(loc, horizon) : null;
     const datasets = [];
 
-    const addSeries = (label, color, rawRows, rangeStart, rangeEnd) => {
+    // rangeEnd caps at today for the current vintage; forecastEnd is the natural
+    // (un-capped) end-of-timeframe so future-dated forecast rows survive the filter.
+    const addSeries = (label, color, rawRows, rangeStart, rangeEnd, forecastEnd) => {
       const rows = WeatherStore.aggregate(rawRows, agg);
       const pts = rows.filter(r => r.temp_avg !== null)
         .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.temp_avg }));
@@ -1188,9 +1190,10 @@ export const Charts = {
         pointRadius: agg === 'day' ? 1.5 : 4, pointHoverRadius: 5,
         borderWidth: 1.5, showLine: true, tension: 0.3, fill: false
       });
-      if (forecastRows && WeatherStore.forecastEligible(tf, rangeEnd)) {
+      const fEnd = forecastEnd || rangeEnd;
+      if (forecastRows && WeatherStore.forecastEligible(tf, fEnd)) {
         const lastObs = rawRows.length ? rawRows[rawRows.length - 1].date : null;
-        const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObs, rangeEnd);
+        const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObs, fEnd);
         if (fRows.length) {
           const fPts = fRows.filter(r => r.temp_avg !== null)
             .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.temp_avg }));
@@ -1206,11 +1209,13 @@ export const Charts = {
 
     if (tf === '30d' || tf === 'custom') {
       const { start, end } = WeatherStore.getDateRange(null, tf, customRange);
-      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start, end);
+      const fEnd = WeatherStore.getForecastRangeEnd(null, tf, customRange);
+      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start, end, fEnd);
     } else {
       for (const year of vintages) {
         const { start, end } = WeatherStore.getDateRange(year, tf, customRange);
-        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start, end);
+        const fEnd = WeatherStore.getForecastRangeEnd(year, tf, customRange);
+        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start, end, fEnd);
       }
     }
 
@@ -1270,7 +1275,9 @@ export const Charts = {
     const forecastRows = showForecast ? WeatherStore.getForecast(loc, horizon) : null;
     const datasets = [];
 
-    const addSeries = (label, color, rawRows, rangeStart, rangeEnd) => {
+    // rangeEnd caps at today for the current vintage; forecastEnd is the natural
+    // (un-capped) end-of-timeframe so future-dated forecast rows survive the filter.
+    const addSeries = (label, color, rawRows, rangeStart, rangeEnd, forecastEnd) => {
       const rows = WeatherStore.aggregate(rawRows, agg);
       const pts = rows
         .filter(r => r.rainfall_mm !== null && r.rainfall_mm > 0)
@@ -1280,9 +1287,10 @@ export const Charts = {
         pointRadius: agg === 'day' ? 5 : 8, pointHoverRadius: agg === 'day' ? 8 : 11,
         showLine: false
       });
-      if (forecastRows && WeatherStore.forecastEligible(tf, rangeEnd)) {
+      const fEnd = forecastEnd || rangeEnd;
+      if (forecastRows && WeatherStore.forecastEligible(tf, fEnd)) {
         const lastObs = rawRows.length ? rawRows[rawRows.length - 1].date : null;
-        const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObs, rangeEnd);
+        const fRows = WeatherStore.forecastWithinRange(forecastRows, lastObs, fEnd);
         const fPts = fRows
           .filter(r => r.rainfall_mm !== null && r.rainfall_mm > 0)
           .map(r => ({ x: WeatherStore.dayInRange(r.date, rangeStart), y: r.rainfall_mm }));
@@ -1298,11 +1306,13 @@ export const Charts = {
 
     if (tf === '30d' || tf === 'custom') {
       const { start, end } = WeatherStore.getDateRange(null, tf, customRange);
-      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start, end);
+      const fEnd = WeatherStore.getForecastRangeEnd(null, tf, customRange);
+      addSeries(tf === '30d' ? 'Reciente' : 'Personalizado', '#C4A060', WeatherStore.getRange(start, end, loc), start, end, fEnd);
     } else {
       for (const year of vintages) {
         const { start, end } = WeatherStore.getDateRange(year, tf, customRange);
-        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start, end);
+        const fEnd = WeatherStore.getForecastRangeEnd(year, tf, customRange);
+        addSeries(String(year), this._vintageColor(year), WeatherStore.getRange(start, end, loc), start, end, fEnd);
       }
     }
 
