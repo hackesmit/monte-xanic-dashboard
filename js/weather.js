@@ -421,6 +421,21 @@ export const WeatherStore = {
     }
   },
 
+  // Natural (un-capped) end-of-timeframe for forecast filtering. getDateRange's
+  // `end` is capped at today for the current vintage because no future observations
+  // exist; but forecast rows ARE future-dated, so passing the capped end to
+  // forecastWithinRange would always return empty. Charts that overlay forecasts
+  // use this helper for the filter bound instead. 30d is intentionally null —
+  // forecastEligible already rejects '30d'. (#7 fix)
+  getForecastRangeEnd(vintage, timeframe, customRange) {
+    switch (timeframe) {
+      case 'year':   return `${vintage}-12-31`;
+      case '30d':    return null;
+      case 'custom': return (customRange && customRange.end) ? customRange.end : null;
+      default:       return `${vintage}-10-31`;
+    }
+  },
+
   dayInRange(dateStr, rangeStart) {
     const dp = dateStr.split('-').map(Number);
     const sp = rangeStart.split('-').map(Number);
