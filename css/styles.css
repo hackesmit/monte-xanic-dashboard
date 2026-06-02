@@ -2620,6 +2620,11 @@ body.demo-mode-active .row-clickable        { display: none; }
 .pred-badge-media { background: #c08a2d; }
 .pred-badge-baja  { background: #b04040; }
 .pred-badge-warn  { background: #c08a2d; }
+.pred-badge-a-plus { background: #2E8B57; color: #fff; }
+.pred-badge-a      { background: #5cb85c; color: #fff; }
+.pred-badge-b      { background: #C4A050; color: #1c1c1c; }
+.pred-badge-c      { background: #d9534f; color: #fff; }
+.pred-badge small  { display: inline-block; margin-left: 4px; font-size: 0.85em; opacity: 0.85; font-weight: 400; }
 /* Wrapper gives Chart.js a sized container; canvas auto-fills via responsive:true.
    Do NOT put width/height on the canvas itself — !important rules override
    Chart.js's computed canvas.style and decouple intrinsic from display size,

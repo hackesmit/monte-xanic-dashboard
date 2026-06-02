@@ -218,3 +218,43 @@ export function aggregateSection(lots) {
               :                 'C';
   return { grade, score36, lotCount: lots.length };
 }
+
+// ── scoreFromMedicion: lift a medicion row into the lot shape scoreLot expects ──
+// Mediciones rows lack berry chemistry (brix, pH, tANT, …). To grade a medicion,
+// we look up its matching berry by (lotCode, vintage), graft the medicion's
+// snake-cased health fields onto a clone, and delegate to scoreLot.
+//
+// Mirrors what joinBerryWithMediciones in dataLoader.js does for the map view,
+// but starts from the medicion side so the Mediciones Técnicas table can show
+// a per-row badge without requiring the user to navigate to the berry view.
+//
+// @param {object} m — mediciones_tecnicas row (camelCase from _rowToMedicion)
+// @param {Map<string, object>|null} berryByLot — keyed `${lotCode}||${vintage}`
+// @returns {object} same shape as scoreLot, or { grade: null, reason: 'Sin berry' }
+export function scoreFromMedicion(m, berryByLot) {
+  if (!m || !m.lotCode || m.vintage == null) {
+    return { grade: null, score36: null, rubricId: null, missing: [], reason: 'Sin berry' };
+  }
+  if (!berryByLot || typeof berryByLot.get !== 'function') {
+    return { grade: null, score36: null, rubricId: null, missing: [], reason: 'Sin berry' };
+  }
+  const berry = berryByLot.get(`${m.lotCode}||${m.vintage}`);
+  if (!berry) {
+    return { grade: null, score36: null, rubricId: null, missing: [], reason: 'Sin berry' };
+  }
+  const lot = {
+    ...berry,
+    medicion: {
+      health_grade:       m.healthGrade,
+      health_madura:      m.healthMadura,
+      health_inmadura:    m.healthInmadura,
+      health_sobremadura: m.healthSobremadura,
+      health_picadura:    m.healthPicadura,
+      health_enfermedad:  m.healthEnfermedad,
+      health_quemadura:   m.healthQuemadura,
+      tons_received:      m.tons,
+      phenolic_maturity:  m.phenolicMaturity
+    }
+  };
+  return scoreLot(lot);
+}

@@ -906,6 +906,7 @@
                 <th>Salud</th>
                 <th data-sort="healthGrade">Grado</th>
                 <th data-sort="phenolicMaturity">Madurez</th>
+                <th data-sort="score36">Calidad</th>
               </tr>
             </thead>
             <tbody id="med-table-body"></tbody>
@@ -1045,6 +1046,12 @@
             <option value="Parcial">Parcial (0)</option>
             <option value="No sobresaliente">No sobresaliente (−3)</option>
           </select>
+        </div>
+        <div class="form-group">
+          <label>Calidad estimada</label>
+          <div id="med-edit-score" class="detail-grade"
+               aria-live="polite"
+               title="Se calcula en vivo con los valores actuales del formulario.">—</div>
         </div>
         <div class="form-group">
           <label>Medido por</label>
