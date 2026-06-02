@@ -76,7 +76,8 @@ export const MapStore = {
         let sumW = 0, totalW = 0;
         for (const lot of lots) {
           const val = lot[f];
-          const w = 1;
+          // Wave 1 #1: honor per-lot _weight from mediciones.tons_received.
+          const w = (typeof lot._weight === 'number' && lot._weight > 0) ? lot._weight : 1;
           if (val !== null && val !== undefined && !isNaN(val)) {
             sumW += val * w;
             totalW += w;

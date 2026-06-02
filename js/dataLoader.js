@@ -1,6 +1,7 @@
 // ── Data Loader: SheetJS Excel parsing + Supabase queries + state management ──
 import { CONFIG } from './config.js';
 import { Identity } from './identity.js';
+import { weightedMean } from './aggregations.js';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -576,6 +577,9 @@ export const DataStore = {
     this.joinBerryWithMediciones();
     // Same pattern for tank_receptions → supplies av/ag/polyphenols.
     this.joinBerryWithReceptions();
+    // Tag every berry + wine sample with _weight from mediciones.tons_received
+    // for use by tonnage-weighted aggregations across KPIs/charts/maps.
+    this._tagSampleWeights();
   },
 
   // Attach each berry row's matching mediciones_tecnicas entry as row.medicion,
@@ -616,6 +620,29 @@ export const DataStore = {
       .replace(/_(BERRIES|RECEPCION)$/i, '');
   },
 
+  // Tag each berry + wine sample row with _weight from its matching
+  // mediciones_tecnicas.tons_received (Map<lotCode, tons>). Samples
+  // without a matching medicion get _weight = null (callers fall back
+  // to 1 via aggregations.weightedMean's fallbackWeight option).
+  // Idempotent — safe to call multiple times. See Wave 1 #1 dispatch.
+  _tagSampleWeights() {
+    const weightByLot = new Map();
+    for (const m of (this.medicionesData || [])) {
+      if (m.lotCode && typeof m.tons === 'number' && m.tons > 0) {
+        weightByLot.set(m.lotCode, m.tons);
+      }
+    }
+    for (const b of (this.berryData || [])) {
+      b._weight = b.lotCode ? (weightByLot.get(b.lotCode) ?? null) : null;
+    }
+    for (const w of (this.wineRecepcion || [])) {
+      // Wine rows key on codigoBodega; the lot prefix matches mediciones lotCode
+      // when stripped of vintage-prefix + suffix. Reuse the existing normalizer.
+      const lot = w.lotCode || (w.codigoBodega ? this._normalizeLotCode(w.codigoBodega) : null);
+      w._weight = lot ? (weightByLot.get(lot) ?? null) : null;
+    }
+  },
+
   // Enrich berry rows with av / ag / polyphenols averaged across any
   // tank_receptions whose reception_lots entry matches (lot_code, vintage).
   // Written only onto berry rows; no DB writes, no mutation of reception data.
@@ -641,15 +668,16 @@ export const DataStore = {
     }
 
     const avgField = (recs, primary, fallback) => {
-      let sum = 0, n = 0;
-      for (const r of recs) {
+      // Normalize to a numeric-only array of { v, _weight: 1 } shape so
+      // weightedMean can consume it. Receptions don't carry per-row weights,
+      // so this is an unweighted mean equivalent to the prior implementation.
+      const rows = recs.map(r => {
         let v = r[primary];
         if ((v === null || v === undefined || v === '') && fallback) v = r[fallback];
-        if (v === null || v === undefined || v === '') continue;
-        const num = Number(v);
-        if (Number.isFinite(num)) { sum += num; n += 1; }
-      }
-      return n > 0 ? sum / n : null;
+        const num = v === null || v === undefined || v === '' ? NaN : Number(v);
+        return { v: Number.isFinite(num) ? num : null, _weight: 1 };
+      });
+      return weightedMean(rows, 'v');
     };
 
     for (const b of (this.berryData || [])) {
