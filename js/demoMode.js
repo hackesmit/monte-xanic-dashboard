@@ -340,19 +340,23 @@ function scenarioParams(scenario, target, r) {
   return null;
 }
 
-// Deduplicate vineyardSections into (variety, appellation) groups with
-// their resolved rubric. Stable sort by (appellation, variety) for
-// deterministic scenario assignment.
+// Build one demo group per CONFIG.vineyardSections row that has a recognized
+// variety and a resolvable rubric. No deduplication by (variety, appellation):
+// each section gets its own demo lot so every polygon on the calidad map can
+// render a grade (otherwise N sections sharing a variety/appellation collapse
+// into 1 demo lot and N-1 polygons stay grey). Each section's scenario is
+// assigned independently downstream, so the same variety in two sections may
+// surface different grades — visually closer to a realistic sampling week.
+// Stable sort by (appellation, variety, lotCode) for deterministic scenario
+// assignment.
 function buildCurrentSeasonGroups() {
-  const seen = new Map();  // key: "variety|appellation"
+  const groups = [];
   for (const section of CONFIG.vineyardSections) {
     const variety = primaryVariety(section.variety);
     if (!variety) continue;
     const appellation = section.ranch;
     const rubric = demoRubricFor(variety, appellation);
     if (!rubric) continue;
-    const key = `${variety}|${appellation}`;
-    if (seen.has(key)) continue;
     // Effective rubric params (variety-specific peso_overrides applied
     // upstream; here we only need brix + anthocyanins + pH thresholds).
     const brixSpec = rubric.params.brix;
@@ -368,21 +372,20 @@ function buildCurrentSeasonGroups() {
     if (target.brixLower == null) continue;  // can't calibrate without window
     const ranchCode = section.ranchCode;
     const prefix = VARIETY_PREFIX[variety] || 'XX';
-    // Use the section's real label so MapStore.resolveSection maps the lot
-    // back onto an existing CONFIG.vineyardSections id — otherwise the SVG
-    // polygons can't find their data and render grey. Kompali's lot-code
-    // convention puts K first ("KCS-S8"); every other ranch puts the variety
-    // prefix first ("CSMX-1A"). Vintage disambiguates from historical so
-    // there's no collision with same-named historical lots.
+    // Lot code must round-trip through MapStore.resolveSection back to this
+    // section's sectionId — otherwise the SVG polygon can't find its data.
+    // Kompali puts K first ("KCS-S8"); every other ranch puts the variety
+    // prefix first ("CSMX-1A").
     const suffix = section.sectionLabel;
     const lotCode = ranchCode === 'K'
       ? `K${prefix}-${suffix}`
       : `${prefix}${ranchCode}-${suffix}`;
-    seen.set(key, { variety, appellation, target, lotCode });
+    groups.push({ variety, appellation, target, lotCode });
   }
-  return [...seen.values()].sort((a, b) =>
+  return groups.sort((a, b) =>
     a.appellation.localeCompare(b.appellation)
-    || a.variety.localeCompare(b.variety));
+    || a.variety.localeCompare(b.variety)
+    || a.lotCode.localeCompare(b.lotCode));
 }
 
 // Largest-remainder quota allocation: returns an array of scenario names

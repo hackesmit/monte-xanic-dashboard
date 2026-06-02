@@ -268,7 +268,7 @@ export const MapStore = {
         { g: null, label: 'Sin clasificar' }
       ];
       container.innerHTML = `
-        <div class="scale-label">Calidad (Clasificación)</div>
+        <div class="scale-label">Calidad</div>
         <div class="map-legend-discrete">
           ${grades.map(({ g, label }) => `
             <div class="legend-item">

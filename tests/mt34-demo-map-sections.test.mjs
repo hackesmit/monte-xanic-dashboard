@@ -74,11 +74,14 @@ test('MT.34 demo: at least one Kompali lot exists AND its resolved section is re
   }
 });
 
-test('MT.34 demo: aggregateBySection populates at least 6 distinct real sections', () => {
+test('MT.34 demo: aggregateBySection populates a majority of CONFIG.vineyardSections', () => {
+  // After the dedupe was removed, the demo emits one lot per section (not per
+  // variety+appellation group), so most polygons across all ranches color.
+  // We allow ~25% to stay grey to account for sections whose variety has no
+  // recognized rubric (skipped in buildCurrentSeasonGroups).
   resetDataStore();
   DemoMode.enable();
   const cfgSectionIds = new Set(CONFIG.vineyardSections.map(s => s.sectionId));
-  // Bridge berry → map-store row shape (mirrors app.js:395-407 latestByLot build).
   const latestByLot = {};
   for (const d of DataStore.berryData) {
     if (!d.lotCode) continue;
@@ -90,8 +93,40 @@ test('MT.34 demo: aggregateBySection populates at least 6 distinct real sections
   MapStore.aggregateBySection(Object.values(latestByLot), null);
   const realSections = Object.keys(MapStore.sectionData).filter(id => cfgSectionIds.has(id));
   DemoMode.disable();
+  const target = Math.floor(cfgSectionIds.size * 0.75);
   assert.ok(
-    realSections.length >= 6,
-    `Only ${realSections.length} real sections populated; expected >= 6`
+    realSections.length >= target,
+    `Only ${realSections.length}/${cfgSectionIds.size} real sections populated; expected >= ${target} (75%)`
+  );
+});
+
+test('MT.34 demo: per-ranch coverage — at least 7 of 8 ranches have ≥1 graded section', () => {
+  // DUB (Dubacano) has a single Malbec/Syrah section with no defined demo
+  // rubric, so its sole polygon stays grey. The other 7 ranches must each
+  // surface at least one colored polygon — otherwise the map looks empty
+  // for that ranch.
+  resetDataStore();
+  DemoMode.enable();
+  const latestByLot = {};
+  for (const d of DataStore.berryData) {
+    if (!d.lotCode) continue;
+    const prev = latestByLot[d.lotCode];
+    if (!prev || (d.daysPostCrush || 0) > (prev.daysPostCrush || 0)) {
+      latestByLot[d.lotCode] = { ...d, fieldLot: d.lotCode };
+    }
+  }
+  MapStore.aggregateBySection(Object.values(latestByLot), null);
+  const ranches = [...new Set(CONFIG.vineyardSections.map(s => s.ranchCode))];
+  const gradedSectionsByRanch = {};
+  for (const r of ranches) gradedSectionsByRanch[r] = 0;
+  for (const s of CONFIG.vineyardSections) {
+    const data = MapStore.sectionData[s.sectionId];
+    if (data && data.grade) gradedSectionsByRanch[s.ranchCode]++;
+  }
+  DemoMode.disable();
+  const ranchesWithGrade = Object.values(gradedSectionsByRanch).filter(n => n > 0).length;
+  assert.ok(
+    ranchesWithGrade >= 7,
+    `Only ${ranchesWithGrade}/${ranches.length} ranches have a graded section: ${JSON.stringify(gradedSectionsByRanch)}`
   );
 });
