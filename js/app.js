@@ -653,7 +653,11 @@ export const App = {
     const wineByCodigo = {};
     const filteredWineExt = Filters.getFilteredWine();
     filteredWineExt.forEach(d => {
-      if (d.codigoBodega) wineByCodigo[d.codigoBodega] = d;
+      if (!d.codigoBodega || d.antoWX === null || typeof d.antoWX !== 'number') return;
+      const prev = wineByCodigo[d.codigoBodega];
+      if (!prev || d.antoWX > prev.antoWX) {
+        wineByCodigo[d.codigoBodega] = d;
+      }
     });
 
     const rows = [];

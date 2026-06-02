@@ -695,7 +695,9 @@ export const Charts = {
     });
     const wineByCodigo = {};
     wineData.forEach(d => {
-      if (d.codigoBodega && d.antoWX !== null && typeof d.antoWX === 'number') {
+      if (!d.codigoBodega || d.antoWX === null || typeof d.antoWX !== 'number') return;
+      const prev = wineByCodigo[d.codigoBodega];
+      if (!prev || d.antoWX > prev.antoWX) {
         wineByCodigo[d.codigoBodega] = d;
       }
     });
