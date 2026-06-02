@@ -7,6 +7,7 @@ import { Charts } from './charts.js';
 import { Filters } from './filters.js';
 import { Auth } from './auth.js';
 import { attachModalHygiene } from './modalHygiene.js';
+import { scoreFromMedicion } from './classification.js';
 
 // ── Pure helpers (exported for tests; used by methods on Mediciones below) ──
 
@@ -316,6 +317,39 @@ export const Mediciones = {
       if (!group) return;
       group.classList.toggle('field-dirty', rowKey in dirty);
     });
+
+    // Live re-score the calidad badge based on current form values.
+    this._updateLiveScore();
+  },
+
+  // Build a synthetic medicion from current form values so the live grade
+  // reflects unsaved edits, then re-run scoreFromMedicion using the berry
+  // index captured during refresh().
+  _updateLiveScore() {
+    const el = document.getElementById('med-edit-score');
+    if (!el) return;
+    const editing = this._editing || {};
+    const form = this._readEditForm();
+    const synthetic = {
+      // Keep berry-lookup keys + rubric inputs from the saved snapshot if the
+      // form lacks them (e.g., lotCode lives on snapshot only — though the
+      // edit form does expose it as 'med-edit-lot', prefer form value when set).
+      lotCode:     form.lotCode     ?? editing.lotCode,
+      vintage:     form.vintage     ?? editing.vintage,
+      variety:     form.variety     ?? editing.variety,
+      appellation: form.appellation ?? editing.appellation,
+      tons:              form.tons              ?? editing.tons,
+      healthGrade:       form.healthGrade       ?? editing.healthGrade,
+      healthMadura:      form.healthMadura      ?? editing.healthMadura,
+      healthInmadura:    form.healthInmadura    ?? editing.healthInmadura,
+      healthSobremadura: form.healthSobremadura ?? editing.healthSobremadura,
+      healthPicadura:    form.healthPicadura    ?? editing.healthPicadura,
+      healthEnfermedad:  form.healthEnfermedad  ?? editing.healthEnfermedad,
+      healthQuemadura:   form.healthQuemadura   ?? editing.healthQuemadura,
+      phenolicMaturity:  form.phenolicMaturity  ?? editing.phenolicMaturity,
+    };
+    const score = scoreFromMedicion(synthetic, this._berryByLot);
+    el.innerHTML = this._renderGradeBadge(score);
   },
 
   async submitEdit() {
@@ -437,7 +471,8 @@ export const Mediciones = {
     }
 
     const sorted = [...data].sort((a, b) => {
-      let va = a[this._sortField], vb = b[this._sortField];
+      let va = this._sortField === 'score36' ? (a._score?.score36 ?? -Infinity) : a[this._sortField];
+      let vb = this._sortField === 'score36' ? (b._score?.score36 ?? -Infinity) : b[this._sortField];
       if (va === null || va === undefined) va = '';
       if (vb === null || vb === undefined) vb = '';
       if (typeof va === 'number' && typeof vb === 'number') return this._sortAsc ? va - vb : vb - va;
@@ -476,8 +511,20 @@ export const Mediciones = {
         <td>${bar}</td>
         <td>${esc(d.healthGrade)}</td>
         <td>${esc(this._madurezShort(d.phenolicMaturity))}</td>
+        <td>${this._renderGradeBadge(d._score)}</td>
       </tr>`;
     }).join('');
+  },
+
+  _renderGradeBadge(score) {
+    if (!score || score.grade === null) return '<span class="muted">—</span>';
+    const grade = score.grade;
+    const cls = grade === 'A+' ? 'a-plus'
+              : grade === 'A'  ? 'a'
+              : grade === 'B'  ? 'b'
+              :                  'c';
+    const num = score.score36 != null ? score.score36.toFixed(0) : '—';
+    return `<span class="pred-badge pred-badge-${cls}">${grade}<small>${num}</small></span>`;
   },
 
   _madurezShort(v) {
@@ -527,6 +574,21 @@ export const Mediciones = {
 
   refresh() {
     const raw = DataStore.medicionesData || [];
+
+    // Build berry index once per refresh so renderTable + edit-modal live score
+    // can resolve calidad without re-scanning DataStore.berryData on every row.
+    const berryByLot = new Map();
+    for (const b of (DataStore.berryData || [])) {
+      if (b.lotCode && b.vintage != null) {
+        const key = `${b.lotCode}||${b.vintage}`;
+        // Multiple berries per lot is normal — first match wins; any of them
+        // carries the same chemistry context for scoring.
+        if (!berryByLot.has(key)) berryByLot.set(key, b);
+      }
+    }
+    this._berryByLot = berryByLot;
+    raw.forEach(d => { d._score = scoreFromMedicion(d, berryByLot); });
+
     const filtered = this._applyGlobalFilters(raw);
     this.updateKPIs(filtered);
     this.renderCharts(filtered);
