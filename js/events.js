@@ -47,6 +47,16 @@ export const Events = {
     const mapMetric = document.getElementById('map-metric-select');
     if (mapMetric) mapMetric.addEventListener('change', () => MapStore.setMetric(mapMetric.value));
 
+    // Mapa view's single-vintage picker. Writes Filters.state.mapVintage and
+    // triggers a refresh — App.refresh() flows the new value into the map
+    // branch via Filters.state.mapVintage (see app.js).
+    const mapVintageSel = document.getElementById('map-vintage-select');
+    if (mapVintageSel) mapVintageSel.addEventListener('change', () => {
+      const parsed = parseInt(mapVintageSel.value, 10);
+      Filters.state.mapVintage = Number.isFinite(parsed) ? parsed : null;
+      App.refresh();
+    });
+
     // Shared weather chart renderer — reads current filter state
     const _renderWeatherCharts = () => {
       const vintages = WeatherStore.getVintagesFromData();
