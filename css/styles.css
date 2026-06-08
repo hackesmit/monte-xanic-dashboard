@@ -2124,6 +2124,11 @@ canvas { max-width: 100%; }
   flex: 1 1 100px;
   min-width: 90px;
 }
+/* Map header KPI cards lay out label + value inline on one row, so the
+   default 30px value (from .kpi-value) towered over the 9px label. Bring
+   them closer in scale: value 22px, label 11px. */
+.map-kpis .kpi-value { font-size: 22px; }
+.map-kpis .kpi-label { font-size: 11px; margin-bottom: 0; margin-right: 10px; }
 
 .map-body {
   display: flex;
