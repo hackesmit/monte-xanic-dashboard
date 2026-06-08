@@ -39,6 +39,10 @@ export const App = {
       // Refresh from Supabase in background; silently update if new data arrives
       DataStore.initSupabase().then(() => {
         DataStore.loadFromSupabase().then(loaded => {
+          if (loaded && this.initialized) {
+            Filters.buildMapVintageOptions();
+            Filters.initMapVintage();
+          }
           if (loaded && this.initialized) this.refresh();
           this._updateDbStatus();
         }).catch(err => {
@@ -253,6 +257,8 @@ export const App = {
     this._hideSpinner();
     this.initialized = true;
     Filters.init();
+    Filters.buildMapVintageOptions();
+    Filters.initMapVintage();
     this.setView('berry');
     this.refresh();
 
