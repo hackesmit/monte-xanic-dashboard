@@ -39,7 +39,11 @@ export const App = {
       // Refresh from Supabase in background; silently update if new data arrives
       DataStore.initSupabase().then(() => {
         DataStore.loadFromSupabase().then(loaded => {
-          if (loaded && this.initialized) this.refresh();
+          if (loaded && this.initialized) {
+            Filters.buildMapVintageOptions();
+            Filters.initMapVintage();
+            this.refresh();
+          }
           this._updateDbStatus();
         }).catch(err => {
           console.error('Supabase load failed:', err);
@@ -253,6 +257,8 @@ export const App = {
     this._hideSpinner();
     this.initialized = true;
     Filters.init();
+    Filters.buildMapVintageOptions();
+    Filters.initMapVintage();
     this.setView('berry');
     this.refresh();
 
@@ -405,7 +411,7 @@ export const App = {
             };
           }
         }
-        const vintage = Filters.state.vintages.size === 1 ? [...Filters.state.vintages][0] : null;
+        const vintage = Filters.state.mapVintage;
         MapStore.currentVintage = vintage;
         MapStore.aggregateBySection(Object.values(latestByLot), vintage);
         MapStore.render();
@@ -892,6 +898,8 @@ export const App = {
     Filters.buildVarietyChips?.();
     Filters.buildOriginChips?.();
     Filters.buildLotChips?.();
+    Filters.buildMapVintageOptions?.();
+    Filters.initMapVintage?.();
     this.refresh();
   },
 
