@@ -17,7 +17,10 @@ export const Filters = {
     weatherCustomStart: null,
     weatherCustomEnd: null,
     weatherShowForecast: false,  // F8: toggle forecast overlay
-    weatherForecastHorizon: 7    // F8: 7 or 16 days
+    weatherForecastHorizon: 7,   // F8: 7 or 16 days
+    mapVintage: null,    // Single vintage for the Mapa view (#21 — separate
+                         // from `vintages` Set to keep map's single-select
+                         // independent of the global multi-select chips).
   },
 
   // Wine-specific filter state
@@ -65,6 +68,28 @@ export const Filters = {
       chip.onclick = () => this.toggleFilter('vintages', v, chip);
       container.appendChild(chip);
     });
+  },
+
+  buildMapVintageOptions() {
+    if (typeof document === 'undefined') return;
+    const sel = document.getElementById('map-vintage-select');
+    if (!sel) return;
+    const years = DataStore.getUniqueValues('vintage')
+      .map(Number).filter(Number.isFinite)
+      .sort((a, b) => b - a);
+    sel.innerHTML = years.map(y => `<option value="${y}">${y}</option>`).join('');
+    sel.style.display = years.length ? '' : 'none';
+    if (this.state.mapVintage != null) sel.value = String(this.state.mapVintage);
+  },
+
+  initMapVintage() {
+    const years = DataStore.getUniqueValues('vintage').map(Number).filter(Number.isFinite);
+    if (!years.length) { this.state.mapVintage = null; return; }
+    if (this.state.mapVintage != null && years.includes(this.state.mapVintage)) return;
+    this.state.mapVintage = Math.max(...years);
+    if (typeof document === 'undefined') return;
+    const sel = document.getElementById('map-vintage-select');
+    if (sel) sel.value = String(this.state.mapVintage);
   },
 
   buildVarietyChips() {
