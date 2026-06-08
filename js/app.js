@@ -898,6 +898,8 @@ export const App = {
     Filters.buildVarietyChips?.();
     Filters.buildOriginChips?.();
     Filters.buildLotChips?.();
+    Filters.buildMapVintageOptions?.();
+    Filters.initMapVintage?.();
     this.refresh();
   },
 
