@@ -405,7 +405,7 @@ export const App = {
             };
           }
         }
-        const vintage = Filters.state.vintages.size === 1 ? [...Filters.state.vintages][0] : null;
+        const vintage = Filters.state.mapVintage;
         MapStore.currentVintage = vintage;
         MapStore.aggregateBySection(Object.values(latestByLot), vintage);
         MapStore.render();
