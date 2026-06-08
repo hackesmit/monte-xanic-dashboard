@@ -42,8 +42,8 @@ export const App = {
           if (loaded && this.initialized) {
             Filters.buildMapVintageOptions();
             Filters.initMapVintage();
+            this.refresh();
           }
-          if (loaded && this.initialized) this.refresh();
           this._updateDbStatus();
         }).catch(err => {
           console.error('Supabase load failed:', err);
