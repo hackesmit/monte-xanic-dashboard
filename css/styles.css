@@ -2123,12 +2123,16 @@ canvas { max-width: 100%; }
 .map-kpis .kpi-card {
   flex: 1 1 100px;
   min-width: 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
-/* Map header KPI cards lay out label + value inline on one row, so the
-   default 30px value (from .kpi-value) towered over the 9px label. Bring
-   them closer in scale: value 22px, label 11px. */
-.map-kpis .kpi-value { font-size: 22px; }
-.map-kpis .kpi-label { font-size: 11px; margin-bottom: 0; margin-right: 10px; }
+/* Stack label above value (other views use <div>+block layout already; map
+   uses <span> which defaulted to inline and broke at <=1280px — the widest
+   value "23/24" clipped to "23/2" and labels wrapped mid-word). Column
+   layout + nowrap gives every value the full card width. */
+.map-kpis .kpi-value { font-size: 22px; white-space: nowrap; }
+.map-kpis .kpi-label { font-size: 11px; margin-bottom: 0; white-space: nowrap; }
 
 .map-body {
   display: flex;
