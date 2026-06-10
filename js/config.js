@@ -104,6 +104,41 @@ export const CONFIG = {
     return null;
   },
 
+  // Canonicalize a field-lot code to the berry-sample (WineXRay) dialect.
+  // Mediciones/recepción spreadsheets write Kompali lots as {VAR}KMP-{SUF}
+  // and Dominio de las Abejas as {VAR}UC-{SUF}, while berry samples write
+  // K{VAR}-{SUF} and {VAR}DA-{SUF}. joinBerryWithMediciones/Receptions key
+  // on exact lot codes, so both sides must speak one dialect or the calidad
+  // map renders "Sin datos" for every affected section.
+  // Idempotent: canonical (berry-dialect) codes pass through unchanged.
+  normalizeFieldLotCode(code) {
+    if (!code) return code;
+    let c = String(code).trim().toUpperCase();
+    // Drop trailing parenthetical annotations: 'SBVDG-4B (P.A.+P.F.)'
+    c = c.replace(/\s*\(.*\)\s*$/, '').replace(/\s+/g, '');
+    // Dot-separated Olé lots: 'CSOLE.1' → 'CSOLE-1'
+    c = c.replace(/^([A-Z]{2,4}OLE)\.(?=\d)/, '$1-');
+    // Kompali transposition: 'TEKMP-S1' → 'KTE-S1'
+    const kmp = c.match(/^([A-Z]{1,4})KMP-(.+)$/);
+    if (kmp) {
+      // Spreadsheet variety prefixes longer than the berry dialect's 2-letter
+      // convention (evidence: MRSKMP-S5A+ in mediciones ↔ KMS-S5A+ in berries)
+      const prefixMap = { MRS: 'MS', GRE: 'GR' };
+      const variety = prefixMap[kmp[1]] || kmp[1];
+      let suffix = kmp[2];
+      // Kompali sections are S-prefixed (S1..S8); short block ids like '2B'
+      // or '3A' mean 'S2B'/'S3A'. Longer ids (110R1, SALT) pass through.
+      if (/^\d{1,2}[AB]?(?=$|-)/.test(suffix)) suffix = 'S' + suffix;
+      c = `K${variety}-${suffix}`;
+    }
+    // Dominio de las Abejas: spreadsheets say UC, berries say DA
+    c = c.replace(/^([A-Z]{2,4})UC-/, '$1DA-');
+    // Per-lot aliases that can't be derived mechanically (evidence: berry
+    // codes KCF-S1-PA/PB ↔ medición codes CFKMP-PA/PB — the sheet omits S1)
+    const LOT_ALIASES = { 'KCF-PA': 'KCF-S1-PA', 'KCF-PB': 'KCF-S1-PB' };
+    return LOT_ALIASES[c] || c;
+  },
+
   normalizeAppellation(name, sampleId) {
     if (!name) return name;
     // Fix mojibake/replacement characters (U+FFFD from encoding errors in DB)
@@ -722,7 +757,7 @@ export const CONFIG = {
     'KCF-S1-PA':     'K-S1',   'KCF-S1-PB':     'K-S1',
     'KME-S6-1':      'K-S6',   'KME-S6-2':      'K-S6',
     'KSY-S723':      'K-S7',   'KSY-S721':      'K-S7',   'KSY-S721-R': 'K-S7',
-    'KCS-S8-1-CONT': 'K-S8',   'KCS-S8-1':      'K-S8',
+    'KCS-S8-1-CONT': 'K-S8',   'KCS-S8-1':      'K-S8',  'KCS-S8-1-ABA': 'K-S8',
     'KCS-S2A':       'K-S2A',  'KCS-S2B':       'K-S2B',
     'KDU-S2B':       'K-S2B',  'KDU-S7':        'K-S7',
     'KMA-S7':        'K-S7',
@@ -734,15 +769,20 @@ export const CONFIG = {
     'CFVA-2B-RALEO': 'VA-2B',
     'MEVA-1A':   'VA-1A',  'MEVA-2A':  'VA-2A',
     'SYVA-1D':   'VA-1D',  'SYVA-1E':  'VA-1E',  'SYVA-1B': 'VA-1B',
+    'SYVA-1D,2C,3C,4C': 'VA-1D', 'SYVA-1E,2D,3D,4D': 'VA-1E',
+    'GREVA-3A,4A': 'VA-4A', 'GREVA-3B,4B': 'VA-3B',
     'PVVA-1C':   'VA-1C',
     'GREVA-3B':  'VA-3B',  'GREVA-4A': 'VA-4A',  'GREVA-4B': 'VA-4B',
     // Ojos Negros (ON)
     'CSON-3':    'ON-3',   'SYON-4':   'ON-4',   'MEON-1':  'ON-1',
     'MAON-2':    'ON-2',   'GREON-6':  'ON-6',   'TEON-5':  'ON-5',
     // Siete Leguas (7L)
-    'SY7L-2':    '7L-2',
-    // Olé (OLE)
+    'SY7L-2':    '7L-2',  'CB7L-A1,A2': '7L-1',
+    // Olé (OLE) — incl. 2025 trial sub-lots (CP/SP = con/sin protección)
     'CSOLE-1':   'OLE-1',  'CSOLE-2':  'OLE-2',  'CSOLE-3': 'OLE-3',
+    'CSOLE-1PVCP': 'OLE-1', 'CSOLE-1CP': 'OLE-1',
+    'CSOLE-2PVSP': 'OLE-2', 'CSOLE-2SP': 'OLE-2',
+    'CSOLE-3CP':   'OLE-3', 'CSOLE-4SP': 'OLE-4',
     // Dubacano (DUB)
     'MADUB-1':   'DUB-1',  'SYDUB-1':  'DUB-1',
     // Dominio de las Abejas (DA)
@@ -768,10 +808,11 @@ export const CONFIG = {
 
   // Color scale config per map metric
   mapMetrics: {
-    brix: { label: 'Brix (°Bx)', min: 18, max: 28, stops: ['#2ecc71', '#f1c40f', '#e74c3c'] },
-    pH:   { label: 'pH',         min: 3.0, max: 4.0, stops: ['#3498db', '#2ecc71', '#e74c3c'] },
-    tANT: { label: 'tANT (ppm)', min: 0,   max: 2000, stops: ['#f0e68c', '#e74c3c', '#800020'] },
-    ta:   { label: 'A.T. (g/L)', min: 3.0, max: 9.0, stops: ['#e74c3c', '#2ecc71', '#3498db'] }
+    brix:    { label: 'Brix (°Bx)',       min: 18, max: 28,   stops: ['#2166AC','#67A9CF','#D1E5F0','#FDDBC7','#EF8A62','#B2182B'] },
+    pH:      { label: 'pH',               min: 3.0, max: 4.0, stops: ['#1B7837','#7FBC41','#D9F0D3','#F7F7F7','#E7D4E8','#762A83'] },
+    ta:      { label: 'Acidez Total (g/L)', min: 3, max: 12,  stops: ['#B2182B','#EF8A62','#FDDBC7','#D1E5F0','#67A9CF','#2166AC'] },
+    tANT:    { label: 'tANT (ppm ME)',     min: 0, max: 2500, stops: ['#F7F7F7','#FDD49E','#FDBB84','#FC8D59','#E34A33','#B30000'] },
+    berryFW: { label: 'Peso Baya (g)',     min: 0.5, max: 2.5, stops: ['#F7FCB1','#ADDD8E','#78C679','#31A354','#006837'] }
   },
 
   // SVG viewBox dimensions per ranch
@@ -980,36 +1021,10 @@ export const CONFIG = {
 
   // ── Map: Vineyard Quality Heatmap ─────────────────────────────
 
-  fieldLotToSection: {
-    'KCS-S8-1-CONT': 'K-S8', 'KCS-S8-1-ABA': 'K-S8',
-    'KCF-S1-PA': 'K-S1', 'KCF-S1-PB': 'K-S1',
-    'KMS-S5A+': 'K-S5', 'KMS-S5B-': 'K-S5', 'KMS-S5B-R': 'K-S5',
-    'KSY-S721': 'K-S7', 'KSY-S721-R': 'K-S7', 'KSY-S723': 'K-S7',
-    'KDU-S2B': 'K-S2B',
-    'SYVA-1D,2C,3C,4C': 'VA-1D', 'SYVA-1E,2D,3D,4D': 'VA-1E',
-    'SYDA-L13,14': 'DA-L13'
-  },
-
-  fieldLotRanchPatterns: [
-    { regex: /^K[A-Z]{2,3}-(.+)$/i, prefix: 'K' },
-    { regex: /^[A-Z]{2,4}MX-(.+)$/i, prefix: 'MX' },
-    { regex: /^[A-Z]{2,4}VA-(.+)$/i, prefix: 'VA' },
-    { regex: /^[A-Z]{2,4}ON-(.+)$/i, prefix: 'ON' },
-    { regex: /^[A-Z]{2,4}7L-(.+)$/i, prefix: '7L' },
-    { regex: /^[A-Z]{2,4}OLE-(.+)$/i, prefix: 'OLE' },
-    { regex: /^[A-Z]{2,4}DUB-(.+)$/i, prefix: 'DUB' },
-    { regex: /^[A-Z]{2,4}DA-(.+)$/i, prefix: 'DA' },
-    { regex: /^[A-Z]{2,4}LLC-(.+)$/i, prefix: 'LLC' },
-    { regex: /^[A-Z]{2,4}R14-(.+)$/i, prefix: 'R14' }
-  ],
-
-  mapMetrics: {
-    brix:    { label: 'Brix (°Bx)',       min: 18, max: 28,   stops: ['#2166AC','#67A9CF','#D1E5F0','#FDDBC7','#EF8A62','#B2182B'] },
-    pH:      { label: 'pH',               min: 3.0, max: 4.0, stops: ['#1B7837','#7FBC41','#D9F0D3','#F7F7F7','#E7D4E8','#762A83'] },
-    ta:      { label: 'Acidez Total (g/L)', min: 3, max: 12,  stops: ['#B2182B','#EF8A62','#FDDBC7','#D1E5F0','#67A9CF','#2166AC'] },
-    tANT:    { label: 'tANT (ppm ME)',     min: 0, max: 2500, stops: ['#F7F7F7','#FDD49E','#FDBB84','#FC8D59','#E34A33','#B30000'] },
-    berryFW: { label: 'Peso Baya (g)',     min: 0.5, max: 2.5, stops: ['#F7FCB1','#ADDD8E','#78C679','#31A354','#006837'] }
-  },
+  // NOTE (2026-06): fieldLotToSection, fieldLotRanchPatterns and mapMetrics
+  // were defined twice in this object; the duplicates here silently shadowed
+  // the richer definitions above (losing the KMP/DLA/SG patterns and most of
+  // the berry-lot table). Single canonical definitions live above.
 
   // ── Grade color tokens (used by maps.js and legend) ─────────────────────
   gradeColors: {
