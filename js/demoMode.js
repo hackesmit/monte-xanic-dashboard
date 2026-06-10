@@ -133,13 +133,30 @@ function primaryVariety(raw) {
 }
 
 // Pick a grade target so the demo spans the full A+/A/B/C spectrum.
-// Distribution: A+ 25%, A 35%, B 30%, C 10%.
-function pickGradeTarget(r) {
+// `cum` is the cumulative distribution [A+, A, B] from the year profile
+// (e.g. a warm year skews toward A+/A, a cool year toward B/C).
+function pickGradeTarget(r, cum = [0.25, 0.60, 0.90]) {
   const x = r();
-  if (x < 0.25) return 'A+';
-  if (x < 0.60) return 'A';
-  if (x < 0.90) return 'B';
+  if (x < cum[0]) return 'A+';
+  if (x < cum[1]) return 'A';
+  if (x < cum[2]) return 'B';
   return 'C';
+}
+
+// ── Maturation curve shapes (historical seasons) ──
+// Both map normalized season progress k ∈ [0,1] to [0,1].
+
+// Saturating rise: fast early, flattening toward harvest. Models brix
+// accumulation, TA decay (with final < base) and pH rise.
+function riseShape(k, c) {
+  return (1 - Math.exp(-c * k)) / (1 - Math.exp(-c));
+}
+
+// Normalized logistic: slow start, mid-season surge, plateau. Models
+// anthocyanin accumulation. `center` shifts the surge within the season.
+function sigShape(k, center, steep = 6) {
+  const f = x => 1 / (1 + Math.exp(-steep * (x - center)));
+  return (f(k) - f(0)) / (f(1) - f(0));
 }
 
 // Return a chemistry value that scores 3 / 2 / 1 pts for a given rubric param.
@@ -238,28 +255,50 @@ function demoRubricFor(variety, appellation) {
   return { id: rubricId, ...rubric };
 }
 
+// Year-character profiles for the two historical vintages. The demo spans
+// 3 vendimias (currentYear-2, currentYear-1, currentYear) so vintage
+// comparison charts overlay distinct, realistic seasons:
+//  - currentYear-2: cool/late year — envero in early August, slower 8-day
+//    sampling cadence, anthocyanins still climbing at harvest (antCenter
+//    late), lower grade mix, lighter yields.
+//  - currentYear-1: warm/early year — envero mid-July, weekly sampling,
+//    anthocyanins plateau before harvest (antCenter early), better grades.
+// The divergent late-season anthocyanin slopes also keep the predictor's
+// historicalSlopePrior variance (τ²) high, so the Bayesian prior stays weak
+// and the current-season scenario calibration (scenarioParams) is preserved.
+function yearProfiles(currentYear) {
+  return [
+    { vintage: currentYear - 2, idBase: 0,    enveroMMDD: '08-02', stepDays: 8,
+      gradeCum: [0.12, 0.42, 0.80], antFactor: 0.85, antCenter: 0.62, tonsFactor: 0.85 },
+    { vintage: currentYear - 1, idBase: 3000, enveroMMDD: '07-15', stepDays: 7,
+      gradeCum: [0.30, 0.70, 0.95], antFactor: 1.10, antCenter: 0.38, tonsFactor: 1.05 },
+  ];
+}
+
 function generateDemoData() {
   const r = rng(20250421);
   const currentYear = new Date().getFullYear();
   const today = new Date();
-  const historical = generateHistoricalSeason(2025, r);
+  const [coolYear, warmYear] = yearProfiles(currentYear).map(p => generateHistoricalSeason(p, r));
   const current = generateCurrentSeason(currentYear, today, r);
-  // Berry uses current-season only so the predictor's historicalSlopePrior
-  // sees V=0 (3-point historical data is too sparse; V=0 + downgrade rule
-  // produces reliable 'Media' confidence labels).
+  // Berry now concatenates ALL three vintages so the vintage comparison
+  // charts (brix/tANT/pH/AT vs días post-envero) overlay 3 vendimias.
+  // The historical berries feed the predictor's historicalSlopePrior (V=2),
+  // but the prior stays weak by design — see yearProfiles() above — so the
+  // current-season scenarios still land on their calibrated `reason`s.
   //
-  // Mediciones / receptions / wine concatenate both vintages so that:
-  //  - Predictor views still see historical 2025 context.
+  // Mediciones / receptions / wine concatenate all vintages so that:
   //  - Calidad map's joinBerryWithMediciones (keyed on lotCode + vintage)
-  //    finds current-vintage matches for current-vintage berries → grades
-  //    populate instead of all-grey "Sin clasificar".
+  //    finds matches for every vintage → grades populate for any year
+  //    selected on the map instead of all-grey "Sin clasificar".
+  //  - Wine views get 3 vintage chips.
   return {
-    berry: current.berry,
-    mediciones:    [...historical.mediciones,    ...current.mediciones],
-    receptions:    [...historical.receptions,    ...current.receptions],
-    receptionLots: [...historical.receptionLots, ...current.receptionLots],
-    wine:          [...historical.wine,          ...current.wine],
-    preferment:    historical.preferment,
+    berry:         [...coolYear.berry,         ...warmYear.berry,         ...current.berry],
+    mediciones:    [...coolYear.mediciones,    ...warmYear.mediciones,    ...current.mediciones],
+    receptions:    [...coolYear.receptions,    ...warmYear.receptions,    ...current.receptions],
+    receptionLots: [...coolYear.receptionLots, ...warmYear.receptionLots, ...current.receptionLots],
+    wine:          [...coolYear.wine,          ...warmYear.wine,          ...current.wine],
+    preferment:    [...coolYear.preferment,    ...warmYear.preferment],
   };
 }
 
@@ -300,16 +339,19 @@ function scenarioParams(scenario, target, r) {
         yAnt:  antTarget != null ? antTarget * 1.10 : null, bAnt: 8,
         yPh:   phTarget  != null ? phTarget  - 0.05 : null, bPh: 0.005,
       };
+    // bAnt is calibrated so antEta stays BELOW the brix window close
+    // ((brixUpper - yBrix) / bBrix); with the old 12/day these scenarios
+    // bled into 'no-alcanzar-A' for most red groups.
     case 'eta-corta':
       return {
         yBrix: brixLower - (2 + r()), bBrix: 0.30,
-        yAnt:  antTarget != null ? antTarget * 0.85 : null, bAnt: 12,
+        yAnt:  antTarget != null ? antTarget * 0.85 : null, bAnt: 16,
         yPh:   phTarget  != null ? phTarget  - 0.15 : null, bPh: 0.008,
       };
     case 'eta-media':
       return {
         yBrix: brixLower - (5 + r() * 2), bBrix: 0.30,
-        yAnt:  antTarget != null ? antTarget * 0.65 : null, bAnt: 12,
+        yAnt:  antTarget != null ? antTarget * 0.65 : null, bAnt: 18,
         yPh:   phTarget  != null ? phTarget  - 0.20 : null, bPh: 0.008,
       };
     case 'no-alcanzar-A':
@@ -454,7 +496,9 @@ function generateCurrentSeason(currentYear, today, r) {
     }
   }
 
-  const offsets = [-32, -24, -16, -8, 0];  // days from today
+  // 7 samples every 6 days — nCurrent ≥ 6 keeps the confidence label's
+  // freshness score at 1.0 now that historical vintages make V=2.
+  const offsets = [-36, -30, -24, -18, -12, -6, 0];  // days from today
   const dayMs = 86_400_000;
 
   for (let gi = 0; gi < groups.length; gi++) {
@@ -478,12 +522,17 @@ function generateCurrentSeason(currentYear, today, r) {
       const dateObj = new Date(today.getTime() + t * dayMs);
       const sampleDate = dateObj.toISOString().slice(0, 10);
       const brix = p.yBrix + p.bBrix * t + (r() - 0.5) * 0.2;
+      // Noise is ±12 (was ±30): with the historical prior now active (V=2),
+      // larger noise widens σβ² enough for the prior's positive mean slope to
+      // flip the 'antocianinas-estancadas' posterior above zero.
       const ant  = p.yAnt != null
-        ? Math.max(0, p.yAnt + p.bAnt * t + (r() - 0.5) * 60)
+        ? Math.max(0, p.yAnt + p.bAnt * t + (r() - 0.5) * 24)
         : null;
+      // Red pH rises gently through the season (cosmetic only — the predictor
+      // ignores pH when antTarget is set); whites keep scenario calibration.
       const pH = isWhite && p.yPh != null
         ? Math.max(2.5, Math.min(4.5, p.yPh + p.bPh * t + (r() - 0.5) * 0.02))
-        : 3.5 + (r() - 0.5) * 0.3;
+        : 3.55 + t * 0.006 + (r() - 0.5) * 0.08;
       berry.push({
         sampleId: `${yy}${g.lotCode}-c${seq}`,
         sampleDate,
@@ -494,7 +543,8 @@ function generateCurrentSeason(currentYear, today, r) {
         lotCode: g.lotCode,
         brix,
         pH,
-        ta: 5 + (r() - 0.5) * 1.5,
+        // TA decays toward ~5.2 g/L at harvest (t ≤ 0 → earlier = higher)
+        ta: 5.2 - t * 0.09 + (r() - 0.5) * 0.6,
         tANT: ant != null ? Math.round(ant) : null,
         berryFW: 1.0 + (r() - 0.5) * 0.2,
         anthocyanins: ant != null ? Math.round(ant) : null,
@@ -584,7 +634,8 @@ function generateCurrentSeason(currentYear, today, r) {
   return { berry, mediciones, receptions, receptionLots, wine };
 }
 
-function generateHistoricalSeason(VINTAGE, r) {
+function generateHistoricalSeason(profile, r) {
+  const VINTAGE = profile.vintage;
   const berry = [];
   const mediciones = [];
   const receptions = [];
@@ -592,6 +643,9 @@ function generateHistoricalSeason(VINTAGE, r) {
   const wine = [];
   const preferment = [];
 
+  const dayMs = 86_400_000;
+  const yy = String(VINTAGE).slice(2);
+  const enveroBaseMs = Date.parse(`${VINTAGE}-${profile.enveroMMDD}T12:00:00Z`);
   let receptionId = 1;
 
   for (const section of CONFIG.vineyardSections) {
@@ -612,9 +666,8 @@ function generateHistoricalSeason(VINTAGE, r) {
     const lotCode = ranchCode === 'K'
       ? `K${prefix}-${suffix}`
       : `${prefix}${ranchCode}-${suffix}`;
-    const sampleId = `${String(VINTAGE).slice(2)}${lotCode}-1`;
 
-    const target = pickGradeTarget(r);
+    const target = pickGradeTarget(r, profile.gradeCum);
     const ptsFn = pointsForGrade(target, r);
 
     // Effective params include variety-specific peso_overrides
@@ -634,22 +687,40 @@ function generateHistoricalSeason(VINTAGE, r) {
     // Phenolic maturity overlay — mirrored to the grade target
     const madurezMap = { 'A+': 'Sobresaliente', 'A': null, 'B': 'Parcial', 'C': 'No sobresaliente' };
     const phenolicMaturity = madurezMap[target];
-    const tons = 5 + Math.round(r() * 40);
+    const tons = Math.round((5 + r() * 40) * profile.tonsFactor * 10) / 10;
 
-    // Three time-series points (≈days post-envero 18, 28, 38) so the evolution
-    // charts render actual curves. The 38-day point carries the final (A+/A/B/C)
-    // chemistry; earlier points interpolate back to lower brix + higher ta.
-    const dpcPoints = [
-      { dpc: 18, sampleDate: `${VINTAGE}-07-${String(20 + Math.floor(r()*5)).padStart(2,'0')}`, seq: 1, k: 0.4 },
-      { dpc: 28, sampleDate: `${VINTAGE}-08-${String(5 + Math.floor(r()*5)).padStart(2,'0')}`,  seq: 2, k: 0.7 },
-      { dpc: 38, sampleDate: `${VINTAGE}-08-${String(18 + Math.floor(r()*5)).padStart(2,'0')}`, seq: 3, k: 1.0 }
-    ];
-    // Matures linearly toward the target chemistry: k=1 uses vals, k<1 uses a
-    // plausible green-fruit baseline scaled toward vals.
-    const baseBrix = 16, baseTa = 12, baseTant = 250, basePH = 2.9, baseFW = 0.7;
+    // Six time-series points at a weekly-ish cadence (profile.stepDays ± 1)
+    // from shortly after envero to harvest, so the vintage comparison and
+    // evolution charts render dense, natural curves. The last point carries
+    // the final (A+/A/B/C) rubric-calibrated chemistry; earlier points follow
+    // physiological shapes from green-fruit baselines:
+    //   brix saturating rise · TA decay · pH rise · anthocyanin sigmoid.
+    const nPts = 6;
+    const dpcStart = 8 + Math.floor(r() * 5);
+    const step = profile.stepDays + Math.floor(r() * 2);
+    const dpcs = Array.from({ length: nPts }, (_, i) => dpcStart + i * step);
+    const dpcH = dpcs[nPts - 1];
+    // Stagger each lot's envero ±5 days around the vintage's base date.
+    const enveroMs = enveroBaseMs + Math.round((r() - 0.5) * 10) * dayMs;
+    const dateFor = dpc => new Date(enveroMs + dpc * dayMs).toISOString().slice(0, 10);
+
+    // Per-lot green-fruit baselines
+    const baseBrix = 14.5 + r() * 1.5;
+    const baseTa   = 11 + r() * 2.5;
+    const basePH   = 2.85 + r() * 0.12;
+    const baseFW   = 0.62 + r() * 0.1;
+    const baseTant = 90 + r() * 60;
+
+    // Final total anthocyanins: tied to the rubric's extractable target for
+    // reds (× year character), low plateau for whites (no anthocyanins param).
+    const extFinal = vals.anthocyanins ?? (400 + Math.round(r() * 800));
+    const tantFinal = params.anthocyanins
+      ? Math.round(extFinal * (1.25 + r() * 0.3) * profile.antFactor)
+      : Math.round(50 + r() * 70);
+
     const latestRow = {
-      sampleId,
-      sampleDate: dpcPoints[2].sampleDate,
+      sampleId: `${yy}${lotCode}-${nPts}`,
+      sampleDate: dateFor(dpcH),
       vintage: VINTAGE,
       variety,
       appellation,
@@ -658,40 +729,42 @@ function generateHistoricalSeason(VINTAGE, r) {
       brix: vals.brix,
       pH: vals.pH,
       ta: vals.ta,
-      tANT: 500 + Math.round(r() * 1500),
+      tANT: tantFinal,
       berryFW: vals.berryFW,
-      anthocyanins: vals.anthocyanins ?? (400 + Math.round(r() * 800)),
-      daysPostCrush: 38,
-      sampleSeq: 3,
+      anthocyanins: Math.round(extFinal),
+      daysPostCrush: dpcH,
+      sampleSeq: nPts,
       grapeType: null
     };
-    for (const pt of dpcPoints) {
-      if (pt.seq === 3) { berry.push(latestRow); continue; }
-      const k = pt.k;
+    for (let i = 0; i < nPts - 1; i++) {
+      const dpc = dpcs[i];
+      const k = dpc / dpcH;
+      const antK = sigShape(k, profile.antCenter);
       berry.push({
-        sampleId: `${String(VINTAGE).slice(2)}${lotCode}-${pt.seq}`,
-        sampleDate: pt.sampleDate,
+        sampleId: `${yy}${lotCode}-${i + 1}`,
+        sampleDate: dateFor(dpc),
         vintage: VINTAGE,
         variety,
         appellation,
         sampleType: 'Berries',
         lotCode,
-        brix:    baseBrix + k * (vals.brix - baseBrix),
-        pH:      basePH   + k * (vals.pH   - basePH),
-        ta:      baseTa   + k * (vals.ta   - baseTa),
-        tANT:    Math.round(baseTant + k * (latestRow.tANT - baseTant)),
-        berryFW: baseFW   + k * (vals.berryFW - baseFW),
-        anthocyanins: Math.round(100 + k * (latestRow.anthocyanins - 100)),
-        daysPostCrush: pt.dpc,
-        sampleSeq: pt.seq,
+        brix:    baseBrix + (vals.brix - baseBrix) * riseShape(k, 2.3) + (r() - 0.5) * 0.5,
+        pH:      basePH   + (vals.pH   - basePH)   * riseShape(k, 1.7) + (r() - 0.5) * 0.05,
+        ta:      baseTa   + (vals.ta   - baseTa)   * riseShape(k, 2.0) + (r() - 0.5) * 0.4,
+        tANT:    Math.round(baseTant + (tantFinal - baseTant) * antK + (r() - 0.5) * 50),
+        berryFW: baseFW   + (vals.berryFW - baseFW) * riseShape(k, 2.0) + (r() - 0.5) * 0.04,
+        anthocyanins: Math.round(Math.max(50, extFinal * (0.15 + 0.85 * antK))),
+        daysPostCrush: dpc,
+        sampleSeq: i + 1,
         grapeType: null
       });
     }
+    berry.push(latestRow);
     const berryRow = latestRow;  // used below for dates/references
 
     mediciones.push({
-      id: mediciones.length + 1,
-      code: `M-DEMO-${mediciones.length + 1}`,
+      id: profile.idBase + mediciones.length + 1,
+      code: `M-DEMO-${yy}-${mediciones.length + 1}`,
       date: berryRow.sampleDate,
       vintage: VINTAGE,
       variety,
@@ -713,13 +786,15 @@ function generateHistoricalSeason(VINTAGE, r) {
       notes: null
     });
 
-    // Tank reception carries av / ag / polyphenols
+    // Tank reception carries av / ag / polyphenols.
+    // ids are offset per vintage (profile.idBase) so the two historical
+    // seasons never collide in the reception_id → lots index.
     const rid = receptionId++;
     receptions.push({
-      id: rid,
-      report_code: `RC-DEMO-${rid}`,
+      id: profile.idBase + rid,
+      report_code: `RC-DEMO-${yy}-${rid}`,
       reception_date: berryRow.sampleDate,
-      batch_code: `${String(VINTAGE).slice(2)}${lotCode}-T${rid}`,
+      batch_code: `${yy}${lotCode}-T${rid}`,
       tank_id: `T${rid}`,
       supplier: appellation,
       variety,
@@ -733,14 +808,14 @@ function generateHistoricalSeason(VINTAGE, r) {
       vintage_year: VINTAGE
     });
     receptionLots.push({
-      reception_id: rid,
+      reception_id: profile.idBase + rid,
       lot_code: lotCode,
       lot_position: 1
     });
 
     // Wine reception row — some downstream views (tables, explorer) read it
     wine.push({
-      codigoBodega: `${String(VINTAGE).slice(2)}${lotCode}-W`,
+      codigoBodega: `${yy}${lotCode}-W`,
       fecha: berryRow.sampleDate,
       tanque: `T${rid}`,
       variedad: variety,

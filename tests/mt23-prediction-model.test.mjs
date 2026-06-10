@@ -168,3 +168,20 @@ test('MT.23 confidenceLabel: horizon >= 60 ⇒ Baja regardless', () => {
   const lab = confidenceLabel({ V: 5, nCurrent: 10, horizonDays: 65 });
   assert.equal(lab, 'Baja');
 });
+
+test('MT.23 confidenceLabel: monotone in V — history never worse than none', () => {
+  // Regression guard: V=2 used to score trainingScore(0.4)·base while V=0
+  // scored base outright, so ADDING two vintages of history downgraded
+  // Media → Baja on identical current-season data.
+  const rank = { 'Baja': 0, 'Media': 1, 'Alta': 2 };
+  for (const horizonDays of [0, 10, 20, 35, 50]) {
+    const v0 = confidenceLabel({ V: 0, nCurrent: 7, horizonDays });
+    for (const V of [1, 2, 3, 5]) {
+      const lab = confidenceLabel({ V, nCurrent: 7, horizonDays });
+      assert.ok(rank[lab] >= rank[v0],
+        `V=${V} label ${lab} ranks below V=0 label ${v0} at horizon ${horizonDays}`);
+    }
+  }
+  // 'Alta' still requires deep training history, not just the floor
+  assert.equal(confidenceLabel({ V: 2, nCurrent: 10, horizonDays: 0 }), 'Media');
+});

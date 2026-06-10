@@ -49,13 +49,31 @@ test('MT.32 demo: grade distribution covers at least 2 of A+/A/B/C', () => {
   assert.ok(distinct.size >= 2, `Only ${distinct.size} distinct grades: ${[...distinct].join(',')}`);
 });
 
-test('MT.32 demo: current-vintage mediciones exist', () => {
+test('MT.32 demo: mediciones exist for all 3 vintages', () => {
   resetDataStore();
   DemoMode.enable();
   const currentYear = new Date().getFullYear();
-  const currentMed = DataStore.medicionesData.filter(m => m.vintage === currentYear);
-  const historicalMed = DataStore.medicionesData.filter(m => m.vintage === 2025);
+  const medByVintage = v => DataStore.medicionesData.filter(m => m.vintage === v);
+  const currentMed = medByVintage(currentYear);
+  const warmMed = medByVintage(currentYear - 1);
+  const coolMed = medByVintage(currentYear - 2);
   DemoMode.disable();
   assert.ok(currentMed.length > 0, `Expected current-vintage (${currentYear}) mediciones; got 0`);
-  assert.ok(historicalMed.length > 0, 'Historical 2025 mediciones still present (predictor needs them)');
+  assert.ok(warmMed.length > 0, `Expected historical (${currentYear - 1}) mediciones; got 0`);
+  assert.ok(coolMed.length > 0, `Expected historical (${currentYear - 2}) mediciones; got 0`);
+});
+
+test('MT.32 demo: berry data spans 3 vintages for vendimia comparisons', () => {
+  resetDataStore();
+  DemoMode.enable();
+  const currentYear = new Date().getFullYear();
+  const vintages = new Set(DataStore.berryData.map(b => b.vintage));
+  // Vintage comparison charts need ≥4 points per vintage to draw trends.
+  const countFor = v => DataStore.berryData.filter(b => b.vintage === v).length;
+  const counts = [currentYear - 2, currentYear - 1, currentYear].map(countFor);
+  DemoMode.disable();
+  assert.ok(vintages.has(currentYear), 'missing current vintage berries');
+  assert.ok(vintages.has(currentYear - 1), `missing ${currentYear - 1} berries`);
+  assert.ok(vintages.has(currentYear - 2), `missing ${currentYear - 2} berries`);
+  counts.forEach((c, i) => assert.ok(c >= 4, `vintage idx ${i} has only ${c} berry rows`));
 });

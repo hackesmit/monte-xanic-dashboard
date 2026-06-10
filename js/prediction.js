@@ -132,12 +132,18 @@ export function confidenceBand({
 export function confidenceLabel({ V, nCurrent, horizonDays }) {
   const freshnessScore = Math.min(1, nCurrent / 6);
   const horizonPenalty = Math.max(0, 1 - horizonDays / 60);
+  const base = freshnessScore * horizonPenalty;
   let score;
   if (V > 0) {
     const trainingScore = Math.min(1, V / 5);
-    score = trainingScore * freshnessScore * horizonPenalty;
+    // Monotonicity guard: a couple of historical vintages must never yield
+    // a WORSE label than having none (the V=0 branch skips trainingScore
+    // entirely and only caps the label at 'Media'). Floor the score at the
+    // V=0 score, clamped just below the 'Alta' threshold so deep training
+    // history is still required to reach 'Alta'.
+    score = Math.max(trainingScore * base, Math.min(base, 0.65));
   } else {
-    score = freshnessScore * horizonPenalty;
+    score = base;
   }
   let label = score >= 0.66 ? 'Alta' : score >= 0.33 ? 'Media' : 'Baja';
   if (V === 0 && label === 'Alta') label = 'Media';
