@@ -115,7 +115,8 @@ export const recepcionParser = {
       for (let pos = 1; pos <= 4; pos++) {
         const key = `_lot${pos}`;
         if (obj[key]) {
-          lots.push({ report_code: reportCode, lot_code: obj[key], lot_position: pos });
+          // Store lot codes in the berry dialect (see CONFIG.normalizeFieldLotCode)
+          lots.push({ report_code: reportCode, lot_code: CONFIG.normalizeFieldLotCode(obj[key]), lot_position: pos });
         }
         delete obj[key];
       }

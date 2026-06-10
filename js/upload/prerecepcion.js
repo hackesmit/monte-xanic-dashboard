@@ -129,6 +129,10 @@ export const prerecepcionParser = {
       if (obj.variety && CONFIG.normalizeVariety) {
         obj.variety = CONFIG.normalizeVariety(obj.variety);
       }
+      // Lot codes arrive in the spreadsheet dialect ('TEKMP-S1', 'SYUC-L5');
+      // store the berry dialect ('KTE-S1', 'SYDA-L5') so the classification
+      // join matches without read-side fixups.
+      if (obj.lot_code) obj.lot_code = CONFIG.normalizeFieldLotCode(obj.lot_code);
 
       // Initialize vintage_year so all rows share the same key set —
       // PostgREST rejects mixed-shape arrays with "All object keys must

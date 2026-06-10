@@ -117,7 +117,10 @@ export const DataStore = {
       vintage: row.vintage_year,
       variety: CONFIG.normalizeVariety(row.variety),
       appellation: CONFIG.normalizeAppellation(row.appellation, row.lot_code),
-      lotCode: row.lot_code,
+      // Spreadsheet lot dialect ('TEKMP-S1') → berry dialect ('KTE-S1') so
+      // the classification join can match. Covers rows uploaded before the
+      // parser normalized at ingestion.
+      lotCode: CONFIG.normalizeFieldLotCode(row.lot_code),
       tons: row.tons_received ? parseFloat(row.tons_received) : null,
       berryCount: row.berry_count_sample,
       berryWeight: row.berry_avg_weight_g ? parseFloat(row.berry_avg_weight_g) : null,
@@ -591,6 +594,7 @@ export const DataStore = {
   _enrichData() {
     this.berryData.forEach(d => {
       if (d.sampleId && !d.lotCode) d.lotCode = Identity.extractLotCode(d.sampleId);
+      if (d.lotCode) d.lotCode = CONFIG.normalizeFieldLotCode(d.lotCode);
       if (d.variety) d.variety = CONFIG.normalizeVariety(d.variety);
       if (d.appellation) d.appellation = CONFIG.normalizeAppellation(d.appellation, d.sampleId);
       if (!d.grapeType) d.grapeType = this.getGrapeType(d.variety);
@@ -621,8 +625,7 @@ export const DataStore = {
     const medIndex = new Map();
     for (const m of (this.medicionesData || [])) {
       if (!m.lotCode || m.vintage == null) continue;
-      const key = `${m.lotCode}||${m.vintage}`;
-      medIndex.set(key, {
+      const medPayload = {
         health_grade:       m.healthGrade,
         health_madura:      m.healthMadura,
         health_inmadura:    m.healthInmadura,
@@ -632,13 +635,33 @@ export const DataStore = {
         health_quemadura:   m.healthQuemadura,
         tons_received:      m.tons,
         phenolic_maturity:  m.phenolicMaturity
-      });
+      };
+      // Multi-lot mediciones ('SBVDG-2A/2B') cover several field lots; index
+      // under each expansion. Exact codes are set first and never overwritten.
+      for (const code of this._expandLotCode(m.lotCode)) {
+        const key = `${code}||${m.vintage}`;
+        if (!medIndex.has(key)) medIndex.set(key, medPayload);
+      }
     }
     for (const b of (this.berryData || [])) {
       if (!b.lotCode || b.vintage == null) { b.medicion = null; continue; }
       b.medicion = medIndex.get(`${b.lotCode}||${b.vintage}`) || null;
     }
     return this.berryData;
+  },
+
+  // Expand a multi-lot code ('SBVDG-2A/2B', 'GREVA-3A,4A') into per-lot
+  // codes sharing the head: ['SBVDG-2A/2B', 'SBVDG-2A', 'SBVDG-2B'].
+  // The verbatim code stays first so exact matches always win.
+  _expandLotCode(code) {
+    if (!code) return [];
+    const c = String(code);
+    if (!/[/,]/.test(c)) return [c];
+    const dash = c.indexOf('-');
+    if (dash < 0) return [c];
+    const head = c.slice(0, dash);
+    const parts = c.slice(dash + 1).split(/[/,]/).map(x => x.trim()).filter(Boolean);
+    return [c, ...parts.map(x => `${head}-${x}`)];
   },
 
   // Normalize a lot code for cross-table matching.
@@ -700,9 +723,11 @@ export const DataStore = {
       if (!rl || !rl.lot_code || !rl.reception_id) continue;
       const rec = recById.get(rl.reception_id);
       if (!rec || rec.vintage_year == null) continue;
-      const key = `${this._normalizeLotCode(rl.lot_code)}||${rec.vintage_year}`;
-      if (!lotIndex.has(key)) lotIndex.set(key, []);
-      lotIndex.get(key).push(rec);
+      for (const code of this._expandLotCode(CONFIG.normalizeFieldLotCode(rl.lot_code))) {
+        const key = `${this._normalizeLotCode(code)}||${rec.vintage_year}`;
+        if (!lotIndex.has(key)) lotIndex.set(key, []);
+        lotIndex.get(key).push(rec);
+      }
     }
 
     const avgField = (recs, primary, fallback) => {
