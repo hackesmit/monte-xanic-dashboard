@@ -5,6 +5,7 @@ import { DataStore } from './dataLoader.js';
 import { DemoMode } from './demoMode.js';
 import { Charts } from './charts.js';
 import { Filters } from './filters.js';
+import { Identity } from './identity.js';
 import { Auth } from './auth.js';
 import { attachModalHygiene } from './modalHygiene.js';
 import { scoreFromMedicion } from './classification.js';
@@ -597,12 +598,17 @@ export const Mediciones = {
 
   _applyGlobalFilters(rows) {
     const s = Filters.state || {};
+    // Filters.state.vintages holds NUMBERS (Supabase vintage_year) and
+    // state.lots holds sampleIds — compare on the same types/keys, or any
+    // berry-view selection silently blanks the whole Mediciones view.
+    const lotCodes = s.lots?.size
+      ? new Set([...s.lots].map(id => Identity.extractLotCode(id)).filter(Boolean))
+      : null;
     return rows.filter(r => {
-      if (s.vintages?.size  && !s.vintages.has(String(r.vintage))) return false;
+      if (s.vintages?.size  && !s.vintages.has(Number(r.vintage))) return false;
       if (s.varieties?.size && !s.varieties.has(r.variety))        return false;
       if (s.origins?.size   && !s.origins.has(r.appellation))      return false;
-      // Lot filter is more permissive — match either lotCode or appellation prefix
-      if (s.lots?.size      && r.lotCode && !s.lots.has(r.lotCode)) return false;
+      if (lotCodes && r.lotCode && !lotCodes.has(r.lotCode)) return false;
       return true;
     });
   },

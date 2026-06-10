@@ -8,6 +8,7 @@
 
 import { Identity } from './identity.js';
 import { DataStore } from './dataLoader.js';
+import { DemoMode } from './demoMode.js';
 import { Auth } from './auth.js';
 import { App } from './app.js';
 import { PARSERS } from './upload/index.js';
@@ -61,6 +62,12 @@ export const UploadManager = {
       this._setStatus(statusEl, 'error', '✗ Sin permisos para subir datos.');
       return;
     }
+    if (DemoMode.isActive()) {
+      // Every other write path blocks demo mode; uploads write the REAL
+      // tables via /api/upload, so they must too.
+      this._setStatus(statusEl, 'error', '✗ Modo demo activo — desactívelo para subir datos reales.');
+      return;
+    }
     if (file.size > MAX_SIZE) {
       this._setStatus(statusEl, 'error', '✗ Archivo demasiado grande (máx 10 MB).');
       return;
@@ -97,6 +104,12 @@ export const UploadManager = {
 
   async confirmPendingUpload(statusEl) {
     if (!this._pendingUpload) return [];
+    if (DemoMode.isActive()) {
+      this._pendingUpload = null;
+      this._uploading = false;
+      this._setStatus(statusEl, 'error', '✗ Modo demo activo — desactívelo para subir datos reales.');
+      return [];
+    }
     const { targets, rejected } = this._pendingUpload;
     const results = [];
     for (const t of targets) {
@@ -109,8 +122,12 @@ export const UploadManager = {
     this._pendingUpload = null;
     this._uploading = false;
     try {
-      if (DataStore && DataStore.cacheData) DataStore.cacheData();
-      if (App && App.refreshAllViews) App.refreshAllViews();
+      // Pull the freshly upserted rows back from Supabase, then re-render.
+      // (The old code called the nonexistent App.refreshAllViews and re-cached
+      // the PRE-upload arrays, so new rows never appeared until a reload.)
+      await DataStore.loadFromSupabase();
+      await DataStore.loadMediciones();
+      if (App && App.refresh) App.refresh();
     } catch (_) { /* refresh is best-effort */ }
     return results;
   },
@@ -128,11 +145,9 @@ export const UploadManager = {
       const primary = keyCols[0];
       const keys = [...new Set(rows.map(r => r[primary]).filter(Boolean))];
       if (!keys.length) return rows.length;
-      const { data, error } = await DataStore.supabase
-        .from(table)
-        .select(keyCols.join(','))
-        .in(primary, keys);
-      if (error || !data) return rows.length;
+      // Supabase access lives in dataLoader (module boundary rule)
+      const data = await DataStore.fetchExistingKeys(table, keyCols, keys);
+      if (!data) return rows.length;
       const toKey = r => keyCols.map(c => r[c] ?? '').join('|');
       const existing = new Set(data.map(toKey));
       return rows.filter(r => !existing.has(toKey(r))).length;

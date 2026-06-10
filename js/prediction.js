@@ -62,9 +62,16 @@ export function weightedRegression(samples) {
 // mean slope (prior mean) and sample variance (prior variance, τ²).
 export function historicalSlopePrior(vintages) {
   const slopes = [];
-  for (const samples of vintages) {
-    if (!samples || samples.length === 0) continue;
-    const tMax = Math.max(...samples.map(s => s.t));
+  for (const rawSamples of vintages) {
+    const samples = (rawSamples || []).filter(s => Number.isFinite(s.y));
+    if (samples.length === 0) continue;
+    // Anchor the window at the max-y sample (per spec §5.3), not the last
+    // sample: vintages with a post-peak declining tail would otherwise fit
+    // the prior over the wrong window and bias the slope low.
+    let tMax = samples[0].t, yMax = samples[0].y;
+    for (const s of samples) {
+      if (s.y > yMax) { yMax = s.y; tMax = s.t; }
+    }
     const windowed = samples
       .filter(s => s.t >= tMax - 21 && s.t <= tMax)
       .map(s => ({ ...s, w: 1 }));
@@ -261,7 +268,11 @@ export function computeOne({
   let antFit = null, antPrior = { V: 0, tau2Hist: Infinity, betaHist: null },
       antComb = { betaPost: NaN, sigmaBeta2Post: NaN };
   if (target.antTarget != null) {
-    const antSamples = sorted.map(s => ({ t: s.tDays, y: s.ant, w: wOf(s) }));
+    // Drop samples without an anthocyanin reading (mirrors the pH path) —
+    // a single NaN otherwise poisons every regression sum.
+    const antSamples = sorted
+      .filter(s => Number.isFinite(s.ant))
+      .map(s => ({ t: s.tDays, y: s.ant, w: wOf(s) }));
     antFit = weightedRegression(antSamples);
     antPrior = historicalSlopePrior(
       historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.ant })))
@@ -363,12 +374,20 @@ export function computeOne({
   // (riesgo-ph, riesgo-sobremadurez): still useful to show "harvest by X".
   const isSoftWhiteAlert = isWhite
     && (reason === 'riesgo-ph' || reason === 'riesgo-sobremadurez');
+  // ETAs are measured from the LAST SAMPLE's t (tToday), so calendar dates
+  // must anchor there too — anchoring at actual `today` shifted every date
+  // late by however stale the latest sample was.
+  const lastSample = sorted[sorted.length - 1];
+  const lastSampleMs = lastSample.sampleDate instanceof Date
+    ? lastSample.sampleDate.getTime()
+    : Date.parse(lastSample.sampleDate);
+  const anchorMs = Number.isFinite(lastSampleMs) ? lastSampleMs : today.getTime();
   const recommendedDate = (reason && reason !== 'ya-en-ventana' && !isSoftWhiteAlert)
     ? null
     : (reason === 'ya-en-ventana' ? today
-       : new Date(today.getTime() + recommendedEtaDays * dayMs));
+       : new Date(anchorMs + recommendedEtaDays * dayMs));
   const brixWindowCloses = Number.isFinite(brixWindowClosesDays)
-    ? new Date(today.getTime() + brixWindowClosesDays * dayMs)
+    ? new Date(anchorMs + brixWindowClosesDays * dayMs)
     : null;
 
   return {

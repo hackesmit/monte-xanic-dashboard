@@ -9,10 +9,24 @@ const DEFAULTS = {
   maxRequests: 60             // per window
 };
 
+// Client IP for rate limiting. Trust only platform-set values: Vercel sets
+// x-real-ip, and appends the true client IP as the RIGHT-most entry of
+// x-forwarded-for. The left-most entry is attacker-supplied — keying on it
+// would give a fresh bucket per spoofed header, nullifying the limiter.
+export function clientIp(req) {
+  const real = req.headers['x-real-ip'];
+  if (real) return real;
+  const fwd = req.headers['x-forwarded-for'];
+  if (fwd) {
+    const parts = String(fwd).split(',');
+    return parts[parts.length - 1].trim() || 'unknown';
+  }
+  return 'unknown';
+}
+
 export function rateLimit(req, res, opts = {}) {
   const { windowMs, maxRequests } = { ...DEFAULTS, ...opts };
-  const fwd = req.headers['x-forwarded-for'];
-  const ip = req.headers['x-real-ip'] || (fwd ? fwd.split(',')[0].trim() : null) || 'unknown';
+  const ip = clientIp(req);
   const key = `${req.url}:${ip}`;
   const now = Date.now();
 

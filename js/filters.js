@@ -159,7 +159,7 @@ export const Filters = {
     const vintages = new Set();
     DataStore.wineRecepcion.forEach(d => { if (d.vintage) vintages.add(d.vintage); });
     DataStore.winePreferment.forEach(d => { if (d.vintage) vintages.add(d.vintage); });
-    [...vintages].sort().forEach(v => {
+    [...vintages].sort((a, b) => a - b).forEach(v => {
       const chip = document.createElement('button');
       chip.className = 'chip';
       chip.textContent = v;
@@ -428,8 +428,11 @@ export const Filters = {
   // Re-sync chip active classes with current filter state on view return
   syncChipUI() {
     const syncSet = (containerId, stateSet) => {
+      // dataset.value is always a string but vintage Sets hold numbers —
+      // compare both sides as strings or active chips silently desync.
+      const asStrings = new Set([...stateSet].map(String));
       document.querySelectorAll(`#${containerId} .chip`).forEach(c => {
-        c.classList.toggle('active', stateSet.has(c.dataset.value));
+        c.classList.toggle('active', asStrings.has(c.dataset.value));
       });
     };
     syncSet('vintage-chips', this.state.vintages);

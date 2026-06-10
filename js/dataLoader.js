@@ -163,13 +163,28 @@ export const DataStore = {
     try {
       const samples = await this._fetchAll('wine_samples', 'sample_date');
 
-      this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries' || r.sample_type === 'Berry').map(r => this._rowToBerry(r)).filter(Boolean);
-      this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries' && r.sample_type !== 'Berry').map(r => this._rowToWine(r)).filter(Boolean);
-
       // Fetch prefermentativos for winePreferment supplement
       let prefs = [], pErr = null;
       try { prefs = await this._fetchAll('prefermentativos', 'measurement_date'); }
       catch (e) { pErr = e; }
+
+      // Fetch tank_receptions + reception_lots for the quality-classification
+      // engine's av/ag/polyphenols inputs. Failure is non-fatal — the engine's
+      // partial-data guard handles missing params gracefully.
+      let receptions = [], receptionLots = [];
+      try {
+        receptions = await this._fetchAll('tank_receptions', 'reception_date');
+      } catch (_) { receptions = []; }
+      try {
+        receptionLots = await this._fetchAll('reception_lots', 'reception_id');
+      } catch (_) { receptionLots = []; }
+
+      // Demo mode may have been enabled while these fetches were in flight —
+      // discard the result rather than clobbering the demo overlay.
+      if (this._demoActive) return true;
+
+      this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries' || r.sample_type === 'Berry').map(r => this._rowToBerry(r)).filter(Boolean);
+      this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries' && r.sample_type !== 'Berry').map(r => this._rowToWine(r)).filter(Boolean);
 
       if (!pErr && prefs && prefs.length) {
         const prefWine = prefs.map(r => this._rowToPrefWine(r)).filter(Boolean);
@@ -180,15 +195,8 @@ export const DataStore = {
         this.winePreferment = this.wineRecepcion.filter(r => r.sampleType === 'Must');
       }
 
-      // Fetch tank_receptions + reception_lots for the quality-classification
-      // engine's av/ag/polyphenols inputs. Failure is non-fatal — the engine's
-      // partial-data guard handles missing params gracefully.
-      try {
-        this.receptionData = await this._fetchAll('tank_receptions', 'reception_date');
-      } catch (_) { this.receptionData = []; }
-      try {
-        this.receptionLotsData = await this._fetchAll('reception_lots', 'reception_id');
-      } catch (_) { this.receptionLotsData = []; }
+      this.receptionData = receptions;
+      this.receptionLotsData = receptionLots;
 
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine  = this.wineRecepcion.length > 0;
@@ -208,9 +216,14 @@ export const DataStore = {
     if (!this.supabase) return;
     try {
       const rows = await this._fetchAll('mediciones_tecnicas', 'medicion_date');
+      if (this._demoActive) return;  // demo enabled mid-fetch — keep overlay
       this.medicionesData = (rows || []).map(r => this._rowToMedicion(r));
       // Re-run join so existing berryData picks up the new medicion rows.
       this.joinBerryWithMediciones();
+      // Re-tag tonnage weights too: loadMediciones races loadFromSupabase at
+      // boot, and if mediciones resolve last the _enrichData pass has already
+      // run with an empty weight map.
+      this._tagSampleWeights();
     } catch (e) {
       console.error('[DataStore] loadMediciones failed:', e);
     }
@@ -220,6 +233,7 @@ export const DataStore = {
     if (!this.supabase) { this.harvestTargetOverrides = []; return; }
     try {
       const rows = await this._fetchAll('harvest_target_overrides', 'id');
+      if (this._demoActive) return;  // demo enabled mid-fetch — keep overlay
       this.harvestTargetOverrides = rows || [];
     } catch (e) {
       console.error('[DataStore] loadHarvestTargetOverrides failed:', e);
@@ -504,10 +518,27 @@ export const DataStore = {
   },
 
   // Get unique sorted values from berry data
+  // Read-only existence probe for the upload preview: returns the key
+  // columns of rows whose primary key column matches one of `primaryKeys`,
+  // or null on error. Keeps Supabase access inside dataLoader.
+  async fetchExistingKeys(table, keyCols, primaryKeys) {
+    if (!this.supabase) return null;
+    const { data, error } = await this.supabase
+      .from(table)
+      .select(keyCols.join(','))
+      .in(keyCols[0], primaryKeys);
+    return (error || !data) ? null : data;
+  },
+
   getUniqueValues(field) {
     const vals = new Set();
     this.berryData.forEach(d => { if (d[field]) vals.add(d[field]); });
-    return [...vals].sort();
+    // Numeric fields (vintage) sort numerically; default sort() would
+    // compare them lexicographically.
+    return [...vals].sort((a, b) =>
+      (typeof a === 'number' && typeof b === 'number')
+        ? a - b
+        : String(a).localeCompare(String(b)));
   },
 
   // Get filtered berry data
@@ -626,20 +657,27 @@ export const DataStore = {
   // to 1 via aggregations.weightedMean's fallbackWeight option).
   // Idempotent — safe to call multiple times. See Wave 1 #1 dispatch.
   _tagSampleWeights() {
+    // Key on (lotCode, vintage) like joinBerryWithMediciones — keying on
+    // lotCode alone let one vintage's tons overwrite every other vintage's
+    // weight for the same lot.
     const weightByLot = new Map();
     for (const m of (this.medicionesData || [])) {
-      if (m.lotCode && typeof m.tons === 'number' && m.tons > 0) {
-        weightByLot.set(m.lotCode, m.tons);
+      if (m.lotCode && m.vintage != null && typeof m.tons === 'number' && m.tons > 0) {
+        weightByLot.set(`${m.lotCode}||${m.vintage}`, m.tons);
       }
     }
     for (const b of (this.berryData || [])) {
-      b._weight = b.lotCode ? (weightByLot.get(b.lotCode) ?? null) : null;
+      b._weight = (b.lotCode && b.vintage != null)
+        ? (weightByLot.get(`${b.lotCode}||${b.vintage}`) ?? null)
+        : null;
     }
     for (const w of (this.wineRecepcion || [])) {
       // Wine rows key on codigoBodega; the lot prefix matches mediciones lotCode
       // when stripped of vintage-prefix + suffix. Reuse the existing normalizer.
       const lot = w.lotCode || (w.codigoBodega ? this._normalizeLotCode(w.codigoBodega) : null);
-      w._weight = lot ? (weightByLot.get(lot) ?? null) : null;
+      w._weight = (lot && w.vintage != null)
+        ? (weightByLot.get(`${lot}||${w.vintage}`) ?? null)
+        : null;
     }
   },
 

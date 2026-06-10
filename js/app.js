@@ -74,7 +74,12 @@ export const App = {
       // 2 — Try Supabase (first visit or stale cache)
       await DataStore.initSupabase();
       const supaLoaded = await DataStore.loadFromSupabase();
-      DataStore.loadMediciones();
+      // Re-render when mediciones land (same as the cached path) — otherwise
+      // first-visit users see "Sin clasificar" on the Calidad map until they
+      // happen to trigger a refresh.
+      DataStore.loadMediciones().then(() => {
+        if (this.initialized) this.refresh();
+      });
       DataStore.loadHarvestTargetOverrides();
       this._updateDbStatus();
       if (supaLoaded) {
@@ -259,8 +264,8 @@ export const App = {
     Filters.init();
     Filters.buildMapVintageOptions();
     Filters.initMapVintage();
+    // setView already ends with refresh() — no second full render needed
     this.setView('berry');
-    this.refresh();
 
     // Load weather in background after dashboard is visible
     WeatherStore.load().then(hasCache => {
@@ -646,13 +651,16 @@ export const App = {
     if (!container) return;
 
     const mapping = CONFIG.berryToWine;
+    // Key berries by (lotCode, vintage) and pair each wine with the berry
+    // sample of the vintage encoded in its bodega code — same-lot rows from
+    // another vintage would otherwise corrupt the extraction %.
     const berryByLot = {};
     const filteredBerry = Filters.getFiltered();
     filteredBerry.forEach(d => {
       if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
-      const lotCode = d.lotCode;
-      if (!berryByLot[lotCode] || (d.daysPostCrush || 0) > (berryByLot[lotCode].daysPostCrush || 0)) {
-        berryByLot[lotCode] = d;
+      const key = `${d.lotCode}||${d.vintage}`;
+      if (!berryByLot[key] || (d.daysPostCrush || 0) > (berryByLot[key].daysPostCrush || 0)) {
+        berryByLot[key] = d;
       }
     });
 
@@ -668,9 +676,9 @@ export const App = {
 
     const rows = [];
     Object.entries(mapping).forEach(([berryLot, wineLots]) => {
-      const berry = berryByLot[berryLot];
-      if (!berry) return;
       wineLots.forEach(wl => {
+        const berry = berryByLot[`${berryLot}||${Charts._wineCodeVintage(wl)}`];
+        if (!berry) return;
         const wine = wineByCodigo[wl];
         const berryTANT = berry.tANT;
         const wineTANT = wine?.antoWX;
@@ -894,10 +902,19 @@ export const App = {
       Filters.state.origins?.clear?.();
       Filters.state.lots?.clear?.();
     }
+    // Wine-view filters reference the other dataset too
+    if (Filters.wineState) {
+      Filters.wineState.vintages?.clear?.();
+      Filters.wineState.varieties?.clear?.();
+      Filters.wineState.origins?.clear?.();
+    }
     Filters.buildVintageChips?.();
     Filters.buildVarietyChips?.();
     Filters.buildOriginChips?.();
     Filters.buildLotChips?.();
+    Filters.buildWineVintageChips?.();
+    Filters.buildWineVarietyChips?.();
+    Filters.buildWineOriginChips?.();
     Filters.buildMapVintageOptions?.();
     Filters.initMapVintage?.();
     this.refresh();

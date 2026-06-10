@@ -13,6 +13,14 @@ export const Explorer = {
 
   // ── Helpers ────────────────────────────────────────────────────
 
+  // HTML-escape DB-derived strings before innerHTML interpolation
+  _esc(val) {
+    if (val == null) return '';
+    return String(val)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  },
+
   _slotById(id) { return this.slots.find(s => s.id === id); },
   _slotIndexById(id) { return this.slots.findIndex(s => s.id === id); },
 
@@ -274,7 +282,8 @@ export const Explorer = {
     if (!listEl) return;
     listEl.innerHTML = lots.map(lot => {
       const checked = slot.selectedLots.includes(lot) ? ' checked' : '';
-      return `<label class="lot-picker-item" data-lot="${lot}"><input type="checkbox" class="lot-checkbox" data-slot="${slot.id}" data-lot="${lot}"${checked}><span>${lot}</span></label>`;
+      const safe = this._esc(lot);
+      return `<label class="lot-picker-item" data-lot="${safe}"><input type="checkbox" class="lot-checkbox" data-slot="${slot.id}" data-lot="${safe}"${checked}><span>${safe}</span></label>`;
     }).join('');
     this._updateLotCount(slot);
   },
