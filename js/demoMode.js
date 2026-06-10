@@ -25,6 +25,7 @@ export const DemoMode = {
       med:   DataStore.medicionesData,
       recs:  DataStore.receptionData,
       recL:  DataStore.receptionLotsData,
+      overrides: DataStore.harvestTargetOverrides,
       loaded: { ...DataStore.loaded },
       // Functions we'll monkey-patch so demo stays sealed off from Supabase
       cacheData:        DataStore.cacheData,
@@ -40,12 +41,17 @@ export const DemoMode = {
     DataStore.medicionesData    = demo.mediciones;
     DataStore.receptionData     = demo.receptions;
     DataStore.receptionLotsData = demo.receptionLots;
+    // Real harvest-target overrides would re-aim the calibrated scenarios
+    DataStore.harvestTargetOverrides = [];
     DataStore.loaded            = { berry: true, wine: true };
 
     DataStore.cacheData        = () => {};
     DataStore.loadFromSupabase = async () => true;
     DataStore.loadMediciones   = async () => {};
     DataStore.loadHarvestTargetOverrides = async () => {};
+    // Loads already in flight when demo was enabled check this flag before
+    // assigning their results (the monkey-patches only stop FUTURE calls).
+    DataStore._demoActive = true;
 
     // Rebuild the joins so berry rows see their matching medicion + reception.
     DataStore._enrichData();
@@ -63,11 +69,13 @@ export const DemoMode = {
     DataStore.medicionesData    = s.med;
     DataStore.receptionData     = s.recs;
     DataStore.receptionLotsData = s.recL;
+    DataStore.harvestTargetOverrides = s.overrides;
     DataStore.loaded            = s.loaded;
     DataStore.cacheData        = s.cacheData;
     DataStore.loadFromSupabase = s.loadFromSupabase;
     DataStore.loadMediciones   = s.loadMediciones;
     DataStore.loadHarvestTargetOverrides = s.loadHarvestTargetOverrides;
+    DataStore._demoActive = false;
     DataStore._enrichData();
 
     STATE.active = false;

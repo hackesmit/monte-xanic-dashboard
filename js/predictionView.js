@@ -181,9 +181,15 @@ export const PredictionView = {
 
     // After insertion, render the canvases. Defer to allow layout.
     if (!isEmpty) {
+      // Deterministic canvas ids so Charts.instances replaces (and destroys)
+      // the previous render's chart instead of leaking one orphan instance
+      // per re-render under a random key.
+      const slug = `${r.variety}-${r.valley || r.appellation}`
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-');
       requestAnimationFrame(() => {
         const brixCanvas = card.querySelector('canvas[data-axis="brix"]');
         if (brixCanvas) {
+          brixCanvas.id = `pred-mini-brix-${slug}`;
           Charts.renderPredictionMini(brixCanvas, {
             prediction: p, target: r.target, today,
             current: rebuildCurrent(r),
@@ -191,6 +197,7 @@ export const PredictionView = {
         }
         const antCanvas = card.querySelector('canvas[data-axis="ant"]');
         if (antCanvas) {
+          antCanvas.id = `pred-mini-ant-${slug}`;
           Charts.renderPredictionMini(antCanvas, {
             prediction: p, target: r.target, today,
             current: rebuildCurrent(r),
@@ -198,6 +205,7 @@ export const PredictionView = {
         }
         const phCanvas = card.querySelector('canvas[data-axis="ph"]');
         if (phCanvas) {
+          phCanvas.id = `pred-mini-ph-${slug}`;
           Charts.renderPredictionMini(phCanvas, {
             prediction: p, target: r.target, today,
             current: rebuildCurrent(r),
@@ -366,9 +374,11 @@ export const PredictionView = {
     }
     if (secondaryCanvasContainer) {
       secondaryCanvasContainer.innerHTML =
-        `<canvas data-detail-axis="${isRed ? 'ant' : 'ph'}"></canvas>`;
+        `<canvas data-detail-axis="${isRed ? 'ant' : 'ph'}" id="pred-detail-secondary"></canvas>`;
     }
     const secondaryCanvas = secondaryBlock?.querySelector('canvas');
+    // Stable ids → the onDismiss cleanup and Charts.instances replacement work
+    if (brixCanvas && !brixCanvas.id) brixCanvas.id = 'pred-detail-brix';
 
     modal.showModal();
     attachModalHygiene(modal, {
