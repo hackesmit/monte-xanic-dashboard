@@ -525,7 +525,11 @@ export const Mediciones = {
               : grade === 'B'  ? 'b'
               :                  'c';
     const num = score.score36 != null ? score.score36.toFixed(0) : '—';
-    return `<span class="pred-badge pred-badge-${cls}">${grade}<small>${num}</small></span>`;
+    // Partial grade (reception chemistry still missing) → asterisk + tooltip
+    const star = score.partial
+      ? `<sup title="Clasificación parcial — faltan datos de recepción (av/ag/polifenoles)">*</sup>`
+      : '';
+    return `<span class="pred-badge pred-badge-${cls}">${grade}${star}<small>${num}</small></span>`;
   },
 
   _madurezShort(v) {

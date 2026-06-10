@@ -128,9 +128,15 @@ export function scoreLot(lot) {
   else { raw += visualPts * visualImp; impSum += visualImp; buckets.visual = visualPts; }
 
   // Partial-data guard
-  if (impSum < 60) {
-    return { grade: null, score36: null, rubricId: rubric.id, missing, reason: 'Datos insuficientes' };
+  // Partial-data guard: the core berry chemistry (brix + pH + ta, Imp 25)
+  // must be present. Heavier lab params (av/ag/polifenoles/antocianinas,
+  // from the tank reception) may be missing — the grade is then flagged
+  // `partial` so the UI can warn it will refine when that chemistry lands.
+  const hasCore = 'brix' in buckets && 'pH' in buckets && 'ta' in buckets;
+  if (!hasCore || impSum < 25) {
+    return { grade: null, score36: null, rubricId: rubric.id, missing, partial: false, reason: 'Datos insuficientes' };
   }
+  const partial = impSum < 60;
 
   const base36 = raw / (3 * impSum) * 36;
 
@@ -151,6 +157,7 @@ export function scoreLot(lot) {
     score36: Math.round(score36 * 100) / 100,
     rubricId: rubric.id,
     missing,
+    partial,
     buckets,
     madurezAdj,
     reason: null
