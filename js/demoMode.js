@@ -266,12 +266,19 @@ function demoRubricFor(variety, appellation) {
 // The divergent late-season anthocyanin slopes also keep the predictor's
 // historicalSlopePrior variance (τ²) high, so the Bayesian prior stays weak
 // and the current-season scenario calibration (scenarioParams) is preserved.
+// brixC / phC set each year's riseShape exponent: the cool year saturates
+// early (flat late-season slope), the warm year keeps climbing into harvest.
+// Like antCenter, this divergence keeps the slope prior's between-vintage
+// variance honest — two generator-identical years would make τ² ≈ 0 and let
+// the prior crush the current-season fit.
 function yearProfiles(currentYear) {
   return [
     { vintage: currentYear - 2, idBase: 0,    enveroMMDD: '08-02', stepDays: 8,
-      gradeCum: [0.12, 0.42, 0.80], antFactor: 0.85, antCenter: 0.62, tonsFactor: 0.85 },
+      gradeCum: [0.12, 0.42, 0.80], antFactor: 0.85, antCenter: 0.62,
+      brixC: 3.0, phC: 2.1, tonsFactor: 0.85 },
     { vintage: currentYear - 1, idBase: 3000, enveroMMDD: '07-15', stepDays: 7,
-      gradeCum: [0.30, 0.70, 0.95], antFactor: 1.10, antCenter: 0.38, tonsFactor: 1.05 },
+      gradeCum: [0.30, 0.70, 0.95], antFactor: 1.10, antCenter: 0.38,
+      brixC: 1.3, phC: 1.4, tonsFactor: 1.05 },
   ];
 }
 
@@ -350,8 +357,12 @@ function scenarioParams(scenario, target, r) {
       };
     case 'eta-media':
       return {
-        yBrix: brixLower - (5 + r() * 2), bBrix: 0.30,
-        yAnt:  antTarget != null ? antTarget * 0.65 : null, bAnt: 18,
+        // Deficit 3.6–4.5 Bx at 0.25 Bx/día (≈17–22 días). The old 5–7 Bx
+        // deficit back-cast below green-fruit chemistry over the sampled
+        // window, which is physiologically impossible and clashed with the
+        // early-season floors.
+        yBrix: brixLower - (3.6 + r() * 0.9), bBrix: 0.25,
+        yAnt:  antTarget != null ? antTarget * 0.75 : null, bAnt: 18,
         yPh:   phTarget  != null ? phTarget  - 0.20 : null, bPh: 0.008,
       };
     case 'no-alcanzar-A':
@@ -465,14 +476,30 @@ function generateCurrentSeason(currentYear, today, r) {
   const wine = [];
   let receptionId = 1;
   const groups = buildCurrentSeasonGroups();
-  const scenarios = assignScenarios(groups.length, r);
+
+  // Assign ONE scenario per (variety, appellation) prediction group, not per
+  // section: Prediction.computeAll pools every section sharing variety +
+  // appellation into a single regression, so per-section scenarios mixed
+  // lines up to ~5 Bx apart in one fit — the inflated residual variance let
+  // the historical slope prior dominate the posterior and dragged every ETA
+  // out by weeks. Sections of the same group share scenario params (adjacent
+  // same-variety blocks ripening together is also closer to a real week).
+  const keyOf = g => `${g.variety}|${g.appellation}`;
+  const keys = [];
+  const targetByKey = new Map();
+  for (const g of groups) {
+    const k = keyOf(g);
+    if (!targetByKey.has(k)) { keys.push(k); targetByKey.set(k, g.target); }
+  }
+  const scenarios = assignScenarios(keys.length, r);
 
   // Realign: ANT-scenarios should land on red groups; pH-scenarios on white groups.
   // The base shuffle is uniform across all groups, so without this swap pass the
   // PH/ANT reassignment guards below silently demote pH/ANT scenarios to
   // 'eta-media' whenever the RNG happens to place them on the "wrong" group type.
-  const isRed   = i => groups[i].target.antTarget != null;
-  const isWhite = i => groups[i].target.phTarget != null && groups[i].target.antTarget == null;
+  const isRed   = i => targetByKey.get(keys[i]).antTarget != null;
+  const isWhite = i => targetByKey.get(keys[i]).phTarget != null
+                    && targetByKey.get(keys[i]).antTarget == null;
   for (let i = 0; i < scenarios.length; i++) {
     const s = scenarios[i];
     if (ANT_DEPENDENT_SCENARIOS.has(s) && !isRed(i)) {
@@ -496,43 +523,65 @@ function generateCurrentSeason(currentYear, today, r) {
     }
   }
 
-  // 7 samples every 6 days — nCurrent ≥ 6 keeps the confidence label's
-  // freshness score at 1.0 now that historical vintages make V=2.
-  const offsets = [-36, -30, -24, -18, -12, -6, 0];  // days from today
+  // Resolve scenario params once per group key; the white/red fallbacks
+  // mirror the old per-section guards.
+  const paramsByKey = new Map();
+  for (let i = 0; i < keys.length; i++) {
+    const target = targetByKey.get(keys[i]);
+    let scenario = scenarios[i];
+    if (target.antTarget == null && ANT_DEPENDENT_SCENARIOS.has(scenario)) {
+      scenario = 'eta-media';
+    }
+    if (target.phTarget == null && PH_DEPENDENT_SCENARIOS.has(scenario)) {
+      scenario = 'eta-media';
+    }
+    paramsByKey.set(keys[i], scenarioParams(scenario, target, r));
+  }
+
+  // 7 samples every 4 days over a 24-day window — nCurrent ≥ 6 keeps the
+  // confidence label's freshness score at 1.0 now that historical vintages
+  // make V=2, and the short window keeps the scenario's linear segment
+  // dominant in the regression (a longer back-cast at scenario slopes would
+  // fall below green-fruit chemistry and force the physiological floors to
+  // flatten the fit).
+  const offsets = [-24, -20, -16, -12, -8, -4, 0];  // days from today
   const dayMs = 86_400_000;
 
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
-    let scenario = scenarios[gi];
-    // White (no antTarget) — reassign ANT-dependent scenarios
-    if (g.target.antTarget == null && ANT_DEPENDENT_SCENARIOS.has(scenario)) {
-      scenario = 'eta-media';
-    }
-    // Red (no phTarget) — reassign pH-dependent scenarios
-    if (g.target.phTarget == null && PH_DEPENDENT_SCENARIOS.has(scenario)) {
-      scenario = 'eta-media';
-    }
-    const p = scenarioParams(scenario, g.target, r);
+    const p = paramsByKey.get(keyOf(g));
     if (!p) continue;
     const yy = String(currentYear).slice(2);
     const isWhite = g.target.phTarget != null && g.target.antTarget == null;
+    // Per-lot green-fruit baselines. Early samples are floored at these
+    // physiological values so the back-cast scenario lines can't drop below
+    // envero chemistry — the current vintage keeps the same flat-start →
+    // ripening-ramp shape as the historical sigmoids. The floors only bind
+    // on the oldest samples (outside the 14-day recency-boost window), so
+    // the weighted regression stays on each scenario's calibrated line.
+    const baseBrix = 14.2 + r() * 1.2;
+    const baseAnt  = 100 + r() * 60;
+    const basePh   = 2.9 + r() * 0.1;
     for (let i = 0; i < offsets.length; i++) {
       const t = offsets[i];
       const seq = i + 1;
+      const dpc = 38 + t;
       const dateObj = new Date(today.getTime() + t * dayMs);
       const sampleDate = dateObj.toISOString().slice(0, 10);
-      const brix = p.yBrix + p.bBrix * t + (r() - 0.5) * 0.2;
+      const brix = Math.max(p.yBrix + p.bBrix * t, baseBrix + 0.02 * dpc)
+        + (r() - 0.5) * 0.4;
       // Noise is ±12 (was ±30): with the historical prior now active (V=2),
       // larger noise widens σβ² enough for the prior's positive mean slope to
       // flip the 'antocianinas-estancadas' posterior above zero.
       const ant  = p.yAnt != null
-        ? Math.max(0, p.yAnt + p.bAnt * t + (r() - 0.5) * 24)
+        ? Math.max(p.yAnt + p.bAnt * t, baseAnt + 3.5 * dpc) + (r() - 0.5) * 24
         : null;
       // Red pH rises gently through the season (cosmetic only — the predictor
       // ignores pH when antTarget is set); whites keep scenario calibration.
       const pH = isWhite && p.yPh != null
-        ? Math.max(2.5, Math.min(4.5, p.yPh + p.bPh * t + (r() - 0.5) * 0.02))
-        : 3.55 + t * 0.006 + (r() - 0.5) * 0.08;
+        ? Math.max(2.5, Math.min(4.5,
+            Math.max(p.yPh + p.bPh * t, basePh + 0.004 * dpc) + (r() - 0.5) * 0.02))
+        : 3.6 + t * 0.011 + (r() - 0.5) * 0.08;
       berry.push({
         sampleId: `${yy}${g.lotCode}-c${seq}`,
         sampleDate,
@@ -543,12 +592,13 @@ function generateCurrentSeason(currentYear, today, r) {
         lotCode: g.lotCode,
         brix,
         pH,
-        // TA decays toward ~5.2 g/L at harvest (t ≤ 0 → earlier = higher)
-        ta: 5.2 - t * 0.09 + (r() - 0.5) * 0.6,
+        // TA decays from ~9.2 g/L post-envero toward ~5.1 at harvest
+        ta: 5.1 - t * 0.115 + (r() - 0.5) * 0.6,
         tANT: ant != null ? Math.round(ant) : null,
-        berryFW: 1.0 + (r() - 0.5) * 0.2,
+        // Berry weight swells through the season like the historical rise
+        berryFW: 1.02 + t * 0.008 + (r() - 0.5) * 0.06,
         anthocyanins: ant != null ? Math.round(ant) : null,
-        daysPostCrush: 38 + t,
+        daysPostCrush: dpc,
         sampleSeq: seq,
         grapeType: null,
       });
@@ -748,8 +798,8 @@ function generateHistoricalSeason(profile, r) {
         appellation,
         sampleType: 'Berries',
         lotCode,
-        brix:    baseBrix + (vals.brix - baseBrix) * riseShape(k, 2.3) + (r() - 0.5) * 0.5,
-        pH:      basePH   + (vals.pH   - basePH)   * riseShape(k, 1.7) + (r() - 0.5) * 0.05,
+        brix:    baseBrix + (vals.brix - baseBrix) * riseShape(k, profile.brixC) + (r() - 0.5) * 0.5,
+        pH:      basePH   + (vals.pH   - basePH)   * riseShape(k, profile.phC) + (r() - 0.5) * 0.05,
         ta:      baseTa   + (vals.ta   - baseTa)   * riseShape(k, 2.0) + (r() - 0.5) * 0.4,
         tANT:    Math.round(baseTant + (tantFinal - baseTant) * antK + (r() - 0.5) * 50),
         berryFW: baseFW   + (vals.berryFW - baseFW) * riseShape(k, 2.0) + (r() - 0.5) * 0.04,
