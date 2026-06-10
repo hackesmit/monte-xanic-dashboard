@@ -210,6 +210,7 @@ export const CONFIG = {
     'VA':'Viña Alta (VON)','ON':'Ojos Negros (VON)','OLE':'Olé (VDG)',
     'DUB':'Dubacano (SV)','LLC':'Llano Colorado (SV)',
     'DA':'Dominio de las Abejas (VON)','DLA':'Dominio de las Abejas (VON)',
+    'DOMINIO':'Dominio de las Abejas (VON)',
     '7L':'Siete Leguas (VDG)','KMP':'Kompali (VON)','R14':'Rancho 14 (VDG)',
     'SG':'San Gerónimo','UC':'Dominio de las Abejas (VON)'
   },

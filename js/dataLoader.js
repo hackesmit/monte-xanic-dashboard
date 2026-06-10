@@ -109,6 +109,16 @@ export const DataStore = {
     return obj;
   },
 
+  _medicionAppellation(row) {
+    const abbr = row.supplier
+      ? (CONFIG.originAbbr[String(row.supplier).trim().toUpperCase()] || row.supplier)
+      : null;
+    const raw = row.appellation || abbr;
+    if (raw) return CONFIG.normalizeAppellation(raw, row.lot_code);
+    const lot = CONFIG.normalizeFieldLotCode(row.lot_code);
+    return lot ? CONFIG._resolveRanchFromCode(lot) : null;
+  },
+
   _rowToMedicion(row) {
     return {
       id: row.id,
@@ -116,7 +126,10 @@ export const DataStore = {
       date: row.medicion_date,
       vintage: row.vintage_year,
       variety: CONFIG.normalizeVariety(row.variety),
-      appellation: CONFIG.normalizeAppellation(row.appellation, row.lot_code),
+      // Origin: the pre-recepción file carries it as 'Proveedor' → supplier
+      // (ranch abbreviation like KMP/VDG); fall back to resolving the ranch
+      // from the lot code so older rows display an origin too.
+      appellation: DataStore._medicionAppellation(row),
       // Spreadsheet lot dialect ('TEKMP-S1') → berry dialect ('KTE-S1') so
       // the classification join can match. Covers rows uploaded before the
       // parser normalized at ingestion.
@@ -124,7 +137,10 @@ export const DataStore = {
       tons: row.tons_received ? parseFloat(row.tons_received) : null,
       berryCount: row.berry_count_sample,
       berryWeight: row.berry_avg_weight_g ? parseFloat(row.berry_avg_weight_g) : null,
-      berryDiameter: row.berry_diameter_mm ? parseFloat(row.berry_diameter_mm) : null,
+      // The file reports berry LENGTH in cm ('Longitud promedio por baya');
+      // convert to mm when no direct diameter column is present.
+      berryDiameter: row.berry_diameter_mm != null ? parseFloat(row.berry_diameter_mm)
+        : (row.berry_length_avg_cm != null ? Math.round(parseFloat(row.berry_length_avg_cm) * 100) / 10 : null),
       healthGrade: row.health_grade,
       healthMadura: row.health_madura || 0,
       healthInmadura: row.health_inmadura || 0,

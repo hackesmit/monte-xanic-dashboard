@@ -313,10 +313,27 @@ export const MapStore = {
     const breakdown = lots.map(l => `
       <li>
         <span class="grade-chip ${this._gradeCssClass(l.grade)}">${this._esc(l.grade)}</span>
-        ${this._esc(l.lotCode || '—')} — ${l.score36?.toFixed(1) ?? '—'}
+        ${this._esc(l.lotCode || '—')}${l.partial ? '*' : ''} — ${l.score36?.toFixed(1) ?? '—'}
         ${l.percentile != null ? ` · P${l.percentile}` : ''}
       </li>
     `).join('');
+
+    // Partial-data warning: list the params still missing across the
+    // section's lots so the user knows the grade will refine.
+    const PARAM_ES = {
+      av: 'AV', ag: 'AG', polyphenols: 'polifenoles',
+      anthocyanins: 'antocianinas', berryFW: 'peso baya',
+      sanitary_pct: 'conteo sanitario', visual: 'calidad visual',
+    };
+    const missingSet = new Set();
+    for (const l of lots) {
+      if (l.partial) (l.missing || []).forEach(f => missingSet.add(PARAM_ES[f] || f));
+    }
+    const partialWarn = missingSet.size
+      ? `<div class="detail-grade-partial" style="font-size:10px;color:#C4A060;margin-top:4px">
+           ⚠ Clasificación parcial — faltan: ${this._esc([...missingSet].join(', '))}
+         </div>`
+      : '';
 
     return `
       <div class="detail-grade-row">
@@ -326,6 +343,7 @@ export const MapStore = {
           <span class="detail-grade-score">(${data.score36.toFixed(1)} / 36)</span>
           ${pctAvg != null ? `<span class="detail-grade-pct">Percentil ${pctAvg}</span>` : ''}
         </div>
+        ${partialWarn}
         ${lots.length ? `<details class="detail-grade-breakdown">
           <summary>Ver desglose por lote</summary>
           <ul>${breakdown}</ul>
