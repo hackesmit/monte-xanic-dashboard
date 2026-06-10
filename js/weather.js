@@ -48,6 +48,14 @@ export const WeatherStore = {
 
   _isSyncing: false,
 
+  // "Today" as a calendar date in the vineyards' timezone. All meteorology
+  // rows are stored as America/Tijuana local dates (Open-Meteo is queried
+  // with that timezone), so comparing them against the UTC date would flip
+  // to "tomorrow" from late afternoon local time onward.
+  todayLocal() {
+    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Tijuana' });
+  },
+
   async sync(vintages, dateRangeFn) {
     if (!DataStore.supabase || this._isSyncing) return;
     this._isSyncing = true;
@@ -55,7 +63,7 @@ export const WeatherStore = {
   },
 
   async _syncInner(vintages, dateRangeFn) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.todayLocal();
     const coords = CONFIG.valleyCoordinates || { VDG: { lat: 32.08, lon: -116.62 } };
     const rangeFn = dateRangeFn || (year => ({
       start: `${year}-07-01`,
@@ -250,7 +258,7 @@ export const WeatherStore = {
   forecastEligible(timeframe, rangeEnd) {
     if (timeframe === '30d') return false;
     if (!rangeEnd) return false;
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.todayLocal();
     return rangeEnd >= today;
   },
 
@@ -258,7 +266,7 @@ export const WeatherStore = {
   // up to min(rangeEnd, forecast horizon end). Never overlap observed data.
   forecastWithinRange(forecastRows, lastObservedDate, rangeEnd) {
     if (!Array.isArray(forecastRows)) return [];
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.todayLocal();
     const minDate = lastObservedDate && lastObservedDate >= today ? lastObservedDate : today;
     return forecastRows.filter(r => r.date > minDate && r.date <= rangeEnd);
   },
@@ -404,13 +412,13 @@ export const WeatherStore = {
   // ── Date range helpers ─────────────────────────────────────────
 
   getDateRange(vintage, timeframe, customRange) {
-    const today = new Date().toISOString().split('T')[0];
+    const today = this.todayLocal();
     switch (timeframe) {
       case 'year':
         return { start: `${vintage}-01-01`, end: `${vintage}-12-31` <= today ? `${vintage}-12-31` : today };
       case '30d': {
         const d = new Date(); d.setDate(d.getDate() - 29);
-        return { start: d.toISOString().split('T')[0], end: today };
+        return { start: d.toLocaleDateString('en-CA', { timeZone: 'America/Tijuana' }), end: today };
       }
       case 'custom':
         return (customRange && customRange.start && customRange.end)
@@ -455,7 +463,7 @@ export const WeatherStore = {
 
   getVintagesFromData() {
     const years = new Set(DataStore.berryData.map(d => d.vintage).filter(Boolean));
-    return [...years].map(Number).sort();
+    return [...years].map(Number).sort((a, b) => a - b);
   },
 
   _toISO(dateStr) {

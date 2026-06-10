@@ -34,4 +34,5 @@ export const MIGRATIONS = [
   'migration_row_audit_columns',
   'migration_harvest_target_overrides',
   'migration_harvest_target_overrides_ph',
+  'migration_rls_lockdown',
 ];

@@ -681,17 +681,26 @@ export const Charts = {
     });
   },
 
+  // Vintage encoded in a bodega code's 2-digit prefix ('25CAVDG-1' → 2025);
+  // null when the code has no numeric prefix.
+  _wineCodeVintage(code) {
+    const m = /^(\d{2})/.exec(String(code || ''));
+    return m ? 2000 + Number(m[1]) : null;
+  },
+
   // Extraction comparison: berry tANT vs wine tANT
   // Shared helper: build berry↔wine extraction pairs from berryToWine mapping
   _buildExtractionPairs(berryData, wineData) {
     const pairs = [];
     const mapping = CONFIG.berryToWine;
+    // Key berries by (lotCode, vintage): pairing a wine with another
+    // vintage's berry sample corrupts the extraction %.
     const berryByLot = {};
     berryData.forEach(d => {
       if (!d.sampleId || d.tANT === null || typeof d.tANT !== 'number') return;
-      const lotCode = d.lotCode;
-      if (!berryByLot[lotCode] || (d.daysPostCrush || 0) > (berryByLot[lotCode].daysPostCrush || 0)) {
-        berryByLot[lotCode] = d;
+      const key = `${d.lotCode}||${d.vintage}`;
+      if (!berryByLot[key] || (d.daysPostCrush || 0) > (berryByLot[key].daysPostCrush || 0)) {
+        berryByLot[key] = d;
       }
     });
     const wineByCodigo = {};
@@ -703,9 +712,9 @@ export const Charts = {
       }
     });
     Object.entries(mapping).forEach(([berryLot, wineLots]) => {
-      const berry = berryByLot[berryLot];
-      if (!berry || berry.tANT <= 0) return;
       wineLots.forEach(wl => {
+        const berry = berryByLot[`${berryLot}||${this._wineCodeVintage(wl)}`];
+        if (!berry || berry.tANT <= 0) return;
         const wine = wineByCodigo[wl];
         if (wine) {
           const pct = (wine.antoWX / berry.tANT) * 100;
@@ -1014,10 +1023,13 @@ export const Charts = {
 
     let html = visible.map(item => {
       const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
-      const attrSafe = item.label.replace(/"/g, '&quot;');
+      // Full HTML escape: legend labels come from DB-derived variety/lot strings
+      const attrSafe = String(item.label)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
       return `<div class="legend-item${dimmed}" role="button" tabindex="0" data-series="${attrSafe}" title="${attrSafe}">
         <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
-        <span>${item.label}</span>
+        <span>${attrSafe}</span>
       </div>`;
     }).join('');
 
@@ -1027,10 +1039,12 @@ export const Charts = {
       </div>`;
       html += hidden.map(item => {
         const dimmed = this.hiddenSeries.has(item.label) ? ' dimmed' : '';
-        const attrSafe = item.label.replace(/"/g, '&quot;');
+        const attrSafe = String(item.label)
+          .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
         return `<div class="legend-item legend-overflow${dimmed}" role="button" tabindex="0" data-series="${attrSafe}" title="${attrSafe}" style="display:none">
           <div class="legend-dot" style="background:${item.color.replace(/[";]/g, '')}"></div>
-          <span>${item.label}</span>
+          <span>${attrSafe}</span>
         </div>`;
       }).join('');
     }
@@ -1373,7 +1387,7 @@ export const Charts = {
 
     for (const year of vintages) {
       const start = `${year}-07-01`;
-      const today = new Date().toISOString().split('T')[0];
+      const today = WeatherStore.todayLocal();
       const seasonEnd = `${year}-10-31`;
       const end = seasonEnd <= today ? seasonEnd : today;
       if (start > today) continue;
@@ -2422,10 +2436,23 @@ export const Charts = {
   // Build evolution data: merge berry + wine data for a lot using berryToWine mapping
   _buildEvolutionData(berryData, wineData) {
     const lots = {};
+    // One vintage per lot line: pooling multi-vintage rows merges several
+    // seasons into a single días-post-envero series. Keep each lot's LATEST
+    // vintage; the global filters already restrict to one vintage when the
+    // user picks one.
+    const latestVintage = {};
+    berryData.forEach(d => {
+      if (!d.lotCode || d.vintage == null) return;
+      const v = Number(d.vintage);
+      if (!(d.lotCode in latestVintage) || v > latestVintage[d.lotCode]) {
+        latestVintage[d.lotCode] = v;
+      }
+    });
     // Berry points
     berryData.forEach(d => {
       if (!d.lotCode || d.daysPostCrush === null || d.daysPostCrush === undefined) return;
-      if (!lots[d.lotCode]) lots[d.lotCode] = { variety: d.variety, appellation: d.appellation, points: [] };
+      if (d.vintage != null && Number(d.vintage) !== latestVintage[d.lotCode]) return;
+      if (!lots[d.lotCode]) lots[d.lotCode] = { variety: d.variety, appellation: d.appellation, vintage: latestVintage[d.lotCode] ?? null, points: [] };
       lots[d.lotCode].points.push({
         daysPostCrush: d.daysPostCrush,
         sampleId: d.sampleId,
@@ -2445,6 +2472,9 @@ export const Charts = {
         if (!w || w.daysPostCrush === null || w.daysPostCrush === undefined) return;
         const target = lots[berryLot];
         if (!target) return;
+        // Only join wines from the lot line's own vintage
+        const wv = this._wineCodeVintage(wl);
+        if (wv != null && target.vintage != null && wv !== target.vintage) return;
         target.points.push({
           daysPostCrush: w.daysPostCrush,
           sampleId: w.codigoBodega,
@@ -2764,6 +2794,10 @@ export const Charts = {
       });
     }
 
+    // Destroy any chart already bound to this canvas (Chart.js throws on
+    // double-init) before registering under the canvas id.
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) existingChart.destroy();
     const canvasId = canvas.id || `pred-${axis}-${Math.random().toString(36).slice(2,8)}`;
     if (this.instances[canvasId]) { this.instances[canvasId].destroy(); }
     const unit = axis === 'brix' ? '°Bx' : axis === 'ant' ? 'mg/L' : '';
@@ -2880,6 +2914,10 @@ export const Charts = {
       });
     }
 
+    // Destroy any chart already bound to this canvas (Chart.js throws on
+    // double-init) before registering under the canvas id.
+    const existingChart = Chart.getChart(canvas);
+    if (existingChart) existingChart.destroy();
     const canvasId = canvas.id || `pred-detail-${axis}-${Math.random().toString(36).slice(2,8)}`;
     if (this.instances[canvasId]) { this.instances[canvasId].destroy(); }
     const unit = axis === 'brix' ? '°Bx' : axis === 'ant' ? 'mg/L' : '';

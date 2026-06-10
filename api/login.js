@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import { clientIp } from './lib/rateLimit.js';
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
@@ -81,9 +82,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const fwd = req.headers['x-forwarded-for'];
-  const clientIp = req.headers['x-real-ip'] || (fwd ? fwd.split(',')[0].trim() : null) || 'unknown';
-  if (!(await checkRateLimit(clientIp))) {
+  if (!(await checkRateLimit(clientIp(req)))) {
     res.status(429).json({ ok: false, error: 'Demasiados intentos. Intente de nuevo en 15 minutos.' });
     return;
   }
@@ -115,11 +114,15 @@ export default async function handler(req, res) {
     return;
   }
 
+  // Compare SHA-256 digests: fixed 32-byte length means timingSafeEqual can
+  // never throw on length mismatch (padEnd-based buffers blew up on >64-char
+  // or multi-byte usernames), while staying constant-time.
+  const digest = s => crypto.createHash('sha256').update(s).digest();
   let matchedAccount = null;
   for (const acct of accounts) {
     const userMatch = crypto.timingSafeEqual(
-      Buffer.from(username.toLowerCase().padEnd(64, '\0')),
-      Buffer.from(acct.user.toLowerCase().padEnd(64, '\0'))
+      digest(username.toLowerCase()),
+      digest(acct.user.toLowerCase())
     );
     const passMatch = await bcrypt.compare(password, acct.hash);
     if (userMatch && passMatch) { matchedAccount = acct; break; }

@@ -94,12 +94,12 @@ export const CONFIG = {
     // K* prefix → Kompali
     if (/^K/i.test(id)) return 'Kompali (VON)';
     // Try known code prefixes (longest first)
-    const prefixes = ['DLA','DUB','LLC','OLE','VDG','MX','VA','ON','DA','7L','R14','SG','UC'];
+    const prefixes = ['DLA','DUB','KMP','LLC','OLE','VDG','MX','VA','ON','DA','7L','R14','SG','UC'];
     for (const p of prefixes) {
       if (id.toUpperCase().startsWith(p)) return this._codeToRanch[p] || null;
     }
     // Try extracting ranch code from after variety abbreviation (e.g., 25CFVA-2B → VA)
-    const m = id.match(/^[A-Z]{2,3}(MX|VDG|OLE|7L|R14|VA|ON|DA|DLA|DUB|LLC|SG|UC)/i);
+    const m = id.match(/^[A-Z]{2,3}(KMP|MX|VDG|OLE|7L|R14|VA|ON|DA|DLA|DUB|LLC|SG|UC)/i);
     if (m) return this._codeToRanch[m[1].toUpperCase()] || null;
     return null;
   },

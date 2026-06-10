@@ -95,6 +95,7 @@ export default async function handler(req, res) {
       });
       const updated = await supaRes.json();
       if (!supaRes.ok) {
+        console.error('[row] update failed:', supaRes.status, JSON.stringify(updated));
         return res.status(supaRes.status).json({
           ok: false, error: updated?.message || 'Error al actualizar',
         });
@@ -121,6 +122,7 @@ export default async function handler(req, res) {
       });
       const body = await supaRes.json();
       if (!supaRes.ok) {
+        console.error('[row] delete failed:', supaRes.status, JSON.stringify(body));
         return res.status(supaRes.status).json({
           ok: false, error: body?.message || 'Error al eliminar',
         });
@@ -149,6 +151,7 @@ export default async function handler(req, res) {
       });
       const upserted = await supaRes.json();
       if (!supaRes.ok) {
+        console.error('[row] upsert failed:', supaRes.status, JSON.stringify(upserted));
         return res.status(supaRes.status).json({
           ok: false, error: upserted?.message || 'Error al guardar',
         });
