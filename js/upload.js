@@ -110,7 +110,7 @@ export const UploadManager = {
     this._uploading = false;
     try {
       if (DataStore && DataStore.cacheData) DataStore.cacheData();
-      if (App && App.refreshAllViews) App.refreshAllViews();
+      if (App && App.refresh) App.refresh();
     } catch (_) { /* refresh is best-effort */ }
     return results;
   },
