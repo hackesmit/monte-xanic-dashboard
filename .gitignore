@@ -58,6 +58,10 @@ PROJECT_SUMMARY.md
 # Local scratch/backup files
 *.local
 
+# Local scratch screenshots & UI snapshots (root only — assets/ images stay tracked)
+/*.png
+/snap*.md
+
 # Local data inputs for upload-pipeline testing — never commit
 Xanic info/
 
