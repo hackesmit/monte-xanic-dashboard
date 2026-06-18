@@ -3,17 +3,13 @@ import { CONFIG } from './config.js';
 import { App } from './app.js';
 import { Auth } from './auth.js';
 import { DemoMode } from './demoMode.js';
+import { escapeHtml } from './utils.js';
 
 export const Tables = {
   sortField: null,
   sortDir: 'desc',
 
-  _esc(val) {
-    if (val == null) return '';
-    const d = document.createElement('div');
-    d.textContent = String(val);
-    return d.innerHTML;
-  },
+  _esc(val) { return escapeHtml(val); },
 
   // Berry data table
   updateBerryTable(data) {

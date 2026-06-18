@@ -16,14 +16,19 @@ import { App } from './app.js';
 Chart.defaults.animation.duration = 320;
 Chart.defaults.animation.easing = 'easeOutQuart';
 
-// Shared jitter helper: offsets x by sample_seq + deterministic lot hash
+// Shared jitter helper: offsets x by sample_seq + deterministic lot hash so
+// overlapping same-day points fan out without obscuring each other.
+const JITTER_SEQ_STEP = 0.15;   // days added per extra sampleSeq
+const JITTER_HASH_MOD = 41;     // prime modulo → even spread across lots
+const JITTER_HASH_HALF = 20;    // centers the hash bucket around 0 ((MOD-1)/2)
+const JITTER_HASH_SCALE = 0.01; // 0.01 × ±20 → ±0.2 day max lot offset
 function _applyDaysJitter(x, d) {
-  if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * 0.15;
+  if (d.sampleSeq > 1) x += (d.sampleSeq - 1) * JITTER_SEQ_STEP;
   const lot = d.lotCode || d.sampleId;
   if (lot) {
     let hash = 0;
     for (let c = 0; c < lot.length; c++) hash = ((hash << 5) - hash + lot.charCodeAt(c)) | 0;
-    x += ((((hash % 41) + 41) % 41) - 20) * 0.01; // ±0.2 day
+    x += ((((hash % JITTER_HASH_MOD) + JITTER_HASH_MOD) % JITTER_HASH_MOD) - JITTER_HASH_HALF) * JITTER_HASH_SCALE;
   }
   return x;
 }
@@ -159,7 +164,7 @@ export const Charts = {
   },
 
   axisOpts(xLabel, yLabel) {
-    const mob = window.innerWidth <= 768;
+    const mob = window.innerWidth <= CONFIG.mobileBreakpoint;
     const tickSize = mob ? 7 : 9;
     const titleSize = mob ? 8 : 9;
     const maxTicks = mob ? 6 : undefined;
@@ -178,7 +183,7 @@ export const Charts = {
     };
   },
 
-  _mobileRadius() { return window.innerWidth <= 768 ? 3 : CONFIG.chartDefaults.pointRadius; },
+  _mobileRadius() { return window.innerWidth <= CONFIG.mobileBreakpoint ? 3 : CONFIG.chartDefaults.pointRadius; },
 
   // Build tooltip that always shows Sample Id
   tooltipConfig() {
@@ -1007,7 +1012,7 @@ export const Charts = {
     const container = document.getElementById('legend-bar');
     if (!container) return;
     const items = Filters.getLegendItems(data);
-    const mob = window.innerWidth <= 768;
+    const mob = window.innerWidth <= CONFIG.mobileBreakpoint;
 
     // On mobile, sort by data count (most data first) and limit visible items
     let sorted = items;
