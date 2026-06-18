@@ -5,6 +5,7 @@
 import { CONFIG } from './config.js';
 import { DataStore } from './dataLoader.js';
 import { Auth } from './auth.js';
+import { escapeHtml } from './utils.js';
 
 const VALLEY_CODES = { 'Valle de Guadalupe': 'VDG',
                        'Valle de Ojos Negros': 'VON',
@@ -176,8 +177,3 @@ export const PredictionSettings = {
     }
   },
 };
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g,
-    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
