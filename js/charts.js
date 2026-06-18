@@ -2462,9 +2462,20 @@ export const Charts = {
         source: 'berry'
       });
     });
-    // Wine points via berryToWine mapping
+    // Wine points via berryToWine mapping. Keep the peak-antoWX sample per
+    // código (consistent with the extraction-ratio join above) so a duplicate
+    // código resolves deterministically instead of last-loaded. Unlike that
+    // join we do NOT drop below-detection samples: this chart also plots other
+    // compounds, so a código whose antoWX is null still keeps a point (nulls
+    // simply rank lowest when choosing the peak).
     const wineByCodigo = {};
-    wineData.forEach(d => { if (d.codigoBodega) wineByCodigo[d.codigoBodega] = d; });
+    wineData.forEach(d => {
+      if (!d.codigoBodega) return;
+      const prev = wineByCodigo[d.codigoBodega];
+      const cur = typeof d.antoWX === 'number' ? d.antoWX : -Infinity;
+      const old = prev && typeof prev.antoWX === 'number' ? prev.antoWX : -Infinity;
+      if (!prev || cur > old) wineByCodigo[d.codigoBodega] = d;
+    });
 
     Object.entries(CONFIG.berryToWine).forEach(([berryLot, wineLots]) => {
       wineLots.forEach(wl => {
@@ -2605,11 +2616,15 @@ export const Charts = {
       const clickedLot = clickedDs._lotCode;
       if (!clickedLot) return;
       chart.data.datasets.forEach(ds => {
+        // Capture the pristine color once, then derive highlight/dim from it.
+        // (The old code stripped 2 hex chars off borderColor on every click,
+        // which corrupts plain #rrggbb colors and degrades them cumulatively.)
+        if (ds._baseColor == null) ds._baseColor = ds.borderColor;
         if (ds._lotCode === clickedLot) {
-          ds.borderColor = ds.borderColor.replace(/[0-9a-f]{2}$/i, '') || ds.borderColor;
+          ds.borderColor = ds._baseColor;
           ds.borderWidth = ds.yAxisID === 'y1' ? 1.5 : 2;
         } else {
-          ds.borderColor = (ds.borderColor.length === 7 ? ds.borderColor + '55' : ds.borderColor);
+          ds.borderColor = ds._baseColor + '55';
           ds.borderWidth = 1;
         }
       });
@@ -2619,7 +2634,7 @@ export const Charts = {
       const chart = this.instances[canvasId];
       if (!chart) return;
       chart.data.datasets.forEach(ds => {
-        ds.borderColor = ds.borderColor.replace(/[0-9a-f]{2}$/i, '').slice(0, 7) || ds.borderColor;
+        if (ds._baseColor != null) ds.borderColor = ds._baseColor;
         ds.borderWidth = ds.yAxisID === 'y1' ? 1.5 : 2;
       });
       chart.update();
