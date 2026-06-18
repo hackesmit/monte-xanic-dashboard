@@ -403,6 +403,10 @@ export const CONFIG = {
     tickColor: '#4A4A4A'
   },
 
+  // Viewport width (px) at/below which the UI switches to mobile layout.
+  // Single source of truth for the JS-side breakpoint (mirrors the CSS @media).
+  mobileBreakpoint: 768,
+
   // Point shapes per origin (Chart.js point styles)
   originPointStyles: {
     'Kompali (VON)':               'circle',

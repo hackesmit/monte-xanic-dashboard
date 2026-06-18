@@ -18,13 +18,14 @@ import { Events } from './events.js';
 import { Explorer } from './explorer.js';
 import { Mediciones } from './mediciones.js';
 import { DemoMode } from './demoMode.js';
+import { escapeHtml } from './utils.js';
 
 export const App = {
   currentView: 'berry',
   initialized: false,
   theme: 'light',
 
-  _esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; },
+  _esc(s) { return escapeHtml(s); },
 
   async init() {
     if (this.initialized) return;
@@ -715,7 +716,7 @@ export const App = {
   },
 
   // ── Mobile helpers ──
-  _isMobile() { return window.innerWidth <= 768; },
+  _isMobile() { return window.innerWidth <= CONFIG.mobileBreakpoint; },
   _savedScrollY: 0,
 
   toggleMobileFilters() {

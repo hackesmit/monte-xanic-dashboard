@@ -8,6 +8,7 @@ import { Charts } from './charts.js';
 import * as Prediction from './prediction.js';
 import { resolveValley } from './classification.js';
 import { attachModalHygiene } from './modalHygiene.js';
+import { escapeHtml } from './utils.js';
 
 let activeValley = 'all';
 
@@ -407,11 +408,6 @@ export const PredictionView = {
     });
   },
 };
-
-function escapeHtml(s) {
-  return String(s ?? '').replace(/[&<>"']/g,
-    c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
 
 // Rebuild the current-vintage sample array for the chart. computeAll
 // consumed berryData and returned a per-group result, but didn't include
