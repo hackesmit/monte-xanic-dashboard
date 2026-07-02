@@ -190,6 +190,53 @@ Revoked session tokens.
 | token_hash | text | no | SHA256 hash of revoked token |
 | created_at | timestamptz | no | When the token was blacklisted |
 
+## Mona tables (chat assistant)
+
+Added by `migration_mona_chat.sql` and `migration_mona_views_knowledge.sql`. **All four are server-only:** RLS enabled with **no anon policies** — every read/write goes through `/api/mona-data` using the service key. Chat history is private per user.
+
+### mona_conversations
+
+| Column | Type | Nullable | Purpose |
+|--------|------|----------|---------|
+| id | uuid | no | Primary key |
+| username | text | no | Owner (from session token) |
+| title | text | no | Conversation title |
+| created_at / updated_at | timestamptz | no | Timestamps |
+
+### mona_messages
+
+| Column | Type | Nullable | Purpose |
+|--------|------|----------|---------|
+| id | uuid | no | Primary key |
+| conversation_id | uuid | no | FK -> `mona_conversations` (ON DELETE CASCADE) |
+| role | text | no | `user` / `assistant` |
+| content | jsonb | no | Anthropic content blocks (text, tool_use, tool_result) |
+| created_at | timestamptz | no | Timestamp |
+
+### mona_saved_views
+
+| Column | Type | Nullable | Purpose |
+|--------|------|----------|---------|
+| id | uuid | no | Primary key |
+| username | text | no | Owner |
+| title | text | no | Saved-view title |
+| view_type | text | no | `chart` / `table` |
+| spec | jsonb | no | Declarative chart/table spec (re-rendered client-side) |
+| created_at | timestamptz | no | Timestamp |
+
+### mona_knowledge
+
+Winery facts Mona reads on every chat. Only `approved` facts are injected into her context.
+
+| Column | Type | Nullable | Purpose |
+|--------|------|----------|---------|
+| id | uuid | no | Primary key |
+| fact | text | no | The fact |
+| status | text | no | `pending` / `approved` |
+| proposed_by | text | yes | Who proposed it (user or Mona) |
+| approved_by | text | yes | Lab/admin who approved |
+| created_at | timestamptz | no | Timestamp |
+
 ## Recommended Future Improvements
 
 - Add foreign key constraint: `reception_lots.reception_id` -> `tank_receptions.id`
