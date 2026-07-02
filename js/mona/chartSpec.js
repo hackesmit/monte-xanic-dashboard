@@ -16,11 +16,16 @@ export function validateChartSpec(spec) {
   else if (spec.series.length > MAX_SERIES) errors.push(`máximo ${MAX_SERIES} series`);
   if (errors.length) return { ok: false, errors };
 
+  // Scatter needs numeric x; category/line/bar/area keep x as-is (string labels
+  // like variety names or ranches must survive).
+  const xNumeric = spec.type === 'scatter';
   const series = [];
   for (const s of spec.series) {
     if (!Array.isArray(s.points)) { errors.push('serie sin points'); continue; }
     if (s.points.length > MAX_POINTS) { errors.push(`máximo ${MAX_POINTS} puntos por serie`); continue; }
-    const points = s.points.map(p => ({ x: num(p.x), y: num(p.y) })).filter(p => p.y !== null);
+    const points = s.points
+      .map(p => ({ x: xNumeric ? num(p.x) : (typeof p.x === 'string' ? p.x.slice(0, MAX_STR) : num(p.x)), y: num(p.y) }))
+      .filter(p => p.y !== null && (!xNumeric || p.x !== null));
     series.push({ label: str(s.label) || 'Serie', points });
   }
   if (errors.length) return { ok: false, errors };

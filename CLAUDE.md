@@ -33,8 +33,18 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `utils.js` | Shared pure helpers (HTML escaping, etc.) — no DOM, no I/O, no imports |
 | `demoMode.js` | In-memory demo-data overlay (no DB/cache writes while active) |
 | `api/ping.js` | Daily Supabase keep-alive (Vercel cron, `CRON_SECRET`-gated). One read against `applied_migrations`. Nothing else. |
+| `mona/dataAccess.js` | Pure query/aggregate over row arrays. No DOM, no imports. |
+| `mona/chartSpec.js` | Declarative chart/table spec validation + Chart.js rendering (themed). |
+| `mona/tools.js` | Mona tool schemas + executors. Calls only public DataStore/KPIs APIs; DOM/app effects via ctx callbacks. |
+| `mona/chat.js` | Conversation state + client-side agent loop (SSE parse, tool loop, persistence). |
+| `mona/ui.js` | Mona tab + floating widget rendering, streaming, pin flow. |
+| `mona/saved.js` | Guardados tab (saved views) + `saveView`. |
+| `mona/knowledge.js` | Knowledge-base context assembly (pure) + Conocimiento panel. |
+| `mona/index.js` | Mona facade: init, tool-effect wiring, view-change hook. |
+| `api/mona.js` | Session-gated SSE proxy to Claude (`claude-sonnet-4-6`). Server-side key + system prompt. No business logic. |
+| `api/mona-data.js` | Token-gated CRUD for `mona_*` tables (service key). Username/role from token, never body. |
 
-Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js. Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`. Do not add any business logic, table reads, or session-token checks to `api/ping.js`.
+Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js. Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`. Do not add any business logic, table reads, or session-token checks to `api/ping.js`. Do not add DOM access to `mona/tools.js` or `mona/dataAccess.js` (keep them Node-importable). Do not put the Anthropic key or any business logic in the client; `api/mona.js` stays a thin stateless proxy. All `mona_*` table access goes through `api/mona-data.js` — never the anon key.
 
 ## Upload Pipeline Rules
 

@@ -15,6 +15,16 @@ All required for production. Store in `.env.local` locally, add to Vercel Settin
 | `LAB_USERNAME` | Yes | /api/login | Lab user username |
 | `LAB_PASSWORD_HASH` | Yes | /api/login | Lab user bcrypt hash |
 | `CRON_SECRET` | Yes (Production) | /api/ping | Bearer token Vercel injects on cron-triggered requests. Generate with `openssl rand -hex 32`. Rotate by replacing the value in Vercel and redeploying — old value stops working immediately. |
+| `ANTHROPIC_API_KEY` | Yes (for Mona) | /api/mona | Server-side Claude API key. Powers the Mona chat assistant (`claude-sonnet-4-6`). Never exposed to the client — `/api/mona` proxies all traffic. Without it, `/api/mona` returns a Spanish "Mona no está configurada" error and the rest of the dashboard is unaffected. |
+
+**Mona (chat assistant) setup:**
+
+1. Add `ANTHROPIC_API_KEY` to `.env.local` and Vercel env vars.
+2. Run these migrations in the Supabase SQL Editor (see `sql/`):
+   - `migration_mona_chat.sql` — `mona_conversations`, `mona_messages`
+   - `migration_mona_views_knowledge.sql` — `mona_saved_views`, `mona_knowledge`
+   All four tables are server-only (RLS on, no anon policies); every read/write goes through `/api/mona-data`.
+3. Endpoints added: `/api/mona` (SSE Claude proxy, session-gated + rate-limited) and `/api/mona-data` (token-gated persistence CRUD). Total serverless functions: 10 (Vercel hobby limit 12).
 
 **Generate a bcrypt hash:**
 ```bash

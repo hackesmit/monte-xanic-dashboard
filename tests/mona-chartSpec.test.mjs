@@ -27,6 +27,25 @@ test('coerces numeric strings', () => {
   assert.equal(r.spec.series[0].points[0].y, 2.5);
 });
 
+test('preserves categorical x labels for bar/line', () => {
+  const r = validateChartSpec({
+    type: 'bar', title: 'Por variedad',
+    series: [{ label: 'Brix', points: [{ x: 'Cabernet Sauvignon', y: 24 }, { x: 'Durif', y: 22 }] }],
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.spec.series[0].points[0].x, 'Cabernet Sauvignon');
+});
+
+test('scatter drops points with non-numeric x', () => {
+  const r = validateChartSpec({
+    type: 'scatter', title: 'xy',
+    series: [{ label: 'a', points: [{ x: 'no', y: 1 }, { x: 3, y: 2 }] }],
+  });
+  assert.equal(r.ok, true);
+  assert.equal(r.spec.series[0].points.length, 1);
+  assert.equal(r.spec.series[0].points[0].x, 3);
+});
+
 test('table valid', () => {
   const r = validateTableSpec({ title: 'T', columns: [{ key: 'v', label: 'Variedad' }], rows: [{ v: 'Durif' }] });
   assert.equal(r.ok, true);
