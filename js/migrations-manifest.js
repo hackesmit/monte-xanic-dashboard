@@ -35,4 +35,6 @@ export const MIGRATIONS = [
   'migration_harvest_target_overrides',
   'migration_harvest_target_overrides_ph',
   'migration_rls_lockdown',
+  'migration_mona_chat',
+  'migration_mona_views_knowledge',
 ];
