@@ -13,6 +13,10 @@ import { BerryEdit } from './berryEdit.js';
 import { WineEdit } from './wineEdit.js';
 import { PrefermentEdit } from './prefermentEdit.js';
 import { DataStore } from './dataLoader.js';
+import { MonaChat } from './mona/chat.js';
+import { MonaUI } from './mona/ui.js';
+import { MonaSaved } from './mona/saved.js';
+import { MonaKnowledge } from './mona/knowledge.js';
 
 export const Events = {
   bindAll() {
@@ -34,6 +38,73 @@ export const Events = {
     this._bindPrefermentEdit();
     this._bindExtractionEdit();
     this._bindPageExport();
+    this._bindMona();
+  },
+
+  // ── Mona chat (CSP-safe delegation) ──
+  _bindMona() {
+    const sendFrom = (inputId) => {
+      const input = document.getElementById(inputId);
+      if (!input) return;
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = '';
+      input.style.height = '';
+      MonaChat.send(text);
+    };
+
+    // Enter-to-send (Shift+Enter = newline) + auto-grow, for both surfaces.
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      if (t && (t.id === 'mona-input' || t.id === 'mona-widget-input')) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendFrom(t.id);
+        }
+      }
+    });
+    document.addEventListener('input', (e) => {
+      const t = e.target;
+      if (t && (t.id === 'mona-input' || t.id === 'mona-widget-input')) {
+        t.style.height = 'auto';
+        t.style.height = Math.min(t.scrollHeight, 140) + 'px';
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      const el = e.target.closest('[data-mona-send],[data-mona-widget-send],[data-mona-fab],[data-mona-close],[data-mona-expand],[data-mona-new],[data-mona-del],[data-mona-conv],.mona-pin-btn,.mona-retry,[data-mona-view-del],[data-mona-kb-open],[data-mona-kb-close],[data-mona-kb-approve],[data-mona-kb-del],[data-mona-kb-add]');
+      if (!el) return;
+
+      if (el.hasAttribute('data-mona-send')) return sendFrom('mona-input');
+      if (el.hasAttribute('data-mona-widget-send')) return sendFrom('mona-widget-input');
+      if (el.hasAttribute('data-mona-fab')) return MonaUI.toggleWidget(true);
+      if (el.hasAttribute('data-mona-close')) return MonaUI.toggleWidget(false);
+      if (el.hasAttribute('data-mona-expand')) { MonaUI.toggleWidget(false); App.setView('mona'); return; }
+      if (el.hasAttribute('data-mona-new')) return MonaChat.newConversation();
+
+      if (el.hasAttribute('data-mona-del')) { e.stopPropagation(); return MonaChat.deleteConversation(el.getAttribute('data-mona-del')); }
+      const convItem = el.closest('[data-mona-conv]');
+      if (convItem && !el.classList.contains('mona-conv-del')) return MonaChat.loadConversation(convItem.getAttribute('data-mona-conv'));
+
+      if (el.classList.contains('mona-pin-btn')) return MonaUI.pinDisplay(el);
+      if (el.classList.contains('mona-retry')) {
+        const last = [...MonaChat.messages].reverse().find(m => m.role === 'user' && typeof m.content === 'string');
+        if (last) MonaChat.send(last.content);
+        return;
+      }
+      if (el.hasAttribute('data-mona-view-del')) return MonaSaved.deleteView(el.getAttribute('data-mona-view-del'));
+
+      if (el.hasAttribute('data-mona-kb-open')) return MonaKnowledge.openPanel();
+      if (el.hasAttribute('data-mona-kb-close')) return MonaKnowledge.closePanel();
+      if (el.hasAttribute('data-mona-kb-approve')) return MonaKnowledge.approve(el.getAttribute('data-mona-kb-approve'));
+      if (el.hasAttribute('data-mona-kb-del')) return MonaKnowledge.remove(el.getAttribute('data-mona-kb-del'));
+      if (el.hasAttribute('data-mona-kb-add')) {
+        const input = document.getElementById('mona-kb-input');
+        const fact = input && input.value.trim();
+        if (fact) MonaKnowledge.add(fact);
+        return;
+      }
+    });
   },
 
   // ── Navigation (2 handlers) ──
