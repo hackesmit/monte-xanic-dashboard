@@ -11,6 +11,7 @@
 <title>Vendimias — Monte Xanic</title>
 <script src="/theme-init.js"></script>
 <link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="css/mona.css">
 <link rel="icon" href="assets/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
 <link rel="apple-touch-icon" sizes="180x180" href="assets/apple-touch-icon.png">
@@ -150,6 +151,8 @@
       <button class="nav-tab" data-view="explorer">Explorador</button>
       <button class="nav-tab" data-view="mediciones">Mediciones</button>
       <button class="nav-tab" data-view="prediccion">Predicción</button>
+      <button class="nav-tab" data-view="mona">Mona</button>
+      <button class="nav-tab" data-view="guardados">Guardados</button>
     </nav>
 
     <button class="mobile-filter-toggle" id="mobile-filter-toggle">
@@ -1358,6 +1361,11 @@
       <p class="pred-detail-reason-body"></p>
     </section>
   </dialog>
+
+    <!-- Mona chat assistant (built by js/mona) -->
+    <div id="view-mona" class="view-panel"></div>
+    <!-- Guardados: user-saved Mona charts/tables -->
+    <div id="view-guardados" class="view-panel"></div>
 
   </main>
 </div>

@@ -18,6 +18,7 @@ import { Events } from './events.js';
 import { Explorer } from './explorer.js';
 import { Mediciones } from './mediciones.js';
 import { DemoMode } from './demoMode.js';
+import { Mona } from './mona/index.js';
 import { escapeHtml } from './utils.js';
 
 export const App = {
@@ -268,6 +269,9 @@ export const App = {
     // setView already ends with refresh() — no second full render needed
     this.setView('berry');
 
+    // Boot Mona (chat UI, knowledge base, conversation) in the background.
+    Mona.init().then(() => Mona.onViewChange(this.currentView)).catch(err => console.warn('[Mona] init failed:', err));
+
     // Load weather in background after dashboard is visible
     WeatherStore.load().then(hasCache => {
       const vintages = WeatherStore.getVintagesFromData();
@@ -322,7 +326,7 @@ export const App = {
       if (berryFilters) berryFilters.style.display = 'none';
       if (wineFilters) wineFilters.style.display = 'none';
     }
-    if (view === 'prediccion' || view === 'ajustes-objetivos') {
+    if (view === 'prediccion' || view === 'ajustes-objetivos' || view === 'mona' || view === 'guardados') {
       if (berryFilters) berryFilters.style.display = 'none';
       if (wineFilters) wineFilters.style.display = 'none';
     }
@@ -330,6 +334,7 @@ export const App = {
     // Re-sync filter chip UI to reflect preserved state
     Filters.syncChipUI();
 
+    Mona.onViewChange(view);
     this.refresh();
   },
 
