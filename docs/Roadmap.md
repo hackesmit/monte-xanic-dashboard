@@ -15,6 +15,7 @@
 | -- | Security Hardening (server upload, token blacklist, persistent rate limits) | Yes |
 | 7 | Mediciones Tecnicas (form entry, table, charts) | Yes |
 | -- | Supabase keep-alive (`/api/ping` daily Vercel cron, `CRON_SECRET`-gated) | Yes (2026-05-19) |
+| 8 | Mona AI chat assistant (Claude Sonnet 4.6 proxy, client-side agent loop, declarative charts/tables, saved views, knowledge base, floating widget) | Yes (2026-07-02) |
 
 ## Deferred: Phase 7b -- Photographic Evidence
 

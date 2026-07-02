@@ -13,6 +13,7 @@ Wine analytics dashboard for Monte Xanic winery. Tracks berry chemistry (Brix, p
 - **Mediciones Tecnicas:** Manual entry form for field measurements (tonnage, berry weight, 200-berry health sort)
 - **Data Upload:** Drag-and-drop WineXRay CSV and Recepcion de Tanque Excel with validation and upsert
 - **Export:** PNG and PDF chart export
+- **Mona (AI Analyst):** In-dashboard Claude-powered chat that queries the data, builds native-quality charts/tables, drives filters/views, and learns from a lab-approved knowledge base. Full tab + synced floating widget; pinned outputs live in a "Guardados" tab
 
 ## Tech Stack
 
@@ -25,6 +26,7 @@ Wine analytics dashboard for Monte Xanic winery. Tracks berry chemistry (Brix, p
 | Weather | Open-Meteo Archive API |
 | Hosting | Vercel (auto-deploy) |
 | Auth | HMAC session tokens + bcryptjs |
+| AI Assistant | Claude (Anthropic) `claude-sonnet-4-6` via `/api/mona` proxy |
 
 ## Project Structure
 

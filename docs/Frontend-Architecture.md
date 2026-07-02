@@ -20,6 +20,18 @@
 13. `events.js` - Events singleton (binds all handlers)
 14. `app.js` - App singleton (orchestrates everything)
 
+> Note: the app is now bundled by Vite as ES modules (not raw `<script>` tags), and several feature areas (prediction, mediciones editors, Mona) live in their own modules imported by `app.js`/`events.js`.
+
+**Mona modules (`js/mona/`, imported by `app.js` via `mona/index.js`):**
+- `dataAccess.js` - pure query/aggregate over row arrays (DOM-free, Node-importable)
+- `chartSpec.js` - declarative chart/table spec validation + themed Chart.js rendering
+- `tools.js` - Mona tool schemas + executors (call public DataStore/KPIs APIs only)
+- `chat.js` - MonaChat singleton: conversation state + client-side agent loop (SSE)
+- `ui.js` - MonaUI: chat tab, floating widget, streaming, pin flow
+- `saved.js` - MonaSaved: Guardados tab + `saveView`
+- `knowledge.js` - MonaKnowledge: context assembly (pure) + Conocimiento panel
+- `index.js` - Mona facade: init, tool-effect wiring, view-change hook
+
 ## State Ownership
 
 | Module | State | Persistence |
@@ -31,6 +43,7 @@
 | Charts | instances{}, showLines, hiddenSeries | In-memory |
 | MapStore | currentVintage, currentRanch, _aggregated{} | In-memory |
 | App | currentView, initialized, _refreshInProgress | In-memory |
+| MonaChat | messages[] (Anthropic format), conversationId, conversations[], ctx, hooks | In-memory + Supabase (`mona_*` via `/api/mona-data`) |
 
 ## Module Responsibilities
 

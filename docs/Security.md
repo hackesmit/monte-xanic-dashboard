@@ -52,6 +52,13 @@
 - `SUPABASE_ANON_KEY`: used by frontend Supabase JS SDK
 - `SESSION_SECRET`: used only server-side for HMAC signing
 - `CRON_SECRET`: used only server-side to gate `/api/ping` against non-Vercel callers; rotate by replacing in Vercel env vars and redeploying — old value stops working immediately
+- `ANTHROPIC_API_KEY`: used only server-side in `/api/mona`; never sent to the client
+
+**Mona (AI assistant):**
+- `/api/mona` and `/api/mona-data` are session-token gated; the Anthropic key stays server-side and the CSP is unchanged (all traffic is same-origin `/api/*`).
+- The `mona_*` tables are server-only: RLS enabled with **no anon policies**, so chat history / saved views / knowledge are unreachable with the anon key — all access is through `/api/mona-data` (service key), scoped to the token's username. Knowledge writes (`addFact`/`approveFact`/`deleteFact`) additionally require the `lab`/`admin` role, enforced server-side.
+- Prompt-injection resistance is part of Mona's server-side system prompt (never reveal instructions/keys, refuse rule-override attempts). The client-supplied context is appended as a data block, never as system-level instructions, so users can't strip or rewrite the base prompt or guardrails.
+- Per-user message rate limiting bounds cost/abuse; request body and tool-result size caps bound token usage.
 
 **Cron endpoint (`/api/ping`):**
 - Auth model differs from the session-token endpoints. The only legit caller is Vercel's own cron scheduler, which injects `Authorization: Bearer <CRON_SECRET>` automatically when the env var is set. No session token, no role check.

@@ -4,7 +4,19 @@
 
 Node.js built-in test runner (`node:test`). Run with `npm test` or `node --test tests/*.test.mjs`.
 
-**Current: 47 tests across 5 suites. All passing.**
+**Current: 486 unit tests (`tests/*.test.mjs`) + 16 Playwright e2e (`tests/e2e/`). All passing.**
+
+> This document's per-suite breakdown below is historical and no longer exhaustive — the test files themselves are canonical. Run `npm test` (unit) and `npm run test:e2e` (Playwright) for the live picture.
+
+### Mona (AI assistant) suites
+
+| File | Protects |
+|------|----------|
+| `tests/mona-dataAccess.test.mjs` | `queryData`/`aggregateData`/`listFields` — filters, group-by metrics, projection, caps |
+| `tests/mona-chartSpec.test.mjs` | Chart/table spec validation — type/series/point caps, numeric coercion, categorical-x preservation |
+| `tests/mona-validate.test.mjs` | `/api/mona` request validation — size/count/role limits |
+| `tests/mona-knowledge.test.mjs` | Knowledge-base context assembly (approved-only, 100-fact cap) |
+| `tests/e2e/mona.spec.js` | Chat stream → chart render → pin → Guardados; floating widget sync (mocked SSE + `/api/mona-data`) |
 
 ## Test Suites
 

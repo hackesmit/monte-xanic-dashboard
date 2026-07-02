@@ -183,6 +183,45 @@ Shared HMAC token verification used by verify, logout, config, and upload endpoi
 - Fail-open on blacklist fetch failure (availability over security)
 - Returns `{ payload }` on success, `{ error, status }` on failure
 
+## POST /api/mona
+
+Proxies a chat turn to the Claude Messages API and streams the response back. Stateless — the client runs the agent loop and executes tools locally; this endpoint only forwards.
+
+**Auth:** `x-session-token` (any valid session)
+**Rate limit:** 20 messages per user per 5 minutes (in-memory per serverless instance)
+
+**Request:**
+```json
+{ "messages": [ /* Anthropic-format messages */ ], "tools": [ /* tool schemas */ ], "system": "optional appended knowledge context" }
+```
+
+**Success (200):** `text/event-stream` — passes through Anthropic SSE (text deltas, `tool_use` blocks, `message_delta`).
+
+**Errors:** `401` no/invalid token · `400` validation (empty/oversized/too many messages, see `api/lib/monaValidate.js`) · `429` rate limited · `500` missing `ANTHROPIC_API_KEY` · `502` upstream error.
+
+**Implementation notes:**
+- Model `claude-sonnet-4-6`, `max_tokens` 4096, `stream: true`.
+- Server owns `BASE_SYSTEM` (personality, guardrails, house glossary); the client `system` string is appended as an extra system block, never replaces the base.
+- `ANTHROPIC_API_KEY` is server-side only; CSP unchanged (same-origin `/api`).
+
+## POST /api/mona-data
+
+Token-gated CRUD for Mona's four server-only Supabase tables (service key). Username and role come from the verified token, never the request body.
+
+**Auth:** `x-session-token`
+**Request:** `{ "action": "...", ...args }`
+
+**Actions:**
+- Conversations: `listConversations`, `createConversation`, `renameConversation`, `deleteConversation`, `getMessages`, `appendMessage` (all scoped to the token's username)
+- Saved views: `listSavedViews`, `saveView`, `renameView`, `deleteView` (username-scoped)
+- Knowledge: `listKnowledge`, `proposeFact` (any user) · `addFact`, `approveFact`, `deleteFact` (**lab/admin only**, 403 otherwise)
+
+**Errors:** `401` no/invalid token · `403` insufficient role for a knowledge write · `404` not owned · `400` unknown action · `500` persistence error.
+
+### api/lib/monaValidate.js
+
+Pure request validator for `/api/mona`. Enforces `messages` non-empty and ≤ 40 items, valid roles (`user`/`assistant`), per-message ≤ 40 KB, total body ≤ 150 KB.
+
 ### api/lib/rateLimit.js
 
 In-memory rate limiter for all authenticated endpoints.
