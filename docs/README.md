@@ -16,7 +16,7 @@
 | See what is built vs planned | [Roadmap.md](Roadmap.md) |
 | Understand the domain | [Domain-Model.md](Domain-Model.md) |
 | Know upload/validation rules | [Data-Validation.md](Data-Validation.md) |
-| Understand agent workflow rules | [AGENT_RULES.md](AGENT_RULES.md) |
+| Understand the development workflow | [Development-Rules.md](Development-Rules.md) |
 
 ## Canonical Sources
 
@@ -25,7 +25,7 @@
 | Current implementation state | [Architecture.md](Architecture.md) and source code |
 | Database schema | [Database.md](Database.md) and `sql/*.sql` |
 | API contracts | [API.md](API.md) and `api/*.js` |
-| Agent/builder/reviewer rules | [AGENT_RULES.md](AGENT_RULES.md) |
+| Development workflow & rules | [Development-Rules.md](Development-Rules.md) |
 | Code conventions for Claude Code | [CLAUDE.md](../CLAUDE.md) |
 | What is shipped vs planned | [Roadmap.md](Roadmap.md) |
 

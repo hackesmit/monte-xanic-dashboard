@@ -109,7 +109,7 @@ Detailed docs are in [`docs/`](docs/README.md):
 | [Test Coverage](docs/Test-Coverage.md) | Test suite details and coverage gaps |
 | [Domain Model](docs/Domain-Model.md) | Entity relationships, identifier formats |
 | [Roadmap](docs/Roadmap.md) | Completed phases, deferred work, future improvements |
-| [Agent Rules](docs/AGENT_RULES.md) | Planner/builder/reviewer workflow rules |
+| [Development Rules](docs/Development-Rules.md) | Single-console development workflow |
 
 ## Status
 
