@@ -78,13 +78,12 @@ A code change that references a new column MUST ship with its migration applied.
 
 The dashboard's migration banner (rendered for `lab`/`admin` users via `/api/migrations-status`) detects drift between the manifest and `public.applied_migrations` and names the missing file. If you see `Could not find the 'X' column ... in the schema cache`, a migration is unrun.
 
-## Agent Roles
+## Workflow
 
-See [docs/AGENT_RULES.md](docs/AGENT_RULES.md) for full rules.
+Developed in a single Claude Code console — one session plans, builds, tests, and ships. See [docs/Development-Rules.md](docs/Development-Rules.md).
 
-- **Planner/Reviewer:** NEVER edit source code. Only produce markdown (PLAN.md, REVIEW.md, TASK.md).
-- **Builder:** Only role that edits source code.
-- Do not write to PLAN.md, TASK.md, or REVIEW.md unless explicitly asked.
+- Design specs and implementation plans live under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
+- The old planner/builder/reviewer split is retired; legacy `PLAN.md`/`TASK.md`/`REVIEW.md` are archived in `docs/archive/` and no longer drive work. Trust git history and the test suite.
 
 ## Debugging Guidelines
 
