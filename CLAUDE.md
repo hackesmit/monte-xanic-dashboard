@@ -133,3 +133,11 @@ Rules:
 - If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
 - Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
 - After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
+
+## Output discipline (Agent HQ)
+- Never cat a log or dump raw command output. Filter first: head, tail, grep, or rg with context flags.
+- JSON goes through jq, YAML through yq. Extract the fields you need, never paste raw payloads.
+- Run test suites with quiet reporters and surface failures only (pytest -q, vitest --reporter=dot or equivalent).
+- Read diffs, not files, when reviewing changes (git diff, git show). Open a full file only to edit it.
+- Search before reading: rg / fd to locate, then read the minimal span.
+- Long builds and installs: redirect to a file, report the exit code and the last 20 lines.
