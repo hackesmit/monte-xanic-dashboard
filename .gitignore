@@ -84,3 +84,6 @@ playwright/.cache/
 
 # Graphify local graph output (rebuilt by git hooks)
 graphify-out/
+
+# Local per-machine Claude permissions — never track
+.claude/settings.local.json
