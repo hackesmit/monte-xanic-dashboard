@@ -17,21 +17,6 @@
 | -- | Supabase keep-alive (`/api/ping` daily Vercel cron, `CRON_SECRET`-gated) | Yes (2026-05-19) |
 | 8 | Mona AI chat assistant (Claude Sonnet 4.6 proxy, client-side agent loop, declarative charts/tables, saved views, knowledge base, floating widget) | Yes (2026-07-02) |
 
-## Deferred: Phase 7b -- Photographic Evidence
-
-Not yet implemented. Original design included photo attachments for mediciones tecnicas using Cloudflare R2 storage.
-
-**Scope:**
-- Cloudflare R2 bucket (`montexanic-mediciones`) with CORS config
-- `medicion_fotos` Supabase table (FK to mediciones_tecnicas)
-- `api/photo-url.js` presigned PUT URL generator (auth-gated)
-- Photo upload UI + gallery display in mediciones view
-- CSP update: add R2 domain to `img-src` and `connect-src`
-- `@aws-sdk/client-s3` dependency for presigned URLs
-- Mobile: thumbnail grid reflow, touch/swipe lightbox
-
-**Why deferred:** Core mediciones functionality (tonnage, berry measurements, health sort) was prioritized. Photos add complexity (R2 setup, presigned URLs, CSP changes, mobile gallery) without blocking the primary data capture workflow.
-
 ## Recommended Future Improvements
 
 ### Security
