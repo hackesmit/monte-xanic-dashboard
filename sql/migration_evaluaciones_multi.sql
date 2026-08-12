@@ -18,6 +18,15 @@
 -- scalars otherwise, so this migration and the code are order-independent.
 --
 -- Idempotent: every step is guarded, so a re-run is a no-op.
+--
+-- Wrapped in one transaction. Between the DROP CONSTRAINT and the ADD there is
+-- a window with no vocabulary check at all, and the renames run inside it; a
+-- concurrent write of a pre-2026 label in that window would fail the new
+-- constraint and could leave the table migrated but unconstrained. DDL is
+-- transactional in Postgres, so a single transaction holds the lock through
+-- the whole thing and rolls back cleanly on any failure (lucy, 2026-08-12).
+
+BEGIN;
 
 -- 1. The panel column, plus acidez volatil.
 -- The 2026 workbook carries an 'AV (g/L)' column that the table had nowhere to
@@ -107,5 +116,9 @@ WHERE evaluaciones IS NULL
 CREATE INDEX IF NOT EXISTS idx_mediciones_evaluaciones
   ON public.mediciones_tecnicas USING GIN (evaluaciones);
 
+-- Recorded inside the transaction, so the ledger entry and the schema change
+-- either both land or neither does.
 INSERT INTO public.applied_migrations (name) VALUES ('migration_evaluaciones_multi')
   ON CONFLICT (name) DO NOTHING;
+
+COMMIT;

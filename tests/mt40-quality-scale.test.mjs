@@ -116,3 +116,51 @@ describe('MT.40 — evaluator count', () => {
     assert.equal(avg.sanidad, null);
   });
 });
+
+// Lucy third pass: the derivation only fired when the panel was present, so
+// omitting it was enough to slip contradictory labels past both endpoints.
+// Reproduced here against the same strip-and-derive step the handlers run.
+function applyWritePolicy(row) {
+  if ('evaluaciones' in row) {
+    row.evaluaciones = sanitizeEvaluaciones(row.evaluaciones);
+    const consensus = panelConsensus(row.evaluaciones || []);
+    row.health_grade      = consensus.health_grade;
+    row.phenolic_maturity = consensus.phenolic_maturity;
+  } else {
+    delete row.health_grade;
+    delete row.phenolic_maturity;
+  }
+  return row;
+}
+
+describe('MT.40 — the scalars cannot be set without a panel', () => {
+  it('drops caller-supplied labels when no panel accompanies them', () => {
+    const row = applyWritePolicy({
+      medicion_code: 'MT-26-001',
+      health_grade: 'Muy limpio',
+      phenolic_maturity: 'Sobresaliente',
+    });
+    assert.ok(!('health_grade' in row),
+      'a label with no panel behind it must not reach the database');
+    assert.ok(!('phenolic_maturity' in row));
+    assert.equal(row.medicion_code, 'MT-26-001', 'other columns are untouched');
+  });
+
+  it('overrides caller-supplied labels that contradict the panel', () => {
+    const row = applyWritePolicy({
+      medicion_code: 'MT-26-001',
+      evaluaciones: [{ sanidad: 'Contaminado', madurez: 'No sobresaliente' }],
+      health_grade: 'Muy limpio',
+      phenolic_maturity: 'Sobresaliente',
+    });
+    assert.equal(row.health_grade, 'Contaminado');
+    assert.equal(row.phenolic_maturity, 'No sobresaliente');
+  });
+
+  it('clears both labels when the panel is present but empty', () => {
+    const row = applyWritePolicy({
+      medicion_code: 'MT-26-001', evaluaciones: [], health_grade: 'Muy limpio',
+    });
+    assert.equal(row.health_grade, null);
+  });
+});
