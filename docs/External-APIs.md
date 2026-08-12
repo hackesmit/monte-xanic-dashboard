@@ -5,7 +5,17 @@ Recon notes for the two automation goals:
 1. Make berry-sample ingestion from WineXRay automatic, behind a sync button, instead of manual file upload.
 2. Pull weather for the Sector 3A vineyard from its own FieldClimate station instead of Open-Meteo.
 
-No credential values appear in this document. Secrets are fetched at runtime from Proton Pass via `pp` and used in place.
+No credential values appear in this document.
+
+**Where secrets come from depends on where the code runs, and the two are not interchangeable.** `pp` is a local CLI backed by an interactive session on Daniel's box. It exists for agents and for jobs running on hqbox. It does **not** exist inside a deployed Vercel function, which has no Proton Pass binary and no session, so any design that calls `pp` at request time from a deployed endpoint does not work.
+
+| Where the code runs | How it gets its secret |
+| --- | --- |
+| An agent or a human at a terminal on this box | `pp`, values used in place, never written to a file |
+| A scheduled job on hqbox | `pp`, since hqbox has the session |
+| A deployed Vercel function | Vercel encrypted environment variables, set at deploy time. Never `pp`. |
+
+Rotation therefore has two places to touch for anything used by both, and a rotation that updates only Proton Pass will silently leave a deployed function on the old value until its environment variable is updated too.
 
 ## WineXRay
 
@@ -16,7 +26,7 @@ Public site and client app are one React SPA (`ssm-web-app`) served from `https:
 | API base | `/v1`, same origin (`https://www.winexray.com/v1`) |
 | Source of truth | `REACT_APP_API_BASE:"/v1"` inlined in `/static/js/main.e1792df2.js` |
 | Auth style | Session credential returned in the JSON body, then replayed as a query argument |
-| Credentials | Held in Proton Pass. The worker resolves the item at runtime via `pp` and uses the values in place. Neither the identifiers nor the values belong in this repo, which is public. |
+| Credentials | Held in Proton Pass for local and hqbox use. A deployed sync endpoint reads them from Vercel encrypted environment variables instead, per the table above. Neither the identifiers nor the values belong in this repo, which is public. |
 
 ### Login, verified working
 
@@ -65,6 +75,8 @@ Two constraints the implementation has to respect.
 
 **Keep the session credential server-side.** Because WineXRay carries it in the URL rather than a header, it lands anywhere full URLs are retained: browser history, proxy and CDN access logs, error traces. The WineXRay adapter therefore runs only in a serverless function, never in the browser. The credential is never sent to the client, never returned in a response body, and never included in an error message that reaches the client or a log line. The sync button calls our own endpoint, and that endpoint talks to WineXRay.
 
+That function gets the WineXRay login from Vercel encrypted environment variables, not from `pp`, for the reason given at the top of this document: the Proton Pass CLI and its session do not exist in a deployed function. The two hosting options therefore differ, and the choice is not cosmetic. A Vercel function needs the login added to the project's environment variables, which puts a long-lived credential in Vercel. A job on hqbox can use `pp` and keeps the credential on Daniel's box. If keeping it out of Vercel matters, host the sync on hqbox and have the button call that instead.
+
 **Make sync idempotent, not merely upserting.** Reusing the upsert code is not sufficient on its own. A double-clicked button, a retry after a timeout, and two overlapping syncs are all ordinary events here. The requirement is that the natural key is enforced by a database unique constraint rather than assumed by application code, that writes go through an atomic on-conflict upsert against that constraint, and that overlapping runs are collapsed so a second sync cannot interleave with a first. `xd-qub` is auditing whether the existing `(sample_id, sample_date, sample_seq)` key actually holds; the sync button must not ship before that answer is known.
 
 ## FieldClimate (Pessl Instruments)
@@ -105,12 +117,22 @@ Date: Wed, 12 Aug 2026 14:05:00 GMT
 Authorization: hmac <public key>:<hex hmac-sha256 of the canonical string>
 ```
 
-Two traps worth stating plainly, because both produce a 401 that looks like a bad key:
+**`SIGNED_PATH` is not yet determined for v2, and this document cannot tell you which form is correct.** The reference client above targets v1, and no live v2 request has been made from here because the account keys are not available yet. Treat the following as candidates to test, not as instructions to follow:
 
-- **The version prefix is not signed.** In the reference client the base URI carries the version and the route does not, so `GET https://api.fieldclimate.com/v1/user/stations` signs the path `/user/stations`, not `/v1/user/stations`. Do not sign the `/v2` segment shown in the route table below unless testing proves otherwise.
-- **Do not double the slash.** The route is joined to the leading `/` by the signing step, so a route written as `/user/stations` yields `GET//user/stations` and fails.
+| Candidate | Form for `GET /v2/user/stations` | Basis |
+| --- | --- | --- |
+| A, version excluded | `/user/stations` | What the v1 reference client does: its base URI carries the version and the signed route does not |
+| B, version included | `/v2/user/stations` | What a path-based signer would do if v2 changed to sign the full request path |
 
-One caveat to test rather than trust: the reference client targets v1, and this integration targets v2. Whether v2 signs the version prefix and whether it includes the query string for routes that carry one are both unverified here. The first task of the dependent bead is to confirm the canonical form empirically against a live signed request, and to record the working canonical string here.
+Try A first, since it is what the only reference implementation we have actually does. If it returns 401, try B before suspecting the key. A 401 here means an unexpected canonical string far more often than it means a bad key.
+
+Three details are equally unresolved and must be settled by the same empirical test:
+
+- whether the query string is included in `SIGNED_PATH` for routes that carry one, and if so whether parameters are ordered or percent-encoded in any particular way
+- whether a doubled slash is tolerated. The concatenation already supplies the leading `/`, so a route written with its own leading slash yields `GET//user/stations`. Assume this fails.
+- whether v2 accepts the same `hmac <public key>:<signature>` Authorization form
+
+Resolving all of this is the first task of `xd-1f3`, before any integration code is written. The outcome, including the exact canonical string that worked, replaces this section. Until then no form here is authoritative.
 
 ### Endpoints that matter for us
 
@@ -130,11 +152,15 @@ One caveat to test rather than trust: the reference client targets v1, and this 
 
 - HMAC public and private key from the FieldClimate account, stored in Proton Pass, never in a file.
 - The station id for Sector 3A, read from `/v2/user/stations` once authenticated.
-- A decision on which fields replace Open-Meteo for this vineyard, and whether Open-Meteo stays as the fallback when the station is offline or has a gap.
+- A decision from Daniel on which fields the station replaces for this vineyard.
 
 ### Design implication
 
-`js/weather.js` currently owns Open-Meteo (`_API_BASE` archive and `_FORECAST_API`). A station source should slot in behind the same interface so the rest of the app does not learn a second weather shape. Sector 3A reads from the station, every other origin keeps using Open-Meteo, and a station gap falls back rather than showing an empty chart. Station data is also point-accurate rather than modelled, so historical series may not line up exactly with the Open-Meteo archive; that discontinuity should be visible in the UI rather than silently averaged.
+`js/weather.js` currently owns Open-Meteo (`_API_BASE` archive and `_FORECAST_API`). A station source should slot in behind the same interface so the rest of the app does not learn a second weather shape. Sector 3A reads from the station and every other origin keeps using Open-Meteo.
+
+**Fallback is decided, not open:** when the station is offline or has a gap, that range falls back to Open-Meteo rather than rendering an empty chart. The condition on it is labelling, not approval. Station data is point-measured and Open-Meteo is modelled, so a series that silently mixes them is not one measurement any more, and a winemaker reading a Brix or temperature curve has no way to know which points came from where. Every fallback point must therefore be distinguishable in both the data layer and the UI. A blended series with no marking is worse than an honest gap, because it looks authoritative and is not.
+
+The only thing still open here is the field-level question above: which measurements the station replaces. That does not block the fallback design.
 
 ## Sources
 
