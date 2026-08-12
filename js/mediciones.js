@@ -16,6 +16,7 @@ import {
   consensusMadurezLabel,
 } from './classification.js';
 import { escapeHtml } from './utils.js';
+import { MAX_EVALUADORES } from './quality-scale.js';
 
 // ── Pure helpers (exported for tests; used by methods on Mediciones below) ──
 
@@ -65,6 +66,43 @@ export function normalizeEvaluadorPanel(panel) {
   return rows.length ? rows : [{ evaluador: null, sanidad: null, madurez: null }];
 }
 
+// Builds the panel the edit modal opens with.
+//
+// The engine falls back to a legacy scalar for any axis the panel leaves
+// empty, per axis and independently. The modal has to seed the same way or it
+// quietly destroys data: a row whose panel grades only sanidad, with madurez
+// living on the old phenolic_maturity column, would otherwise open showing no
+// madurez, derive null for it, mark the field dirty, and wipe a +3 the user
+// never touched. Reported by lucy in review on 2026-08-12.
+//
+// Labels are canonicalised because the selects only offer the 2026 vocabulary:
+// handed a pre-2026 label, a select matches no option and falls back to blank,
+// losing a grade that is on record.
+export function seedEvaluadorPanel(evaluaciones, healthGrade, phenolicMaturity) {
+  const panel = (Array.isArray(evaluaciones) ? evaluaciones : []).map(e => ({
+    evaluador: e?.evaluador ?? null,
+    sanidad:   canonicalSanitaryLabel(e?.sanidad),
+    madurez:   e?.madurez ?? null,
+  }));
+  if (!panel.length) {
+    return [{
+      evaluador: null,
+      sanidad:   canonicalSanitaryLabel(healthGrade),
+      madurez:   phenolicMaturity || null,
+    }];
+  }
+  // Graft each orphaned scalar onto the first row, matching the engine's
+  // own per-axis fallback rule so the form and the score agree.
+  if (!panel.some(e => e.sanidad)) {
+    const s = canonicalSanitaryLabel(healthGrade);
+    if (s) panel[0].sanidad = s;
+  }
+  if (!panel.some(e => e.madurez)) {
+    if (phenolicMaturity) panel[0].madurez = phenolicMaturity;
+  }
+  return panel;
+}
+
 // Drops rows nobody filled in, so an untouched spare row never reaches the DB.
 export function compactEvaluadorPanel(panel) {
   return (Array.isArray(panel) ? panel : []).filter(
@@ -90,7 +128,10 @@ export function evaluadorPanelSummary(panel) {
     const signed = avg.madurez > 0 ? `+${avg.madurez.toFixed(2)}` : avg.madurez.toFixed(2);
     parts.push(`Madurez: ${signed} (${consensusMadurezLabel(avg.madurez)})`);
   }
-  const n = Math.max(avg.sanidadCount, avg.madurezCount);
+  // Everyone who graded at least one axis, not the larger of the two axis
+  // counts, which under-reports a panel where different people covered
+  // different axes (lucy, 2026-08-12).
+  const n = avg.evaluadorCount;
   parts.push(`${n} ${n === 1 ? 'evaluador' : 'evaluadores'}`);
   return parts.join(' · ');
 }
@@ -155,8 +196,16 @@ export const Mediciones = {
   },
 
   _updateEvaluadorSummary(panelId) {
+    const rows = this._panels[panelId] || [];
     const el = document.getElementById(`${panelId}-avg`);
-    if (el) el.textContent = evaluadorPanelSummary(this._panels[panelId] || []);
+    if (el) el.textContent = evaluadorPanelSummary(rows);
+    const addBtn = document.querySelector(
+      `[data-action="evaluador-add"][data-panel="${panelId}"]`);
+    if (addBtn) {
+      const full = rows.length >= MAX_EVALUADORES;
+      addBtn.disabled = full;
+      addBtn.title = full ? `Maximo ${MAX_EVALUADORES} evaluadores` : '';
+    }
   },
 
   // Pulls the typed values back into panel state. Called on every input so
@@ -180,6 +229,10 @@ export const Mediciones = {
   addEvaluador(panelId) {
     this.syncEvaluadores(panelId);
     const rows = this._panels[panelId] || [];
+    // The server caps the stored panel, so the form caps at the same number.
+    // Letting the UI run past it would average over rows the database drops,
+    // leaving the score shown before saving different from the one after.
+    if (rows.length >= MAX_EVALUADORES) return;
     rows.push({ evaluador: null, sanidad: null, madurez: null });
     this.renderEvaluadores(panelId, rows);
     // Put the cursor in the name field of the row just added.
@@ -352,11 +405,7 @@ export const Mediciones = {
     // snapshot is canonicalised to the same value so a row the SQL migration
     // has not reached does not read as dirty the moment the modal opens.
     const seed = compactEvaluadorPanel(
-      (row.evaluaciones && row.evaluaciones.length)
-        ? row.evaluaciones.map(e => ({
-            ...e, sanidad: canonicalSanitaryLabel(e.sanidad) }))
-        : [{ evaluador: null, sanidad: canonicalSanitaryLabel(row.healthGrade),
-             madurez: row.phenolicMaturity || null }]
+      seedEvaluadorPanel(row.evaluaciones, row.healthGrade, row.phenolicMaturity)
     );
     this._editing.evaluacionesJson = JSON.stringify(seed);
     this._editing.healthGrade = canonicalSanitaryLabel(row.healthGrade);

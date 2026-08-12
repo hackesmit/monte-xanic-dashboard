@@ -94,135 +94,23 @@ function scoreSanitaryPct(medicion) {
   return 1;
 }
 
-// Multi-evaluator panel (Vendimia 2026).
-// A medicion may be graded by 1..N people. `evaluaciones` is the source of
-// truth: [{ evaluador, sanidad, madurez }]. The legacy scalars health_grade
-// and phenolic_maturity are the single-evaluator fallback for rows written
-// before the panel existed.
-//
-// Daniel, 2026-08-12: each axis averages independently. An evaluator who
-// graded sanidad but left madurez blank counts toward the sanidad mean only.
-// A blank is missing data, never a zero, because zero is a real sanitary
-// grade ('Contaminado') and would silently condemn an ungraded lot.
+// The vocabulary, the per-axis averaging, and the consensus labels live in
+// js/quality-scale.js so the browser and the serverless upload path share one
+// definition and cannot drift. Re-exported here because this module is the
+// scoring engine's public face and callers already import from it.
+// `export ... from` re-exports without binding the names in this module's
+// scope, and scoreLot below calls averageEvaluations directly, so import too.
+import { averageEvaluations } from './quality-scale.js';
 
-// Maps a sanitary label to its canonical 2026 spelling, absorbing the
-// pre-2026 vocabulary so unmigrated rows still score.
-// Own-property lookup returning a finite number, or null.
-//
-// These maps are indexed by label strings that arrive from the database, an
-// uploaded workbook, or an API payload, so they are attacker-influenced. A
-// plain `key in map` or `map[key]` walks the prototype chain: 'toString' and
-// 'constructor' would both "resolve", yielding a function that survives into
-// the mean as NaN and silently collapses the lot's score. Own properties only,
-// and the value must actually be a number.
-function lookupPoints(map, label) {
-  if (label === null || label === undefined) return null;
-  const key = String(label).trim();
-  if (!key || !Object.hasOwn(map, key)) return null;
-  const pts = map[key];
-  return typeof pts === 'number' && Number.isFinite(pts) ? pts : null;
-}
-
-export function canonicalSanitaryLabel(label) {
-  if (label === null || label === undefined) return null;
-  const key = String(label).trim();
-  if (!key) return null;
-  const { visual, visualLegacy } = CONFIG.sanitaryThresholds;
-  if (Object.hasOwn(visual, key)) return key;
-  if (Object.hasOwn(visualLegacy, key)) return visualLegacy[key];
-  return null;
-}
-
-export function sanitaryPoints(label) {
-  return lookupPoints(CONFIG.sanitaryThresholds.visual, canonicalSanitaryLabel(label));
-}
-
-export function madurezPoints(label) {
-  return lookupPoints(CONFIG.madurezOverlay, label);
-}
-
-function mean(values) {
-  if (!values.length) return null;
-  return values.reduce((a, b) => a + b, 0) / values.length;
-}
-
-// Collapses the evaluator panel into one mean per axis.
-// Returns { sanidad, madurez, sanidadCount, madurezCount } with null means
-// when nobody graded that axis.
-export function averageEvaluations(medicion) {
-  if (!medicion) {
-    return { sanidad: null, madurez: null, sanidadCount: 0, madurezCount: 0 };
-  }
-
-  const panel = Array.isArray(medicion.evaluaciones) ? medicion.evaluaciones : [];
-  const sanidad = [];
-  const madurez = [];
-
-  for (const e of panel) {
-    if (!e) continue;
-    const s = sanitaryPoints(e.sanidad);
-    if (s !== null) sanidad.push(s);
-    const m = madurezPoints(e.madurez);
-    if (m !== null) madurez.push(m);
-  }
-
-  // Legacy scalars only fill an axis the panel left empty, so a migrated row
-  // carrying both shapes is never double-counted.
-  if (!sanidad.length) {
-    const s = sanitaryPoints(medicion.health_grade);
-    if (s !== null) sanidad.push(s);
-  }
-  if (!madurez.length) {
-    const m = madurezPoints(medicion.phenolic_maturity);
-    if (m !== null) madurez.push(m);
-  }
-
-  return {
-    sanidad: mean(sanidad),
-    madurez: mean(madurez),
-    sanidadCount: sanidad.length,
-    madurezCount: madurez.length,
-  };
-}
-
-// Nearest label to a numeric average. The panel mean is usually fractional
-// (three evaluators at 4, 4, 2 average 3.33) but health_grade and
-// phenolic_maturity are label columns, so the consensus label is what the
-// table, the map tooltips, and the exports display. Ties round toward the
-// lower grade, which is the conservative read for a quality call.
-function nearestLabel(map, avg) {
-  if (avg === null || avg === undefined || !Number.isFinite(avg)) return null;
-  let best = null;
-  let bestDist = Infinity;
-  for (const [label, pts] of Object.entries(map)) {
-    const dist = Math.abs(pts - avg);
-    if (dist < bestDist || (dist === bestDist && best !== null && pts < map[best])) {
-      best = label;
-      bestDist = dist;
-    }
-  }
-  return best;
-}
-
-export function consensusSanitaryLabel(avg) {
-  return nearestLabel(CONFIG.sanitaryThresholds.visual, avg);
-}
-
-export function consensusMadurezLabel(avg) {
-  return nearestLabel(CONFIG.madurezOverlay, avg);
-}
-
-// Convenience for write paths (form save, XLSX upload): collapse a panel into
-// the two derived scalar labels that legacy readers still consume.
-export function panelConsensus(evaluaciones) {
-  const panel = averageEvaluations({ evaluaciones });
-  return {
-    health_grade:      consensusSanitaryLabel(panel.sanidad),
-    phenolic_maturity: consensusMadurezLabel(panel.madurez),
-    sanidadAvg:        panel.sanidad,
-    madurezAvg:        panel.madurez,
-  };
-}
+export {
+  canonicalSanitaryLabel,
+  sanitaryPoints,
+  madurezPoints,
+  averageEvaluations,
+  consensusSanitaryLabel,
+  consensusMadurezLabel,
+  panelConsensus,
+} from './quality-scale.js';
 
 // ── Core: scoreLot ───────────────────────────────────────────────────
 
@@ -302,7 +190,10 @@ export function scoreLot(lot) {
     madurezAdj,
     sanidadAvg: panel.sanidad,
     madurezAvg: panel.madurez,
-    evaluadorCount: Math.max(panel.sanidadCount, panel.madurezCount),
+    // Everyone who graded at least one axis. Taking the larger of the two
+    // axis counts under-reports a panel where different people covered
+    // different axes (lucy, 2026-08-12).
+    evaluadorCount: panel.evaluadorCount,
     reason: null
   };
 }
