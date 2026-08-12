@@ -47,10 +47,18 @@ export const MADUREZ_POINTS = {
   'No sobresaliente': -3,
 };
 
-// The panel is capped so one request cannot push unbounded JSON into the
-// column. The form enforces the same number, so the cap is never a silent
-// truncation the user did not see.
+// A ceiling on panel size, so one request cannot push unbounded JSON into the
+// column. It is a rejection threshold, never a truncation: silently keeping
+// the first 20 of 21 evaluators would drop a real grade and move the average
+// (20 Muy limpio plus one Contaminado averages 3.81, but the stored 20 average
+// 4.00), which is exactly the kind of quiet score change this whole change is
+// meant to prevent (lucy, 2026-08-12). The form stops at the same number, so
+// a panel entered by hand can never reach it.
 export const MAX_EVALUADORES = 20;
+
+export function exceedsPanelLimit(value) {
+  return Array.isArray(value) && value.length > MAX_EVALUADORES;
+}
 
 // Own-property lookup returning a finite number, or null.
 //
@@ -186,8 +194,7 @@ export function sanitizeEvaluaciones(value) {
       sanidad:   text(e.sanidad),
       madurez:   text(e.madurez),
     }))
-    .filter(e => e.sanidad !== null || e.madurez !== null || e.evaluador !== null)
-    .slice(0, MAX_EVALUADORES);
+    .filter(e => e.sanidad !== null || e.madurez !== null || e.evaluador !== null);
 }
 
 // The two derived scalar labels for a panel. Every write path calls this

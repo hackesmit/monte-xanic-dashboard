@@ -2,7 +2,9 @@ import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 
 // Allowed tables: conflict columns, max rows, column whitelist, required fields
-import { sanitizeEvaluaciones, panelConsensus } from '../js/quality-scale.js';
+import {
+  sanitizeEvaluaciones, panelConsensus, exceedsPanelLimit, MAX_EVALUADORES,
+} from '../js/quality-scale.js';
 
 export const ALLOWED_TABLES = {
   wine_samples: {
@@ -181,6 +183,10 @@ export default async function handler(req, res) {
       // cap below is applied after sanitising, so a caller who computed a
       // consensus over more rows than survive would otherwise leave the panel
       // and its labels disagreeing about the same row (lucy, 2026-08-12).
+      if (exceedsPanelLimit(row.evaluaciones)) {
+        return res.status(400).json({ ok: false,
+          error: `Maximo ${MAX_EVALUADORES} evaluadores por medicion` });
+      }
       if ('evaluaciones' in row && !Array.isArray(row.evaluaciones)) {
         return res.status(400).json({ ok: false, error: 'Evaluaciones debe ser una lista' });
       }
