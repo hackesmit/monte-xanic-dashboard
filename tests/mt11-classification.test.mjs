@@ -10,6 +10,9 @@ import {
   scoreAll,
   resolveRubric,
   resolveValley,
+  sanitaryPoints,
+  madurezPoints,
+  canonicalSanitaryLabel,
   aggregateSection
 } from '../js/classification.js';
 
@@ -445,4 +448,42 @@ test('MT.11 panel: the legacy scalar fills only an axis the panel left empty', (
   }));
   assert.equal(r.sanidadAvg, 4);
   assert.equal(r.madurezAvg, 3);
+});
+
+// Lucy (cross-vendor adversarial review, 2026-08-12) flagged that the label
+// maps are indexed by strings arriving from the DB, an uploaded workbook, or
+// an API payload, and that a prototype key would resolve to a function.
+test('MT.11 panel: prototype keys never resolve to points', () => {
+  for (const poison of ['__proto__', 'toString', 'constructor', 'hasOwnProperty', 'valueOf']) {
+    assert.equal(sanitaryPoints(poison), null, `sanidad '${poison}' must not score`);
+    assert.equal(madurezPoints(poison), null, `madurez '${poison}' must not score`);
+    assert.equal(canonicalSanitaryLabel(poison), null);
+  }
+});
+
+test('MT.11 panel: a poisoned panel cannot produce a NaN score', () => {
+  const r = scoreLot(mkLot({
+    medicion: {
+      ...mkLot().medicion, health_grade: null, phenolic_maturity: null,
+      evaluaciones: [
+        { evaluador: 'x', sanidad: 'toString', madurez: 'constructor' },
+        { evaluador: 'y', sanidad: 'Limpio',   madurez: 'Parcial' }
+      ]
+    }
+  }));
+  assert.ok(Number.isFinite(r.score36), `score must stay a real number (got ${r.score36})`);
+  // Only the one legible evaluator counts.
+  assert.equal(r.sanidadAvg, 3);
+  assert.equal(r.madurezAvg, 0);
+});
+
+test('MT.11 panel: unrecognised labels are ignored, not scored as zero', () => {
+  const r = scoreLot(mkLot({
+    medicion: {
+      ...mkLot().medicion, health_grade: null,
+      evaluaciones: [{ evaluador: 'x', sanidad: 'medio sucio', madurez: null }]
+    }
+  }));
+  assert.equal(r.sanidadAvg, null);
+  assert.ok(r.missing.includes('visual'), 'a typo is missing data, not Contaminado');
 });

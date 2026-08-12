@@ -561,6 +561,40 @@ export const Events = {
     // Live dirty tracking — every input inside the modal triggers a refresh
     document.getElementById('med-edit-form')?.addEventListener('input',
       () => Mediciones._refreshDirtyState());
+    // Selects fire `change`, not `input`, in enough browsers to matter, and
+    // the evaluator panel is mostly selects.
+    document.getElementById('med-edit-form')?.addEventListener('change',
+      () => Mediciones._refreshDirtyState());
+
+    // Evaluator panel: add and remove rows. Delegated from document so the
+    // handler survives every re-render of the panel's innerHTML, and so both
+    // panels (new-medicion form and edit modal) share one listener. No inline
+    // handlers, per the CSP.
+    document.addEventListener('click', (e) => {
+      const add = e.target.closest('[data-action="evaluador-add"]');
+      if (add) {
+        e.preventDefault();
+        Mediciones.addEvaluador(add.dataset.panel);
+        Mediciones._refreshDirtyState();
+        return;
+      }
+      const remove = e.target.closest('[data-action="evaluador-remove"]');
+      if (remove) {
+        e.preventDefault();
+        Mediciones.removeEvaluador(remove.dataset.panel, Number(remove.dataset.index));
+        Mediciones._refreshDirtyState();
+      }
+    });
+
+    // Keep the running average current as the panel is typed into. The edit
+    // modal already refreshes through its own form listeners above; this
+    // covers the new-medicion form, which has no dirty tracking.
+    const newPanel = document.getElementById('med-evaluadores');
+    if (newPanel) {
+      const sync = () => Mediciones.syncEvaluadores('med-evaluadores');
+      newPanel.addEventListener('input', sync);
+      newPanel.addEventListener('change', sync);
+    }
 
     // Search input (debounced)
     const searchEl = document.getElementById('med-search');

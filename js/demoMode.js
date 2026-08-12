@@ -217,24 +217,40 @@ function pointsForGrade(grade, r) {
   return () => 2;
 }
 
+// Vendimia 2026: mediciones carry an evaluator panel, so demo rows carry one
+// too or the demo would never exercise the averaging path. Every evaluator is
+// given the same two labels on purpose: the panel is what the engine scores
+// from, so varying them would pull demo lots off the A+/A/B/C targets the
+// generators are calibrated to hit. What varies is how many people graded.
+const DEMO_EVALUADORES = ['C. Tinajero', 'Enologia', 'Viticultura'];
+
+function demoPanel(sanidad, madurez, r) {
+  const n = 1 + Math.floor(r() * DEMO_EVALUADORES.length);
+  return DEMO_EVALUADORES.slice(0, n).map(evaluador => ({
+    evaluador,
+    sanidad: sanidad ?? null,
+    madurez: madurez ?? null,
+  }));
+}
+
 function healthForGrade(grade, r) {
   // Health counts sum to 100 for easy pct calculation
   switch (grade) {
     case 'A+':
     case 'A':
-      return { grade: r() < 0.5 ? 'Excelente' : 'Bueno',
+      return { grade: r() < 0.5 ? 'Muy limpio' : 'Limpio',
                madura: 82 + Math.round(r() * 8),
                inmadura: 2 + Math.round(r() * 3),
                sobremadura: 1 + Math.round(r() * 2),
                picadura: 0, enfermedad: 0, quemadura: 0 };
     case 'B':
-      return { grade: r() < 0.5 ? 'Bueno' : 'Regular',
+      return { grade: r() < 0.5 ? 'Limpio' : 'Parcialmente limpio',
                madura: 78 + Math.round(r() * 6),
                inmadura: 4 + Math.round(r() * 4),
                sobremadura: 2 + Math.round(r() * 3),
                picadura: 1, enfermedad: 1, quemadura: 0 };
     case 'C':
-      return { grade: r() < 0.5 ? 'Regular' : 'Malo',
+      return { grade: r() < 0.5 ? 'Parcialmente limpio' : 'Sucio',
                madura: 60 + Math.round(r() * 10),
                inmadura: 8 + Math.round(r() * 6),
                sobremadura: 3 + Math.round(r() * 4),
@@ -622,6 +638,9 @@ function generateCurrentSeason(currentYear, today, r) {
     // Current-season mediciones row — targets a "good" grade so the demo
     // calidad map renders colors. Health distribution heavy on madura/buena.
     const totalBerries = 100;
+    // One draw, shared by the scalar and the panel, so the consensus label the
+    // panel averages to is the same one stored on the row.
+    const currentMadurez = r() < 0.7 ? 'Sobresaliente' : 'Buena';
     mediciones.push({
       id: 1000 + receptionId,
       code: `M-CUR-${g.lotCode}`,
@@ -634,14 +653,15 @@ function generateCurrentSeason(currentYear, today, r) {
       berryCount: totalBerries,
       berryWeight: 1.0 + (r() - 0.5) * 0.15,
       berryDiameter: 12 + r(),
-      healthGrade: 'Excelente',                 // visual score = 3
+      healthGrade: 'Muy limpio',                // visual score = 4 of 4
       healthMadura: 88 + Math.floor(r() * 10),  // ~92% madura
       healthInmadura: Math.floor(r() * 4),
       healthSobremadura: Math.floor(r() * 3),
       healthPicadura: Math.floor(r() * 2),
       healthEnfermedad: 0,
       healthQuemadura: Math.floor(r() * 2),
-      phenolicMaturity: r() < 0.7 ? 'Sobresaliente' : 'Parcial',
+      phenolicMaturity: currentMadurez,
+      evaluaciones: demoPanel('Muy limpio', currentMadurez, r),
       measuredBy: 'Demo',
       notes: null
     });
@@ -743,7 +763,7 @@ function generateHistoricalSeason(profile, r) {
     const health = healthForGrade(target, r);
 
     // Phenolic maturity overlay — mirrored to the grade target
-    const madurezMap = { 'A+': 'Sobresaliente', 'A': null, 'B': 'Parcial', 'C': 'No sobresaliente' };
+    const madurezMap = { 'A+': 'Sobresaliente', 'A': 'Buena', 'B': 'Parcial', 'C': r() < 0.5 ? 'Baja' : 'No sobresaliente' };
     const phenolicMaturity = madurezMap[target];
     const tons = Math.round((5 + r() * 40) * profile.tonsFactor * 10) / 10;
 
@@ -840,6 +860,7 @@ function generateHistoricalSeason(profile, r) {
       healthEnfermedad: health.enfermedad,
       healthQuemadura: health.quemadura,
       phenolicMaturity,
+      evaluaciones: demoPanel(health.grade, phenolicMaturity, r),
       measuredBy: 'Demo',
       notes: null
     });

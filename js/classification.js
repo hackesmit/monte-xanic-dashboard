@@ -107,28 +107,38 @@ function scoreSanitaryPct(medicion) {
 
 // Maps a sanitary label to its canonical 2026 spelling, absorbing the
 // pre-2026 vocabulary so unmigrated rows still score.
+// Own-property lookup returning a finite number, or null.
+//
+// These maps are indexed by label strings that arrive from the database, an
+// uploaded workbook, or an API payload, so they are attacker-influenced. A
+// plain `key in map` or `map[key]` walks the prototype chain: 'toString' and
+// 'constructor' would both "resolve", yielding a function that survives into
+// the mean as NaN and silently collapses the lot's score. Own properties only,
+// and the value must actually be a number.
+function lookupPoints(map, label) {
+  if (label === null || label === undefined) return null;
+  const key = String(label).trim();
+  if (!key || !Object.hasOwn(map, key)) return null;
+  const pts = map[key];
+  return typeof pts === 'number' && Number.isFinite(pts) ? pts : null;
+}
+
 export function canonicalSanitaryLabel(label) {
   if (label === null || label === undefined) return null;
-  const s = String(label).trim();
-  if (!s) return null;
+  const key = String(label).trim();
+  if (!key) return null;
   const { visual, visualLegacy } = CONFIG.sanitaryThresholds;
-  if (s in visual) return s;
-  if (s in visualLegacy) return visualLegacy[s];
+  if (Object.hasOwn(visual, key)) return key;
+  if (Object.hasOwn(visualLegacy, key)) return visualLegacy[key];
   return null;
 }
 
 export function sanitaryPoints(label) {
-  const canonical = canonicalSanitaryLabel(label);
-  if (canonical === null) return null;
-  return CONFIG.sanitaryThresholds.visual[canonical] ?? null;
+  return lookupPoints(CONFIG.sanitaryThresholds.visual, canonicalSanitaryLabel(label));
 }
 
 export function madurezPoints(label) {
-  if (label === null || label === undefined) return null;
-  const s = String(label).trim();
-  if (!s) return null;
-  const pts = CONFIG.madurezOverlay[s];
-  return pts === undefined ? null : pts;
+  return lookupPoints(CONFIG.madurezOverlay, label);
 }
 
 function mean(values) {

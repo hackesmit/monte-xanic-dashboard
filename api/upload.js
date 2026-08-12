@@ -2,6 +2,35 @@ import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 
 // Allowed tables: conflict columns, max rows, column whitelist, required fields
+// The evaluator panel is the only JSONB column the upload path writes, so it
+// is the only one where a caller could put arbitrary structure into the
+// database. Reduce whatever arrives to the shape the scoring engine expects:
+// an array of {evaluador, sanidad, madurez}, each a string or null. Labels are
+// NOT checked against the vocabulary here, because the engine already ignores
+// anything it does not recognise and rejecting them would make a typo in the
+// workbook fail the whole upload instead of one axis of one row.
+export const MAX_EVALUADORES = 20;
+
+export function sanitizeEvaluaciones(value) {
+  if (!Array.isArray(value)) return null;
+  const text = (v) => {
+    if (v === null || v === undefined) return null;
+    if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+    if (typeof v !== 'string') return null;
+    const s = v.trim();
+    return s === '' ? null : s.slice(0, 120);
+  };
+  return value
+    .slice(0, MAX_EVALUADORES)
+    .filter(e => e && typeof e === 'object' && !Array.isArray(e))
+    .map(e => ({
+      evaluador: text(e.evaluador),
+      sanidad:   text(e.sanidad),
+      madurez:   text(e.madurez),
+    }))
+    .filter(e => e.sanidad !== null || e.madurez !== null || e.evaluador !== null);
+}
+
 export const ALLOWED_TABLES = {
   wine_samples: {
     conflict: 'sample_id,sample_date,sample_seq',
@@ -167,6 +196,7 @@ export default async function handler(req, res) {
       for (const key of Object.keys(row)) {
         if (!columns.has(key)) delete row[key];
       }
+      if ('evaluaciones' in row) row.evaluaciones = sanitizeEvaluaciones(row.evaluaciones);
     }
   }
   if (required && required.length) {

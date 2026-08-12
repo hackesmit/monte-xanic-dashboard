@@ -188,15 +188,25 @@ export const prerecepcionParser = {
         if (val !== null) hasData = true;
       });
 
-      // Vendimia 2026 evaluator panel. Set unconditionally so every row in the
-      // batch shares one key set (PostgREST rejects mixed-shape arrays), and
-      // derive the consensus scalars the pre-panel readers still consume.
-      const panel = readEvaluatorPanel(row, evaluatorCols);
-      obj.evaluaciones = panel;
-      const consensus = panelConsensus(panel);
-      obj.health_grade = consensus.health_grade;
-      obj.phenolic_maturity = consensus.phenolic_maturity;
-      if (panel.length) hasData = true;
+      // Vendimia 2026 evaluator panel.
+      //
+      // Emitted only when the workbook actually has evaluator columns, and
+      // then for every row so the batch keeps one key set (PostgREST rejects
+      // mixed-shape arrays). A pre-2026 workbook has no opinion about these
+      // three columns, so it must not send them at all: the upsert conflicts
+      // on medicion_code, and a null in the payload would overwrite a grade a
+      // winemaker had entered through the form. Silence leaves it untouched.
+      if (evaluatorCols.length) {
+        const panel = readEvaluatorPanel(row, evaluatorCols);
+        obj.evaluaciones = panel;
+        // Consensus scalars for the readers that predate the panel. Within a
+        // 2026 workbook these columns belong to the sheet, so a row nobody
+        // graded correctly clears them.
+        const consensus = panelConsensus(panel);
+        obj.health_grade = consensus.health_grade;
+        obj.phenolic_maturity = consensus.phenolic_maturity;
+        if (panel.length) hasData = true;
+      }
 
       if (!hasData) continue;
 
