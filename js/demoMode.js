@@ -222,7 +222,9 @@ function pointsForGrade(grade, r) {
 // given the same two labels on purpose: the panel is what the engine scores
 // from, so varying them would pull demo lots off the A+/A/B/C targets the
 // generators are calibrated to hit. What varies is how many people graded.
-const DEMO_EVALUADORES = ['C. Tinajero', 'Enologia', 'Viticultura'];
+// Role labels, never real people: demo mode is public-facing and this repo is
+// public, so a real evaluator's name here would be published twice over.
+const DEMO_EVALUADORES = ['Enologia', 'Viticultura', 'Calidad'];
 
 function demoPanel(sanidad, madurez, r) {
   const n = 1 + Math.floor(r() * DEMO_EVALUADORES.length);
