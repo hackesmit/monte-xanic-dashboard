@@ -64,6 +64,13 @@ export default async function handler(req, res) {
     const consensus = panelConsensus(row.evaluaciones || []);
     row.health_grade      = consensus.health_grade;
     row.phenolic_maturity = consensus.phenolic_maturity;
+  } else {
+    // No panel, no opinion about the labels that describe one. A partial
+    // update carrying only the scalars used to slip past the derivation and
+    // leave them contradicting the stored panel (lucy, 2026-08-12). The edit
+    // modal derives both from the panel, so it always sends all three.
+    delete row.health_grade;
+    delete row.phenolic_maturity;
   }
 
   for (const col of conflictCols) {

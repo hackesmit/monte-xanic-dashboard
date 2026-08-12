@@ -182,6 +182,15 @@ export default async function handler(req, res) {
         const consensus = panelConsensus(row.evaluaciones || []);
         row.health_grade      = consensus.health_grade;
         row.phenolic_maturity = consensus.phenolic_maturity;
+      } else {
+        // No panel, no opinion about the labels that describe one. Deriving
+        // only when the panel is present left the invariant escapable by
+        // simply omitting it: a payload carrying flattering labels and no
+        // panel used to pass straight through and disagree with the stored
+        // panel and the score (lucy, 2026-08-12). Both writers always send
+        // the panel alongside, so nothing legitimate is dropped here.
+        delete row.health_grade;
+        delete row.phenolic_maturity;
       }
     }
   }
