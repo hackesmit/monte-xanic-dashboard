@@ -271,7 +271,7 @@ describe('MT.15 — Pre-recepción parser', () => {
   });
 });
 
-// Vendimia 2026 format (RG- Prerecepcion Vendimia 2026.xlsx, Carla Tinajero
+// Vendimia 2026 format (RG- Prerecepcion Vendimia 2026.xlsx, from the winery,
 // 2026-08-12). The workbook heads the evaluator columns on the banner row
 // above the main header row, drops the seed block and the WineXray/polyphenol
 // columns, and renames the anthocyanin column to 'Antocianinas (ppm)'.
