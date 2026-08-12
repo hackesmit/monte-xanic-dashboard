@@ -171,3 +171,27 @@ describe('MT.19 — seeding the edit modal never destroys a grade', () => {
     assert.equal(compactEvaluadorPanel(seeded).length, 0);
   });
 });
+
+// Lucy fourth pass: an unrecognised label (a workbook typo the sanitizer
+// deliberately lets through, so one typo does not fail a whole upload) used
+// to be dropped by the seed and then saved away by the next unrelated edit.
+describe('MT.19 — an unrecognised label survives an unrelated edit', () => {
+  it('keeps a sanidad label the vocabulary does not know', () => {
+    const seeded = seedEvaluadorPanel(
+      [{ evaluador: 'A', sanidad: 'medio sucio', madurez: 'Buenaa' }], null, null);
+    assert.equal(seeded[0].sanidad, 'medio sucio');
+    assert.equal(seeded[0].madurez, 'Buenaa');
+  });
+
+  it('still renames a legacy label rather than preserving it verbatim', () => {
+    assert.equal(seedEvaluadorPanel([{ sanidad: 'Regular' }], null, null)[0].sanidad,
+      'Parcialmente limpio');
+  });
+
+  it('does not treat an unrecognised label as a graded axis', () => {
+    // Preserved for display, but it must not be grafted over or scored.
+    const seeded = seedEvaluadorPanel([{ sanidad: 'medio sucio' }], 'Muy limpio', null);
+    assert.equal(seeded[0].sanidad, 'medio sucio', 'the stored value wins');
+    assert.equal(evaluadorPanelSummary(seeded).includes('Sanidad: sin calificar'), true);
+  });
+});
