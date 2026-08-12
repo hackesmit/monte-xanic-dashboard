@@ -56,8 +56,17 @@ export const MADUREZ_POINTS = {
 // a panel entered by hand can never reach it.
 export const MAX_EVALUADORES = 20;
 
+export const MAX_CAMPO_LEN = 120;
+
 export function exceedsPanelLimit(value) {
-  return Array.isArray(value) && value.length > MAX_EVALUADORES;
+  if (!Array.isArray(value)) return false;
+  if (value.length > MAX_EVALUADORES) return true;
+  // Same rule one level down: a name longer than the cap is malformed input,
+  // and quietly storing the first 120 characters corrupts it just as surely
+  // as dropping the 21st evaluator did (lucy, 2026-08-12).
+  return value.some(e => e && typeof e === 'object' &&
+    ['evaluador', 'sanidad', 'madurez'].some(
+      k => typeof e[k] === 'string' && e[k].trim().length > MAX_CAMPO_LEN));
 }
 
 // Own-property lookup returning a finite number, or null.
@@ -185,7 +194,7 @@ export function sanitizeEvaluaciones(value) {
     if (typeof v === 'number' || typeof v === 'boolean') return String(v);
     if (typeof v !== 'string') return null;
     const s = v.trim();
-    return s === '' ? null : s.slice(0, 120);
+    return s === '' ? null : s;
   };
   return value
     .filter(e => e && typeof e === 'object' && !Array.isArray(e))
