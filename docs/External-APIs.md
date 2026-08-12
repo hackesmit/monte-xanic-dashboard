@@ -146,7 +146,17 @@ Weather station platform. The target is the station at Sector 3A, which maps to 
 | API base | `https://api.fieldclimate.com/v2` |
 | Verified | `GET /v2/system/status` returns 200 without auth. `GET /v2/user/stations` returns 401, confirming auth is required. |
 | Auth | HMAC-SHA256, or OAuth2 |
-| Credentials | Not in Proton Pass yet. Needed from Daniel. |
+| Credentials | None. API access is subscription-gated and this account has no active API subscription (see Access status below). No key pair exists or can be self-generated. |
+
+### Access status: the v2 API is subscription-gated (verified 2026-08-12)
+
+Logged into the FieldClimate account that owns the Sector 3A station and opened user menu, servicios API, FieldClimate. The page states:
+
+> There are no active subscriptions for this account. Please activate your API subscription to access your API keys. Complete the registration form below and our subscriptions team will assist you shortly.
+
+There is no self-service key generation on that screen. The only provisioning route presented on this account's API screen is a paid-subscription registration form (company and billing address, VAT number, and an API tier: Tier 1 up to 48 requests per day per station, Tier 2 up to 500, Tier 3 up to 1500) that submits to Pessl's subscriptions team for manual activation. The earlier assumption that a key pair is generated self-service here does not hold for this account, so the HMAC scheme below stays untested: no key pair exists to sign a request with. Submitting the subscription form is a commercial commitment and an outward-facing action, so an agent did not submit it; whether and at which tier to subscribe is the account owner's decision.
+
+Two limits on how far that conclusion reaches. It describes what this account's API screen offers, which is not the same as proving no other provisioning route exists; the `Auth` row above also lists OAuth2, and whether OAuth2 is available to this account is unverified. And it blocks the *authenticated* routes specifically: `GET /v2/system/status` already returns 200 without auth, so "nothing works" is too strong. Every user, station, data and forecast route below needs the key pair.
 
 ### HMAC signing
 
@@ -208,9 +218,11 @@ Resolving all of this is the first task of `xd-1f3`, before any integration code
 
 ### What is still needed
 
-- HMAC public and private key from the FieldClimate account, stored in Proton Pass, never in a file.
-- The station id for Sector 3A, read from `/v2/user/stations` once authenticated.
-- A decision from Daniel on which fields the station replaces for this vineyard.
+- An active FieldClimate API subscription on the account. This is the current blocker (see Access status above): a paid subscription request routed to Pessl's subscriptions team, not a self-service key generation, so it needs an owner decision including which tier.
+- The HMAC public and private key pair, issued only after the subscription is active, stored in Proton Pass and never in a file.
+- Empirical confirmation of the v2 canonical string. The candidates above are still untested, because no key pair exists to sign a live request. This stays the first task once keys are available.
+- The station id for Sector 3A. A candidate is recorded on bead `xd-1f3`: on 2026-08-12 the account's only weather-type (LoRa CLIMA) station carried a label naming Sector 3A. **Do not treat it as confirmed, and do not treat `/v2/user/stations` as sufficient to confirm it.** A second dashboard widget showed a conflicting sector name for that same id, which means the custom name on the account is unreliable, and the API very likely serves the same unreliable custom metadata. Confirmation needs a source outside that metadata: a device serial or physical label read at the site, an installation record, or the account owner stating which physical station sits in Sector 3A. Reading the id back from the API only proves the id exists.
+- A decision on which fields the station replaces for this vineyard. **All field mappings are unverified.** The dashboard's weather widget for this station renders air temperature, dry-bulb and wet-bulb temperature, dew point, and relative humidity, but those are not the same measurements as `js/weather.js`'s `temp_max`, `temp_min` and `temp_avg`: an instantaneous reading is not a daily aggregate, and nothing observed establishes the units, the sensor codes, or the aggregation window. Any mapping has to come from `/v2/station/{id}/sensors` plus sample data once keys exist, not from the widget. Rainfall, UV and wind were not observed at all.
 
 ### Design implication
 
