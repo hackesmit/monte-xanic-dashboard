@@ -169,6 +169,10 @@ export default async function handler(req, res) {
       for (const key of Object.keys(row)) {
         if (!columns.has(key)) delete row[key];
       }
+      // A present-but-not-an-array panel is a malformed request, not an
+      // instruction to erase: writing sanitizeEvaluaciones' null would wipe a
+      // stored panel and both labels off a row that was fine.
+      //
       // The evaluator panel is the only JSONB column this path writes, so it
       // is the only place a caller could put arbitrary structure into the
       // database. Reduce it to the shape the scoring engine expects, then
@@ -177,6 +181,9 @@ export default async function handler(req, res) {
       // cap below is applied after sanitising, so a caller who computed a
       // consensus over more rows than survive would otherwise leave the panel
       // and its labels disagreeing about the same row (lucy, 2026-08-12).
+      if ('evaluaciones' in row && !Array.isArray(row.evaluaciones)) {
+        return res.status(400).json({ ok: false, error: 'Evaluaciones debe ser una lista' });
+      }
       if ('evaluaciones' in row) {
         row.evaluaciones = sanitizeEvaluaciones(row.evaluaciones);
         const consensus = panelConsensus(row.evaluaciones || []);

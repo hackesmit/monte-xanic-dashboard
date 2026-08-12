@@ -79,22 +79,26 @@ export function normalizeEvaluadorPanel(panel) {
 // handed a pre-2026 label, a select matches no option and falls back to blank,
 // losing a grade that is on record.
 export function seedEvaluadorPanel(evaluaciones, healthGrade, phenolicMaturity) {
+  // canonicalSanitaryLabel returns null for a label it cannot place, so fall
+  // back to the raw value: renaming a legacy label is the point, discarding an
+  // unrecognised one is not.
+  const keepSanidad = (v) => canonicalSanitaryLabel(v) ?? (v || null);
   const panel = (Array.isArray(evaluaciones) ? evaluaciones : []).map(e => ({
     evaluador: e?.evaluador ?? null,
-    sanidad:   canonicalSanitaryLabel(e?.sanidad),
+    sanidad:   keepSanidad(e?.sanidad),
     madurez:   e?.madurez ?? null,
   }));
   if (!panel.length) {
     return [{
       evaluador: null,
-      sanidad:   canonicalSanitaryLabel(healthGrade),
+      sanidad:   keepSanidad(healthGrade),
       madurez:   phenolicMaturity || null,
     }];
   }
   // Graft each orphaned scalar onto the first row, matching the engine's
   // own per-axis fallback rule so the form and the score agree.
   if (!panel.some(e => e.sanidad)) {
-    const s = canonicalSanitaryLabel(healthGrade);
+    const s = keepSanidad(healthGrade);
     if (s) panel[0].sanidad = s;
   }
   if (!panel.some(e => e.madurez)) {
@@ -166,10 +170,23 @@ export const Mediciones = {
     this._panels[panelId] = rows;
 
     const { sanidad, madurez } = evaluadorPanelOptions();
-    const opts = (list, selected) =>
-      '<option value="">(Sin calificar)</option>' +
-      list.map(v => `<option value="${escapeHtml(v)}"${v === selected ? ' selected' : ''}>` +
-                    `${escapeHtml(v)}</option>`).join('');
+    // A label the vocabulary does not know (a typo carried in from a
+    // workbook, say) still gets an option of its own, marked as such and
+    // pre-selected. Without it the select falls back to blank, and the next
+    // unrelated edit to the row saves that blank over the original
+    // evaluation, destroying it (lucy, 2026-08-12). The engine already
+    // ignores the label for scoring; this only keeps it visible and intact
+    // until somebody corrects it on purpose.
+    const opts = (list, selected) => {
+      const unknown = selected && !list.includes(selected);
+      return '<option value="">(Sin calificar)</option>' +
+        (unknown
+          ? `<option value="${escapeHtml(selected)}" selected>` +
+            `${escapeHtml(selected)} (no reconocido)</option>`
+          : '') +
+        list.map(v => `<option value="${escapeHtml(v)}"${v === selected ? ' selected' : ''}>` +
+                      `${escapeHtml(v)}</option>`).join('');
+    };
 
     host.innerHTML = rows.map((e, i) => `
       <div class="evaluador-row" data-panel="${escapeHtml(panelId)}" data-index="${i}">

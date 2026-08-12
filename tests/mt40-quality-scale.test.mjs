@@ -164,3 +164,28 @@ describe('MT.40 — the scalars cannot be set without a panel', () => {
     assert.equal(row.health_grade, null);
   });
 });
+
+// Lucy fourth pass: a present-but-malformed panel must be rejected, not
+// treated as an instruction to erase.
+describe('MT.40 — a malformed panel is a bad request, not a delete', () => {
+  it('sanitize still reports null for a non-array so handlers can reject it', () => {
+    for (const bad of [null, {}, 'x', 7]) {
+      assert.equal(sanitizeEvaluaciones(bad), null);
+    }
+  });
+
+  it('an explicit empty array is the only way to clear a panel', () => {
+    assert.deepEqual(sanitizeEvaluaciones([]), []);
+    const c = panelConsensus([]);
+    assert.equal(c.health_grade, null);
+    assert.equal(c.phenolic_maturity, null);
+  });
+
+  it('keeps an unrecognised label stored but unscored', () => {
+    const stored = sanitizeEvaluaciones([{ sanidad: 'medio sucio', madurez: 'Buenaa' }]);
+    assert.equal(stored.length, 1, 'a workbook typo is preserved, not dropped');
+    const avg = averageEvaluations({ evaluaciones: stored });
+    assert.equal(avg.sanidad, null, 'but it never contributes points');
+    assert.equal(avg.evaluadorCount, 0);
+  });
+});
