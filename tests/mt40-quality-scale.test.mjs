@@ -44,9 +44,12 @@ describe('MT.40 — sanitizeEvaluaciones', () => {
     assert.equal(sanitizeEvaluaciones(input).length, MAX_EVALUADORES + 10);
   });
 
-  it('truncates long strings rather than storing them whole', () => {
-    const [row] = sanitizeEvaluaciones([{ evaluador: 'x'.repeat(500), sanidad: 'Limpio' }]);
-    assert.equal(row.evaluador.length, 120);
+  it('never truncates a field either, it flags it for rejection', () => {
+    const long = [{ evaluador: 'x'.repeat(500), sanidad: 'Limpio' }];
+    assert.equal(exceedsPanelLimit(long), true, 'the handler refuses it');
+    // And if it did get through, the value is intact rather than mangled.
+    assert.equal(sanitizeEvaluaciones(long)[0].evaluador.length, 500);
+    assert.equal(exceedsPanelLimit([{ evaluador: 'Carla', sanidad: 'Limpio' }]), false);
   });
 });
 
