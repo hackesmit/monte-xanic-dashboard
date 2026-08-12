@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sanitizeEvaluaciones, panelConsensus, averageEvaluations,
-  MAX_EVALUADORES, sanitaryPoints, madurezPoints,
+  MAX_EVALUADORES, exceedsPanelLimit, sanitaryPoints, madurezPoints,
 } from '../js/quality-scale.js';
 import { ALLOWED_TABLES } from '../api/upload.js';
 
@@ -36,14 +36,12 @@ describe('MT.40 — sanitizeEvaluaciones', () => {
     assert.deepEqual(sanitizeEvaluaciones([{ evaluador: '  ', sanidad: null }]), []);
   });
 
-  it('caps the panel and does so after filtering, not before', () => {
-    // Interleave junk so a cap applied before filtering would keep fewer than
-    // MAX_EVALUADORES real rows.
+  it('never truncates, so no grade is lost without anyone noticing', () => {
     const input = [];
     for (let i = 0; i < MAX_EVALUADORES + 10; i++) {
-      input.push(null, { evaluador: `E${i}`, sanidad: 'Limpio', madurez: null });
+      input.push({ evaluador: `E${i}`, sanidad: 'Limpio', madurez: null });
     }
-    assert.equal(sanitizeEvaluaciones(input).length, MAX_EVALUADORES);
+    assert.equal(sanitizeEvaluaciones(input).length, MAX_EVALUADORES + 10);
   });
 
   it('truncates long strings rather than storing them whole', () => {
@@ -62,16 +60,20 @@ describe('MT.40 — the server derives the consensus, it does not trust it', () 
     assert.equal(consensus.phenolic_maturity, 'No sobresaliente');
   });
 
-  it('agrees with the panel after truncation, not before it', () => {
-    // 20 Contaminado then 21 Muy limpio: the caller could average all 41 and
-    // claim 'Parcialmente limpio', but only the first 20 are stored, so the
-    // stored panel's own consensus is Contaminado.
+  it('rejects an oversized panel rather than quietly dropping the tail', () => {
+    // 20 Muy limpio plus one Contaminado averages 3.81. Keeping only the first
+    // 20 would store an average of 4.00 and lose a real grade, so the whole
+    // payload is refused instead (lucy, 2026-08-12).
     const input = [];
-    for (let i = 0; i < MAX_EVALUADORES; i++) input.push({ sanidad: 'Contaminado' });
-    for (let i = 0; i < 21; i++) input.push({ sanidad: 'Muy limpio' });
-    const stored = sanitizeEvaluaciones(input);
-    assert.equal(stored.length, MAX_EVALUADORES);
-    assert.equal(panelConsensus(stored).health_grade, 'Contaminado');
+    for (let i = 0; i < MAX_EVALUADORES; i++) input.push({ sanidad: 'Muy limpio' });
+    input.push({ sanidad: 'Contaminado' });
+    assert.equal(exceedsPanelLimit(input), true);
+    assert.equal(exceedsPanelLimit(input.slice(0, MAX_EVALUADORES)), false);
+    // And the arithmetic the rejection protects: the two really do differ.
+    const all = panelConsensus(input);
+    const truncated = panelConsensus(input.slice(0, MAX_EVALUADORES));
+    assert.ok(Math.abs(all.sanidadAvg - 80 / 21) < 1e-9);
+    assert.equal(truncated.sanidadAvg, 4);
   });
 
   it('leaves both labels unset when the panel is empty', () => {
