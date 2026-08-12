@@ -56,16 +56,54 @@ There is no `Set-Cookie` response header. The session value lives in the body an
 | `/v1/content/{page}` | GET | Marketing content |
 | `/v1/content/knowledge-center` | GET | Marketing content |
 
-### Status: authenticated surface not yet mapped
+### The data app and the My Results request, mapped from an authenticated browser session
 
-The public bundle contains only the marketing site plus the auth flow. The `/examples/music` and `/examples/restaurants` routes in it are unused boilerplate, not real endpoints. The data endpoints that serve berry samples are not in this bundle, so they have to be discovered from an authenticated session.
+The data endpoints that serve berry samples are not in the `www` React bundle because they never were there. After login the user lands on `https://client.winexray.com/client-center`, which is a **separate AngularJS single-page app** (hash router, `#/`) served by **ASP.NET / IIS**. Its API base is `/api` on that same `client.winexray.com` origin. It is unrelated to the `www.winexray.com` React SPA and its `/v1` API documented above. Everything below was observed on 2026-08-12 by driving a real Chromium session against `client.winexray.com` with the Proton Pass login, per Daniel's authorization on `xd-01g`.
 
-That step is currently blocked. WineXRay expects its session credential as a URL query argument rather than an HTTP header, and constructing that request trips the HQ exfil guard. Per invariant 9 no evasion was attempted. A P1 unblock request is with Daniel. Until it is resolved the following are unknown:
+**Login is a server-side form POST that sets an httpOnly cookie, not a URL-argument credential.**
 
-- the endpoint that lists or exports berry samples
-- the export format, and whether it matches the CSV the manual upload already parses
-- session lifetime and whether a refresh flow exists
-- whether the export can be filtered by date, which decides incremental versus full sync
+```
+POST https://client.winexray.com/login?returnUrl=/client-center
+Content-Type: application/x-www-form-urlencoded
+
+username=<user>&password=<pass>
+```
+
+Returns `303 See Other` with `Location: /client-center` and sets an httpOnly session cookie. (The prior `405` came from POSTing to `/client-center` itself; the real login endpoint is `/login`.) The session then travels as that cookie, attached automatically by the browser. This is the important divergence from the `/v1` API: `client-center` does **not** carry its credential as a URL query argument. Verified three ways in-session: `document.cookie` is empty (the cookie is httpOnly), the `/api/results` and `/api/export` calls below carried no `Authorization` header and no `?cookie=` argument yet returned this account's own data, and a `fetch(..., {credentials:'include'})` for the export CSV returned `200` with the account's rows. `/logout` clears the session and redirects to `www.winexray.com/client-login/`.
+
+**My Results loads its grid from a JSON endpoint.** Navigating to `#/my-results` fires:
+
+```
+POST https://client.winexray.com/api/results
+Content-Type: application/json
+
+{"orderBy":"sampleDate","reverse":true,"currentPage":0,"pageLimit":50,
+ "search":"","searchField":"assayId","searchFieldMatchType":"Like",
+ "dateStart":null,"dateEnd":null,"dateSearchField":"sampleDate",
+ "seasonStart":"<iso>","seasonEnd":"<iso>","loadMaxBatchId":true}
+```
+
+Returns `application/json` shaped `{ "count": <n>, "results": [ ... ] }`. Each result is a rich per-sample object with camelCase keys: `id`, `assayId`, `name` (the Sample Id / batch code), `sampleType` (`"Berries"` marks berry samples), `sampleDate`, `crushDate`, `days`, `vintage`, `varietalName`, `appellation`, `totalAnthocyanins`, `freeAnthocyanins`, `boundAnthocyanins`, `precipTannins`, `ironReactivePhenols`, `totalPhenolicsIndex`, `brix`, `ph`, `titratableAcid`, `numberBerries`, `weightBerries`, and a nested `colorResult` with `l`/`a`/`b` and UV/Vis bands. Control Wine and California rows are present in the payload, not pre-filtered.
+
+**It is date-filterable.** The request body carries `dateStart`, `dateEnd`, `dateSearchField:"sampleDate"` plus `seasonStart`/`seasonEnd` and `search`/`searchField`. A date-bounded query is therefore a normal use of this endpoint, so incremental sync is possible rather than full-only.
+
+**The Export button produces the same CSV the manual upload already parses.** Export is a two-step flow keyed on the rows the user has checked:
+
+1. `POST /api/export` with `{"keys":[{"id":<sampleId>,"expand":false}, ...], "orderBy":"sampleDate", "reverse":true}` returns a bare GUID token as `text/plain`.
+2. That GUID builds three download URLs (from the export modal):
+   - CSV: `GET /api/export/result.csv?guid=<guid>`  -> `text/csv`
+   - XLS: `GET /excel-download?guid=<guid>`
+   - PDF: `GET /pdf-download?download=true&guid=<guid>`
+
+The export is keyed by explicit sample `id`s, not by date. To get a date-bounded export, query `/api/results` with `dateStart`/`dateEnd` first, collect the `id`s, then `POST /api/export` those ids. Two steps, both cookie-authenticated.
+
+**Column match, verified exact, not eyeballed.** The CSV at `/api/export/result.csv?guid=...` was fetched end to end in-session (`HTTP 200`, `text/csv`, 14 data rows) and its header row read. Every column key the berry parser expects (`CONFIG.wxToBerry` in `js/config.js`, consumed by `js/upload/winexray.js`) appears in that header verbatim: `Sample Id`, `Sample Type`, `Sample Date`, `CrushDate (yyyy-mm-dd)`, `DaysPostCrush (number)`, `Vintage`, `Variety`, `Appellation`, `Batch Id`, `Notes...`, `Number Of Berries In Sample (number)`, `Weight Of Berries In Sample (gr)`, `Volume Of Extracted Juice (milliliters)`, `Weight Of Extracted Juice (gr)`, `Volume Of Extracted Phenolics (milliliters)`, `Berry Fresh Weight (gr)`, `Berry (extractable) Anthocyanins (mg/100b me)`, the `Berry Sugars/Acids/Water/Skins & Seeds` triplets in `(mg/b)`, `(wt.%)` and `(gr)`, `Total Phenolics Index (IPT, d-less)`, `tANT (ppm ME)`, `fANT (ppm ME)`, `bANT (ppm ME)`, `pTAN (ppm CE)`, `iRPs (ppm CE)`, `L*`, `a*`, `b*`, `I`, `Brix (degrees %w/w: (gr sucrose/100 gr juice)*100)`, `pH (pH units)`, `Titratable Acidity (TA gr/l)`. The `T` column is present and is intentionally left unmapped by the parser (config comment). The export also carries columns the parser simply does not map and therefore ignores harmlessly: `Sample Sequence Number`, `Filename`, `UploadDate`, `Sample Number`, `Vessel Id`, `Sample Time`, `AssayDate`, `Must`/`Cap Temperature` plus unit columns, four `Movement` blocks, `Residual Sugars`, `Volatile Acidity`, `Malic Acid`, `Alcohol`. Blank cells in the export use `-`, which `normalizeValue` already maps to null (its empty-marker set is `'', '-', '—', 'NA', 'N/A'`); the `<50`/`<10` below-detection markers are handled by the parser's separate regex, which also sets `below_detection=true`; none appeared in this particular export, and the exact below-detection semantics remain `xd-rgg`'s audit. The export also included the Control Wine / California rows the parser is designed to skip, which is consistent with the manual path: the human exports everything and the parser filters at parse time.
+
+Conclusion: the sync should reuse the existing `winexrayParser` over the CSV at `/api/export/result.csv?guid=<guid>`, not build a second ingestion path. The `/api/results` JSON is a viable alternative source but its camelCase keys do not match `CONFIG.wxToBerry`, so consuming it would mean a new field-mapping layer plus a reimplementation of the skip and below-detection logic. The CSV route keeps one place where WineXRay semantics live, which is why `xd-rgg` (parser audit) and `xd-qub` (upsert audit) should land first.
+
+**Session lifetime is unmeasured.** The login page offers a `Remember me` checkbox (left unchecked in these logins). No explicit token-refresh endpoint was observed; re-login via `POST /login` re-establishes the cookie and `/logout` clears it. Measuring the real cookie lifetime would take longer than a few minutes, so it is recorded as unmeasured rather than guessed.
+
+Note on the section below: its framing that "WineXRay carries the credential in the URL" describes the `/v1` API, not the `client-center` app. The `client-center` session is an httpOnly cookie, so the "credential lands in browser history and access logs" concern is weaker there — but the export download URL still carries a GUID and login travels over the wire, so the server-side-only rule still holds.
 
 ### Design implication for the sync button
 
