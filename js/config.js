@@ -609,6 +609,11 @@ export const CONFIG = {
     'Temperatura de bins/jabas (°C)':        'bin_temp_c',
     'Temperatura de camión (°C)':            'truck_temp_c',
     'Peso promedio racimos (g)':             'bunch_avg_weight_g',
+    // Both the 2025 and 2026 workbooks actually spell it this way, so the key
+    // above never matched and bunch weight was silently dropped on every
+    // upload. Keeping both spellings rather than replacing, in case an older
+    // workbook uses the original.
+    'Peso de racimo (g)':                    'bunch_avg_weight_g',
     'Longitud promedio por baya (cm)':       'berry_length_avg_cm',
     'Peso de 200 bayas (g)':                 'berries_200_weight_g',
     'Peso promedio por baya (g)':            'berry_avg_weight_g',
@@ -626,9 +631,24 @@ export const CONFIG = {
     'AT (g/L)':                              'at',
     'AG (g/L)':                              'ag',
     'AM (g/L)':                              'am',
+    // Vendimia 2026 added acidez volatil to the sheet; it was dropped before.
+    'AV (g/L)':                              'av',
     'Polifenoles (mg/L)':                    'polifenoles',
     'Catequinas (mg/L)':                     'catequinas',
     'Antocianos (mg/L)':                     'antocianos',
+    // Vendimia 2026 renamed the anthocyanin column and switched the unit
+    // label from mg/L to ppm. For an aqueous must the two are equivalent,
+    // so both spellings land in the same column.
+    'Antocianinas (ppm)':                    'antocianos',
+  },
+
+  // Vendimia 2026 evaluator panel. The workbook ships one column per
+  // evaluator per axis, headed on the banner row above the main header.
+  // Matched case-insensitively after whitespace collapsing; the capture
+  // group is the evaluator's position, which is how the panel is ordered.
+  preReceptionEvaluatorHeaders: {
+    sanidad: /^sanidad\s*\(visual\)\s*evaluador\s*(\d+)$/i,
+    madurez: /^madurez\s*fen[oó]lica\s*evaluador\s*(\d+)$/i,
   },
 
   // wine_samples Supabase columns → DataStore.berryData JS field names
@@ -1157,20 +1177,48 @@ export const CONFIG = {
   // ── Global sanitary / visual scoring (same for all rubrics) ─────────────
   sanitaryThresholds: {
     pct: { a: 0.5, b: 2.0 },          // ≤0.5 → A, 0.5 < pct ≤ 2 → B, > 2 → C
+    // Grado Sanitario, native 0-4 (Vendimia 2026). Scored per evaluator,
+    // then averaged across however many evaluators graded this axis.
     visual: {
-      'Excelente': 3,
-      'Bueno':     3,
-      'Regular':   2,
-      'Malo':      1
+      'Muy limpio':          4,
+      'Limpio':              3,
+      'Parcialmente limpio': 2,
+      'Sucio':               1,
+      'Contaminado':         0
+    },
+    // Pre-2026 vocabulary. migration_evaluaciones_multi.sql renames these in
+    // place; this map keeps any row the migration has not reached scoreable.
+    visualLegacy: {
+      'Excelente': 'Muy limpio',
+      'Bueno':     'Limpio',
+      'Regular':   'Parcialmente limpio',
+      'Malo':      'Sucio'
     },
     defaultConteoImp: 2,
     defaultVisualImp: 2
   },
 
+  // Internal scoring scale (Vendimia 2026). Daniel, 2026-08-12: Grado
+  // Sanitario is defined natively on 0-4, so the engine's internal scale
+  // widens from 1-3 to 0-4. The rubric parameters still carry only two
+  // thresholds each (3 buckets) and no data exists to split them into 5, so
+  // they keep 3 levels and are rescaled by 4/3 onto the wider scale
+  // (1.333 / 2.667 / 4). The normalizer widens from 3 to 4 by that same
+  // factor, so chemistry scores are mathematically unchanged and only the
+  // sanitary axis gains its true range, including 0 and 4. The A+/A/B/C
+  // cutoffs (30/27/23) therefore remain valid.
+  scoreScaleMax: 4,
+  scoreScaleLegacyMax: 3,
+
   // ── Madurez fenólica overlay (winemaker input on mediciones) ────────────
+  // Vendimia 2026 widens this from 3 levels to 5. The three original labels
+  // keep their original weights, so no historical row shifts. Scored per
+  // evaluator and averaged, same as the sanitary axis.
   madurezOverlay: {
-    'Sobresaliente':  +3,
-    'Parcial':         0,
+    'Sobresaliente':    +3,
+    'Buena':            +1,
+    'Parcial':           0,
+    'Baja':             -1,
     'No sobresaliente': -3
     // null / undefined → 0
   },

@@ -100,12 +100,14 @@ export const ALLOWED_TABLES = {
       'berry_diameter_mm','health_grade','health_madura','health_inmadura',
       'health_sobremadura','health_picadura','health_enfermedad',
       'health_quemadura','phenolic_maturity','measured_by','notes',
+      // Vendimia 2026: evaluator panel [{evaluador, sanidad, madurez}]
+      'evaluaciones',
       // Round 35 — absorbed from pre_receptions
       'vintrace','reception_date','supplier',
       'total_bins','bin_unit','bin_temp_c','truck_temp_c',
       'bunch_avg_weight_g','berry_length_avg_cm','berries_200_weight_g',
       'health_pasificada','health_aceptable','health_no_aceptable',
-      'lab_date','brix','ph','at','ag','am','polifenoles','catequinas','antocianos',
+      'lab_date','brix','ph','at','ag','am','av','polifenoles','catequinas','antocianos',
     ])
   },
   harvest_target_overrides: {

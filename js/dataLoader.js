@@ -149,6 +149,10 @@ export const DataStore = {
       healthEnfermedad: row.health_enfermedad || 0,
       healthQuemadura: row.health_quemadura || 0,
       phenolicMaturity: row.phenolic_maturity || null,
+      // Vendimia 2026 evaluator panel. Always an array so callers never
+      // branch on shape; Supabase returns JSONB already parsed, but a row
+      // written before migration_evaluaciones_multi.sql has NULL here.
+      evaluaciones: Array.isArray(row.evaluaciones) ? row.evaluaciones : [],
       measuredBy: row.measured_by,
       notes: row.notes,
       lastEditedAt: row.last_edited_at || null,
@@ -650,7 +654,8 @@ export const DataStore = {
         health_enfermedad:  m.healthEnfermedad,
         health_quemadura:   m.healthQuemadura,
         tons_received:      m.tons,
-        phenolic_maturity:  m.phenolicMaturity
+        phenolic_maturity:  m.phenolicMaturity,
+        evaluaciones:       m.evaluaciones
       };
       // Multi-lot mediciones ('SBVDG-2A/2B') cover several field lots; index
       // under each expansion. Exact codes are set first and never overwritten.

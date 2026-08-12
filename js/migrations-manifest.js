@@ -37,4 +37,5 @@ export const MIGRATIONS = [
   'migration_rls_lockdown',
   'migration_mona_chat',
   'migration_mona_views_knowledge',
+  'migration_evaluaciones_multi',
 ];

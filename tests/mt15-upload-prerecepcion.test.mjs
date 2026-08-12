@@ -270,3 +270,81 @@ describe('MT.15 — Pre-recepción parser', () => {
     assert.equal(a02.vintage_year, null, 'non-derivable vintage_year must be null, not absent');
   });
 });
+
+// Vendimia 2026 format (RG- Prerecepcion Vendimia 2026.xlsx, Carla Tinajero
+// 2026-08-12). The workbook heads the evaluator columns on the banner row
+// above the main header row, drops the seed block and the WineXray/polyphenol
+// columns, and renames the anthocyanin column to 'Antocianinas (ppm)'.
+async function load2026() {
+  const buf = await readFile(new URL('./fixtures/prerecepcion_2026_sample.xlsx', import.meta.url));
+  return asFakeFile(buf, 'prerecepcion_2026_sample.xlsx');
+}
+
+describe('MT.15 — Pre-recepción parser, Vendimia 2026 format', () => {
+  it('finds the real header row even though the banner row is now dense', async () => {
+    // Regression guard. The seven evaluator labels pushed the banner row past
+    // the old "first row with >=5 non-null cells" rule, so header detection
+    // selected the banner and the parse died with every required header
+    // missing. Detection now scores candidate rows by recognised columns.
+    const result = await prerecepcionParser.parse(await load2026());
+    const rows = result.targets[0].rows;
+    assert.equal(rows.length, 4);
+    assert.equal(rows[0].medicion_code, 'MT-26-001');
+    assert.equal(rows[0].variety, 'Chenin Blanc');
+  });
+
+  it('reads the three evaluator columns per axis into one panel', async () => {
+    const result = await prerecepcionParser.parse(await load2026());
+    const row = result.targets[0].rows.find(r => r.medicion_code === 'MT-26-001');
+    assert.deepEqual(row.evaluaciones, [
+      { evaluador: null, sanidad: 'Muy limpio', madurez: 'Buena' },
+      { evaluador: null, sanidad: 'Muy limpio', madurez: 'Parcial' },
+      { evaluador: null, sanidad: 'Limpio',     madurez: 'Baja' },
+    ]);
+  });
+
+  it('pairs each evaluator across both axes by their sheet position', async () => {
+    const result = await prerecepcionParser.parse(await load2026());
+    const row = result.targets[0].rows.find(r => r.medicion_code === 'MT-26-003');
+    // Evaluator 1 graded both axes; evaluator 2 graded madurez only.
+    assert.deepEqual(row.evaluaciones, [
+      { evaluador: null, sanidad: 'Limpio', madurez: 'Sobresaliente' },
+      { evaluador: null, sanidad: null,     madurez: 'Sobresaliente' },
+    ]);
+  });
+
+  it('derives the consensus scalars the pre-panel readers still consume', async () => {
+    const result = await prerecepcionParser.parse(await load2026());
+    const byCode = Object.fromEntries(result.targets[0].rows.map(r => [r.medicion_code, r]));
+    // sanidad mean(4,4,3) = 3.67, nearest label is Muy limpio;
+    // madurez mean(+1,0,-1) = 0, nearest label is Parcial.
+    assert.equal(byCode['MT-26-001'].health_grade, 'Muy limpio');
+    assert.equal(byCode['MT-26-001'].phenolic_maturity, 'Parcial');
+    // A single evaluator is its own consensus, including the zero grade.
+    assert.equal(byCode['MT-26-002'].health_grade, 'Contaminado');
+    // Nobody graded madurez, so it stays unset rather than defaulting.
+    assert.equal(byCode['MT-26-002'].phenolic_maturity, null);
+  });
+
+  it('leaves the panel empty when no evaluator graded the row', async () => {
+    const result = await prerecepcionParser.parse(await load2026());
+    const row = result.targets[0].rows.find(r => r.medicion_code === 'MT-26-004');
+    assert.deepEqual(row.evaluaciones, []);
+    assert.equal(row.health_grade, null);
+    assert.equal(row.phenolic_maturity, null);
+  });
+
+  it('keeps one key shape across the batch so PostgREST accepts it', async () => {
+    const result = await prerecepcionParser.parse(await load2026());
+    const shapes = new Set(result.targets[0].rows.map(r => Object.keys(r).sort().join(',')));
+    assert.equal(shapes.size, 1, 'PostgREST rejects mixed-shape arrays');
+  });
+
+  it('maps the renamed and newly-kept lab columns', async () => {
+    const result = await prerecepcionParser.parse(await load2026());
+    const row = result.targets[0].rows[0];
+    assert.equal(row.av, 0);                  // 'AV (g/L)' had no column before
+    assert.equal(row.bunch_avg_weight_g, 204.66); // 'Peso de racimo (g)' key was wrong
+    assert.ok('antocianos' in row, "'Antocianinas (ppm)' must land in antocianos");
+  });
+});
