@@ -88,7 +88,15 @@ Weather station platform. The target is the station at Sector 3A, which maps to 
 | API base | `https://api.fieldclimate.com/v2` |
 | Verified | `GET /v2/system/status` returns 200 without auth. `GET /v2/user/stations` returns 401, confirming auth is required. |
 | Auth | HMAC-SHA256, or OAuth2 |
-| Credentials | Not in Proton Pass yet. Needed from Daniel. |
+| Credentials | None. API access is subscription-gated and this account has no active API subscription (see Access status below). No key pair exists or can be self-generated. |
+
+### Access status: the v2 API is subscription-gated (verified 2026-08-12)
+
+Logged into the FieldClimate account that owns the Sector 3A station (the Kompali account) and opened user menu, servicios API, FieldClimate. The page states:
+
+> There are no active subscriptions for this account. Please activate your API subscription to access your API keys. Complete the registration form below and our subscriptions team will assist you shortly.
+
+There is no self-service key generation on that screen. The only route to a key pair is a paid-subscription registration form (company and billing address, VAT number, and an API tier: Tier 1 up to 48 requests per day per station, Tier 2 up to 500, Tier 3 up to 1500) that submits to Pessl's subscriptions team for manual activation. The earlier assumption that a key pair is generated self-service here does not hold for this account, so the HMAC scheme below stays untested: no key pair exists to sign a request with. Submitting the subscription form is a commercial commitment and an outward-facing action, so an agent did not submit it; whether and at which tier to subscribe is Daniel's decision. Until a subscription is active and a key pair is issued, none of the v2 routes below can be exercised.
 
 ### HMAC signing
 
@@ -150,9 +158,11 @@ Resolving all of this is the first task of `xd-1f3`, before any integration code
 
 ### What is still needed
 
-- HMAC public and private key from the FieldClimate account, stored in Proton Pass, never in a file.
-- The station id for Sector 3A, read from `/v2/user/stations` once authenticated.
-- A decision from Daniel on which fields the station replaces for this vineyard.
+- An active FieldClimate API subscription on the account. This is the current blocker (see Access status above): a paid subscription request routed to Pessl's subscriptions team, not a self-service key generation, so it needs Daniel's decision including which tier.
+- The HMAC public and private key pair, issued only after the subscription is active, stored in Proton Pass and never in a file.
+- Empirical confirmation of the v2 canonical string. The candidates above are still untested, because no key pair exists to sign a live request. This stays the first task once keys are available.
+- The station id for Sector 3A, confirmed from `/v2/user/stations` once authenticated. From the logged-in web dashboard on 2026-08-12 the only weather (LoRa CLIMA) station on the account is id `0320B264`, labelled `ESTACIÓN METEOROLOGICA SECTOR 3A, c11`; the other nine stations are LoRa SOIL or RAIN devices. Treat `0320B264` as the likely match but not confirmed: one table widget showed a different custom name (`ESTACION METEO SECTOR 2`) for that same id, so the id must be verified against the API rather than trusted from a dashboard label.
+- A decision from Daniel on which fields the station replaces for this vineyard. The dashboard's own weather widget for this station renders air temperature, dry-bulb and wet-bulb temperature, dew point, and relative humidity, which lines up with the dashboard fields in `js/weather.js` (`temp_max`/`temp_min`/`temp_avg`, `humidity_pct`); rainfall, UV, and wind still need the sensor inventory from `/v2/station/{id}/sensors` to map, which is blocked until keys exist.
 
 ### Design implication
 
