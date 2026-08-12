@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   collectDirty, ariaSortFor, shouldShowSourceBanner,
   normalizeEvaluadorPanel, compactEvaluadorPanel, evaluadorPanelSummary,
-  evaluadorPanelOptions,
+  evaluadorPanelOptions, seedEvaluadorPanel,
 } from '../js/mediciones.js';
 
 describe('MT.19 — collectDirty', () => {
@@ -106,6 +106,15 @@ describe('MT.19 — evaluator panel helpers', () => {
     assert.match(s, /3 evaluadores/);
   });
 
+  it('counts every participant, not the busier axis', () => {
+    // Two people, neither axis graded twice: the line must still say two.
+    const s = evaluadorPanelSummary([
+      { evaluador: 'A', sanidad: 'Limpio', madurez: null },
+      { evaluador: 'B', sanidad: null,     madurez: 'Parcial' },
+    ]);
+    assert.match(s, /2 evaluadores/);
+  });
+
   it('says so plainly when an axis has no grades at all', () => {
     const s = evaluadorPanelSummary([{ evaluador: 'A', sanidad: 'Limpio', madurez: null }]);
     assert.match(s, /Madurez: sin calificar/);
@@ -115,5 +124,50 @@ describe('MT.19 — evaluator panel helpers', () => {
   it('reports an empty panel rather than inventing a zero', () => {
     assert.equal(evaluadorPanelSummary([]), 'Sin evaluaciones');
     assert.equal(evaluadorPanelSummary(normalizeEvaluadorPanel(null)), 'Sin evaluaciones');
+  });
+});
+
+// Lucy (cross-vendor adversarial review, 2026-08-12), second pass.
+describe('MT.19 — seeding the edit modal never destroys a grade', () => {
+  it('grafts an orphaned madurez scalar onto the panel', () => {
+    // The engine falls back to phenolic_maturity because no evaluator graded
+    // madurez. If the modal did not seed the same way it would derive null,
+    // mark the field dirty, and erase a +3 the user never touched.
+    const seeded = seedEvaluadorPanel(
+      [{ evaluador: 'A', sanidad: 'Limpio', madurez: null }],
+      null, 'Sobresaliente');
+    assert.equal(seeded[0].madurez, 'Sobresaliente');
+    assert.equal(seeded[0].sanidad, 'Limpio');
+  });
+
+  it('grafts an orphaned sanidad scalar the same way', () => {
+    const seeded = seedEvaluadorPanel(
+      [{ evaluador: 'A', sanidad: null, madurez: 'Parcial' }],
+      'Muy limpio', null);
+    assert.equal(seeded[0].sanidad, 'Muy limpio');
+  });
+
+  it('leaves a scalar alone when the panel already covers that axis', () => {
+    const seeded = seedEvaluadorPanel(
+      [{ evaluador: 'A', sanidad: 'Contaminado', madurez: 'Baja' }],
+      'Muy limpio', 'Sobresaliente');
+    assert.equal(seeded[0].sanidad, 'Contaminado');
+    assert.equal(seeded[0].madurez, 'Baja');
+    assert.equal(seeded.length, 1);
+  });
+
+  it('canonicalises a pre-2026 label so the select can show it', () => {
+    // The selects only carry the 2026 vocabulary, so an un-renamed 'Bueno'
+    // would match no option and the select would fall back to blank.
+    assert.equal(seedEvaluadorPanel([], 'Bueno', null)[0].sanidad, 'Limpio');
+    assert.equal(
+      seedEvaluadorPanel([{ evaluador: 'A', sanidad: 'Regular' }], null, null)[0].sanidad,
+      'Parcialmente limpio');
+  });
+
+  it('seeds one blank row for a medicion nobody has graded', () => {
+    const seeded = seedEvaluadorPanel([], null, null);
+    assert.equal(seeded.length, 1);
+    assert.equal(compactEvaluadorPanel(seeded).length, 0);
   });
 });

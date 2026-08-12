@@ -1,6 +1,7 @@
 import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 import { ALLOWED_TABLES } from './upload.js';
+import { sanitizeEvaluaciones, panelConsensus } from '../js/quality-scale.js';
 import { validateRow } from '../js/validation.js';
 
 const ALLOWED_ACTIONS = new Set(['update', 'delete', 'upsert']);
@@ -54,6 +55,16 @@ export default async function handler(req, res) {
   // schema adds them to the whitelist, the server is the only writer.
   delete row.last_edited_at;
   delete row.last_edited_by;
+
+  // Same rule as the upload path: the evaluator panel is sanitised and the two
+  // consensus labels are derived here, never taken from the caller, so the
+  // panel and the labels describing it cannot disagree about one row.
+  if ('evaluaciones' in row) {
+    row.evaluaciones = sanitizeEvaluaciones(row.evaluaciones);
+    const consensus = panelConsensus(row.evaluaciones || []);
+    row.health_grade      = consensus.health_grade;
+    row.phenolic_maturity = consensus.phenolic_maturity;
+  }
 
   for (const col of conflictCols) {
     if (row[col] === undefined || row[col] === null || row[col] === '') {

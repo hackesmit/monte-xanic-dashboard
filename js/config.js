@@ -1,5 +1,7 @@
 // ── Configuration: Colors, Categories, Mappings ──
 
+import { SANITARY_POINTS, SANITARY_LEGACY, MADUREZ_POINTS } from './quality-scale.js';
+
 export const CONFIG = {
   // Grape type classification
   grapeTypes: {
@@ -1177,23 +1179,11 @@ export const CONFIG = {
   // ── Global sanitary / visual scoring (same for all rubrics) ─────────────
   sanitaryThresholds: {
     pct: { a: 0.5, b: 2.0 },          // ≤0.5 → A, 0.5 < pct ≤ 2 → B, > 2 → C
-    // Grado Sanitario, native 0-4 (Vendimia 2026). Scored per evaluator,
-    // then averaged across however many evaluators graded this axis.
-    visual: {
-      'Muy limpio':          4,
-      'Limpio':              3,
-      'Parcialmente limpio': 2,
-      'Sucio':               1,
-      'Contaminado':         0
-    },
-    // Pre-2026 vocabulary. migration_evaluaciones_multi.sql renames these in
-    // place; this map keeps any row the migration has not reached scoreable.
-    visualLegacy: {
-      'Excelente': 'Muy limpio',
-      'Bueno':     'Limpio',
-      'Regular':   'Parcialmente limpio',
-      'Malo':      'Sucio'
-    },
+    // Grado Sanitario, native 0-4 (Vendimia 2026). Defined in
+    // js/quality-scale.js, which api/upload.js shares, so the browser and the
+    // server cannot drift apart on what a label is worth.
+    visual: SANITARY_POINTS,
+    visualLegacy: SANITARY_LEGACY,
     defaultConteoImp: 2,
     defaultVisualImp: 2
   },
@@ -1213,15 +1203,9 @@ export const CONFIG = {
   // ── Madurez fenólica overlay (winemaker input on mediciones) ────────────
   // Vendimia 2026 widens this from 3 levels to 5. The three original labels
   // keep their original weights, so no historical row shifts. Scored per
-  // evaluator and averaged, same as the sanitary axis.
-  madurezOverlay: {
-    'Sobresaliente':    +3,
-    'Buena':            +1,
-    'Parcial':           0,
-    'Baja':             -1,
-    'No sobresaliente': -3
-    // null / undefined → 0
-  },
+  // evaluator and averaged, same as the sanitary axis. Defined alongside the
+  // sanitary scale in js/quality-scale.js. Absent means 0 adjustment.
+  madurezOverlay: MADUREZ_POINTS,
 
   // ── Variety × Valley → rubric ID lookup ─────────────────────────────────
   // Valley is derived from appellation (see resolveValley in classification.js).

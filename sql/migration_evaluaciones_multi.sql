@@ -30,6 +30,14 @@ ALTER TABLE public.mediciones_tecnicas
 -- The constraints were created inline (migration_mediciones.sql,
 -- migration_phenolic_maturity.sql) so Postgres auto-named them. Drop whatever
 -- check currently constrains each column rather than guessing the name.
+--
+-- Matched on the column the constraint actually covers, via conkey, and only
+-- when it covers exactly that one column. Matching on the text of
+-- pg_get_constraintdef would also catch a composite check that merely mentions
+-- the column, for instance
+--   CHECK (health_grade IN (...) AND berry_count >= 0),
+-- and dropping that would silently discard the berry_count rule, which this
+-- migration would never put back (lucy, 2026-08-12).
 DO $$
 DECLARE
   c RECORD;
@@ -42,8 +50,13 @@ BEGIN
     WHERE ns.nspname = 'public'
       AND rel.relname = 'mediciones_tecnicas'
       AND con.contype = 'c'
-      AND (pg_get_constraintdef(con.oid) ILIKE '%health_grade%'
-        OR pg_get_constraintdef(con.oid) ILIKE '%phenolic_maturity%')
+      AND array_length(con.conkey, 1) = 1
+      AND (
+        SELECT att.attname
+        FROM pg_attribute att
+        WHERE att.attrelid = con.conrelid
+          AND att.attnum = con.conkey[1]
+      ) IN ('health_grade', 'phenolic_maturity')
   LOOP
     EXECUTE format('ALTER TABLE public.mediciones_tecnicas DROP CONSTRAINT %I', c.conname);
   END LOOP;
