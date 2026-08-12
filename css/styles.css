@@ -2310,6 +2310,29 @@ canvas { max-width: 100%; }
 .form-group input:focus, .form-group select:focus { border-color: var(--gold); outline: none; }
 .form-group-sm { min-width: 80px; flex: 0 1 100px; }
 .health-row { background: var(--surface); border-radius: 6px; padding: 10px 12px; }
+
+/* Evaluator panel (Vendimia 2026). One row per person, unbounded, with the
+   running average underneath so whoever is entering data sees the number the
+   quality score will actually use. */
+.evaluador-panel { display: flex; flex-direction: column; gap: 8px; }
+.evaluador-row { display: flex; gap: 12px; align-items: flex-end; background: var(--surface); border-radius: 6px; padding: 10px 12px; flex-wrap: wrap; }
+.evaluador-row .form-group { min-width: 130px; }
+.evaluador-remove { flex: 0 0 auto; padding: 7px 12px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; cursor: pointer; font-family: 'Sackers Gothic Medium', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+.evaluador-remove:hover:not(:disabled) { border-color: var(--flag-error); color: var(--flag-error); }
+.evaluador-remove:disabled { opacity: 0.35; cursor: not-allowed; }
+.evaluador-foot { display: flex; align-items: center; gap: 12px; margin: 8px 0 10px; flex-wrap: wrap; }
+.evaluador-add { padding: 7px 14px; background: transparent; color: var(--gold); border: 1px dashed var(--gold); border-radius: 4px; font-size: 11px; cursor: pointer; font-family: 'Sackers Gothic Medium', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+.evaluador-add:hover { background: var(--surface); }
+.evaluador-avg { font-size: 12px; color: var(--muted); }
+
+/* On a phone the three fields stack, so the remove button goes full width
+   underneath rather than squeezing into a leftover sliver. */
+@media (max-width: 600px) {
+  .evaluador-row { gap: 8px; }
+  .evaluador-row .form-group { flex: 1 1 100%; min-width: 0; }
+  .evaluador-remove { width: 100%; }
+}
+
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
 .btn-gold { padding: 8px 20px; background: var(--gold); color: var(--black); border: none; border-radius: 4px; font-family: 'Sackers Gothic Medium', sans-serif; font-size: 11px; letter-spacing: 0.5px; cursor: pointer; text-transform: uppercase; }
 .btn-gold:hover { background: var(--gold-lt); }

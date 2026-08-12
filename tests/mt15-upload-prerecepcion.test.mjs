@@ -348,3 +348,31 @@ describe('MT.15 — Pre-recepción parser, Vendimia 2026 format', () => {
     assert.ok('antocianos' in row, "'Antocianinas (ppm)' must land in antocianos");
   });
 });
+
+// Lucy (cross-vendor adversarial review, 2026-08-12) BLOCKER: the parser
+// derived the consensus scalars for every workbook, so re-uploading a
+// pre-2026 file sent health_grade: null and phenolic_maturity: null. The
+// upsert conflicts on medicion_code, so those nulls would overwrite grades a
+// winemaker had entered through the form. A workbook with no evaluator
+// columns must stay silent about the columns it knows nothing about.
+describe('MT.15 — Pre-recepción parser, legacy workbooks keep their silence', () => {
+  it('omits the panel columns entirely when the sheet has no evaluators', async () => {
+    const result = await prerecepcionParser.parse(await loadFixture());
+    const rows = result.targets[0].rows;
+    assert.ok(rows.length > 0);
+    for (const row of rows) {
+      assert.ok(!('evaluaciones' in row),
+        'a pre-2026 workbook must not send evaluaciones');
+      assert.ok(!('health_grade' in row),
+        'sending health_grade: null would erase a form-entered grade on upsert');
+      assert.ok(!('phenolic_maturity' in row),
+        'sending phenolic_maturity: null would erase a form-entered grade on upsert');
+    }
+  });
+
+  it('still emits one key shape per batch for legacy workbooks', async () => {
+    const result = await prerecepcionParser.parse(await loadFixture());
+    const shapes = new Set(result.targets[0].rows.map(r => Object.keys(r).sort().join(',')));
+    assert.equal(shapes.size, 1, 'PostgREST rejects mixed-shape arrays');
+  });
+});
