@@ -98,10 +98,47 @@ describe('MT.13 — WineXRay parser', () => {
     const berry = result.targets.find(t => t.table === 'berry_samples').rows[0];
     assert.equal(berry.sample_id, '25CSMX-3');
     assert.equal(berry.sample_type, 'Berries');
-    assert.equal(berry.berry_count, 200);
+    // Correctly aligned berry columns (see the IPT header-shift regression
+    // below). In the fixture the "Number Of Berries In Sample" cell is empty
+    // and 200 is the *Weight* column; before the header repair the IPT shift
+    // slid Weight's 200 into berry_count, so asserting berry_count===200 was
+    // silently locking in the corruption. The true values:
+    assert.equal(berry.berry_count, null,
+      'Number Of Berries cell is empty in the fixture — must be null, not Weight');
+    assert.equal(berry.berries_weight_g, 200,
+      'Weight Of Berries In Sample must land in berries_weight_g');
+    assert.equal(berry.berry_anthocyanins_mg_100b, 1.3603,
+      'extractable anthocyanins must align to its own column');
     // Wine-only columns should not be on berry rows
     assert.equal(berry.alcohol, undefined);
     assert.equal(berry.va, undefined);
+  });
+
+  // ── Regression: WineXRay's malformed IPT header (recon xd-01g, 2026-08-12) ──
+  //
+  // WineXRay exports the phenolics header UNQUOTED with an embedded comma:
+  //   Total Phenolics Index (IPT, d-less)
+  // A CSV reader splits it into two header cells. SheetJS then pads every row
+  // to the widest, so header and data-row field counts stay EQUAL (a field-count
+  // check cannot detect it) while every column after IPT silently shifts one
+  // position: tANT reads fANT's number, fANT reads bANT's, iRPs reads L*, etc.
+  // Plausible-but-wrong berry chemistry with no crash. The parser must quote the
+  // header on the raw text before parsing, exactly as dataLoader.loadFile does.
+  it('keeps every phenolics/berry column aligned despite the unquoted IPT header', async () => {
+    const file = await loadFixture();
+    const result = await winexrayParser.parse(file);
+    const wine = result.targets.find(t => t.table === 'wine_samples').rows;
+    // Row 1 (25CSMX-1) carries a full phenolics profile in the fixture:
+    //   IPT=55 tANT=623 fANT=420 bANT=212 pTAN=1529 iRPs=2935 L*=67.7
+    const r = wine.find(w => w.sample_id === '25CSMX-1');
+    assert.ok(r, 'wine row 25CSMX-1 must be present');
+    assert.equal(r.ipt,  55,   'IPT must survive the header repair (not be lost to the split)');
+    assert.equal(r.tant, 623,  'tANT must read its own column, not fANT (623, not 420)');
+    assert.equal(r.fant, 420,  'fANT must read its own column, not bANT');
+    assert.equal(r.bant, 212,  'bANT must read its own column, not pTAN');
+    assert.equal(r.ptan, 1529, 'pTAN must read its own column, not iRPs');
+    assert.equal(r.irps, 2935, 'iRPs must read its own column, not L*');
+    assert.equal(r.l_star, 67.7, 'L* must not be pulled into iRPs by the shift');
   });
 
   it('normalizes variety', async () => {
