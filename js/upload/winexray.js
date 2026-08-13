@@ -23,9 +23,34 @@ const LAB_TEST_RE = /(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY
 const DATE_COLUMNS = new Set(['sample_date', 'crush_date']);
 
 
+// WineXRay exports the Total Phenolics Index header UNQUOTED with an embedded
+// comma: `Total Phenolics Index (IPT, d-less)`. A CSV reader splits that one
+// header cell into two, and because SheetJS pads every row out to the widest
+// row, the header and data-row field counts stay equal (e.g. 59 == 59) while
+// every column after IPT silently shifts one position: tANT reads fANT's
+// number, fANT reads bANT's, and so on down the phenolics/color/berry columns.
+// The result is plausible-but-wrong berry chemistry with no visible error — the
+// worst failure mode on this surface. dataLoader.loadFile guards the legacy
+// path by quoting the header in the raw CSV text before it reaches SheetJS;
+// this parser reads the bytes directly, so it must apply the same repair. Note
+// a field-count check would NOT catch this — the counts match after padding;
+// the repair has to happen on the raw text, before the split is normalized away.
+const IPT_MALFORMED_HEADER = 'Total Phenolics Index (IPT, d-less)';
+
+function decodeCsv(buf) {
+  let text = new TextDecoder('utf-8').decode(buf);
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
+  if (text.includes(IPT_MALFORMED_HEADER) && !text.includes(`"${IPT_MALFORMED_HEADER}"`)) {
+    text = text.replace(IPT_MALFORMED_HEADER, `"${IPT_MALFORMED_HEADER}"`);
+  }
+  return text;
+}
+
 async function fileToRows(file) {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array', cellDates: true });
+  // Parse from repaired text (type:'string'), matching dataLoader.loadFile, so
+  // the IPT header repair above is applied before SheetJS collapses field counts.
+  const wb = XLSX.read(decodeCsv(buf), { type: 'string', cellDates: true });
   const sheetName = wb.SheetNames[0];
   return XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: true });
 }
