@@ -1,4 +1,4 @@
-// api/lib/monaValidate.js — pure validation for the Mona proxy (no I/O)
+// api/_lib/monaValidate.js — pure validation for the Mona proxy (no I/O)
 export const MAX_BODY_BYTES = 150_000;
 export const MAX_MESSAGES = 40;
 export const MAX_MSG_BYTES = 40_000;

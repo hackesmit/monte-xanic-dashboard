@@ -1,7 +1,7 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { clientIp } from './lib/rateLimit.js';
-import { checkRateLimit } from './lib/loginRateLimit.js';
+import { clientIp } from './_lib/rateLimit.js';
+import { checkRateLimit } from './_lib/loginRateLimit.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');

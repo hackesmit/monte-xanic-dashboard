@@ -1,6 +1,6 @@
 import crypto from 'crypto';
-import { verifyToken } from './lib/verifyToken.js';
-import { rateLimit } from './lib/rateLimit.js';
+import { verifyToken } from './_lib/verifyToken.js';
+import { rateLimit } from './_lib/rateLimit.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
