@@ -6,12 +6,20 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { WeatherStore } from '../js/weather.js';
 
-const todayISO = () => new Date().toISOString().split('T')[0];
+// WeatherStore.todayLocal() answers in the vineyard's timezone, not UTC, so
+// these helpers must too. Deriving "today" from toISOString made the suite
+// fail every day between 00:00 and 07:00 UTC, when Tijuana is still on the
+// previous date: the assertions compared a UTC date against a Tijuana one and
+// disagreed by exactly one day. Not a product bug, a test that only agreed
+// with itself for 17 hours out of 24.
+const TZ = 'America/Tijuana';
+const todayISO = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
 const daysFromNow = (n) => {
-  const d = new Date();
-  d.setUTCHours(12, 0, 0, 0);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().split('T')[0];
+  const [y, m, d] = todayISO().split('-').map(Number);
+  // Anchored at UTC noon so adding days never slips across a DST edge.
+  const dt = new Date(Date.UTC(y, m - 1, d, 12));
+  dt.setUTCDate(dt.getUTCDate() + n);
+  return dt.toISOString().split('T')[0];
 };
 
 describe('MT.10 — _parseForecastDaily', () => {

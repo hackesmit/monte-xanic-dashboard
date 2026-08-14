@@ -140,6 +140,36 @@ export function evaluadorPanelSummary(panel) {
   return parts.join(' · ');
 }
 
+// Narrows an edit snapshot to the fields the form actually owns.
+//
+// The snapshot is a deep clone of the whole DataStore row, so it also carries
+// keys the form never produces: identity (id, code), provenance (source) and
+// audit (lastEditedAt, lastEditedBy). collectDirty unions the keys of both
+// sides, so every one of those counted as a permanent edit. The effect was a
+// Save button lit from the moment the modal opened and a discard prompt on a
+// modal nobody had touched, which trains people to dismiss the prompt without
+// reading it. Comparing only the form's own fields fixes the whole class,
+// including any column a future migration adds to the row.
+export function projectSnapshot(snapshot, current) {
+  const out = {};
+  for (const k of Object.keys(current || {})) out[k] = snapshot?.[k];
+  return out;
+}
+
+// Adds `value` to a <select> as its own option when the list does not already
+// offer it, so an unrecognised stored value stays visible and intact instead
+// of collapsing to blank. Returns true when it had to add one.
+export function ensureOption(selectEl, value) {
+  if (!selectEl || !value) return false;
+  const v = String(value);
+  if ([...selectEl.options].some(o => o.value === v)) return false;
+  const opt = document.createElement('option');
+  opt.value = v;
+  opt.textContent = `${v} (no reconocido)`;
+  selectEl.appendChild(opt);
+  return true;
+}
+
 export function ariaSortFor(activeField, ascending, columnField) {
   if (activeField !== columnField) return null;
   return ascending ? 'ascending' : 'descending';
@@ -427,11 +457,9 @@ export const Mediciones = {
     this._editing.evaluacionesJson = JSON.stringify(seed);
     this._editing.healthGrade = canonicalSanitaryLabel(row.healthGrade);
     this._seededPanel = seed;
-    // The JSON string is the comparable representation, so the raw array is
-    // dropped from the snapshot. Left in place it has no counterpart in
-    // _readEditForm and would register as a permanent edit, keeping Save lit
-    // and the discard-confirm firing on a modal nobody touched.
-    delete this._editing.evaluaciones;
+    // The raw array stays on the snapshot for the live-score fallback. It is
+    // not compared: evaluacionesJson is the comparable representation, and
+    // projectSnapshot only compares fields the form itself produces.
 
     document.getElementById('med-edit-code').textContent = medicion_code;
     document.getElementById('med-edit-code-input').value = medicion_code;
@@ -505,6 +533,13 @@ export const Mediciones = {
       originEl.innerHTML = '<option value="">— Seleccionar —</option>' +
         origins.map(o => `<option value="${o}">${o}</option>`).join('');
     }
+    // A stored value that is not among the options would leave the select
+    // blank, and the blank then reads as an edit and saves null over a real
+    // value on the next unrelated change. Same failure the evaluator panel
+    // had with pre-2026 labels, so it gets the same treatment: keep the
+    // value as its own option, marked, until somebody changes it on purpose.
+    ensureOption(varietyEl, row.variety);
+    ensureOption(originEl, row.appellation);
     varietyEl.value = row.variety || '';
     originEl.value  = row.appellation || '';
   },
@@ -565,7 +600,8 @@ export const Mediciones = {
   // Compare current form against the snapshot taken at openEditModal.
   _collectFormDirty() {
     if (!this._editing) return {};
-    return collectDirty(this._editing, this._readEditForm());
+    const current = this._readEditForm();
+    return collectDirty(projectSnapshot(this._editing, current), current);
   },
 
   // Update Save button + dirty-class outlines on every input event.

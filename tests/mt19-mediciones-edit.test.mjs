@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import {
   collectDirty, ariaSortFor, shouldShowSourceBanner,
   normalizeEvaluadorPanel, compactEvaluadorPanel, evaluadorPanelSummary,
-  evaluadorPanelOptions, seedEvaluadorPanel,
+  evaluadorPanelOptions, seedEvaluadorPanel, projectSnapshot,
 } from '../js/mediciones.js';
 
 describe('MT.19 — collectDirty', () => {
@@ -193,5 +193,40 @@ describe('MT.19 — an unrecognised label survives an unrelated edit', () => {
     const seeded = seedEvaluadorPanel([{ sanidad: 'medio sucio' }], 'Muy limpio', null);
     assert.equal(seeded[0].sanidad, 'medio sucio', 'the stored value wins');
     assert.equal(evaluadorPanelSummary(seeded).includes('Sanidad: sin calificar'), true);
+  });
+});
+
+// xd-61q: the snapshot is a clone of the whole DataStore row, so keys the form
+// never produces (id, code, source, audit stamps) counted as permanent edits
+// through collectDirty's key union. Pre-existing, found while building the
+// evaluator panel.
+describe('MT.19 — projectSnapshot: only the form owns the comparison', () => {
+  const row = {
+    id: 7, code: 'MT-25-999', source: 'form',
+    lastEditedAt: '2026-08-01T00:00:00Z', lastEditedBy: 'carla',
+    date: '2025-09-20', notes: 'x', tons: 4.2,
+  };
+  const form = { date: '2025-09-20', notes: 'x', tons: 4.2 };
+
+  it('an untouched modal reports no edits at all', () => {
+    assert.deepEqual(collectDirty(projectSnapshot(row, form), form), {},
+      'Save must open disabled and closing must not prompt');
+  });
+
+  it('a real edit is still detected', () => {
+    const edited = { ...form, notes: 'nota nueva' };
+    assert.deepEqual(collectDirty(projectSnapshot(row, edited), edited),
+      { notes: 'nota nueva' });
+  });
+
+  it('a column a future migration adds cannot make the modal dirty', () => {
+    const wider = { ...row, alguna_columna_nueva: 'valor' };
+    assert.deepEqual(collectDirty(projectSnapshot(wider, form), form), {});
+  });
+
+  it('a field the form owns but the row lacks still counts when filled in', () => {
+    const filled = { ...form, measuredBy: 'Carla' };
+    assert.deepEqual(collectDirty(projectSnapshot(row, filled), filled),
+      { measuredBy: 'Carla' });
   });
 });
