@@ -44,12 +44,16 @@ const trimOnly = h => String(h ?? '').trim();
 const collapse = h => String(h ?? '').trim().replace(/\s+/g, ' ');
 const keyset = obj => new Set(Object.keys(obj).map(collapse));
 
-// xlsx is only present when node_modules is installed. Import it dynamically so
-// this file still loads (and the CSV + non-fixture suites still run) when it is
-// absent; the workbook fixture cases skip in that case and run wherever deps
-// are present.
-let XLSX = null;
-try { XLSX = await import('xlsx'); } catch { /* node_modules absent — workbook cases skip */ }
+// Fix (1): xlsx (SheetJS, a real package.json dependency) parses the workbook
+// fixtures. Round 1 imported it inside a try/catch and skipped the workbook
+// cases on failure, which let a missing/broken dependency go green — a false
+// pass that hid whether the central Recepción / Pre-recepción header coverage
+// ever ran. That guard is gone: xlsx is now imported per-call in sheetRows()
+// with NO catch and NO skip, so a missing dependency makes ONLY the workbook
+// cases throw ERR_MODULE_NOT_FOUND and FAIL loudly. The CSV and normalization
+// cases carry no xlsx dependency, so they still run (and still catch mutations)
+// even where node_modules is absent — the per-call import is deliberate so a
+// broken xlsx cannot mask the rest of the audit's non-vacuous coverage.
 
 // ── (3) normalizeVariety ────────────────────────────────────────────
 describe('MT.43 — normalizeVariety', () => {
@@ -64,14 +68,35 @@ describe('MT.43 — normalizeVariety', () => {
     assert.equal(CONFIG.normalizeVariety('Durif'), 'Durif');
   });
 
-  it('passes an unknown variety through unchanged (non-validating)', () => {
-    assert.equal(CONFIG.normalizeVariety('Zinfandel'), 'Zinfandel');
+  // Fix (3): pin the documented unknown-input pass-through contract. A value
+  // that is neither the 'Petite Sirah' alias nor a known grapeType must come
+  // back byte-for-byte unchanged, and a second pass must be a no-op (idempotent).
+  it('passes an unknown variety through unchanged and is idempotent', () => {
+    const gt = new Set([...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white]);
+    for (const unknown of ['Zinfandel', 'Totally Made Up 42', '']) {
+      assert.ok(unknown !== 'Petite Sirah' && !gt.has(unknown),
+        `${JSON.stringify(unknown)} is not actually an unknown variety`);
+      const once = CONFIG.normalizeVariety(unknown);
+      assert.equal(once, unknown, `unknown variety ${JSON.stringify(unknown)} was altered`);
+      assert.equal(CONFIG.normalizeVariety(once), once,
+        `normalizeVariety not idempotent on ${JSON.stringify(unknown)}`);
+    }
   });
 });
 
 describe('MT.43 — variety colour/classification consistency', () => {
   it('grapeTypes and varietyColors describe the same variety set', () => {
-    const gt = new Set([...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white]);
+    const red = CONFIG.grapeTypes.red;
+    const white = CONFIG.grapeTypes.white;
+    // Fix (4): collapsing straight to a Set erases duplicates and any red/white
+    // overlap, so a variety typed as BOTH colours (an ambiguous classification)
+    // or listed twice would still pass the union check below. Reject those first.
+    assert.equal(new Set(red).size, red.length, `grapeTypes.red has duplicate entries: ${JSON.stringify(red)}`);
+    assert.equal(new Set(white).size, white.length, `grapeTypes.white has duplicate entries: ${JSON.stringify(white)}`);
+    const overlap = [...new Set(red.filter(v => white.includes(v)))];
+    assert.deepEqual(overlap, [], `varieties classified as BOTH red and white: ${JSON.stringify(overlap)}`);
+    // With duplicates and overlap ruled out, the union is a true bijection check.
+    const gt = new Set([...red, ...white]);
     for (const v of gt) assert.ok(varietyColorKeys.has(v), `${v} has no varietyColor`);
     for (const v of varietyColorKeys) assert.ok(gt.has(v), `${v} colour has no grapeType`);
   });
@@ -93,6 +118,29 @@ describe('MT.43 — normalizeAppellation idempotency', () => {
   it('returns every appellationFixes output unchanged on a second pass', () => {
     for (const out of new Set(Object.values(CONFIG.appellationFixes))) {
       assert.equal(CONFIG.normalizeAppellation(out), out, `output ${out} not idempotent`);
+    }
+  });
+
+  // Fix (3): pin the documented unknown-input pass-through contract. An
+  // appellation that is neither a bare valley (which resolves from the sample
+  // code) nor a known appellationFixes key / originColors ranch must come back
+  // byte-for-byte unchanged — even when a sample id is supplied — and a second
+  // pass must be a no-op. This locks in that normalizeAppellation is
+  // non-validating and never silently remaps an unrecognised origin.
+  it('passes an unknown appellation through unchanged and is idempotent', () => {
+    for (const unknown of ['Ribera del Duero', 'Not A Real Valle 99']) {
+      assert.ok(!(unknown in CONFIG.appellationFixes) && !originKeys.has(unknown)
+        && !/^Valle de (Guadalupe|Ojos Negros)$/i.test(unknown),
+        `${JSON.stringify(unknown)} is not actually an unknown appellation`);
+      // Unchanged without an id...
+      assert.equal(CONFIG.normalizeAppellation(unknown), unknown,
+        `unknown appellation ${JSON.stringify(unknown)} was altered`);
+      // ...and unchanged even with a sample id present (id only steers bare valleys).
+      assert.equal(CONFIG.normalizeAppellation(unknown, '25CSMX-1'), unknown,
+        `unknown appellation ${JSON.stringify(unknown)} altered when an id was supplied`);
+      // Second pass is a no-op.
+      assert.equal(CONFIG.normalizeAppellation(CONFIG.normalizeAppellation(unknown)), unknown,
+        `normalizeAppellation not idempotent on ${JSON.stringify(unknown)}`);
     }
   });
 });
@@ -212,7 +260,10 @@ describe('MT.43 — WineXRay CSV: every header maps or is an allowlisted drop', 
 });
 
 // Excel header extraction, mirroring the production parsers exactly.
-function sheetRows(path, pickSheet) {
+// Imports xlsx per-call with no catch (Fix 1): if the dependency is missing the
+// awaiting workbook case throws and fails loudly instead of skipping.
+async function sheetRows(path, pickSheet) {
+  const XLSX = await import('xlsx');
   const buf = readFileSync(path);
   const wb = XLSX.read(buf, { type: 'buffer', cellDates: true });
   const name = pickSheet(wb.SheetNames);
@@ -269,10 +320,11 @@ function assertHeadersCovered(headers, mapped, dropped, evalRegexes = []) {
 }
 
 describe('MT.43 — workbook fixtures: every header maps or is an allowlisted drop', () => {
-  const skip = XLSX ? false : 'xlsx not installed (node_modules absent); runs where deps are present';
+  // No skip guard (Fix 1): sheetRows imports xlsx with no catch, so a missing
+  // dependency fails these cases loudly instead of silently passing the suite.
 
-  it('recepcion_sample.xlsx — Recepción sheet', { skip }, () => {
-    const rows = sheetRows(
+  it('recepcion_sample.xlsx — Recepción sheet', async () => {
+    const rows = await sheetRows(
       new URL('fixtures/recepcion_sample.xlsx', import.meta.url),
       names => names.find(n => !n.toLowerCase().includes('preferm') && n.toLowerCase().includes('recep')),
     );
@@ -281,8 +333,8 @@ describe('MT.43 — workbook fixtures: every header maps or is an allowlisted dr
     assertHeadersCovered(rows[hidx].map(collapse), keyset(CONFIG.recepcionToSupabase), new Set());
   });
 
-  it('recepcion_sample.xlsx — Prefermentativos sheet', { skip }, () => {
-    const rows = sheetRows(
+  it('recepcion_sample.xlsx — Prefermentativos sheet', async () => {
+    const rows = await sheetRows(
       new URL('fixtures/recepcion_sample.xlsx', import.meta.url),
       names => names.find(n => n.toLowerCase().includes('preferm')),
     );
@@ -307,9 +359,9 @@ describe('MT.43 — workbook fixtures: every header maps or is an allowlisted dr
   ];
 
   for (const file of ['prerecepcion_sample.xlsx', 'prerecepcion_2026_sample.xlsx']) {
-    it(`${file} — Pre-recepción sheet`, { skip }, () => {
+    it(`${file} — Pre-recepción sheet`, async () => {
       const lookup = keyset(CONFIG.preReceptionsToSupabase);
-      const rows = sheetRows(
+      const rows = await sheetRows(
         new URL(`fixtures/${file}`, import.meta.url),
         names => names.find(n => n.toLowerCase().replace(/[^a-záéíóúñ]/g, '').includes('prerecep')),
       );
@@ -365,6 +417,33 @@ describe('MT.43 — mapping targets exist in the committed sql/ schema', () => {
   // below fails the moment xd-ifx adds the column (the exception must then be
   // deleted) OR a NEW drift appears, so drift can never pass silently.
   const SCHEMA_EXCEPTIONS = new Set(['wine_samples.brix']);
+  // Fix (2): each entry's authoritative table is the table the map actually
+  // touches AT RUNTIME, verified against the code path, NOT inferred from the
+  // map's name. Round 1's blind spot was trusting the name: a map called
+  // "Berry" was assumed to hit berry_samples. It does not. Runtime authority:
+  //   wxToSupabase           values written to wine_samples  (upload/winexray.js dest!=='berry_samples')
+  //   supabaseToWineJS       keys read from wine_samples      (dataLoader _rowToWine, from('wine_samples'))
+  //   supabaseToBerryJS      keys read from wine_samples      (see note below)
+  //   wxToBerry              values written to berry_samples  (upload/winexray.js dest==='berry_samples')
+  //   recepcionToSupabase    values written to tank_receptions
+  //   prefermentToSupabase   values written to prefermentativos
+  //   supabasePrefToWineJS   keys read from prefermentativos  (dataLoader _rowToPrefWine)
+  //   preReceptionsToSupabase values written to mediciones_tecnicas
+  //
+  // supabaseToBerryJS is validated against wine_samples ON PURPOSE, and this is
+  // the case round 1's reviewer flagged. The map's NAME says "Berry", but the
+  // berry DASHBOARD data is not read from the berry_samples table: dataLoader
+  // fetches wine_samples (loadFromSupabase: _fetchAll('wine_samples')), filters
+  // sample_type==='Berries'/'Berry', and maps each such wine_samples row via
+  // supabaseToBerryJS in _rowToBerry. Its keys are therefore wine_samples
+  // columns (berry_weight, berry_anthocyanins, vessel_id, last_edited_* all
+  // exist ONLY on wine_samples, not berry_samples), so wine_samples is the
+  // correct authority. Validating it against berry_samples would FALSELY fail
+  // on those legitimate columns. berry_samples is the WRITE target of a
+  // different map, wxToBerry, which is validated against berry_samples above.
+  // Every entry below has been re-checked against its runtime code path for
+  // this same name-vs-table class of mistake; supabaseToBerryJS was the only
+  // one whose name could mislead, and its table is correct as written.
   const TARGET_MAPS = [
     ['wxToSupabase',            Object.values(CONFIG.wxToSupabase),           'wine_samples'],
     ['supabaseToWineJS',        Object.keys(CONFIG.supabaseToWineJS),         'wine_samples'],
