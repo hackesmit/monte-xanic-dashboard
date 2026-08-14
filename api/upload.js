@@ -228,11 +228,26 @@ export default async function handler(req, res) {
 
   try {
     const conflictCol = tableConfig.conflict;
+    // `missing=default` is what actually makes the keyDefault allowance above
+    // true. PostgREST builds one INSERT for the whole batch from the UNION of
+    // the keys present across rows, and without this preference a column that
+    // some rows carry and others omit is sent as NULL for the omitting rows.
+    // For sample_seq that means either failing its NOT NULL for the entire
+    // batch, or writing a NULL that makes the composite unique constraint a
+    // no-op and reintroduces duplicate-on-retry. Asking for the column default
+    // instead is the documented fix, and it only affects absent keys.
+    const prefer = [];
+    if (conflictCol) {
+      prefer.push('resolution=merge-duplicates');
+      if (tableConfig.keyDefault && tableConfig.keyDefault.size) prefer.push('missing=default');
+    } else {
+      prefer.push('return=minimal');
+    }
     const headers = {
       'Content-Type': 'application/json',
       'apikey': serviceKey,
       'Authorization': `Bearer ${serviceKey}`,
-      'Prefer': conflictCol ? `resolution=merge-duplicates` : 'return=minimal'
+      'Prefer': prefer.join(',')
     };
 
     // Supabase REST API upsert

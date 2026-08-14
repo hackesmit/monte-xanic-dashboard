@@ -307,6 +307,55 @@ describe('MT.13 — WineXRay parser', () => {
     const row = berry.find(r => r.sample_id === '25CSMX-B1');
     assert.ok(row, 'berry row with non-numeric T value must be accepted');
     assert.equal(row.color_t, undefined,
-      'color_t must not be present on berry payload — T column is intentionally unmapped');
+      'color_t must not be present on berry payload: T column is intentionally unmapped');
+  });
+
+  // Header repair must be scoped to the header record, and decoding must not
+  // corrupt text. Cross-vendor review of the repair (2026-08-14) raised two ways
+  // a whole-document string replace goes wrong, plus an encoding regression
+  // introduced by reading the bytes here instead of letting SheetJS sniff them.
+  describe('header repair scoping and decoding', () => {
+    function csvWithPhraseInData() {
+      const header = 'Sample Id,Sample Type,Sample Date,Total Phenolics Index (IPT, d-less),tANT (ppm ME),Notes (any text)';
+      const row = '25CSMX-9,Berries,2/27/2026,55,623,"a note mentioning ""Total Phenolics Index (IPT, d-less)"" inline"';
+      return Buffer.from(`${header}\n${row}\n`, 'utf8');
+    }
+
+    it('repairs the header even when the quoted phrase also appears in a data cell', async () => {
+      const result = await winexrayParser.parse(asFakeFile(csvWithPhraseInData(), 'x.csv'));
+      const berry = result.targets.find(t => t.table === 'berry_samples').rows;
+      const r = berry.find(x => x.sample_id === '25CSMX-9');
+      assert.ok(r, 'row must parse');
+      // The old guard skipped the repair whenever the quoted form appeared
+      // anywhere in the document, which left the header split and re-shifted
+      // every column after IPT.
+      assert.equal(r.ipt, 55, 'IPT must survive: the repair is scoped to the header record');
+      assert.equal(r.tant, 623, 'tANT must not take its neighbour value');
+    });
+
+    it('decodes a Windows-1252 export without mangling accented text', async () => {
+      // 0xF1 is n-tilde in Windows-1252 and invalid as standalone UTF-8.
+      // Decoding it as UTF-8 yields U+FFFD and silently corrupts the variety.
+      const header = Buffer.from('Sample Id,Sample Type,Sample Date,Variety,tANT (ppm ME)\n', 'latin1');
+      const row = Buffer.from('25CSMX-8,Berries,2/27/2026,Pe\xF1a Blanca,623\n', 'latin1');
+      const result = await winexrayParser.parse(asFakeFile(Buffer.concat([header, row]), 'x.csv'));
+      const berry = result.targets.find(t => t.table === 'berry_samples').rows;
+      const r = berry.find(x => x.sample_id === '25CSMX-8');
+      assert.ok(r, 'row must parse');
+      assert.ok(!String(r.variety).includes('�'),
+        'variety must not contain a replacement character');
+      assert.equal(r.variety, 'Peña Blanca', 'accented variety must round-trip');
+    });
+
+    it('leaves a well-formed export alone when its IPT header is already quoted', async () => {
+      const header = 'Sample Id,Sample Type,Sample Date,"Total Phenolics Index (IPT, d-less)",tANT (ppm ME)';
+      const row = '25CSMX-7,Berries,2/27/2026,55,623';
+      const result = await winexrayParser.parse(asFakeFile(Buffer.from(`${header}\n${row}\n`, 'utf8'), 'x.csv'));
+      const berry = result.targets.find(t => t.table === 'berry_samples').rows;
+      const r = berry.find(x => x.sample_id === '25CSMX-7');
+      assert.ok(r, 'row must parse');
+      assert.equal(r.ipt, 55, 'an already-quoted header must not be double-quoted');
+      assert.equal(r.tant, 623, 'columns after IPT must stay aligned');
+    });
   });
 });

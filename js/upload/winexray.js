@@ -37,20 +37,57 @@ const DATE_COLUMNS = new Set(['sample_date', 'crush_date']);
 // the repair has to happen on the raw text, before the split is normalized away.
 const IPT_MALFORMED_HEADER = 'Total Phenolics Index (IPT, d-less)';
 
+// Decode the raw bytes to text. Two things this must not get wrong.
+//
+// Encoding: the previous array-mode path let SheetJS sniff the codepage. Reading
+// bytes ourselves means we own that, and decoding a Windows-1252 export as UTF-8
+// turns every accented character into U+FFFD, which silently mangles varieties
+// and appellations ("Peña"). So: honour a UTF-16 BOM, and decode UTF-8 in fatal
+// mode so a non-UTF-8 file throws rather than corrupting quietly, then fall back
+// to Windows-1252, which is what the tool emits when it is not UTF-8.
+function decodeBytes(buf) {
+  const b = new Uint8Array(buf);
+  if (b.length >= 2 && b[0] === 0xFF && b[1] === 0xFE) return new TextDecoder('utf-16le').decode(buf);
+  if (b.length >= 2 && b[0] === 0xFE && b[1] === 0xFF) return new TextDecoder('utf-16be').decode(buf);
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+  } catch {
+    return new TextDecoder('windows-1252').decode(buf);
+  }
+}
+
 function decodeCsv(buf) {
-  let text = new TextDecoder('utf-8').decode(buf);
+  let text = decodeBytes(buf);
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip BOM
-  if (text.includes(IPT_MALFORMED_HEADER) && !text.includes(`"${IPT_MALFORMED_HEADER}"`)) {
-    text = text.replace(IPT_MALFORMED_HEADER, `"${IPT_MALFORMED_HEADER}"`);
+
+  // Repair the malformed header on the HEADER RECORD ONLY. Two reasons this is
+  // scoped rather than a whole-document replace. A document-wide search can hit
+  // the same phrase inside a quoted data cell and inject quotes into it, and the
+  // old "skip if the quoted form appears anywhere" guard meant one quoted
+  // occurrence in the data would skip the repair and leave the header broken.
+  const nl = text.indexOf('\n');
+  const head = nl === -1 ? text : text.slice(0, nl);
+  const rest = nl === -1 ? '' : text.slice(nl);
+  if (head.includes(IPT_MALFORMED_HEADER) && !head.includes(`"${IPT_MALFORMED_HEADER}"`)) {
+    return head.replace(IPT_MALFORMED_HEADER, `"${IPT_MALFORMED_HEADER}"`) + rest;
   }
   return text;
 }
 
 async function fileToRows(file) {
   const buf = await file.arrayBuffer();
+  // The parser is chosen by a UI button, not by file extension, so a binary
+  // workbook can still be handed to this parser. Those carry no malformed CSV
+  // header to repair, and decoding ZIP bytes as text would yield garbage, so
+  // keep the original array-mode read for them. Text goes through the repair.
+  const bytes = new Uint8Array(buf);
+  const isZip = bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B &&
+                (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07);
   // Parse from repaired text (type:'string'), matching dataLoader.loadFile, so
   // the IPT header repair above is applied before SheetJS collapses field counts.
-  const wb = XLSX.read(decodeCsv(buf), { type: 'string', cellDates: true });
+  const wb = isZip
+    ? XLSX.read(buf, { type: 'array', cellDates: true })
+    : XLSX.read(decodeCsv(buf), { type: 'string', cellDates: true });
   const sheetName = wb.SheetNames[0];
   return XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: true });
 }
