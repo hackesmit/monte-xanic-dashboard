@@ -94,10 +94,17 @@ alignment instead of freezing the bug.
 `CONFIG.wxToBerry` maps BOTH `Berry Extractable Anthocyanins (mg/100b)` and
 `Berry (extractable) Anthocyanins (mg/100b me)` to the same field
 (`berry_anthocyanins_mg_100b`). The current export emits only the second; the
-first is tolerated coverage for an older export spelling. This is **intentional
-and harmless**: a real export never carries both columns, and if one somehow did,
-the two keys resolve to the same destination field so no data is lost or
-mis-routed. No change needed. (Confirming this was an explicit ask of the recon.)
+first is tolerated coverage for an older export spelling. Every export observed
+so far carries exactly one of the two, and for those the alias is harmless.
+
+Being precise about the case that was NOT observed: if an export ever carried
+both spellings with different values, the two keys resolve to the same
+destination field and whichever is applied last wins. That is a silent
+overwrite, not lossless. The config expresses no precedence between them.
+No change is made here because no such export exists and inventing a precedence
+rule without a real case would be guesswork, but if a dual-header export ever
+appears, this is a defect and not a benign alias. (Confirming the alias was an
+explicit ask of the recon; the dual-header caveat is new.)
 
 ---
 

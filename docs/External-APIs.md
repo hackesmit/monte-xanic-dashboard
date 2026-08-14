@@ -217,20 +217,24 @@ Authorization: Bearer <access_token>
 | 2026-07-01 → 2026-07-07 | 2026-07-01 … 2026-07-07 (7 rows) | yes |
 | 2026-06-10 → 2026-06-14 | 2026-06-10 … 2026-06-14 (5 rows) | yes |
 
-### Aggregation — the API produces the dashboard's fields directly
+### Aggregation: the API produces the dashboard's field shapes directly
 
-For the `daily` group, the air-temperature and humidity channels return `avg`/`max`/`min` arrays natively, so the dashboard's fields map without any client-side aggregation:
+For the `daily` group, the air-temperature and humidity channels return `avg`/`max`/`min` arrays natively, so the dashboard's fields need no client-side aggregation. **The channel choice below is provisional, not verified.** What a live window did establish is the shape and the units: daily `avg`, `max` and `min` arrays come back already in °C and %, so no unit conversion is needed. What it did not establish is which channel the dashboard should treat as *the* air temperature.
 
-| `js/weather.js` field | Source |
-| --- | --- |
-| `temp_max` | channel 13 (HC Air temperature), `values.max` |
-| `temp_min` | channel 13, `values.min` |
-| `temp_avg` | channel 13, `values.avg` |
-| `humidity_pct` | channel 12 (HC Relative humidity), `values.avg` |
+| `js/weather.js` field | Candidate source | Status |
+| --- | --- | --- |
+| `temp_max` | channel 13 (HC Air temperature), `values.max` | shape and unit verified, channel choice provisional |
+| `temp_min` | channel 13, `values.min` | same |
+| `temp_avg` | channel 13, `values.avg` | same |
+| `humidity_pct` | channel 12 (HC Relative humidity), `values.avg` | shape and unit verified |
 
-Verified against real data (window 2026-07-01..07, °C and %): channel-13 `avg` `[16.92, 19.99, 21.16, 24.46, 24.06, 23.62, 24.53]`, `max` `[26.37, 30.71, 33.09, 33.41, 33.59, 34.09, 34.25]`; channel-12 `avg` `[73.18, 60.9, 48.79, 45.8, 49.06, 51.37, 50]`. Units are already °C and %, matching what the dashboard expects, so no unit conversion is needed for these four fields. One data-quality caveat seen in the sample: a single day returned `min` of `0` for both temperature and humidity, which is a sensor/gap artifact, not a real reading — a sync should sanity-check for it.
+Channel 13 (HC Air temperature) and channel 15 (dry-bulb) are both candidates and this recon did not settle which the dashboard plots. Channel 13 is the labelled primary and the station backs the "Frost and temperature monitoring" chart, which is suggestive, not decisive. Settling it belongs to the `weather.js` bead and wants one concrete step: capture the request the dashboard chart itself issues, then compare channels 13 and 15 over the same window before committing. Do not prescribe channel 13 from this note alone.
 
-Whether to read channel 13 (HC Air temperature) or channel 15 (dry-bulb) as *the* air temperature is a design choice left to the `weather.js` bead; the dashboard's own "Frost and temperature monitoring" chart is built on this station, and channel 13 is the labelled primary. The customized `POST` variants of the data routes (same paths, a body selecting specific sensors) exist and are worth using once we commit to a fixed channel set, so we fetch only channels 12 and 13 rather than all 21.
+One data-quality caveat seen in the sampled window: a single day returned `min` of `0` for both temperature and humidity, which is a sensor or gap artifact rather than a real reading, so a sync should sanity-check for it. (Actual readings are deliberately not reproduced here; this repository is public and they are the winery's operational data. The verification window and values are on bead `xd-1f3`.)
+
+**Timestamps: decide the day boundary explicitly.** The range parameters are epoch seconds, while daily buckets come back keyed to the station's own timezone (`position.timezoneCode`, `America/Tijuana` for this one). Building a range from UTC midnight therefore does not line up with a local-calendar day, and the mismatch shifts by an hour across a DST transition. Whichever convention the sync adopts, it must construct the boundary in the station's timezone, convert that instant to epoch seconds, and state whether `to` is inclusive. This is untested and is a likely source of an off-by-one-day error.
+
+The customized `POST` variants of the data routes (same paths, a body selecting specific sensors) exist and are worth using once a fixed channel set is committed, so we fetch only the channels we display rather than all 21.
 
 ### History depth
 
@@ -239,7 +243,7 @@ The weather station's `min_date` is 2020-09-23; `max_date` tracks the last commu
 ### Replay and negative control
 
 - **Replay outside the browser: succeeds.** A fresh bearer token minted by `curl` against `oauth.fieldclimate.com/token` (password grant, no browser), then used as `Authorization: Bearer`, returned byte-identical daily data to what the dashboard rendered. The integration is therefore feasible server-side.
-- **Negative control: the endpoint is protected.** The same `GET /v2/data/<id>/daily/from/.../to/...` with no `Authorization` header returns `HTTP 401 {"message":"Unauthorized. ..."}`. The data is not served unauthenticated, so this is not a leaky-vendor finding; the bearer token is a real access control and must be kept server-side, never shipped to the browser client, exactly as the WineXRay credential is.
+- **Negative control: the endpoint is protected.** The same `GET /v2/data/<id>/daily/from/.../to/...` with no `Authorization` header returns `HTTP 401 {"message":"Unauthorized. ..."}`. The data is not served unauthenticated, so this is not a leaky-vendor finding, and the token must be kept server-side, never shipped to the browser client, exactly as the WineXRay login is. Note the precise limit of that control: it proves **authentication** is enforced, not **authorization**. Whether a token minted for a different FieldClimate account can read this station id was not tested, so no claim is made about cross-account isolation.
 
 ### Design implication
 
