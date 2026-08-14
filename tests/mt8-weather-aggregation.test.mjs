@@ -113,7 +113,10 @@ describe('MT.8 — Date range helpers', () => {
 
   it('30d range ends today', () => {
     const { start, end } = WeatherStore.getDateRange(null, '30d');
-    const today = new Date().toISOString().split('T')[0];
+    // Tijuana, matching WeatherStore.todayLocal(). Deriving this from
+    // toISOString() compared a UTC date against a Tijuana one and failed
+    // every day between 00:00 and 07:00 UTC.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Tijuana' });
     assert.equal(end, today);
     // start should be 29 days before today
     const s = new Date(start);
