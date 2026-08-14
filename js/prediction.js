@@ -114,8 +114,17 @@ const SINGLE_VINTAGE_SLOPE_CV = 1.5;
 // mean below a metric-specific absolute slope scale as uninformative (prior
 // precision 0). The scale is supplied per metric by the caller (see the
 // *_SLOPE_SCALE constants in computeOne).
-export function historicalSlopePrior(vintages, { slopeScale = 0 } = {}) {
+export function historicalSlopePrior(vintages, { slopeScale = 0, slopeMax = Infinity } = {}) {
   const slopes = [];
+  // FINDING (round 2): metric-impossible corrupt vintages. A pair of historical
+  // slopes like 100 and 100.000001 Bx/day are near-identical (tiny variance, so
+  // the between-vintage precision cap does not flag them) yet each is orders of
+  // magnitude beyond any real ripening rate. Left in, they take ~half the
+  // posterior weight and drag it to a meaningless ~50 Bx/day. Reject any slope
+  // whose magnitude exceeds the metric's plausible bound (slopeMax, supplied by
+  // the caller — see the *_SLOPE_MAX constants) BEFORE it can inform the prior,
+  // and report the rejected slopes so the exclusion is visible, not silent.
+  const excludedSlopes = [];
   for (const rawSamples of vintages) {
     const samples = (rawSamples || []).filter(s => Number.isFinite(s.y));
     if (samples.length === 0) continue;
@@ -131,17 +140,19 @@ export function historicalSlopePrior(vintages, { slopeScale = 0 } = {}) {
       .map(s => ({ ...s, w: 1 }));
     if (windowed.length < 3) continue;
     const { beta } = weightedRegression(windowed);
-    if (Number.isFinite(beta)) slopes.push(beta);
+    if (!Number.isFinite(beta)) continue;
+    if (Math.abs(beta) > slopeMax) { excludedSlopes.push(beta); continue; }
+    slopes.push(beta);
   }
   const V = slopes.length;
-  if (V === 0) return { betaHist: null, tau2Hist: Infinity, V: 0 };
+  if (V === 0) return { betaHist: null, tau2Hist: Infinity, V: 0, excludedSlopes };
   const mean = slopes.reduce((a, b) => a + b, 0) / V;
   const magnitude = Math.abs(mean);
   // FINDING 2: a mean slope at or below the metric's meaningful scale is noise,
   // not a ripening trend. Return an uninformative prior (τ²=Infinity ⇒ prior
   // precision 0) instead of manufacturing an arbitrarily strong prior from it.
   if (!(magnitude > slopeScale)) {
-    return { betaHist: mean, tau2Hist: Infinity, V };
+    return { betaHist: mean, tau2Hist: Infinity, V, excludedSlopes };
   }
   let tau2Hist;
   if (V > 1) {
@@ -159,7 +170,7 @@ export function historicalSlopePrior(vintages, { slopeScale = 0 } = {}) {
   // Identical (copied) vintages give an exactly-zero sample variance and hence
   // an infinite prior precision; treat that as uninformative too.
   if (!(tau2Hist > 0)) tau2Hist = Infinity;
-  return { betaHist: mean, tau2Hist, V };
+  return { betaHist: mean, tau2Hist, V, excludedSlopes };
 }
 
 // ── Bayesian-style posterior slope (§5.4) ────────────────────────────
@@ -181,6 +192,18 @@ export function bayesianCombine({ betaHat, sigmaBeta2, betaHist, tau2Hist }) {
   const priorPrec = Number.isFinite(dataPrec)
     ? Math.min(rawPriorPrec, dataPrec)
     : rawPriorPrec;
+  // Precision-sum overflow guard: both precisions are finite but so large that
+  // their sum overflows to Infinity (e.g. ~1e308 each). The generic fallback
+  // below would then treat totPrec as non-finite and silently return the raw
+  // current fit, discarding a legitimate prior. Rescale by the larger precision
+  // so the weighted mean stays finite and correct.
+  if (Number.isFinite(dataPrec) && Number.isFinite(priorPrec)
+      && dataPrec > 0 && priorPrec > 0 && !Number.isFinite(dataPrec + priorPrec)) {
+    const s = Math.max(dataPrec, priorPrec);
+    const dp = dataPrec / s, pp = priorPrec / s;
+    return { betaPost: (betaHat * dp + betaHist * pp) / (dp + pp),
+             sigmaBeta2Post: 1 / (dataPrec + priorPrec) };
+  }
   const totPrec = dataPrec + priorPrec;
   if (!Number.isFinite(totPrec) || totPrec === 0) {
     return { betaPost: betaHat, sigmaBeta2Post: sigmaBeta2 };
@@ -323,6 +346,16 @@ const BRIX_SLOPE_SCALE = 0.01;    // Bx/day   (real ripening ≈ 0.1–0.3)
 const ANT_SLOPE_SCALE  = 0.1;     // mg/L/day (real accrual ≈ 5–20)
 const PH_SLOPE_SCALE   = 0.0005;  // pH/day   (real rise ≈ 0.005–0.02)
 
+// Per-metric UPPER plausible daily-slope bounds (FINDING, round 2). A historical
+// mean slope whose magnitude exceeds these is metric-impossible — a corrupt
+// vintage, not a ripening trend — and is rejected in historicalSlopePrior before
+// it can inform the prior (passed as `slopeMax`). Set several times above the
+// fastest genuine trend each metric shows, so a real fast vintage is never
+// dropped, but orders of magnitude below the corrupt values this guards against.
+const BRIX_SLOPE_MAX = 2.0;       // Bx/day   (fastest real ripening ≲ 0.5)
+const ANT_SLOPE_MAX  = 200;       // mg/L/day (fastest real accrual ≲ 20)
+const PH_SLOPE_MAX   = 0.2;       // pH/day   (fastest real rise ≲ 0.02)
+
 // ── computeOne orchestrator (§5.5) ───────────────────────────────────
 // Inputs:
 //   current:              [{ sampleDate (ISO string|Date), tDays, brix, ant }]
@@ -391,7 +424,7 @@ export function computeOne({
   }
   const brixPrior = historicalSlopePrior(
     historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.brix }))),
-    { slopeScale: BRIX_SLOPE_SCALE }
+    { slopeScale: BRIX_SLOPE_SCALE, slopeMax: BRIX_SLOPE_MAX }
   );
   const brixComb = bayesianCombine({
     betaHat: brixFit.beta, sigmaBeta2: brixFit.sigmaBeta2,
@@ -409,7 +442,7 @@ export function computeOne({
     antFit = weightedRegression(antSamples);
     antPrior = historicalSlopePrior(
       historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.ant }))),
-      { slopeScale: ANT_SLOPE_SCALE }
+      { slopeScale: ANT_SLOPE_SCALE, slopeMax: ANT_SLOPE_MAX }
     );
     antComb = bayesianCombine({
       betaHat: antFit.beta, sigmaBeta2: antFit.sigmaBeta2,
@@ -429,7 +462,7 @@ export function computeOne({
         .filter(s => Number.isFinite(s.pH))
         .map(s => ({ t: s.tDays, y: s.pH }))
       ),
-      { slopeScale: PH_SLOPE_SCALE }
+      { slopeScale: PH_SLOPE_SCALE, slopeMax: PH_SLOPE_MAX }
     );
     phComb = bayesianCombine({
       betaHat: phFit.beta, sigmaBeta2: phFit.sigmaBeta2,

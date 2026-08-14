@@ -12,6 +12,41 @@ import { escapeHtml } from './utils.js';
 
 let activeValley = 'all';
 
+// prediction.flags carries every alert condition that holds, not just the
+// single precedence winner in `reason`. detectEdgeCase ranks riesgo-sobremadurez
+// above the won't-reach-anthocyanin case, so a lot that is BOTH over-ripe and
+// cannot reach its anthocyanin target before the window closes would show only
+// the over-ripe headline and hide the second, equally actionable warning. Render
+// each true flag as its own independent alert so no condition is lost.
+const FLAG_ALERT_MESSAGES = {
+  brixOverRipe:
+    'Riesgo de sobremadurez: el Brix proyectado supera el límite alto de la ventana.',
+  antTargetUnreachable:
+    'Las antocianinas no alcanzarán el objetivo antes de que cierre la ventana de Brix.',
+};
+
+// Pure: the Spanish alert lines implied by a prediction's flags, in a stable
+// order. Exported for unit testing the rendered output without a DOM.
+export function flagAlertMessages(prediction) {
+  const flags = prediction?.flags || {};
+  const out = [];
+  if (flags.brixOverRipe) out.push(FLAG_ALERT_MESSAGES.brixOverRipe);
+  if (flags.antTargetUnreachable) out.push(FLAG_ALERT_MESSAGES.antTargetUnreachable);
+  return out;
+}
+
+// Pure: the HTML fragment for a prediction's flag alerts ('' when none). Styled
+// inline to match the alert palette used by .pred-card-status without adding new
+// CSS surface. Exported so a test can assert both messages render.
+export function renderFlagAlerts(prediction) {
+  const msgs = flagAlertMessages(prediction);
+  if (msgs.length === 0) return '';
+  const items = msgs.map(m =>
+    `<li style="font-size:11px;font-weight:500;color:#7a4250;line-height:1.25;margin-top:4px">`
+    + `⚠ ${escapeHtml(m)}</li>`).join('');
+  return `<ul class="pred-card-flags" style="list-style:none;margin:8px 0 0;padding:0">${items}</ul>`;
+}
+
 export const PredictionView = {
   mount() {
     const chipBar = document.getElementById('prediccion-valley-chips');
@@ -163,6 +198,7 @@ export const PredictionView = {
           ${horizonDays != null ? `±${Math.round(p.bandDays)} d · faltan ${horizonDays} d` : ''}
           ${closesText ? ` · ${closesText}` : ''}
         </div>
+        ${renderFlagAlerts(p)}
         <div style="font-size:9px;color:#7a7368;margin-top:6px">Brix</div>
         <div class="pred-mini"><canvas data-axis="brix"></canvas></div>
         ${r.target.antTarget != null ? `
