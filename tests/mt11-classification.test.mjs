@@ -359,6 +359,46 @@ test('MT.11 scoreLot: whitespace / boolean / fractional counts are rejected, not
   }
 });
 
+test('MT.11 scoreLot: a 400-digit string count overflows to Infinity → sanitary_pct missing', () => {
+  // xd-b0o round 2: the parser's string branch only checked /^\d+$/, so a huge
+  // all-digit string satisfied the regex, converted via Number() to Infinity,
+  // and returned Infinity without the finite/integer checks the numeric branch
+  // applied. That put Infinity into the total → Infinity/Infinity → NaN as the
+  // percentage, and NaN <= threshold is false so the row silently reached the
+  // WORST bucket instead of being flagged missing. Require Number.isSafeInteger
+  // after the conversion so both branches agree.
+  const overflow = '9'.repeat(400);
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: overflow, health_inmadura: 5, health_sobremadura: 2,
+                health_picadura: 1, health_enfermedad: 3, health_quemadura: 0,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'),
+    'a 400-digit overflow string must be missing, not scored');
+  assert.equal(r.buckets?.sanitary_pct, undefined);
+});
+
+test('MT.11 scoreLot: a value just above Number.MAX_SAFE_INTEGER → sanitary_pct missing', () => {
+  // 2^53 is the first integer that loses precision as a double, so an integer
+  // string beyond MAX_SAFE_INTEGER cannot be a real berry tally — arithmetic on
+  // it silently rounds. Reject as missing rather than let a corrupted count
+  // reach bucket selection. Try both the numeric and string branches.
+  for (const bad of [Number.MAX_SAFE_INTEGER + 1, String(Number.MAX_SAFE_INTEGER) + '0']) {
+    const lot = mkLot({
+      medicion: { health_grade: 'Excelente',
+                  health_madura: bad, health_inmadura: 5, health_sobremadura: 2,
+                  health_picadura: 1, health_enfermedad: 3, health_quemadura: 0,
+                  tons_received: 5, phenolic_maturity: null }
+    });
+    const r = scoreLot(lot);
+    assert.ok(r.missing.includes('sanitary_pct'),
+      `health_madura=${JSON.stringify(bad)} must reject as missing`);
+    assert.equal(r.buckets?.sanitary_pct, undefined);
+  }
+});
+
 test('MT.11 scoreLot: a trimmed decimal-integer string count is accepted', () => {
   // The strict parser still accepts the legitimate case: a clean integer string.
   const lot = mkLot({

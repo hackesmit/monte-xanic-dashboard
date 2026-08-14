@@ -97,15 +97,20 @@ const SANITARY_COUNT_FIELDS = [
 // clean 0 — the identical defect class fixed in the predictor (xd-6jg). A
 // negative or fractional value cannot be a berry tally and rejects too:
 // a negative health_picadura would otherwise yield a negative damage share and
-// win the cleanest bucket. Returns a non-negative integer, or null when the
-// value is missing/invalid.
+// win the cleanest bucket. Both branches also require a SAFE integer (≤ 2^53-1):
+// an all-digit string like '9'.repeat(400) matches /^\d+$/ but converts to
+// Infinity, and any value above Number.MAX_SAFE_INTEGER silently loses precision
+// and would then produce Infinity/Infinity → NaN in the percentage. Returns a
+// non-negative safe integer, or null when the value is missing/invalid.
 function parseCount(v) {
   if (typeof v === 'number') {
-    return Number.isInteger(v) && v >= 0 ? v : null;
+    return Number.isSafeInteger(v) && v >= 0 ? v : null;
   }
   if (typeof v === 'string') {
     const s = v.trim();
-    return /^\d+$/.test(s) ? Number(s) : null;
+    if (!/^\d+$/.test(s)) return null;
+    const n = Number(s);
+    return Number.isSafeInteger(n) && n >= 0 ? n : null;
   }
   return null;
 }
@@ -142,8 +147,13 @@ function scoreSanitaryPct(medicion) {
   const [madura, inmadura, sobremadura, picadura, enfermedad] = counts;
   const unhealthy = picadura + enfermedad + quemadura;
   const total = madura + inmadura + sobremadura + unhealthy;
-  if (total === 0) return null;
+  // Defense-in-depth: parseCount already rejects non-safe integers, so a
+  // non-finite total or pct here would mean the guard above regressed. A NaN
+  // percentage would silently reach bucket selection (NaN <= a is false, NaN <= b
+  // is false → worst bucket, treating a fabricated reading as real damage).
+  if (!Number.isFinite(total) || total === 0) return null;
   const pct = unhealthy / total * 100;
+  if (!Number.isFinite(pct)) return null;
   const { a, b } = CONFIG.sanitaryThresholds.pct;
   if (pct <= a) return 3;
   if (pct <= b) return 2;
