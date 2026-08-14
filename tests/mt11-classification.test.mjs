@@ -242,6 +242,50 @@ test('MT.11 scoreLot: medicion null → sanitary params dropped, not fail', () =
   assert.ok(r.missing.includes('visual'));
 });
 
+test('MT.11 scoreLot: partial sanitary counts → sanitary_pct missing, not best bucket', () => {
+  // Staff filled only health_madura; the other five counts are absent. The
+  // engine must NOT read the blanks as 0 and award the cleanest bucket (3).
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente', health_madura: 100,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'));
+  assert.equal(r.buckets?.sanitary_pct, undefined);
+});
+
+test('MT.11 scoreLot: complete realistic counts still score the true sanitary bucket', () => {
+  // Regression for xd-b0o: the partial row (only health_madura) used to score
+  // the CLEANEST bucket (3) while this fully-counted 10%-unhealthy row scores
+  // the WORST (1). The partial row must no longer earn a sanitary bucket at all,
+  // while complete data keeps scoring the bucket its counts actually earn.
+  const complete = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: 80, health_inmadura: 5, health_sobremadura: 5,
+                health_picadura: 5, health_enfermedad: 3, health_quemadura: 2, // 10% unhealthy
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const partial = mkLot({
+    medicion: { health_grade: 'Excelente', health_madura: 100,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const rc = scoreLot(complete);
+  const rp = scoreLot(partial);
+  assert.ok(!rc.missing.includes('sanitary_pct')); // complete data still scores
+  assert.equal(rc.buckets.sanitary_pct, 1);        // and earns its true (worst) bucket
+  assert.ok(rp.missing.includes('sanitary_pct'));   // partial data is flagged, not scored
+  assert.notEqual(rp.buckets?.sanitary_pct, 3);     // never the fabricated best bucket
+});
+
+test('MT.11 scoreLot: non-finite health count → sanitary_pct missing, not worst bucket', () => {
+  const lot = mkLot({
+    medicion: { ...mkLot().medicion, health_quemadura: NaN }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'));
+  assert.equal(r.buckets?.sanitary_pct, undefined);
+});
+
 test('MT.11 scoreLot: white rubric (SB) normalizes correctly', () => {
   const lot = mkLot({
     variety: 'Sauvignon Blanc', appellation: 'Valle de Ojos Negros',
