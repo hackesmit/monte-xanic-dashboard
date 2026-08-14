@@ -141,6 +141,71 @@ describe('MT.13 — WineXRay parser', () => {
     assert.equal(r.l_star, 67.7, 'L* must not be pulled into iRPs by the shift');
   });
 
+  // xd-lf9 — The natural key is (sample_id, sample_date, sample_seq), but the
+  // parser previously emitted rows without sample_seq, leaving every row on the
+  // DB default (1 for wine_samples, 0 for berry_samples). Two GENUINELY DISTINCT
+  // same-day samples that share a sample_id then collide on the upsert key:
+  // within one batch PostgREST aborts (ON CONFLICT twice, 21000); across uploads
+  // the second silently overwrites the first. The parser must assign a distinct,
+  // DETERMINISTIC sample_seq per (sample_id, sample_date) group so both persist.
+  // (Deterministic, not encounter-order — a re-upload in a different row order
+  // must produce the same seq; that is why Identity.canonicalSeqAssign is used.)
+  it('assigns distinct sample_seq to same-day same-id wine rows so both persist', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,Vintage,Variety,Appellation,Brix (degrees %w/w: (gr sucrose/100 gr juice)*100)',
+      '25CSMX-1,Aging Wine,2/27/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,23.1',
+      '25CSMX-1,Aging Wine,2/27/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,24.8',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 'same_day_dupes.csv');
+    const result = await winexrayParser.parse(file);
+    const wine = result.targets.find(t => t.table === 'wine_samples').rows;
+    assert.equal(wine.length, 2, 'both same-day rows must be emitted');
+    const seqs = wine.map(r => r.sample_seq).sort((a, b) => a - b);
+    assert.deepEqual(seqs, [1, 2],
+      'the two same-(sample_id,sample_date) rows must get distinct sample_seq 1 and 2');
+    // No collision on the natural key → both survive the upsert.
+    const keys = new Set(wine.map(r => `${r.sample_id}|${r.sample_date}|${r.sample_seq}`));
+    assert.equal(keys.size, 2, 'natural keys (sample_id,sample_date,sample_seq) must be unique');
+  });
+
+  it('assigns distinct sample_seq to same-day same-id berry rows so both persist', async () => {
+    const csv = [
+      'Sample Id,Sample Type,Sample Date,Vintage,Variety,Appellation,Brix (degrees %w/w: (gr sucrose/100 gr juice)*100)',
+      '25CSMX-9,Berries,2/15/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,22.0',
+      '25CSMX-9,Berries,2/15/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,25.5',
+    ].join('\n');
+    const file = asFakeFile(Buffer.from(csv), 'same_day_berry_dupes.csv');
+    const result = await winexrayParser.parse(file);
+    const berry = result.targets.find(t => t.table === 'berry_samples').rows;
+    assert.equal(berry.length, 2, 'both same-day berry rows must be emitted');
+    const seqs = berry.map(r => r.sample_seq).sort((a, b) => a - b);
+    assert.deepEqual(seqs, [1, 2],
+      'same-day berry rows must get distinct sample_seq (not both DB default 0)');
+    const keys = new Set(berry.map(r => `${r.sample_id}|${r.sample_date}|${r.sample_seq}`));
+    assert.equal(keys.size, 2, 'berry natural keys must be unique');
+  });
+
+  // Determinism guard: the same rows uploaded in a different order must yield
+  // the same seq for the same row, or a re-upload would remap identities and
+  // reintroduce the silent-overwrite bug that js/identity.js exists to prevent.
+  it('assigns sample_seq deterministically regardless of input row order', async () => {
+    const header = 'Sample Id,Sample Type,Sample Date,Vintage,Variety,Appellation,Brix (degrees %w/w: (gr sucrose/100 gr juice)*100)';
+    const rowA = '25CSMX-1,Aging Wine,2/27/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,23.1';
+    const rowB = '25CSMX-1,Aging Wine,2/27/2026,2025,Cabernet Sauvignon,Valle de Guadalupe,24.8';
+    const parseOrder = async lines => {
+      const file = asFakeFile(Buffer.from([header, ...lines].join('\n')), 'o.csv');
+      const res = await winexrayParser.parse(file);
+      return res.targets.find(t => t.table === 'wine_samples').rows;
+    };
+    const forward = await parseOrder([rowA, rowB]);
+    const reverse = await parseOrder([rowB, rowA]);
+    const seqOf = (rows, brix) => rows.find(r => r.brix === brix).sample_seq;
+    assert.equal(seqOf(forward, 23.1), seqOf(reverse, 23.1),
+      'the brix=23.1 row must keep the same seq under both orderings');
+    assert.equal(seqOf(forward, 24.8), seqOf(reverse, 24.8),
+      'the brix=24.8 row must keep the same seq under both orderings');
+  });
+
   it('normalizes variety', async () => {
     const file = await loadFixture();
     const result = await winexrayParser.parse(file);

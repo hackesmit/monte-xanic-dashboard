@@ -12,6 +12,7 @@ import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
 import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
 import { COLUMN_TYPES } from '../validation.js';
+import { Identity } from '../identity.js';
 
 const BELOW_DETECTION_RE = /^<\s*\d+(\.\d+)?$/;
 const ABOVE_DETECTION_RE = /^>\s*(\d+(\.\d+)?)$/;
@@ -233,6 +234,18 @@ export const winexrayParser = {
       if (dest === 'berry_samples') berryRows.push(obj);
       else wineRows.push(obj);
     }
+
+    // Assign the upsert-key disambiguator. The natural key is
+    // (sample_id, sample_date, sample_seq); without this every row lands on the
+    // DB default (1 for wine_samples, 0 for berry_samples), so two genuinely
+    // distinct same-day samples sharing a sample_id collide — PostgREST aborts
+    // the batch (ON CONFLICT twice, 21000), or a later upload silently
+    // overwrites an earlier one. canonicalSeqAssign numbers each
+    // (sample_id, sample_date) group deterministically (a re-upload in any row
+    // order yields the same seq), so the assignment is safe to own here in the
+    // parser rather than depend on the caller remembering to run it.
+    Identity.canonicalSeqAssign(wineRows);
+    Identity.canonicalSeqAssign(berryRows);
 
     return {
       targets: [
