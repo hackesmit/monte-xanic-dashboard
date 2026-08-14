@@ -142,11 +142,16 @@ export const DataStore = {
       berryDiameter: row.berry_diameter_mm != null ? parseFloat(row.berry_diameter_mm)
         : (row.berry_length_avg_cm != null ? Math.round(parseFloat(row.berry_length_avg_cm) * 100) / 10 : null),
       healthGrade: row.health_grade,
-      healthMadura: row.health_madura || 0,
-      healthInmadura: row.health_inmadura || 0,
-      healthSobremadura: row.health_sobremadura || 0,
-      healthPicadura: row.health_picadura || 0,
-      healthEnfermedad: row.health_enfermedad || 0,
+      // Null-preserving (?? null, not || 0) for the five WineXRay counts so an
+      // ABSENT count reaches scoreSanitaryPct as null and lands in missing[],
+      // instead of a fabricated 0 that lets a partial reading outscore a
+      // complete one. A genuine stored 0 is preserved as 0. health_quemadura is
+      // optional (upload never carries it) and defaults to 0 in scoring.
+      healthMadura: row.health_madura ?? null,
+      healthInmadura: row.health_inmadura ?? null,
+      healthSobremadura: row.health_sobremadura ?? null,
+      healthPicadura: row.health_picadura ?? null,
+      healthEnfermedad: row.health_enfermedad ?? null,
       healthQuemadura: row.health_quemadura || 0,
       phenolicMaturity: row.phenolic_maturity || null,
       // Vendimia 2026 evaluator panel. Always an array so callers never

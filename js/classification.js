@@ -77,11 +77,15 @@ export function scoreParam(spec, value) {
 
 // ── Sanitary conteo + visual ─────────────────────────────────────────
 
-// The full berry-count breakdown the sanitary percentage is computed from.
-// Every bucket must be present, or the percentage is off a fabricated total.
+// The berry-count breakdown the sanitary percentage is computed from. The five
+// required counts are the WineXRay set config.js maps on upload
+// (preReceptionsToSupabase); every one must be present, or the percentage is
+// off a fabricated total. health_quemadura is optional — upload rows never
+// carry it, so requiring it would regress every uploaded lot into missing[] —
+// and defaults to 0 when absent, contributing nothing to the unhealthy count.
 const SANITARY_COUNT_FIELDS = [
   'health_madura', 'health_inmadura', 'health_sobremadura',
-  'health_picadura', 'health_enfermedad', 'health_quemadura',
+  'health_picadura', 'health_enfermedad',
 ];
 
 function scoreSanitaryPct(medicion) {
@@ -89,8 +93,9 @@ function scoreSanitaryPct(medicion) {
   // A medicion where staff filled only some counts (e.g. health_madura) used
   // to read the blanks as 0 and score the BEST bucket off a 100%-clean total
   // that was never counted — partial data outscoring complete data. Require
-  // the whole count set present and finite; otherwise it is missing, not clean.
-  // The finite guard also stops a poisoned count (NaN) from picking a bucket.
+  // the whole required count set present and finite; otherwise it is missing,
+  // not clean. The finite guard also stops a poisoned count (NaN) from picking
+  // a bucket.
   const counts = [];
   for (const field of SANITARY_COUNT_FIELDS) {
     const v = medicion[field];
@@ -99,7 +104,15 @@ function scoreSanitaryPct(medicion) {
     if (!Number.isFinite(n)) return null;
     counts.push(n);
   }
-  const [madura, inmadura, sobremadura, picadura, enfermedad, quemadura] = counts;
+  // Optional burn count: absent defaults to 0; a present-but-non-finite value
+  // is still a poisoned reading and rejects the whole medicion.
+  const rawQuemadura = medicion.health_quemadura;
+  let quemadura = 0;
+  if (rawQuemadura !== null && rawQuemadura !== undefined && rawQuemadura !== '') {
+    quemadura = Number(rawQuemadura);
+    if (!Number.isFinite(quemadura)) return null;
+  }
+  const [madura, inmadura, sobremadura, picadura, enfermedad] = counts;
   const unhealthy = picadura + enfermedad + quemadura;
   const total = madura + inmadura + sobremadura + unhealthy;
   if (total === 0) return null;

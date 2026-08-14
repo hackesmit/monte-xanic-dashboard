@@ -286,6 +286,22 @@ test('MT.11 scoreLot: non-finite health count → sanitary_pct missing, not wors
   assert.equal(r.buckets?.sanitary_pct, undefined);
 });
 
+test('MT.11 scoreLot: health_quemadura absent is optional → still scores (uploaded-row case)', () => {
+  // config.js preReceptionsToSupabase maps only the five WineXRay counts, so an
+  // uploaded lot never carries health_quemadura. Requiring all six would regress
+  // every uploaded row into missing[]; quemadura is optional and defaults to 0.
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: 98, health_inmadura: 1, health_sobremadura: 0,
+                health_picadura: 1, health_enfermedad: 0, // no health_quemadura
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(!r.missing.includes('sanitary_pct'),
+    'the five required counts present means scored even with quemadura absent');
+  assert.equal(r.buckets.sanitary_pct, 2); // 1/100 = 1% unhealthy → B bucket
+});
+
 test('MT.11 scoreLot: white rubric (SB) normalizes correctly', () => {
   const lot = mkLot({
     variety: 'Sauvignon Blanc', appellation: 'Valle de Ojos Negros',

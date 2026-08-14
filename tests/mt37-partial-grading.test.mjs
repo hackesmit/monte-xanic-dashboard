@@ -12,7 +12,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { scoreLot } from '../js/classification.js';
+import { scoreLot, scoreFromMedicion } from '../js/classification.js';
 import { DataStore } from '../js/dataLoader.js';
 
 const medicion = {
@@ -84,4 +84,51 @@ test('MT.37 _rowToMedicion: diameter from berry_length_avg_cm and origin from su
     id: 4, medicion_code: 'MT-25-004', lot_code: 'SYUC-L13,14', supplier: 'DOMINIO',
   });
   assert.equal(m4.appellation, 'Dominio de las Abejas (VON)');
+});
+
+test('MT.37 end-to-end: an absent sanitary count is missing, not a fabricated clean zero', () => {
+  // The whole bead in one chain: a WineXRay row that genuinely never carried
+  // one of the five required counts must flow DB row → _rowToMedicion →
+  // scoreFromMedicion → scoreLot and land in missing[], NOT be scored off a
+  // total that pretends the uncounted berries were healthy. Fails against the
+  // pre-fix code (dataLoader coerced the blank to 0, so a partial reading
+  // silently earned the best sanitary bucket).
+  const berry = {
+    lotCode: 'CS-TEST-1', vintage: 2026,
+    variety: 'Cabernet Sauvignon', appellation: 'Valle de Ojos Negros',
+    brix: 24.5, pH: 3.55, ta: 5.5, tANT: 1200, berryFW: 1.0,
+    av: 0.20, ag: 0.30, polyphenols: 2500, anthocyanins: 1200,
+  };
+  const byLot = new Map([[`${berry.lotCode}||${berry.vintage}`, berry]]);
+
+  // Partial reading: health_enfermedad genuinely absent from the uploaded row.
+  const medAbsent = DataStore._rowToMedicion({
+    id: 10, medicion_code: 'MT-26-010', vintage_year: 2026,
+    variety: 'Cabernet Sauvignon', lot_code: 'CS-TEST-1',
+    health_madura: 90, health_inmadura: 5, health_sobremadura: 2,
+    health_picadura: 1, /* health_enfermedad absent */
+  });
+  assert.equal(medAbsent.healthEnfermedad, null,
+    'absent count must be null-preserved by _rowToMedicion, not coerced to 0');
+  const rAbsent = scoreFromMedicion(medAbsent, byLot);
+  assert.ok(rAbsent.missing.includes('sanitary_pct'),
+    `partial sanitary data must be flagged missing: ${JSON.stringify(rAbsent.missing)}`);
+  assert.equal(rAbsent.buckets?.sanitary_pct, undefined,
+    'a partial reading must NOT earn a sanitary bucket');
+
+  // Complete clean reading: every required count present, unhealthy counted as
+  // a genuine 0. It still earns the top sanitary bucket — telling this apart
+  // from the partial row above is the entire point of the fix.
+  const medClean = DataStore._rowToMedicion({
+    id: 11, medicion_code: 'MT-26-011', vintage_year: 2026,
+    variety: 'Cabernet Sauvignon', lot_code: 'CS-TEST-1',
+    health_madura: 95, health_inmadura: 3, health_sobremadura: 2,
+    health_picadura: 0, health_enfermedad: 0,
+  });
+  assert.equal(medClean.healthEnfermedad, 0, 'a counted zero is preserved as 0');
+  const rClean = scoreFromMedicion(medClean, byLot);
+  assert.ok(!rClean.missing.includes('sanitary_pct'),
+    'a complete clean reading must not be flagged missing');
+  assert.equal(rClean.buckets.sanitary_pct, 3,
+    'a complete clean reading earns the top sanitary bucket');
 });
