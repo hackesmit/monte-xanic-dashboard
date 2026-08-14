@@ -256,6 +256,57 @@ test('MT.24 computeOne: Brix already past upper limit → riesgo-sobremadurez', 
   assert.equal(out.recommendedDate, null);
 });
 
+// FINDING 3: over-ripe precedence must not HIDE the won't-reach-anthocyanin
+// warning. Red mode, ŷ_brix ≈26.5 past the 25 upper limit (over-ripe), a positive
+// ANT slope, current ANT ≈900 short of the 950 target, and the Brix window already
+// closed (0 d). detectEdgeCase returns riesgo-sobremadurez by precedence, but BOTH
+// conditions must surface — the grower needs to know the fruit is over-ripe AND
+// that the anthocyanin target is out of reach. They are exposed via prediction.flags.
+test('MT.24 computeOne: over-ripe does not hide no-alcanzar-A (both flags surface)', () => {
+  const current = [
+    { sampleDate: '2026-08-06', tDays: 0, brix: 25.5, ant: 880 },
+    { sampleDate: '2026-08-08', tDays: 2, brix: 26.0, ant: 890 },
+    { sampleDate: '2026-08-10', tDays: 4, brix: 26.5, ant: 900 },
+  ];
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    // Window 23–25; fit ≈26.5 Bx today (over-ripe). ANT climbs ~5/day, needs
+    // ~10 d to reach 950, but the Brix window closed at 0 d.
+    target: { brixLower: 23.0, brixUpper: 25.0, brixTarget: 24.0, antTarget: 950 },
+    today: new Date('2026-08-10'),
+  });
+  // Precedence winner unchanged (over-ripe subsumes the headline)...
+  assert.equal(out.reason, 'riesgo-sobremadurez');
+  // ...but neither condition is hidden: both are exposed as structured flags.
+  assert.equal(out.flags.brixOverRipe, true, 'brixOverRipe flag missing');
+  assert.equal(out.flags.antTargetUnreachable, true, 'no-alcanzar-A condition hidden');
+});
+
+// FINDING 4: the fallback DISPLAYED reading must be order-independent. Two
+// readings on the same date (22.0, 22.5) fall to pocos-datos-temporada; the old
+// "take the last row" surfaced 22.5 or 22.0 depending on input order. Aggregating
+// same-timestamp readings by mean makes brixHoy/antHoy/phHoy deterministic.
+test('MT.24 computeOne: duplicate-date reading is deterministic in both row orders', () => {
+  const mk = (brix, ant, pH) => ({ sampleDate: '2026-08-10', tDays: 0, brix, ant, pH });
+  const target = { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 };
+  const today = new Date('2026-08-10');
+  const a = computeOne({ current: [mk(22.0, 600, 3.50), mk(22.5, 650, 3.60)],
+                         historicalByVintage: [], target, today });
+  const b = computeOne({ current: [mk(22.5, 650, 3.60), mk(22.0, 600, 3.50)],
+                         historicalByVintage: [], target, today });
+  assert.equal(a.reason, 'pocos-datos-temporada');
+  assert.equal(b.reason, 'pocos-datos-temporada');
+  // Identical regardless of row order...
+  assert.equal(a.brixHoy, b.brixHoy);
+  assert.equal(a.antHoy,  b.antHoy);
+  assert.equal(a.phHoy,   b.phHoy);
+  // ...and equal to the mean of the same-timestamp readings.
+  assert.ok(Math.abs(a.brixHoy - 22.25) < 1e-9, `brixHoy=${a.brixHoy}`);
+  assert.ok(Math.abs(a.antHoy  - 625)   < 1e-9, `antHoy=${a.antHoy}`);
+  assert.ok(Math.abs(a.phHoy   - 3.55)  < 1e-9, `phHoy=${a.phHoy}`);
+});
+
 import { computeAll } from '../js/prediction.js';
 
 test('MT.24 computeAll: groups berry samples by (variety, appellation) and computes each', () => {

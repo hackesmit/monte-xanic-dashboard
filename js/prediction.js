@@ -94,12 +94,27 @@ export function weightedRegression(samples) {
 // with the slope, it is unit-invariant across Brix / ANT / pH and never
 // dominates a real current-season fit.
 const SINGLE_VINTAGE_SLOPE_CV = 1.5;
-// With ≥2 vintages a genuine sample variance exists, but near-identical slopes
-// (duplicate or copied vintages) can still collapse it toward zero and re-pin
-// the posterior. Floor it at a small fraction of the mean slope.
-const MIN_SLOPE_CV = 0.05;
-
-export function historicalSlopePrior(vintages) {
+//
+// FINDING 1 (variance floor still pinned the posterior). The earlier fix floored
+// the ≥2-vintage variance at (0.05·mean)² — a 5 % CV, which is an *extremely
+// strong* prior, not a robustness floor: two vintages that both fit to slope
+// 0.05 gave τ²≈6.25e-6 (precision 160 000) and re-pinned the posterior to
+// 0.050094, the very failure this bead exists to prevent. That floor is removed.
+// The anti-pinning guarantee now lives in bayesianCombine, which BOUNDS the
+// prior's precision by the current season's own precision (chosen option 3 of
+// the three the reviewer offered: it preserves genuinely diverse multi-vintage
+// information — a variance floor or dedup throws that away — while capping the
+// degenerate case). With ≥2 vintages we now use the raw Bessel sample variance;
+// a collapsed variance from near-duplicate vintages can no longer dominate.
+//
+// FINDING 2 (near-zero mean). Deriving a proportional prior variance from a
+// near-zero mean slope makes prior precision arbitrarily large (a lone slope of
+// 1e-6 → τ²≈2.25e-12 → precision ≈4e11) and pins the posterior to a meaningless
+// ~0 slope; the old guard only caught an *exactly* zero mean. We now treat any
+// mean below a metric-specific absolute slope scale as uninformative (prior
+// precision 0). The scale is supplied per metric by the caller (see the
+// *_SLOPE_SCALE constants in computeOne).
+export function historicalSlopePrior(vintages, { slopeScale = 0 } = {}) {
   const slopes = [];
   for (const rawSamples of vintages) {
     const samples = (rawSamples || []).filter(s => Number.isFinite(s.y));
@@ -122,21 +137,27 @@ export function historicalSlopePrior(vintages) {
   if (V === 0) return { betaHist: null, tau2Hist: Infinity, V: 0 };
   const mean = slopes.reduce((a, b) => a + b, 0) / V;
   const magnitude = Math.abs(mean);
+  // FINDING 2: a mean slope at or below the metric's meaningful scale is noise,
+  // not a ripening trend. Return an uninformative prior (τ²=Infinity ⇒ prior
+  // precision 0) instead of manufacturing an arbitrarily strong prior from it.
+  if (!(magnitude > slopeScale)) {
+    return { betaHist: mean, tau2Hist: Infinity, V };
+  }
   let tau2Hist;
   if (V > 1) {
-    // Bessel-corrected sample variance, floored so near-duplicate vintages
-    // cannot collapse the prior variance to ~0 and re-pin the posterior.
+    // Raw Bessel-corrected between-vintage sample variance (FINDING 1: no
+    // artificial floor). A collapsed variance from near-duplicate vintages
+    // would imply a strong prior, but bayesianCombine caps the prior precision
+    // at the current season's, so it can no longer pin the posterior.
     let varSum = 0;
     for (const s of slopes) varSum += (s - mean) ** 2;
-    tau2Hist = Math.max(varSum / (V - 1), (MIN_SLOPE_CV * magnitude) ** 2);
+    tau2Hist = varSum / (V - 1);
   } else {
     // V === 1: weak, scale-invariant prior (see SINGLE_VINTAGE_SLOPE_CV).
     tau2Hist = (SINGLE_VINTAGE_SLOPE_CV * magnitude) ** 2;
   }
-  // A near-zero mean slope leaves no scale for a proportional prior; fall back
-  // to an uninformative prior (Infinity ⇒ prior precision 0 in bayesianCombine)
-  // rather than a near-deterministic variance that would pin the posterior to a
-  // meaningless ~0 slope.
+  // Identical (copied) vintages give an exactly-zero sample variance and hence
+  // an infinite prior precision; treat that as uninformative too.
   if (!(tau2Hist > 0)) tau2Hist = Infinity;
   return { betaHist: mean, tau2Hist, V };
 }
@@ -146,9 +167,20 @@ export function historicalSlopePrior(vintages) {
 // degenerate data variance gracefully.
 export function bayesianCombine({ betaHat, sigmaBeta2, betaHist, tau2Hist }) {
   const dataPrec = sigmaBeta2 > 0 ? 1 / sigmaBeta2 : Infinity;
-  const priorPrec = (betaHist != null && Number.isFinite(tau2Hist) && tau2Hist > 0)
+  const rawPriorPrec = (betaHist != null && Number.isFinite(tau2Hist) && tau2Hist > 0)
     ? 1 / tau2Hist
     : 0;
+  // FINDING 1: bound the prior's precision by the current season's own precision
+  // so the historical prior can INFORM the posterior but never DOMINATE it. A
+  // degenerate between-vintage variance (near-duplicate or copied vintages)
+  // otherwise yields an arbitrarily large prior precision that pins the posterior
+  // to the historical slope and discards the current season — exactly what this
+  // bead prevents. Capping at dataPrec guarantees the current season keeps ≥50 %
+  // of the posterior weight. When dataPrec is Infinity (a perfect current fit)
+  // the data already dominates, so no cap is applied.
+  const priorPrec = Number.isFinite(dataPrec)
+    ? Math.min(rawPriorPrec, dataPrec)
+    : rawPriorPrec;
   const totPrec = dataPrec + priorPrec;
   if (!Number.isFinite(totPrec) || totPrec === 0) {
     return { betaPost: betaHat, sigmaBeta2Post: sigmaBeta2 };
@@ -282,6 +314,15 @@ export function detectEdgeCase({
   return null;
 }
 
+// Per-metric absolute daily-slope scales (FINDING 2). A historical mean slope
+// at or below these is numerical noise, not a ripening trend, and is passed to
+// historicalSlopePrior as `slopeScale` so it becomes an uninformative prior
+// rather than an arbitrarily strong one. Set an order of magnitude below the
+// smallest genuine trend each metric shows, so real signals are never rejected.
+const BRIX_SLOPE_SCALE = 0.01;    // Bx/day   (real ripening ≈ 0.1–0.3)
+const ANT_SLOPE_SCALE  = 0.1;     // mg/L/day (real accrual ≈ 5–20)
+const PH_SLOPE_SCALE   = 0.0005;  // pH/day   (real rise ≈ 0.005–0.02)
+
 // ── computeOne orchestrator (§5.5) ───────────────────────────────────
 // Inputs:
 //   current:              [{ sampleDate (ISO string|Date), tDays, brix, ant }]
@@ -297,17 +338,35 @@ export function computeOne({
   recencyBoostWindow = 14,
 }) {
   const nCurrent = current.length;
-  const pocosDatos = (sample) => ({
-    reason: 'pocos-datos-temporada',
-    recommendedDate: null, brixWindowCloses: null,
-    bandDays: Infinity, label: 'Baja',
-    nCurrent, V: 0,
-    brixHoy: sample?.brix ?? null,
-    antHoy:  sample?.ant ?? null,
-    phHoy:   sample?.pH ?? null,
-    samplesProjected: { brixEta: null, antEta: null, phEta: null },
-  });
-  if (nCurrent < 2) return pocosDatos(current[0]);
+  // FINDING 4: the DISPLAYED current reading must be deterministic regardless of
+  // input row order. The old fallback took `sorted[last]` and read its raw brix/
+  // ant/pH, but a stable sort leaves same-timestamp rows in input order, so a
+  // duplicate-date pair (22.0, 22.5) surfaced whichever row happened to be last —
+  // 22.5 in one order, 22.0 in the other. Resolve every reading at the latest
+  // timestamp by mean: order-independent and representative of the day.
+  const latestReading = (samples) => {
+    if (!samples || samples.length === 0) return { brix: null, ant: null, pH: null };
+    let maxT = -Infinity;
+    for (const s of samples) if (s.tDays > maxT) maxT = s.tDays;
+    const atLatest = samples.filter(s => s.tDays === maxT);
+    const meanOf = (key) => {
+      const vals = atLatest.map(s => s[key]).filter(Number.isFinite);
+      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    };
+    return { brix: meanOf('brix'), ant: meanOf('ant'), pH: meanOf('pH') };
+  };
+  const pocosDatos = (samples) => {
+    const r = latestReading(samples);
+    return {
+      reason: 'pocos-datos-temporada',
+      recommendedDate: null, brixWindowCloses: null,
+      bandDays: Infinity, label: 'Baja',
+      nCurrent, V: 0,
+      brixHoy: r.brix, antHoy: r.ant, phHoy: r.pH,
+      samplesProjected: { brixEta: null, antEta: null, phEta: null },
+    };
+  };
+  if (nCurrent < 2) return pocosDatos(current);
 
   // Order by tDays asc; the last entry's tDays is "today's t"
   const sorted = [...current].sort((a, b) => a.tDays - b.tDays);
@@ -328,10 +387,11 @@ export function computeOne({
       || !Number.isFinite(brixFit.beta)
       || !Number.isFinite(brixFit.sigmaBeta2)
       || !(brixFit.sumWttBar2 > 0)) {
-    return pocosDatos(sorted[sorted.length - 1]);
+    return pocosDatos(sorted);
   }
   const brixPrior = historicalSlopePrior(
-    historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.brix })))
+    historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.brix }))),
+    { slopeScale: BRIX_SLOPE_SCALE }
   );
   const brixComb = bayesianCombine({
     betaHat: brixFit.beta, sigmaBeta2: brixFit.sigmaBeta2,
@@ -348,7 +408,8 @@ export function computeOne({
       .map(s => ({ t: s.tDays, y: s.ant, w: wOf(s) }));
     antFit = weightedRegression(antSamples);
     antPrior = historicalSlopePrior(
-      historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.ant })))
+      historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.ant }))),
+      { slopeScale: ANT_SLOPE_SCALE }
     );
     antComb = bayesianCombine({
       betaHat: antFit.beta, sigmaBeta2: antFit.sigmaBeta2,
@@ -367,7 +428,8 @@ export function computeOne({
       historicalByVintage.map(v => v
         .filter(s => Number.isFinite(s.pH))
         .map(s => ({ t: s.tDays, y: s.pH }))
-      )
+      ),
+      { slopeScale: PH_SLOPE_SCALE }
     );
     phComb = bayesianCombine({
       betaHat: phFit.beta, sigmaBeta2: phFit.sigmaBeta2,
@@ -414,6 +476,20 @@ export function computeOne({
     brixMidEta, brixLowerEta, antEta, phEta,
     brixWindowCloses: brixWindowClosesDays,
   });
+
+  // FINDING 3: detectEdgeCase returns a single precedence-ordered reason for the
+  // card headline, but several alert conditions can hold at once. Over-ripe Brix
+  // (riesgo-sobremadurez) now precedes the won't-reach-anthocyanin check, so in
+  // red mode a lot past the upper Brix limit whose ANT target is also out of
+  // reach before the window closes had its no-alcanzar-A warning hidden. Rather
+  // than pick a winner, expose both conditions as independent structured flags so
+  // the grower (and the view) can see every one; `reason` keeps its precedence.
+  const brixOverRipe = target.brixUpper != null && yhatBrixToday > target.brixUpper;
+  const antTargetUnreachable = target.antTarget != null
+    && antEta != null && Number.isFinite(antEta)
+    && Number.isFinite(brixWindowClosesDays)
+    && antEta > brixWindowClosesDays;
+  const flags = { brixOverRipe, antTargetUnreachable };
 
   const dayMs = 86_400_000;
   // White mode: recommendedEta = min(brixMidEta, effectiveWindowCloses)
@@ -464,7 +540,7 @@ export function computeOne({
     : null;
 
   return {
-    reason, recommendedDate, brixWindowCloses,
+    reason, flags, recommendedDate, brixWindowCloses,
     bandDays, label,
     nCurrent, V: brixPrior.V,
     brixHoy: yhatBrixToday, antHoy: yhatAntToday, phHoy: yhatPhToday,
