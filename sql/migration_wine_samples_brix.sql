@@ -17,9 +17,17 @@
 -- disaster recovery and new environments. Same idempotency argument as
 -- migration_prefermentativos_vintage_year.
 
+-- Wrapped in one transaction so a client that continues past an error cannot
+-- record the migration as applied when the ALTER never landed. Matches the
+-- pattern in migration_evaluaciones_multi.sql.
+
+BEGIN;
+
 ALTER TABLE public.wine_samples
   ADD COLUMN IF NOT EXISTS brix NUMERIC;
 
 INSERT INTO public.applied_migrations (name)
   VALUES ('migration_wine_samples_brix')
   ON CONFLICT (name) DO NOTHING;
+
+COMMIT;
