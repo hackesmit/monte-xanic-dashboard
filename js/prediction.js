@@ -3,6 +3,30 @@
 // no module-level side effects.
 // See docs/superpowers/specs/2026-05-19-harvest-predictor-design.md
 
+// Strict finite parse for berry-sample fields. Number(null), Number(undefined)
+// and Number('') all return a *finite* 0, which would let a blank Brix/ant/pH
+// reading survive the `Number.isFinite` guards as a fabricated 0 measurement
+// and silently corrupt the regression. Reject nullish and blank/whitespace
+// strings before coercion so a missing reading becomes NaN and is dropped.
+function toFiniteReading(v) {
+  if (v === null || v === undefined) return NaN;
+  if (typeof v === 'string' && v.trim() === '') return NaN;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+// Pick the first alias that parses to a *finite* reading. The `??` operator only
+// falls through on null/undefined, so a blank-string primary alias ('') would be
+// selected over a valid numeric fallback, yielding NaN and silently discarding a
+// real observation. Parse each alias strictly and take the first finite result.
+function firstFiniteReading(...values) {
+  for (const v of values) {
+    const n = toFiniteReading(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return NaN;
+}
+
 // ── Weighted linear regression (§5.2) ────────────────────────────────
 // Input: array of { t, y, w }. Output: fit + diagnostics needed downstream.
 // Weights are normalised so Σwᵢ = n, keeping (n - 2) as the σ̂² denominator.
@@ -432,9 +456,9 @@ export function computeAll({
     if (!Number.isFinite(sampleDate.getTime())) continue;
     const sample = {
       sampleDate,
-      brix: Number(row.brix),
-      ant:  Number(row.tANT ?? row.tant ?? row.anthocyanins ?? row.ant),
-      pH:   Number(row.pH ?? row.ph),
+      brix: toFiniteReading(row.brix),
+      ant:  firstFiniteReading(row.tANT, row.tant, row.anthocyanins, row.ant),
+      pH:   firstFiniteReading(row.pH, row.ph),
     };
     if (!Number.isFinite(sample.brix)) continue;
     if (row.vintage === currentVintage) {
