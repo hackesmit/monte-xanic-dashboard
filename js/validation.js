@@ -13,7 +13,8 @@ export const COLUMN_TYPES = {
     intCols: new Set([
       'vintage_year',
       'health_madura', 'health_inmadura', 'health_sobremadura', 'health_picadura',
-      'health_enfermedad', 'health_pasificada', 'health_aceptable', 'health_no_aceptable',
+      'health_enfermedad', 'health_quemadura',
+      'health_pasificada', 'health_aceptable', 'health_no_aceptable',
     ]),
     numericCols: new Set([
       'total_bins', 'tons_received', 'bin_temp_c', 'truck_temp_c',

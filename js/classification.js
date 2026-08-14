@@ -77,15 +77,31 @@ export function scoreParam(spec, value) {
 
 // ── Sanitary conteo + visual ─────────────────────────────────────────
 
+// The full berry-count breakdown the sanitary percentage is computed from.
+// Every bucket must be present, or the percentage is off a fabricated total.
+const SANITARY_COUNT_FIELDS = [
+  'health_madura', 'health_inmadura', 'health_sobremadura',
+  'health_picadura', 'health_enfermedad', 'health_quemadura',
+];
+
 function scoreSanitaryPct(medicion) {
   if (!medicion) return null;
-  const unhealthy = (medicion.health_picadura || 0)
-                  + (medicion.health_enfermedad || 0)
-                  + (medicion.health_quemadura || 0);
-  const total = (medicion.health_madura || 0)
-              + (medicion.health_inmadura || 0)
-              + (medicion.health_sobremadura || 0)
-              + unhealthy;
+  // A medicion where staff filled only some counts (e.g. health_madura) used
+  // to read the blanks as 0 and score the BEST bucket off a 100%-clean total
+  // that was never counted — partial data outscoring complete data. Require
+  // the whole count set present and finite; otherwise it is missing, not clean.
+  // The finite guard also stops a poisoned count (NaN) from picking a bucket.
+  const counts = [];
+  for (const field of SANITARY_COUNT_FIELDS) {
+    const v = medicion[field];
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    counts.push(n);
+  }
+  const [madura, inmadura, sobremadura, picadura, enfermedad, quemadura] = counts;
+  const unhealthy = picadura + enfermedad + quemadura;
+  const total = madura + inmadura + sobremadura + unhealthy;
   if (total === 0) return null;
   const pct = unhealthy / total * 100;
   const { a, b } = CONFIG.sanitaryThresholds.pct;

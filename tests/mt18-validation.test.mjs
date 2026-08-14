@@ -56,6 +56,19 @@ describe('MT.18 — validateRow', () => {
     assert.match(result.error, /Tabla no soportada/);
   });
 
+  it('rejects a non-integer health_quemadura (regression: was absent from intCols)', () => {
+    const result = validateRow('mediciones_tecnicas', {
+      medicion_code: 'MT-2025-001',
+      health_quemadura: 'abc',
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /health_quemadura/);
+  });
+
+  it('lists health_quemadura among the mediciones_tecnicas int columns', () => {
+    assert.ok(COLUMN_TYPES.mediciones_tecnicas.intCols.has('health_quemadura'));
+  });
+
   it('exposes COLUMN_TYPES.mediciones_tecnicas with int + numeric sets', () => {
     const spec = COLUMN_TYPES.mediciones_tecnicas;
     assert.ok(spec.intCols instanceof Set);
