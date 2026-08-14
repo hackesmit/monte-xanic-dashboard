@@ -15,10 +15,10 @@
 //       allowlist of intentionally-dropped columns. A new unmapped header fails.
 //   (2) Schema-target coverage — every column a mapping writes must be a real
 //       column in the committed sql/ schema. wine_samples.brix is the single
-//       named exception (bead xd-ifx): confirmed present in prod, absent from
-//       committed migrations, so this is fresh-install drift only. The exception
-//       is asserted by equality, so it disappears (test fails, forcing cleanup)
-//       the moment xd-ifx adds the column.
+//       named exception until bead xd-ifx landed its migration; the set is now
+//       empty. The exception was asserted by equality, so it had to be removed
+//       the moment the column became committed, and any NEW drift fails the
+//       same way.
 //   (3) Variety/appellation normalization is total + idempotent, and every
 //       bare-valley appellation resolves to its specific expected ranch.
 //   (4) Every ranch reachable through appellationFixes, _codeToRanch, or
@@ -411,12 +411,12 @@ function loadCommittedSchema() {
 }
 
 describe('MT.43 — mapping targets exist in the committed sql/ schema', () => {
-  // wine_samples.brix is written by three maps but has no committed migration.
-  // Confirmed present in prod, so this is fresh-install drift only, tracked by
-  // bead xd-ifx. Encoded as a single explicit exception: the equality assert
-  // below fails the moment xd-ifx adds the column (the exception must then be
-  // deleted) OR a NEW drift appears, so drift can never pass silently.
-  const SCHEMA_EXCEPTIONS = new Set(['wine_samples.brix']);
+  // No exceptions. wine_samples.brix used to be one: written by three maps with
+  // no committed migration, present in prod, so fresh-install drift only. The
+  // equality assert below did its job and failed the moment xd-ifx landed the
+  // migration and the schema.sql declaration, which is when this set emptied.
+  // Any NEW drift now fails the same way, so it can never pass silently.
+  const SCHEMA_EXCEPTIONS = new Set();
   // Fix (2): each entry's authoritative table is the table the map actually
   // touches AT RUNTIME, verified against the code path, NOT inferred from the
   // map's name. Round 1's blind spot was trusting the name: a map called
