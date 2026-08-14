@@ -16,6 +16,14 @@ export const COLUMN_TYPES = {
       'health_enfermedad', 'health_quemadura',
       'health_pasificada', 'health_aceptable', 'health_no_aceptable',
     ]),
+    // Sanitary berry counts are tallies: a negative count is impossible and,
+    // left unguarded, a negative health_picadura yields a negative damage share
+    // that can win the cleanest sanitary bucket (xd-b0o). Reject < 0 at this
+    // server-authoritative gate, mirroring the scoreSanitaryPct parseCount guard.
+    nonNegativeIntCols: new Set([
+      'health_madura', 'health_inmadura', 'health_sobremadura', 'health_picadura',
+      'health_enfermedad', 'health_quemadura',
+    ]),
     numericCols: new Set([
       'total_bins', 'tons_received', 'bin_temp_c', 'truck_temp_c',
       'bunch_avg_weight_g', 'berry_length_avg_cm', 'berries_200_weight_g', 'berry_avg_weight_g',
@@ -76,6 +84,18 @@ export function validateRow(table, row, { action = 'update' } = {}) {
 
   const typeError = validateColumnTypes(row, spec);
   if (typeError) return { ok: false, error: typeError };
+
+  // validateColumnTypes already enforces integer-ness for these columns; this
+  // adds the non-negative floor a berry tally must satisfy.
+  if (spec.nonNegativeIntCols) {
+    for (const col of spec.nonNegativeIntCols) {
+      const v = row[col];
+      if (v === null || v === undefined) continue;
+      if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) {
+        return { ok: false, error: `${col}=${v}: debe ser entero no negativo` };
+      }
+    }
+  }
 
   if (action === 'insert') {
     for (const f of spec.requiredOnInsert) {
