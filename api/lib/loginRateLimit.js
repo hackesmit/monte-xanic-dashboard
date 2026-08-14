@@ -27,11 +27,21 @@ export async function checkRateLimit(ip) {
       };
       const cutoff = new Date(Date.now() - WINDOW_MS).toISOString();
 
-      // Sweep stale entries.
-      const delResp = await fetch(`${supabaseUrl}/rest/v1/rate_limits?window_start=lt.${cutoff}`, {
-        method: 'DELETE', headers
-      });
-      if (!delResp.ok) throw new Error(`rate_limits sweep ${delResp.status}`);
+      // Sweep stale entries. Best-effort housekeeping: a failure here must not
+      // abandon the working persistent limiter and drop to the per-instance
+      // in-memory map (trivially reset by Vercel cold starts / multiple
+      // instances). Log and carry on — only a failed read or increment of the
+      // current IP below falls back.
+      try {
+        const delResp = await fetch(`${supabaseUrl}/rest/v1/rate_limits?window_start=lt.${cutoff}`, {
+          method: 'DELETE', headers
+        });
+        if (!delResp.ok) {
+          console.error(`[login] Rate limit stale-entry sweep failed (${delResp.status}); continuing`);
+        }
+      } catch (err) {
+        console.error('[login] Rate limit stale-entry sweep error; continuing:', err.message);
+      }
 
       // Check current attempts for this IP.
       const getResp = await fetch(

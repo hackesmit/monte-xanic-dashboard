@@ -1,4 +1,4 @@
-// MT.43 — Supabase non-2xx responses are treated as failure, not success (bead xd-io5).
+// MT.44 — Supabase non-2xx responses are treated as failure, not success (bead xd-io5).
 //
 // fetch() does not throw on an HTTP error status. Three server paths used to
 // ignore resp.ok and report failure as success:
@@ -57,7 +57,7 @@ function resp({ ok, status, body }) {
   };
 }
 
-describe('MT.43 — logout treats a failed blacklist insert as failure', () => {
+describe('MT.44 — logout treats a failed blacklist insert as failure', () => {
   let originalFetch;
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(()  => { globalThis.fetch = originalFetch; });
@@ -86,9 +86,34 @@ describe('MT.43 — logout treats a failed blacklist insert as failure', () => {
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.ok, true);
   });
+
+  it('fails (not { ok: true }) when Supabase is not configured — no supported blacklist-free mode', async () => {
+    // SUPABASE_SERVICE_KEY is a required env var for /api/logout (docs/Operations.md).
+    // With it unset the token_blacklist — the only revocation mechanism — is
+    // unreachable, so logout must not claim success while the token stays usable.
+    const savedUrl = process.env.SUPABASE_URL;
+    const savedKey = process.env.SUPABASE_SERVICE_KEY;
+    delete process.env.SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_KEY;
+    try {
+      const token = validToken();
+      globalThis.fetch = async () => {
+        throw new Error('fetch must not run when Supabase is unconfigured');
+      };
+      const req = { method: 'POST', body: { token }, headers: {}, socket: { remoteAddress: '127.0.0.1' } };
+      const res = makeRes();
+      await logoutHandler(req, res);
+
+      assert.notEqual(res.statusCode, 200, 'a token that could not be revoked must not report success');
+      assert.equal(res.body.ok, false, 'ok must be false when revocation is impossible');
+    } finally {
+      process.env.SUPABASE_URL = savedUrl;
+      process.env.SUPABASE_SERVICE_KEY = savedKey;
+    }
+  });
 });
 
-describe('MT.43 — login rate limit falls back to in-memory when Supabase errors', () => {
+describe('MT.44 — login rate limit falls back to in-memory when Supabase errors', () => {
   let originalFetch;
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(()  => { globalThis.fetch = originalFetch; });
@@ -110,9 +135,40 @@ describe('MT.43 — login rate limit falls back to in-memory when Supabase error
     assert.equal(blocked, true, 'in-memory fallback must eventually deny despite the DB error');
     assert.equal(allowed, 10, 'exactly MAX_ATTEMPTS (10) allowed before the fallback blocks');
   });
+
+  it('a failed stale-entry sweep is best-effort and keeps using the persistent limiter', async () => {
+    // The stale-entry sweep DELETE is housekeeping, not load-bearing. A non-2xx on it
+    // must NOT abandon the persistent limiter and drop to the in-memory map (trivially
+    // reset by Vercel cold starts / multiple instances). Here the sweep fails but the
+    // read and increment for this IP succeed: the function must still drive the
+    // persistent PATCH increment. The in-memory fallback makes NO fetch call, so a
+    // recorded PATCH proves the persistent path — not the fallback — ran.
+    const calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      const method = opts.method || 'GET';
+      const u = String(url);
+      calls.push(method);
+      if (method === 'DELETE') {
+        return resp({ ok: false, status: 500, body: { message: 'sweep failed' } });
+      }
+      if (u.includes('select=attempts')) {
+        // Persistent read: this IP has 3 attempts in the current window.
+        return resp({ ok: true, status: 200, body: [{ attempts: 3, window_start: new Date().toISOString() }] });
+      }
+      // Persistent increment (PATCH) succeeds.
+      return resp({ ok: true, status: 204, body: undefined });
+    };
+
+    const allowed = await checkRateLimit('203.0.113.55');
+    assert.equal(allowed, true, 'a persistent count of 4 is under MAX, so allow');
+    assert.ok(calls.includes('DELETE'), 'the sweep was attempted');
+    assert.ok(calls.includes('GET'), 'the persistent read ran despite the failed sweep');
+    assert.ok(calls.includes('PATCH'),
+      'the persistent increment ran — proves we did NOT fall back to in-memory (which makes no fetch call)');
+  });
 });
 
-describe('MT.43 — mona-data surfaces a real error on failed reads and writes', () => {
+describe('MT.44 — mona-data surfaces a real error on failed reads and writes', () => {
   let originalFetch;
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(()  => { globalThis.fetch = originalFetch; });
