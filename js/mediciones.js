@@ -159,6 +159,28 @@ export function projectSnapshot(snapshot, current) {
   return out;
 }
 
+// Edit-modal count round-trip (xd-b0o). The sanitary counts are the one place
+// where an ABSENT value (null) must survive an untouched edit unchanged instead
+// of being populated as a fabricated 0 that a save then writes over the DB NULL,
+// permanently pinning a partial row to the clean bucket. countInputValue seeds
+// the input as blank ('') for an absent count — a genuine stored 0 still shows
+// "0" — and readCountInput reads a blank back as null, so projectSnapshot's
+// snapshot-null lines up with a form-null and collectDirty sees no change. A
+// user who types into the blank turns it into a real edit that saves normally.
+// Factored out as pure functions so the null-preserving contract is unit-
+// testable without a DOM. Do NOT reintroduce a `?? 0` around either side: that
+// is exactly the blank-to-0 fabrication this pair exists to prevent. (The
+// new-medicion FORM's blank-to-0 entry contract is separate and stays in xd-ibi.)
+export function countInputValue(v) {
+  return v == null ? '' : String(v);
+}
+
+export function readCountInput(raw) {
+  if (raw === '' || raw == null) return null;
+  const n = parseInt(raw, 10);
+  return Number.isNaN(n) ? null : n;
+}
+
 // Adds `value` to a <select> as its own option when the list does not already
 // offer it, so an unrecognised stored value stays visible and intact instead
 // of collapsing to blank. Returns true when it had to add one.
@@ -491,12 +513,14 @@ export const Mediciones = {
     document.getElementById('med-edit-tons').value     = row.tons ?? '';
     document.getElementById('med-edit-weight').value   = row.berryWeight ?? '';
     document.getElementById('med-edit-diameter').value = row.berryDiameter ?? '';
-    document.getElementById('med-edit-h-madura').value      = row.healthMadura      ?? 0;
-    document.getElementById('med-edit-h-inmadura').value    = row.healthInmadura    ?? 0;
-    document.getElementById('med-edit-h-sobremadura').value = row.healthSobremadura ?? 0;
-    document.getElementById('med-edit-h-picadura').value    = row.healthPicadura    ?? 0;
-    document.getElementById('med-edit-h-enfermedad').value  = row.healthEnfermedad  ?? 0;
-    document.getElementById('med-edit-h-quemadura').value   = row.healthQuemadura   ?? 0;
+    // Blank (not 0) for an absent count so the null survives an untouched edit;
+    // a real stored 0 still shows "0". See countInputValue/readCountInput.
+    document.getElementById('med-edit-h-madura').value      = countInputValue(row.healthMadura);
+    document.getElementById('med-edit-h-inmadura').value    = countInputValue(row.healthInmadura);
+    document.getElementById('med-edit-h-sobremadura').value = countInputValue(row.healthSobremadura);
+    document.getElementById('med-edit-h-picadura').value    = countInputValue(row.healthPicadura);
+    document.getElementById('med-edit-h-enfermedad').value  = countInputValue(row.healthEnfermedad);
+    document.getElementById('med-edit-h-quemadura').value   = countInputValue(row.healthQuemadura);
     // A row written before the panel existed has only the two scalars; seed
     // the panel from them so opening the modal shows the grade already on
     // record instead of an empty form.
@@ -577,12 +601,15 @@ export const Mediciones = {
       tons:           num('med-edit-tons'),
       berryWeight:    num('med-edit-weight'),
       berryDiameter: num('med-edit-diameter'),
-      healthMadura:      intv('med-edit-h-madura')      ?? 0,
-      healthInmadura:    intv('med-edit-h-inmadura')    ?? 0,
-      healthSobremadura: intv('med-edit-h-sobremadura') ?? 0,
-      healthPicadura:    intv('med-edit-h-picadura')    ?? 0,
-      healthEnfermedad:  intv('med-edit-h-enfermedad')  ?? 0,
-      healthQuemadura:   intv('med-edit-h-quemadura')   ?? 0,
+      // Null-preserving (no `?? 0`): a blank count reads back as null so it
+      // matches the snapshot null and is not marked dirty, and submitEdit never
+      // writes a fabricated 0 over an untouched DB NULL (xd-b0o).
+      healthMadura:      readCountInput(document.getElementById('med-edit-h-madura')?.value),
+      healthInmadura:    readCountInput(document.getElementById('med-edit-h-inmadura')?.value),
+      healthSobremadura: readCountInput(document.getElementById('med-edit-h-sobremadura')?.value),
+      healthPicadura:    readCountInput(document.getElementById('med-edit-h-picadura')?.value),
+      healthEnfermedad:  readCountInput(document.getElementById('med-edit-h-enfermedad')?.value),
+      healthQuemadura:   readCountInput(document.getElementById('med-edit-h-quemadura')?.value),
       // Derived from the panel, not from their own inputs: the two dropdowns
       // they used to come from are gone. They still travel to the database so
       // the readers that predate the panel keep a label to display.

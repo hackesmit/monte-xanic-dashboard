@@ -69,6 +69,24 @@ describe('MT.18 — validateRow', () => {
     assert.ok(COLUMN_TYPES.mediciones_tecnicas.intCols.has('health_quemadura'));
   });
 
+  it('rejects a negative sanitary count (xd-b0o: a negative would win the cleanest bucket)', () => {
+    const result = validateRow('mediciones_tecnicas', {
+      medicion_code: 'MT-2025-001',
+      health_picadura: -10,
+    });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /health_picadura/);
+    assert.match(result.error, /no negativo/);
+  });
+
+  it('accepts a non-negative sanitary count of zero', () => {
+    const result = validateRow('mediciones_tecnicas', {
+      medicion_code: 'MT-2025-001',
+      health_picadura: 0,
+    });
+    assert.equal(result.ok, true);
+  });
+
   it('exposes COLUMN_TYPES.mediciones_tecnicas with int + numeric sets', () => {
     const spec = COLUMN_TYPES.mediciones_tecnicas;
     assert.ok(spec.intCols instanceof Set);
