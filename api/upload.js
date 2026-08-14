@@ -2,6 +2,8 @@ import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 
 // Allowed tables: conflict columns, max rows, column whitelist, required fields
+import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../js/quality-scale.js';
+
 export const ALLOWED_TABLES = {
   wine_samples: {
     conflict: 'sample_id,sample_date,sample_seq',
@@ -105,12 +107,14 @@ export const ALLOWED_TABLES = {
       'berry_diameter_mm','health_grade','health_madura','health_inmadura',
       'health_sobremadura','health_picadura','health_enfermedad',
       'health_quemadura','phenolic_maturity','measured_by','notes',
+      // Vendimia 2026: evaluator panel [{evaluador, sanidad, madurez}]
+      'evaluaciones',
       // Round 35 — absorbed from pre_receptions
       'vintrace','reception_date','supplier',
       'total_bins','bin_unit','bin_temp_c','truck_temp_c',
       'bunch_avg_weight_g','berry_length_avg_cm','berries_200_weight_g',
       'health_pasificada','health_aceptable','health_no_aceptable',
-      'lab_date','brix','ph','at','ag','am','polifenoles','catequinas','antocianos',
+      'lab_date','brix','ph','at','ag','am','av','polifenoles','catequinas','antocianos',
     ])
   },
   harvest_target_overrides: {
@@ -169,6 +173,35 @@ export default async function handler(req, res) {
     for (const row of rows) {
       for (const key of Object.keys(row)) {
         if (!columns.has(key)) delete row[key];
+      }
+      // A present-but-not-an-array panel is a malformed request, not an
+      // instruction to erase: writing sanitizeEvaluaciones' null would wipe a
+      // stored panel and both labels off a row that was fine.
+      //
+      // The evaluator panel is the only JSONB column this path writes, so it
+      // is the only place a caller could put arbitrary structure into the
+      // database. Reduce it to the shape the scoring engine expects, then
+      // derive the two consensus labels here rather than trusting whatever
+      // the caller sent for them. Client-side JavaScript is editable, and the
+      // cap below is applied after sanitising, so a caller who computed a
+      // consensus over more rows than survive would otherwise leave the panel
+      // and its labels disagreeing about the same row (lucy, 2026-08-12).
+      const panelError = panelRejectionReason(row.evaluaciones);
+      if (panelError) return res.status(400).json({ ok: false, error: panelError });
+      if ('evaluaciones' in row) {
+        row.evaluaciones = sanitizeEvaluaciones(row.evaluaciones);
+        const consensus = panelConsensus(row.evaluaciones || []);
+        row.health_grade      = consensus.health_grade;
+        row.phenolic_maturity = consensus.phenolic_maturity;
+      } else {
+        // No panel, no opinion about the labels that describe one. Deriving
+        // only when the panel is present left the invariant escapable by
+        // simply omitting it: a payload carrying flattering labels and no
+        // panel used to pass straight through and disagree with the stored
+        // panel and the score (lucy, 2026-08-12). Both writers always send
+        // the panel alongside, so nothing legitimate is dropped here.
+        delete row.health_grade;
+        delete row.phenolic_maturity;
       }
     }
   }

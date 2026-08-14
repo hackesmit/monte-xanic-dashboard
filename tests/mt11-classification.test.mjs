@@ -10,6 +10,9 @@ import {
   scoreAll,
   resolveRubric,
   resolveValley,
+  sanitaryPoints,
+  madurezPoints,
+  canonicalSanitaryLabel,
   aggregateSection
 } from '../js/classification.js';
 
@@ -116,7 +119,11 @@ test('MT.11 scoreLot: all-C reds → C 12', () => {
                                   health_picadura: 10, health_madura: 90 } });
   const r = scoreLot(lot);
   assert.equal(r.grade, 'C');
-  assert.equal(r.score36, 12);
+  // Vendimia 2026: chemistry and the conteo still land on bucket 1, which is
+  // 12.00 on the 36-point scale. The Grado Sanitario axis now speaks 0-4, so
+  // 'Sucio' scores 1 of 4 rather than 1 of 3, costing
+  // (4/3 - 1) * visualImp(2) * 36 / (4 * impSum(100)) = 0.06.
+  assert.equal(r.score36, 11.94);
 });
 
 test('MT.11 scoreLot: madurez Sobresaliente adds +3', () => {
@@ -137,7 +144,7 @@ test('MT.11 scoreLot: madurez No sobresaliente subtracts 3, clamps at 0', () => 
                                   health_picadura: 10, health_madura: 90,
                                   phenolic_maturity: 'No sobresaliente' } });
   const r = scoreLot(lot);
-  assert.equal(r.score36, 9); // 12 base - 3 = 9
+  assert.equal(r.score36, 8.94); // 11.94 base - 3
   assert.equal(r.grade, 'C');
 });
 
@@ -215,7 +222,8 @@ test('MT.11 scoreLot: visual Regular → B pts for visual param', () => {
   });
   const r = scoreLot(lot);
   assert.equal(r.grade, 'A+');
-  assert.equal(r.score36.toFixed(1), '35.8');
+  // 'Regular' maps to 'Parcialmente limpio' = 2 of 4 (was 2 of 3).
+  assert.equal(r.score36.toFixed(1), '35.6');
 });
 
 test('MT.11 scoreLot: visual Malo → C pts for visual param', () => {
@@ -307,4 +315,175 @@ test('MT.11 aggregateSection: null lots excluded from numerator and denominator'
   const agg = aggregateSection(lots);
   assert.equal(agg.score36, 32); // only lot a counts
   assert.equal(agg.grade, 'A+');
+});
+
+// Vendimia 2026: internal scale widens from 1-3 to 0-4.
+// Daniel, 2026-08-12. Chemistry keeps its 3 buckets, rescaled by 4/3, and the
+// normalizer widens by that same factor, so chemistry scores must not move.
+// Grado Sanitario is native 0-4; Madurez fenolica gains 'Buena' and 'Baja'.
+
+test('MT.11 scale 0-4: chemistry-only lots score identically to the 1-3 engine', () => {
+  // With medicion null the sanitary axis drops out entirely, so the score is
+  // pure chemistry. A uniform bucket maps to a round fraction of 36 under both
+  // the old normalizer (bucket/3) and the new one (bucket*4/3 / 4).
+  const allTop = scoreLot(mkLot({ medicion: null }));
+  assert.equal(allTop.score36, 36);
+
+  const allBottom = scoreLot(mkLot({
+    brix: 26, pH: 3.90, ta: 5.0, av: 0.10, ag: 0.20,
+    berryFW: 0.5, polyphenols: 500, anthocyanins: 200, medicion: null
+  }));
+  assert.equal(allBottom.score36, 12);
+});
+
+test('MT.11 scale 0-4: Muy limpio outscores Limpio, Contaminado is the floor', () => {
+  const at = (grade) => scoreLot(mkLot({
+    medicion: { ...mkLot().medicion, health_grade: grade }
+  })).score36;
+  const muyLimpio = at('Muy limpio');
+  const limpio = at('Limpio');
+  const contaminado = at('Contaminado');
+  assert.ok(muyLimpio > limpio, `Muy limpio ${muyLimpio} must beat Limpio ${limpio}`);
+  assert.ok(limpio > contaminado, `Limpio ${limpio} must beat Contaminado ${contaminado}`);
+  // 4 of 4 is a full-credit axis, so a perfect lot reaches the ceiling.
+  assert.equal(muyLimpio, 36);
+});
+
+test('MT.11 scale 0-4: Contaminado scores zero, it is not treated as missing', () => {
+  const r = scoreLot(mkLot({
+    medicion: { ...mkLot().medicion, health_grade: 'Contaminado' }
+  }));
+  assert.equal(r.buckets.visual, 0);
+  assert.ok(!r.missing.includes('visual'), 'a zero grade is data, not a gap');
+});
+
+test('MT.11 legacy vocabulary still scores after the rename', () => {
+  const legacy = scoreLot(mkLot({
+    medicion: { ...mkLot().medicion, health_grade: 'Bueno' }
+  }));
+  const renamed = scoreLot(mkLot({
+    medicion: { ...mkLot().medicion, health_grade: 'Limpio' }
+  }));
+  assert.equal(legacy.score36, renamed.score36);
+});
+
+test('MT.11 madurez: the five levels order correctly and keep the old weights', () => {
+  const at = (m) => scoreLot(mkLot({
+    brix: 23.0, pH: 3.60, ta: 6.0, av: 0.0, ag: 0.02,
+    berryFW: 1.0, polyphenols: 1800, anthocyanins: 700,
+    medicion: { ...mkLot().medicion, phenolic_maturity: m }
+  })).score36;
+  const base = at(null);
+  assert.equal(at('Sobresaliente') - base, 3);
+  assert.equal(at('Buena') - base, 1);
+  assert.equal(at('Parcial') - base, 0);
+  assert.equal(at('Baja') - base, -1);
+  assert.equal(at('No sobresaliente') - base, -3);
+});
+
+test('MT.11 panel: sanidad is the mean of the evaluators, not the first one', () => {
+  const panel = scoreLot(mkLot({
+    medicion: {
+      ...mkLot().medicion,
+      health_grade: null,
+      evaluaciones: [
+        { evaluador: 'A', sanidad: 'Muy limpio', madurez: null },   // 4
+        { evaluador: 'B', sanidad: 'Muy limpio', madurez: null },   // 4
+        { evaluador: 'C', sanidad: 'Parcialmente limpio', madurez: null } // 2
+      ]
+    }
+  }));
+  assert.equal(panel.evaluadorCount, 3);
+  assert.ok(Math.abs(panel.sanidadAvg - 10 / 3) < 1e-9,
+    `mean of 4,4,2 is 3.333 (got ${panel.sanidadAvg})`);
+
+  // The same lot graded by one evaluator at the mean must score the same.
+  const single = scoreLot(mkLot({
+    medicion: { ...mkLot().medicion, health_grade: null,
+                evaluaciones: [{ evaluador: 'solo', sanidad: null, madurez: null }] }
+  }));
+  assert.ok(single.missing.includes('visual'), 'a blank axis is missing, not zero');
+});
+
+test('MT.11 panel: madurez averages to a fractional overlay', () => {
+  const mk = (evaluaciones) => scoreLot(mkLot({
+    brix: 23.0, pH: 3.60, ta: 6.0, av: 0.0, ag: 0.02,
+    berryFW: 1.0, polyphenols: 1800, anthocyanins: 700,
+    medicion: { ...mkLot().medicion, phenolic_maturity: null, evaluaciones }
+  }));
+  const base = mk([]).score36;
+  // Sobresaliente (+3) and Baja (-1) average to +1.
+  const mixed = mk([
+    { evaluador: 'A', sanidad: null, madurez: 'Sobresaliente' },
+    { evaluador: 'B', sanidad: null, madurez: 'Baja' }
+  ]);
+  assert.equal(mixed.madurezAvg, 1);
+  assert.ok(Math.abs((mixed.score36 - base) - 1) < 1e-9);
+});
+
+test('MT.11 panel: each axis averages over its own evaluators', () => {
+  // A graded both, B graded only sanidad, C graded only madurez.
+  const r = scoreLot(mkLot({
+    medicion: {
+      ...mkLot().medicion, health_grade: null, phenolic_maturity: null,
+      evaluaciones: [
+        { evaluador: 'A', sanidad: 'Muy limpio', madurez: 'Sobresaliente' },
+        { evaluador: 'B', sanidad: 'Limpio',     madurez: null },
+        { evaluador: 'C', sanidad: null,         madurez: 'Parcial' }
+      ]
+    }
+  }));
+  assert.equal(r.sanidadAvg, 3.5);   // mean(4, 3), C excluded
+  assert.equal(r.madurezAvg, 1.5);   // mean(3, 0), B excluded
+});
+
+test('MT.11 panel: the legacy scalar fills only an axis the panel left empty', () => {
+  const r = scoreLot(mkLot({
+    medicion: {
+      ...mkLot().medicion,
+      health_grade: 'Contaminado',          // must be ignored, panel has sanidad
+      phenolic_maturity: 'Sobresaliente',   // must apply, panel has no madurez
+      evaluaciones: [{ evaluador: 'A', sanidad: 'Muy limpio', madurez: null }]
+    }
+  }));
+  assert.equal(r.sanidadAvg, 4);
+  assert.equal(r.madurezAvg, 3);
+});
+
+// Lucy (cross-vendor adversarial review, 2026-08-12) flagged that the label
+// maps are indexed by strings arriving from the DB, an uploaded workbook, or
+// an API payload, and that a prototype key would resolve to a function.
+test('MT.11 panel: prototype keys never resolve to points', () => {
+  for (const poison of ['__proto__', 'toString', 'constructor', 'hasOwnProperty', 'valueOf']) {
+    assert.equal(sanitaryPoints(poison), null, `sanidad '${poison}' must not score`);
+    assert.equal(madurezPoints(poison), null, `madurez '${poison}' must not score`);
+    assert.equal(canonicalSanitaryLabel(poison), null);
+  }
+});
+
+test('MT.11 panel: a poisoned panel cannot produce a NaN score', () => {
+  const r = scoreLot(mkLot({
+    medicion: {
+      ...mkLot().medicion, health_grade: null, phenolic_maturity: null,
+      evaluaciones: [
+        { evaluador: 'x', sanidad: 'toString', madurez: 'constructor' },
+        { evaluador: 'y', sanidad: 'Limpio',   madurez: 'Parcial' }
+      ]
+    }
+  }));
+  assert.ok(Number.isFinite(r.score36), `score must stay a real number (got ${r.score36})`);
+  // Only the one legible evaluator counts.
+  assert.equal(r.sanidadAvg, 3);
+  assert.equal(r.madurezAvg, 0);
+});
+
+test('MT.11 panel: unrecognised labels are ignored, not scored as zero', () => {
+  const r = scoreLot(mkLot({
+    medicion: {
+      ...mkLot().medicion, health_grade: null,
+      evaluaciones: [{ evaluador: 'x', sanidad: 'medio sucio', madurez: null }]
+    }
+  }));
+  assert.equal(r.sanidadAvg, null);
+  assert.ok(r.missing.includes('visual'), 'a typo is missing data, not Contaminado');
 });

@@ -34,6 +34,20 @@ export function resolveRubric(variety, appellationOrValley) {
 
 // ── Threshold bucketing ──────────────────────────────────────────────
 
+// Rubric parameters define two thresholds each, so they yield three buckets.
+// The engine's internal scale is 0-4 (see CONFIG.scoreScaleMax), so those
+// three buckets are stretched onto it by 4/3: 1 -> 1.333, 2 -> 2.667, 3 -> 4.
+// The normalizer widens by the same factor, so this rescale is an identity on
+// the final 36-point score. It exists so every axis speaks one scale, letting
+// the native 0-4 sanitary grade sit alongside chemistry without a special case.
+const BUCKET_RESCALE = CONFIG.scoreScaleMax / CONFIG.scoreScaleLegacyMax;
+
+function rescaleBucket(bucket) {
+  return bucket === null ? null : bucket * BUCKET_RESCALE;
+}
+
+// Returns the raw 1-3 bucket. Callers rescale via rescaleBucket; kept separate
+// so the thresholds stay readable against the rubric tables in config.js.
 export function scoreParam(spec, value) {
   if (value === null || value === undefined) return null;
   const v = Number(value);
@@ -80,10 +94,23 @@ function scoreSanitaryPct(medicion) {
   return 1;
 }
 
-function scoreVisual(medicion) {
-  if (!medicion || !medicion.health_grade) return null;
-  return CONFIG.sanitaryThresholds.visual[medicion.health_grade] ?? null;
-}
+// The vocabulary, the per-axis averaging, and the consensus labels live in
+// js/quality-scale.js so the browser and the serverless upload path share one
+// definition and cannot drift. Re-exported here because this module is the
+// scoring engine's public face and callers already import from it.
+// `export ... from` re-exports without binding the names in this module's
+// scope, and scoreLot below calls averageEvaluations directly, so import too.
+import { averageEvaluations } from './quality-scale.js';
+
+export {
+  canonicalSanitaryLabel,
+  sanitaryPoints,
+  madurezPoints,
+  averageEvaluations,
+  consensusSanitaryLabel,
+  consensusMadurezLabel,
+  panelConsensus,
+} from './quality-scale.js';
 
 // ── Core: scoreLot ───────────────────────────────────────────────────
 
@@ -110,7 +137,7 @@ export function scoreLot(lot) {
       missing.push(field);
       continue;
     }
-    raw += pts * spec.imp;
+    raw += rescaleBucket(pts) * spec.imp;
     impSum += spec.imp;
     buckets[field] = pts;
   }
@@ -121,9 +148,11 @@ export function scoreLot(lot) {
 
   const conteoPts = scoreSanitaryPct(lot.medicion);
   if (conteoPts === null) missing.push('sanitary_pct');
-  else { raw += conteoPts * conteoImp; impSum += conteoImp; buckets.sanitary_pct = conteoPts; }
+  else { raw += rescaleBucket(conteoPts) * conteoImp; impSum += conteoImp; buckets.sanitary_pct = conteoPts; }
 
-  const visualPts = scoreVisual(lot.medicion);
+  // Grado Sanitario already speaks the 0-4 scale, so it enters unscaled.
+  const panel = averageEvaluations(lot.medicion);
+  const visualPts = panel.sanidad;
   if (visualPts === null) missing.push('visual');
   else { raw += visualPts * visualImp; impSum += visualImp; buckets.visual = visualPts; }
 
@@ -138,11 +167,10 @@ export function scoreLot(lot) {
   }
   const partial = impSum < 60;
 
-  const base36 = raw / (3 * impSum) * 36;
+  const base36 = raw / (CONFIG.scoreScaleMax * impSum) * 36;
 
-  // Madurez overlay (winemaker)
-  const madurezKey = lot.medicion?.phenolic_maturity ?? null;
-  const madurezAdj = CONFIG.madurezOverlay[madurezKey] ?? 0;
+  // Madurez overlay (winemaker), averaged across the evaluator panel.
+  const madurezAdj = panel.madurez ?? 0;
 
   const score36raw = base36 + madurezAdj;
   const score36 = Math.max(0, Math.min(36, score36raw));
@@ -160,6 +188,12 @@ export function scoreLot(lot) {
     partial,
     buckets,
     madurezAdj,
+    sanidadAvg: panel.sanidad,
+    madurezAvg: panel.madurez,
+    // Everyone who graded at least one axis. Taking the larger of the two
+    // axis counts under-reports a panel where different people covered
+    // different axes (lucy, 2026-08-12).
+    evaluadorCount: panel.evaluadorCount,
     reason: null
   };
 }
@@ -260,7 +294,8 @@ export function scoreFromMedicion(m, berryByLot) {
       health_enfermedad:  m.healthEnfermedad,
       health_quemadura:   m.healthQuemadura,
       tons_received:      m.tons,
-      phenolic_maturity:  m.phenolicMaturity
+      phenolic_maturity:  m.phenolicMaturity,
+      evaluaciones:       m.evaluaciones
     }
   };
   return scoreLot(lot);
