@@ -168,6 +168,12 @@ export const CONFIG = {
       // Fallback: VDG → Monte Xanic, VON → Ojos Negros
       return /Guadalupe/i.test(fixed) ? 'Monte Xanic (VDG)' : 'Ojos Negros (VON)';
     }
+    // Pass-through BY DESIGN and idempotent: an already-ranch-first name (any
+    // originColors key) or an unrecognised appellation returns unchanged. This
+    // is deliberately non-validating so a new ranch is surfaced verbatim rather
+    // than silently remapped; resolveOriginColor hashes a colour for unknowns.
+    // Every appellationFixes output and originColors key is verified idempotent
+    // here by mt42-config-audit.
     return fixed;
   },
 
@@ -192,7 +198,13 @@ export const CONFIG = {
     return `#${toHex(f(0))}${toHex(f(8))}${toHex(f(4))}`;
   },
 
-  // Varietal abbreviations (code → full name)
+  // Varietal abbreviations (code → full name).
+  // NOTE (audit xd-3k4): reference data only. No caller currently expands
+  // variety codes through this map — every real source file (WineXRay CSV,
+  // recepción/pre-recepción workbooks) carries full variety names, which
+  // normalizeVariety passes through unchanged. Kept for a future code-input
+  // path and to document the canonical code↔name pairing; if you wire it in,
+  // add a test asserting each value is a key of varietyColors.
   varietyAbbr: {
     'CS':'Cabernet Sauvignon','CF':'Cabernet Franc','SY':'Syrah','ME':'Merlot',
     'MA':'Malbec','GRE':'Grenache','GR':'Grenache','PV':'Petit Verdot',
@@ -201,6 +213,12 @@ export const CONFIG = {
     'CH':'Chardonnay','VG':'Viognier','CB':'Chenin Blanc','MV':'Mourvèdre','PS':'Durif'
   },
 
+  // Canonical variety names arrive already-correct from every source file;
+  // the only historical alias is 'Petite Sirah' (the old label for Durif).
+  // Any other value passes through unchanged BY DESIGN (idempotent): this is
+  // not a validating map, so an unknown variety is surfaced as-is rather than
+  // dropped or guessed. grapeTypes/varietyColors define the known set and are
+  // kept in sync (verified by mt42-config-audit).
   normalizeVariety(name) {
     if (name === 'Petite Sirah') return 'Durif';
     return name;
@@ -597,6 +615,12 @@ export const CONFIG = {
   // table as the form, distinguished by source='upload' vs source='form'.
   // Note: 'Longitud promedio de 10 bayas (cm)' is deliberately not
   // mapped; the per-baya average carries the same info.
+  // Note (audit xd-3k4): the Vendimia 2026 workbook adds two derived-percentage
+  // headers, '%Bayas Aceptable' and '%Bayas con enfermedad/picadura'. Both are
+  // intentionally unmapped and dropped by the parser: they are recomputable
+  // from the health_* counts (health_aceptable / total, etc.), so storing them
+  // would duplicate state. Unmapped headers are silently dropped (not passed
+  // through) by the pre-recepción parser's known-column lookup.
   preReceptionsToSupabase: {
     'Vintrace':                              'vintrace',
     'No. Reporte':                           'medicion_code',
