@@ -1,6 +1,7 @@
 import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 import { ALLOWED_TABLES } from './upload.js';
+import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../js/quality-scale.js';
 import { validateRow } from '../js/validation.js';
 
 const ALLOWED_ACTIONS = new Set(['update', 'delete', 'upsert']);
@@ -54,6 +55,30 @@ export default async function handler(req, res) {
   // schema adds them to the whitelist, the server is the only writer.
   delete row.last_edited_at;
   delete row.last_edited_by;
+
+  // Same rule as the upload path: the evaluator panel is sanitised and the two
+  // consensus labels are derived here, never taken from the caller, so the
+  // panel and the labels describing it cannot disagree about one row.
+  // A present-but-not-an-array panel is a malformed request, not an
+  // instruction to erase. sanitizeEvaluaciones returns null for it, and
+  // writing that null would wipe the stored panel and both labels off a row
+  // that was fine (lucy, 2026-08-12). An empty array is the explicit clear.
+  const panelError = panelRejectionReason(row.evaluaciones);
+  if (panelError) return res.status(400).json({ ok: false, error: panelError });
+
+  if ('evaluaciones' in row) {
+    row.evaluaciones = sanitizeEvaluaciones(row.evaluaciones);
+    const consensus = panelConsensus(row.evaluaciones || []);
+    row.health_grade      = consensus.health_grade;
+    row.phenolic_maturity = consensus.phenolic_maturity;
+  } else {
+    // No panel, no opinion about the labels that describe one. A partial
+    // update carrying only the scalars used to slip past the derivation and
+    // leave them contradicting the stored panel (lucy, 2026-08-12). The edit
+    // modal derives both from the panel, so it always sends all three.
+    delete row.health_grade;
+    delete row.phenolic_maturity;
+  }
 
   for (const col of conflictCols) {
     if (row[col] === undefined || row[col] === null || row[col] === '') {

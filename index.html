@@ -838,26 +838,15 @@
           </div>
         </div>
 
+        <div class="section-label" style="margin-top:12px;font-size:11px">Evaluación Sensorial</div>
+        <div class="evaluador-panel" id="med-evaluadores"></div>
+        <div class="evaluador-foot">
+          <button type="button" class="evaluador-add" data-action="evaluador-add"
+                  data-panel="med-evaluadores">Agregar evaluador</button>
+          <span class="evaluador-avg" id="med-evaluadores-avg" aria-live="polite"></span>
+        </div>
+
         <div class="form-row">
-          <div class="form-group">
-            <label>Grado Sanitario</label>
-            <select id="med-grade">
-              <option value="">— Seleccionar —</option>
-              <option value="Excelente">Excelente</option>
-              <option value="Bueno">Bueno</option>
-              <option value="Regular">Regular</option>
-              <option value="Malo">Malo</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label>Madurez Fenólica (opcional)</label>
-            <select id="med-phenolic-maturity">
-              <option value="">—</option>
-              <option value="Sobresaliente">Sobresaliente (+3)</option>
-              <option value="Parcial">Parcial (0)</option>
-              <option value="No sobresaliente">No sobresaliente (−3)</option>
-            </select>
-          </div>
           <div class="form-group">
             <label>Medido por</label>
             <input type="text" id="med-by" placeholder="Nombre">
@@ -1033,26 +1022,15 @@
         <div class="form-group form-group-sm"><label>Quemad.</label>     <input type="number" id="med-edit-h-quemadura"   min="0"></div>
       </div>
 
+      <div class="section-label" style="margin-top:12px;font-size:11px">Evaluación Sensorial</div>
+      <div class="evaluador-panel" id="med-edit-evaluadores"></div>
+      <div class="evaluador-foot">
+        <button type="button" class="evaluador-add" data-action="evaluador-add"
+                data-panel="med-edit-evaluadores">Agregar evaluador</button>
+        <span class="evaluador-avg" id="med-edit-evaluadores-avg" aria-live="polite"></span>
+      </div>
+
       <div class="form-row">
-        <div class="form-group">
-          <label>Grado Sanitario</label>
-          <select id="med-edit-grade">
-            <option value="">— Seleccionar —</option>
-            <option value="Excelente">Excelente</option>
-            <option value="Bueno">Bueno</option>
-            <option value="Regular">Regular</option>
-            <option value="Malo">Malo</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Madurez Fenólica</label>
-          <select id="med-edit-phenolic-maturity">
-            <option value="">—</option>
-            <option value="Sobresaliente">Sobresaliente (+3)</option>
-            <option value="Parcial">Parcial (0)</option>
-            <option value="No sobresaliente">No sobresaliente (−3)</option>
-          </select>
-        </div>
         <div class="form-group">
           <label>Calidad estimada</label>
           <div id="med-edit-score" class="detail-grade"

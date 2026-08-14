@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 
 // Import lazily so the test focuses on the pure helper (no DOM, no fetch).
 const { WeatherStore } = await import('../js/weather.js');
+const { todayInVineyard } = await import('../js/utils.js');
 
 test('MT.33 getForecastRangeEnd: season → vintage-10-31 (uncapped)', () => {
   assert.equal(WeatherStore.getForecastRangeEnd(2026, 'season'), '2026-10-31');
@@ -50,10 +51,16 @@ test('MT.33 forecastWithinRange: forecast rows past today are KEPT when rangeEnd
   // forecast rows for the next 7 days. Pre-fix the caller passed capped end (=today)
   // and the filter excluded all forecast rows. With the new helper, callers pass the
   // uncapped season-end and forecast rows survive.
-  const today = new Date().toISOString().split('T')[0];
+  // Tijuana, matching WeatherStore.todayLocal(). Deriving this from
+  // toISOString() compared a UTC date against a Tijuana one and failed every
+  // day between 00:00 and 07:00 UTC.
+  const today = todayInVineyard();
   const plus = (days) => {
-    const d = new Date(today); d.setDate(d.getDate() + days);
-    return d.toISOString().split('T')[0];
+    const [y, m, d] = today.split('-').map(Number);
+    // Anchored at UTC noon so adding days never slips across a DST edge.
+    const dt = new Date(Date.UTC(y, m - 1, d, 12));
+    dt.setUTCDate(dt.getUTCDate() + days);
+    return dt.toISOString().split('T')[0];
   };
   const forecastRows = [
     { date: plus(1), temp_avg: 28, isForecast: true },

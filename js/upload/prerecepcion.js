@@ -13,6 +13,7 @@ import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
 import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
 import { COLUMN_TYPES } from '../validation.js';
+import { panelConsensus } from '../classification.js';
 
 // mediciones_tecnicas columns whose values must be ISO YYYY-MM-DD.
 const DATE_COLUMNS = new Set(['reception_date', 'medicion_date', 'lab_date']);
@@ -22,12 +23,100 @@ function normalizeHeader(h) {
   return String(h ?? '').trim().replace(/\s+/g, ' ');
 }
 
-function findHeaderRow(rows, minNonNull = 5) {
+// Picks the real header row by content, not by density.
+//
+// Counting non-null cells is not enough: Vendimia 2026 added seven evaluator
+// labels to the banner row, pushing it over any density threshold, so the
+// first-row-with-N-cells rule selected the banner and the parse failed with
+// every required header missing. Scoring candidates by how many cells actually
+// resolve to a known column makes the choice about meaning instead, and a
+// banner row scores zero however wide it grows.
+function findHeaderRow(rows, columnLookup, minNonNull = 5) {
+  let bestIdx = -1;
+  let bestScore = 0;
+  let fallbackIdx = -1;
+
   for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const nn = rows[i].filter(v => v !== null && String(v).trim() !== '').length;
-    if (nn >= minNonNull) return i;
+    const row = rows[i] || [];
+    const nn = row.filter(v => v !== null && String(v).trim() !== '').length;
+    if (nn < minNonNull) continue;
+    if (fallbackIdx < 0) fallbackIdx = i;
+
+    const score = row.reduce((acc, cell) => {
+      const h = normalizeHeader(cell);
+      return acc + (h && columnLookup[h] ? 1 : 0);
+    }, 0);
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
   }
-  return -1;
+
+  // A recognised header row must carry several known columns, not one stray
+  // match. Below that, fall back to the old density rule so an unfamiliar
+  // workbook still reaches the explicit required-headers error, which names
+  // what is missing, rather than a bare "no header row found".
+  if (bestScore >= minNonNull) return bestIdx;
+  return fallbackIdx;
+}
+
+// Vendimia 2026 heads the evaluator columns on the banner row above the main
+// header row, leaving the main header blank underneath them. Fill each blank
+// header from the nearest non-blank cell in the rows above it, so a banner
+// label becomes that column's header only where the column has none of its own.
+// Banner labels that sit above a properly headed column ('Laboratorio',
+// 'Estado de bayas') are therefore ignored, which is what we want.
+function mergeBannerHeaders(rows, headerIdx) {
+  const width = Math.max(...rows.slice(0, headerIdx + 1).map(r => (r ? r.length : 0)), 0);
+  const headers = [];
+  for (let c = 0; c < width; c++) {
+    let label = normalizeHeader(rows[headerIdx]?.[c]);
+    for (let r = headerIdx - 1; r >= 0 && !label; r--) {
+      label = normalizeHeader(rows[r]?.[c]);
+    }
+    headers.push(label);
+  }
+  return headers;
+}
+
+// Locates the evaluator columns and groups them by position, so
+// 'Sanidad (visual) Evaluador 2' and 'Madurez fenólica Evaluador 2' are
+// understood as two axes graded by the same person.
+function findEvaluatorColumns(headers) {
+  const { sanidad, madurez } = CONFIG.preReceptionEvaluatorHeaders;
+  const byPosition = new Map();
+  const slot = (n) => {
+    if (!byPosition.has(n)) byPosition.set(n, { sanidad: null, madurez: null });
+    return byPosition.get(n);
+  };
+
+  headers.forEach((h, idx) => {
+    const s = sanidad.exec(h);
+    if (s) { slot(Number(s[1])).sanidad = idx; return; }
+    const m = madurez.exec(h);
+    if (m) { slot(Number(m[1])).madurez = idx; }
+  });
+
+  // Ordered by the evaluator number printed on the sheet, so the panel keeps
+  // the workbook's ordering rather than column-scan order.
+  return [...byPosition.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([position, cols]) => ({ position, ...cols }));
+}
+
+// Builds the panel for one row, dropping evaluators who graded neither axis.
+// A blank cell stays null rather than becoming a zero: on the sanitary scale
+// zero is 'Contaminado', a real and damning grade, not an absence of one.
+function readEvaluatorPanel(row, evaluatorCols) {
+  const panel = [];
+  for (const { sanidad, madurez } of evaluatorCols) {
+    const s = sanidad === null ? null : normalizeValue(row[sanidad]);
+    const m = madurez === null ? null : normalizeValue(row[madurez]);
+    if (s === null && m === null) continue;
+    panel.push({
+      evaluador: null,          // the workbook numbers evaluators, never names them
+      sanidad: s === null ? null : String(s).trim(),
+      madurez: m === null ? null : String(m).trim(),
+    });
+  }
+  return panel;
 }
 
 // Build a lookup that trims config keys so trailing spaces in the mapping
@@ -64,13 +153,14 @@ export const prerecepcionParser = {
       header: 1, defval: null, raw: true,
     });
 
-    const headerIdx = findHeaderRow(allRows);
+    const columnLookup = buildColumnLookup();
+    const headerIdx = findHeaderRow(allRows, columnLookup);
     if (headerIdx < 0) {
       throw new Error('No se encontró la fila de encabezados en la hoja Pre-recepción.');
     }
 
-    const headers = allRows[headerIdx].map(normalizeHeader);
-    const columnLookup = buildColumnLookup();
+    const headers = mergeBannerHeaders(allRows, headerIdx);
+    const evaluatorCols = findEvaluatorColumns(headers);
 
     // Validate key headers
     const requiredHeaders = ['No. Reporte', 'Fecha medición técnica', 'Variedad', 'Lote de campo'];
@@ -97,6 +187,26 @@ export const prerecepcionParser = {
         obj[col] = val;
         if (val !== null) hasData = true;
       });
+
+      // Vendimia 2026 evaluator panel.
+      //
+      // Emitted only when the workbook actually has evaluator columns, and
+      // then for every row so the batch keeps one key set (PostgREST rejects
+      // mixed-shape arrays). A pre-2026 workbook has no opinion about these
+      // three columns, so it must not send them at all: the upsert conflicts
+      // on medicion_code, and a null in the payload would overwrite a grade a
+      // winemaker had entered through the form. Silence leaves it untouched.
+      if (evaluatorCols.length) {
+        const panel = readEvaluatorPanel(row, evaluatorCols);
+        obj.evaluaciones = panel;
+        // Consensus scalars for the readers that predate the panel. Within a
+        // 2026 workbook these columns belong to the sheet, so a row nobody
+        // graded correctly clears them.
+        const consensus = panelConsensus(panel);
+        obj.health_grade = consensus.health_grade;
+        obj.phenolic_maturity = consensus.phenolic_maturity;
+        if (panel.length) hasData = true;
+      }
 
       if (!hasData) continue;
 
