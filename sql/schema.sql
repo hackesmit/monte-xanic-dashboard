@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS wine_samples (
   irps             numeric,
   ph               numeric,
   ta               numeric,
+  brix             numeric,
   ipt              numeric,
   alcohol          numeric,
   va               numeric,
