@@ -89,7 +89,16 @@ describe('MT.41 — /api/upload distinct samples do not collide on the upsert ke
     assert.equal(calls.length, 1, 'a single batched upsert, not row-by-row');
     // Conflict key + merge semantics are what makes the retry-safe dedup real.
     assert.match(calls[0].url, /\?on_conflict=sample_id%2Csample_date%2Csample_seq/);
-    assert.equal(calls[0].opts.headers.Prefer, 'resolution=merge-duplicates');
+    // missing=default is what makes the keyDefault allowance real. PostgREST
+    // builds one INSERT from the union of keys across the batch, so without it
+    // a column some rows carry and others omit (sample_seq) is sent as NULL for
+    // the omitting rows: either failing its NOT NULL for the whole batch, or
+    // writing a NULL that makes the composite unique constraint a no-op and
+    // brings duplicate-on-retry straight back.
+    const prefer = calls[0].opts.headers.Prefer.split(',').map(s => s.trim());
+    assert.ok(prefer.includes('resolution=merge-duplicates'), 'merge semantics required');
+    assert.ok(prefer.includes('missing=default'),
+      'omitted keyDefault columns must resolve to the DB default, not NULL');
     // Both distinct samples survive to the DB — they differ on sample_date, so
     // the composite key keeps them apart rather than merging one onto the other.
     const sent = JSON.parse(calls[0].opts.body);
