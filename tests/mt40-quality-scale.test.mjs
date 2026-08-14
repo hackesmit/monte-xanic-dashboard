@@ -248,3 +248,35 @@ describe('MT.40 — panelRejectionReason', () => {
     assert.equal(sanitizeEvaluaciones(good).length, good.length);
   });
 });
+
+// Lucy 2026-08-14, seventh pass: a row could survive the length check while
+// one of its fields was quietly nulled, because text() turns an object into
+// null. The row count matched, so nothing looked wrong, and the evaluator's
+// name was gone.
+describe('MT.40 — a field that is not a scalar is malformed, not repairable', () => {
+  it('refuses an object or array in any of the three fields', () => {
+    assert.match(panelRejectionReason([{ evaluador: { nombre: 'Ana' }, sanidad: 'Limpio' }]),
+      /campo evaluador .* no es un valor simple/);
+    assert.match(panelRejectionReason([{ evaluador: ['Ana'], sanidad: 'Limpio' }]),
+      /campo evaluador/);
+    assert.match(panelRejectionReason([{ sanidad: { v: 'Limpio' } }]),
+      /campo sanidad/);
+    assert.match(panelRejectionReason([{ sanidad: 'Limpio', madurez: {} }]),
+      /campo madurez/);
+  });
+
+  it('still accepts the scalars a workbook cell can legitimately be', () => {
+    assert.equal(panelRejectionReason([{ evaluador: 'Ana', sanidad: 'Limpio' }]), null);
+    assert.equal(panelRejectionReason([{ evaluador: 3, sanidad: 'Limpio' }]), null,
+      'a numeric cell stringifies faithfully');
+    assert.equal(panelRejectionReason([{ evaluador: null, sanidad: 'Limpio' }]), null);
+    assert.equal(panelRejectionReason([{ sanidad: 'Limpio' }]), null,
+      'an absent field is not a malformed one');
+  });
+
+  it('anything it accepts round-trips through sanitising with no field lost', () => {
+    const good = [{ evaluador: 'Ana', sanidad: 'Limpio', madurez: 'Buena' }];
+    assert.equal(panelRejectionReason(good), null);
+    assert.deepEqual(sanitizeEvaluaciones(good), good);
+  });
+});
