@@ -1,5 +1,5 @@
-import { verifyToken } from './lib/verifyToken.js';
-import { rateLimit } from './lib/rateLimit.js';
+import { verifyToken } from './_lib/verifyToken.js';
+import { rateLimit } from './_lib/rateLimit.js';
 import { MIGRATIONS } from '../js/migrations-manifest.js';
 
 // GET /api/migrations-status

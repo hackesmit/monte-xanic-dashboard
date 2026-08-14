@@ -11,7 +11,7 @@ process.env.SESSION_SECRET = TEST_SECRET;
 process.env.SUPABASE_URL = 'https://test.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'test-service-key';
 
-const { verifyToken } = await import('../api/lib/verifyToken.js');
+const { verifyToken } = await import('../api/_lib/verifyToken.js');
 
 /** Helper: create a valid HMAC token with given payload */
 function createToken(payload) {

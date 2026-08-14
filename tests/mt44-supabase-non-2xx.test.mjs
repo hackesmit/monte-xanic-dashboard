@@ -26,7 +26,7 @@ const logoutHandler   = (await import('../api/logout.js')).default;
 const monaDataHandler = (await import('../api/mona-data.js')).default;
 // The rate limiter is imported directly (not through login.js) so this suite
 // stays runnable without node_modules — login.js pulls in bcryptjs.
-const { checkRateLimit } = await import('../api/lib/loginRateLimit.js');
+const { checkRateLimit } = await import('../api/_lib/loginRateLimit.js');
 
 function validToken(role = 'lab', user = 'labuser') {
   const payloadB64 = Buffer.from(JSON.stringify({
