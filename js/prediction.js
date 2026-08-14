@@ -84,6 +84,21 @@ export function weightedRegression(samples) {
 // Per prior vintage, fit OLS on the last 21 days before the vintage's
 // max-y sample. Drop vintages with <3 samples in that window. Return
 // mean slope (prior mean) and sample variance (prior variance, τ²).
+
+// A lone historical vintage gives no way to estimate between-vintage slope
+// variability, so its prior variance cannot be a real sample variance. The old
+// code used a tiny epsilon (1e-6) there — a prior precision of 1e6 that pinned
+// the posterior to the single historical slope and discarded the current season
+// entirely. Instead treat one vintage as a *weak* prior: its slope standard
+// deviation is ~1.5× the slope magnitude itself (CV ≈ 150%). Because it scales
+// with the slope, it is unit-invariant across Brix / ANT / pH and never
+// dominates a real current-season fit.
+const SINGLE_VINTAGE_SLOPE_CV = 1.5;
+// With ≥2 vintages a genuine sample variance exists, but near-identical slopes
+// (duplicate or copied vintages) can still collapse it toward zero and re-pin
+// the posterior. Floor it at a small fraction of the mean slope.
+const MIN_SLOPE_CV = 0.05;
+
 export function historicalSlopePrior(vintages) {
   const slopes = [];
   for (const rawSamples of vintages) {
@@ -106,10 +121,23 @@ export function historicalSlopePrior(vintages) {
   const V = slopes.length;
   if (V === 0) return { betaHist: null, tau2Hist: Infinity, V: 0 };
   const mean = slopes.reduce((a, b) => a + b, 0) / V;
-  // Sample variance (Bessel-corrected when V > 1; tiny epsilon when V = 1)
-  let varSum = 0;
-  for (const s of slopes) varSum += (s - mean) ** 2;
-  const tau2Hist = V > 1 ? varSum / (V - 1) : 1e-6;
+  const magnitude = Math.abs(mean);
+  let tau2Hist;
+  if (V > 1) {
+    // Bessel-corrected sample variance, floored so near-duplicate vintages
+    // cannot collapse the prior variance to ~0 and re-pin the posterior.
+    let varSum = 0;
+    for (const s of slopes) varSum += (s - mean) ** 2;
+    tau2Hist = Math.max(varSum / (V - 1), (MIN_SLOPE_CV * magnitude) ** 2);
+  } else {
+    // V === 1: weak, scale-invariant prior (see SINGLE_VINTAGE_SLOPE_CV).
+    tau2Hist = (SINGLE_VINTAGE_SLOPE_CV * magnitude) ** 2;
+  }
+  // A near-zero mean slope leaves no scale for a proportional prior; fall back
+  // to an uninformative prior (Infinity ⇒ prior precision 0 in bayesianCombine)
+  // rather than a near-deterministic variance that would pin the posterior to a
+  // meaningless ~0 slope.
+  if (!(tau2Hist > 0)) tau2Hist = Infinity;
   return { betaHist: mean, tau2Hist, V };
 }
 
@@ -211,9 +239,18 @@ export function detectEdgeCase({
 }) {
   if (betaPostBrix <= 0) return 'sin-tendencia-positiva';
 
+  // Already past the upper Brix limit and still climbing ⇒ over-ripe. Without
+  // this, etaDays clamps the negative ETA to 0, so both brixMidEta and
+  // brixWindowCloses collapse to 0, the downstream `mid > closes` test is false,
+  // and the lot renders as a normal in-window pick. Checked after each mode's
+  // stalled-metric signal (ph-excedido / antocianinas-estancadas) so those keep
+  // precedence, but before the in-window / window-close logic.
+  const brixOverRipe = brixUpper != null && yhatBrixToday > brixUpper;
+
   // White-mode checks (phTarget != null AND antTarget == null)
   if (phTarget != null && antTarget == null) {
     if (yhatPhToday > phTarget) return 'ph-excedido';
+    if (brixOverRipe) return 'riesgo-sobremadurez';
     const brixInWindow = yhatBrixToday >= brixLower && yhatBrixToday <= brixUpper;
     if (brixInWindow) return 'ya-en-ventana';
     if (Number.isFinite(phEta) && Number.isFinite(brixLowerEta)
@@ -231,6 +268,7 @@ export function detectEdgeCase({
 
   // Red-mode checks (existing behavior)
   if (antTarget != null && betaPostAnt <= 0) return 'antocianinas-estancadas';
+  if (brixOverRipe) return 'riesgo-sobremadurez';
   const brixInWindow = yhatBrixToday >= brixLower && yhatBrixToday <= brixUpper;
   const antOver      = antTarget == null || (yhatAntToday >= antTarget);
   if (brixInWindow && antOver) return 'ya-en-ventana';
@@ -259,18 +297,17 @@ export function computeOne({
   recencyBoostWindow = 14,
 }) {
   const nCurrent = current.length;
-  if (nCurrent < 2) {
-    return {
-      reason: 'pocos-datos-temporada',
-      recommendedDate: null, brixWindowCloses: null,
-      bandDays: Infinity, label: 'Baja',
-      nCurrent, V: 0,
-      brixHoy: current[0]?.brix ?? null,
-      antHoy:  current[0]?.ant ?? null,
-      phHoy:   current[0]?.pH ?? null,
-      samplesProjected: { brixEta: null, antEta: null, phEta: null },
-    };
-  }
+  const pocosDatos = (sample) => ({
+    reason: 'pocos-datos-temporada',
+    recommendedDate: null, brixWindowCloses: null,
+    bandDays: Infinity, label: 'Baja',
+    nCurrent, V: 0,
+    brixHoy: sample?.brix ?? null,
+    antHoy:  sample?.ant ?? null,
+    phHoy:   sample?.pH ?? null,
+    samplesProjected: { brixEta: null, antEta: null, phEta: null },
+  });
+  if (nCurrent < 2) return pocosDatos(current[0]);
 
   // Order by tDays asc; the last entry's tDays is "today's t"
   const sorted = [...current].sort((a, b) => a.tDays - b.tDays);
@@ -281,6 +318,18 @@ export function computeOne({
 
   const brixSamples = sorted.map(s => ({ t: s.tDays, y: s.brix, w: wOf(s) }));
   const brixFit = weightedRegression(brixSamples);
+  // Degenerate season: all samples share one timestamp (Σw(t−t̄)² = 0, e.g. two
+  // readings on the same date) or the regression is otherwise non-finite. The
+  // slope is then undefined and every downstream ETA/date becomes NaN/Infinity —
+  // producing an 'Invalid Date' recommendation with nothing flagging it. Require
+  // ≥2 distinct timestamps and a finite fit; otherwise treat as too-few-data.
+  const distinctTimestamps = new Set(sorted.map(s => s.tDays)).size;
+  if (distinctTimestamps < 2
+      || !Number.isFinite(brixFit.beta)
+      || !Number.isFinite(brixFit.sigmaBeta2)
+      || !(brixFit.sumWttBar2 > 0)) {
+    return pocosDatos(sorted[sorted.length - 1]);
+  }
   const brixPrior = historicalSlopePrior(
     historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.brix })))
   );

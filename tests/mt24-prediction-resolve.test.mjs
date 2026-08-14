@@ -215,6 +215,47 @@ test('MT.24 computeOne: recommendedDate past brixWindowCloses → riesgo-sobrema
     `reason=${out.reason}`);
 });
 
+// Degenerate case 2: two samples on the SAME date give Σw(t−t̄)²=0 → NaN slope
+// → Infinity ETA → new Date(anchor + Infinity) = 'Invalid Date', with nothing
+// flagging it as unusable. Require ≥2 distinct timestamps; otherwise fall back
+// to pocos-datos-temporada.
+test('MT.24 computeOne: duplicate sample dates → pocos-datos-temporada (no Invalid Date)', () => {
+  const out = computeOne({
+    current: [
+      { sampleDate: '2026-08-10', tDays: 0, brix: 22.0, ant: 600 },
+      { sampleDate: '2026-08-10', tDays: 0, brix: 22.5, ant: 650 },
+    ],
+    historicalByVintage: [],
+    target: { brixLower: 23.5, brixUpper: 24.2, brixTarget: 23.85, antTarget: 950 },
+    today: new Date('2026-08-10'),
+  });
+  assert.equal(out.reason, 'pocos-datos-temporada');
+  assert.equal(out.recommendedDate, null);
+  assert.equal(out.brixWindowCloses, null);
+  assert.equal(out.bandDays, Infinity);
+});
+
+// Degenerate case 3: a lot already past the upper Brix limit. etaDays clamps the
+// negative ETA to 0, so brixMidEta and brixWindowCloses both collapse to 0 and
+// the old detectEdgeCase returned null — the card rendered as a normal in-window
+// pick. It must read riesgo-sobremadurez (past-window).
+test('MT.24 computeOne: Brix already past upper limit → riesgo-sobremadurez', () => {
+  const current = [
+    { sampleDate: '2026-08-06', tDays: 0, brix: 25.5, ant: 900 },
+    { sampleDate: '2026-08-08', tDays: 2, brix: 26.5, ant: 950 },
+    { sampleDate: '2026-08-10', tDays: 4, brix: 27.5, ant: 1000 },
+  ];
+  const out = computeOne({
+    current,
+    historicalByVintage: [],
+    // Window 23.0–25.0; the fit sits at ≈27.5 Bx today, well past upper.
+    target: { brixLower: 23.0, brixUpper: 25.0, brixTarget: 24.0, antTarget: null },
+    today: new Date('2026-08-10'),
+  });
+  assert.equal(out.reason, 'riesgo-sobremadurez');
+  assert.equal(out.recommendedDate, null);
+});
+
 import { computeAll } from '../js/prediction.js';
 
 test('MT.24 computeAll: groups berry samples by (variety, appellation) and computes each', () => {
