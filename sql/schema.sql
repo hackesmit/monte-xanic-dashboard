@@ -6,6 +6,20 @@
 -- ── wine_samples ──────────────────────────────────────────────────
 -- All rows from WineXRay exports (Berries, Must, Aging Wine, etc.)
 
+-- ==================================================================
+-- ABOUT THIS WHOLE FILE, READ BEFORE TRUSTING ANY DEFINITION IN IT
+--
+-- This is the ORIGINAL baseline, not the current schema. The live shape is
+-- this file plus every migration in js/migrations-manifest.js applied in
+-- order, and several definitions below have since changed. Check the
+-- migrations before concluding anything about a column or a constraint here.
+--
+-- Worked example: the meteorology block near the bottom still shows
+-- `date UNIQUE`, which reads as one weather series for the whole company.
+-- migration_overhaul.sql replaced it with UNIQUE (date, location) long ago,
+-- so each of the three valleys keeps its own series.
+-- ==================================================================
+
 CREATE TABLE IF NOT EXISTS wine_samples (
   id               uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   sample_id        text UNIQUE NOT NULL,
