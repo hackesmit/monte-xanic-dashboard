@@ -5,6 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { WeatherStore } from '../js/weather.js';
+import { todayInVineyard } from '../js/utils.js';
 
 // ── Sample data: 14 days of weather from Jul 1–14, 2025 ──
 function sampleRows() {
@@ -116,7 +117,7 @@ describe('MT.8 — Date range helpers', () => {
     // Tijuana, matching WeatherStore.todayLocal(). Deriving this from
     // toISOString() compared a UTC date against a Tijuana one and failed
     // every day between 00:00 and 07:00 UTC.
-    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Tijuana' });
+    const today = todayInVineyard();
     assert.equal(end, today);
     // start should be 29 days before today
     const s = new Date(start);

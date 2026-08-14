@@ -14,6 +14,7 @@ import assert from 'node:assert/strict';
 
 // Import lazily so the test focuses on the pure helper (no DOM, no fetch).
 const { WeatherStore } = await import('../js/weather.js');
+const { todayInVineyard } = await import('../js/utils.js');
 
 test('MT.33 getForecastRangeEnd: season → vintage-10-31 (uncapped)', () => {
   assert.equal(WeatherStore.getForecastRangeEnd(2026, 'season'), '2026-10-31');
@@ -53,7 +54,7 @@ test('MT.33 forecastWithinRange: forecast rows past today are KEPT when rangeEnd
   // Tijuana, matching WeatherStore.todayLocal(). Deriving this from
   // toISOString() compared a UTC date against a Tijuana one and failed every
   // day between 00:00 and 07:00 UTC.
-  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Tijuana' });
+  const today = todayInVineyard();
   const plus = (days) => {
     const [y, m, d] = today.split('-').map(Number);
     // Anchored at UTC noon so adding days never slips across a DST edge.

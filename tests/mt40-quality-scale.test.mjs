@@ -10,7 +10,8 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   sanitizeEvaluaciones, panelConsensus, averageEvaluations,
-  MAX_EVALUADORES, exceedsPanelLimit, sanitaryPoints, madurezPoints,
+  MAX_EVALUADORES, exceedsPanelLimit, panelRejectionReason,
+  sanitaryPoints, madurezPoints,
 } from '../js/quality-scale.js';
 import { ALLOWED_TABLES } from '../api/upload.js';
 
@@ -192,5 +193,58 @@ describe('MT.40 — a malformed panel is a bad request, not a delete', () => {
     const avg = averageEvaluations({ evaluaciones: stored });
     assert.equal(avg.sanidad, null, 'but it never contributes points');
     assert.equal(avg.evaluadorCount, 0);
+  });
+});
+
+// Lucy 2026-08-14: sanitizeEvaluaciones drops entries that are not usable, so
+// a payload of [{}] or [42] collapsed to [] and the derivation then blanked a
+// perfectly good panel and both of its labels. Malformed input must be refused,
+// never repaired, because repairing it destroys data on a row nobody changed.
+describe('MT.40 — panelRejectionReason', () => {
+  it('passes an absent panel through untouched', () => {
+    assert.equal(panelRejectionReason(undefined), null);
+  });
+
+  it('accepts a well-formed panel and the explicit clear', () => {
+    assert.equal(panelRejectionReason([]), null);
+    assert.equal(panelRejectionReason([{ evaluador: 'A', sanidad: 'Limpio' }]), null);
+    assert.equal(panelRejectionReason([{ sanidad: 'medio sucio' }]), null,
+      'an unrecognised label is content, not malformed structure');
+  });
+
+  it('refuses a panel that is not a list', () => {
+    for (const bad of [null, {}, 'x', 7, true]) {
+      assert.match(panelRejectionReason(bad), /debe ser una lista/);
+    }
+  });
+
+  it('refuses entries that would silently vanish', () => {
+    // Each of these sanitises away to nothing, which would blank the panel.
+    assert.match(panelRejectionReason([{}]), /entradas invalidas/);
+    assert.match(panelRejectionReason([42]), /entradas invalidas/);
+    assert.match(panelRejectionReason([{ foo: 'bar' }]), /entradas invalidas/);
+    assert.match(panelRejectionReason([null]), /entradas invalidas/);
+    assert.match(panelRejectionReason([[]]), /entradas invalidas/);
+  });
+
+  it('refuses a partly-invalid panel rather than keeping the survivors', () => {
+    const mixed = [{ evaluador: 'A', sanidad: 'Limpio' }, {}];
+    assert.match(panelRejectionReason(mixed), /entradas invalidas/);
+  });
+
+  it('refuses an oversized panel and an over-long field, by name', () => {
+    const many = Array.from({ length: MAX_EVALUADORES + 1 }, () => ({ sanidad: 'Limpio' }));
+    assert.match(panelRejectionReason(many), /Maximo 20 evaluadores/);
+    assert.match(panelRejectionReason([{ evaluador: 'x'.repeat(500), sanidad: 'Limpio' }]),
+      /excede 120 caracteres/);
+  });
+
+  it('a panel it accepts always survives sanitising intact', () => {
+    const good = [
+      { evaluador: 'Carla', sanidad: 'Muy limpio', madurez: 'Sobresaliente' },
+      { evaluador: null,    sanidad: 'Limpio',     madurez: null },
+    ];
+    assert.equal(panelRejectionReason(good), null);
+    assert.equal(sanitizeEvaluaciones(good).length, good.length);
   });
 });

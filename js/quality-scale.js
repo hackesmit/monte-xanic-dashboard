@@ -69,6 +69,31 @@ export function exceedsPanelLimit(value) {
       k => typeof e[k] === 'string' && e[k].trim().length > MAX_CAMPO_LEN));
 }
 
+// The single validation both write paths run before touching the panel.
+// Returns a Spanish error string, or null when the value is safe to store.
+//
+// Everything here refuses rather than repairs. A panel that arrives malformed
+// is a bug in the caller, and the damage from guessing is severe and silent:
+// storing whatever survived sanitising re-derives both consensus labels from
+// the survivors, so `[{}]` or `[42]` would blank a perfectly good panel and
+// both of its labels on a row nobody meant to change (lucy, 2026-08-14).
+// An empty array is the one explicit way to clear a panel.
+export function panelRejectionReason(value) {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) return 'Evaluaciones debe ser una lista';
+  if (value.length > MAX_EVALUADORES) {
+    return `Maximo ${MAX_EVALUADORES} evaluadores por medicion`;
+  }
+  if (exceedsPanelLimit(value)) {
+    return `Un campo de evaluacion excede ${MAX_CAMPO_LEN} caracteres`;
+  }
+  const kept = sanitizeEvaluaciones(value);
+  if ((kept ? kept.length : 0) !== value.length) {
+    return 'Evaluaciones contiene entradas invalidas';
+  }
+  return null;
+}
+
 // Own-property lookup returning a finite number, or null.
 //
 // These maps are indexed by strings arriving from the database, an uploaded

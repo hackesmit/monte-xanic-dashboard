@@ -15,7 +15,10 @@ import {
   consensusSanitaryLabel,
   consensusMadurezLabel,
 } from './classification.js';
-import { escapeHtml } from './utils.js';
+// todayInVineyard answers in the vineyard's timezone. Defaulting the medicion
+// date from toISOString() filed every measurement taken after 17:00 in Tijuana
+// under the following day, because UTC had already rolled over.
+import { escapeHtml, todayInVineyard } from './utils.js';
 import { MAX_EVALUADORES } from './quality-scale.js';
 
 // ── Pure helpers (exported for tests; used by methods on Mediciones below) ──
@@ -316,7 +319,7 @@ export const Mediciones = {
 
     const dateEl = document.getElementById('med-date');
     if (dateEl && !dateEl.value) {
-      dateEl.value = new Date().toISOString().split('T')[0];
+      dateEl.value = todayInVineyard();
     }
 
     // One empty evaluator row, so the panel is ready to type into.
@@ -410,7 +413,7 @@ export const Mediciones = {
         this._panels['med-evaluadores'] = null;
         this.renderEvaluadores('med-evaluadores', null);
         const dateEl = document.getElementById('med-date');
-        if (dateEl) dateEl.value = new Date().toISOString().split('T')[0];
+        if (dateEl) dateEl.value = todayInVineyard();
         await DataStore.loadMediciones();
         this.refresh();
       } else {

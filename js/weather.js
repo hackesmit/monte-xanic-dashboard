@@ -2,6 +2,7 @@
 // Valley-specific weather for 3 locations:
 //   VDG (Valle de Guadalupe), VON (Valle de Ojos Negros), SV (San Vicente)
 // Harvest season: July 1 – October 31
+import { todayInVineyard, VINEYARD_TZ } from './utils.js';
 import { CONFIG } from './config.js';
 import { DataStore } from './dataLoader.js';
 
@@ -12,7 +13,7 @@ export const WeatherStore = {
 
   _API_BASE: 'https://archive-api.open-meteo.com/v1/archive',
   _FORECAST_API: 'https://api.open-meteo.com/v1/forecast',
-  _TZ:       'America/Tijuana',
+  _TZ:       VINEYARD_TZ,   // the Open-Meteo query timezone, same one definition
   _VALLEYS:  ['VDG', 'VON', 'SV'],
 
   // Forecast cache: in-memory, 1-hour TTL, keyed by `${valley}_${horizon}`
@@ -53,7 +54,7 @@ export const WeatherStore = {
   // with that timezone), so comparing them against the UTC date would flip
   // to "tomorrow" from late afternoon local time onward.
   todayLocal() {
-    return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Tijuana' });
+    return todayInVineyard();
   },
 
   async sync(vintages, dateRangeFn) {
@@ -418,7 +419,7 @@ export const WeatherStore = {
         return { start: `${vintage}-01-01`, end: `${vintage}-12-31` <= today ? `${vintage}-12-31` : today };
       case '30d': {
         const d = new Date(); d.setDate(d.getDate() - 29);
-        return { start: d.toLocaleDateString('en-CA', { timeZone: 'America/Tijuana' }), end: today };
+        return { start: d.toLocaleDateString('en-CA', { timeZone: VINEYARD_TZ }), end: today };
       }
       case 'custom':
         return (customRange && customRange.start && customRange.end)

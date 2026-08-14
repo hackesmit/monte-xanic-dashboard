@@ -5,6 +5,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { WeatherStore } from '../js/weather.js';
+import { todayInVineyard } from '../js/utils.js';
 
 // WeatherStore.todayLocal() answers in the vineyard's timezone, not UTC, so
 // these helpers must too. Deriving "today" from toISOString made the suite
@@ -12,8 +13,7 @@ import { WeatherStore } from '../js/weather.js';
 // previous date: the assertions compared a UTC date against a Tijuana one and
 // disagreed by exactly one day. Not a product bug, a test that only agreed
 // with itself for 17 hours out of 24.
-const TZ = 'America/Tijuana';
-const todayISO = () => new Date().toLocaleDateString('en-CA', { timeZone: TZ });
+const todayISO = todayInVineyard;
 const daysFromNow = (n) => {
   const [y, m, d] = todayISO().split('-').map(Number);
   // Anchored at UTC noon so adding days never slips across a DST edge.

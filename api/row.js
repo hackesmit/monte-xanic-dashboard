@@ -1,9 +1,7 @@
 import { verifyToken } from './lib/verifyToken.js';
 import { rateLimit } from './lib/rateLimit.js';
 import { ALLOWED_TABLES } from './upload.js';
-import {
-  sanitizeEvaluaciones, panelConsensus, exceedsPanelLimit, MAX_EVALUADORES,
-} from '../js/quality-scale.js';
+import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../js/quality-scale.js';
 import { validateRow } from '../js/validation.js';
 
 const ALLOWED_ACTIONS = new Set(['update', 'delete', 'upsert']);
@@ -65,13 +63,8 @@ export default async function handler(req, res) {
   // instruction to erase. sanitizeEvaluaciones returns null for it, and
   // writing that null would wipe the stored panel and both labels off a row
   // that was fine (lucy, 2026-08-12). An empty array is the explicit clear.
-  if (exceedsPanelLimit(row.evaluaciones)) {
-    return res.status(400).json({ ok: false,
-      error: `Maximo ${MAX_EVALUADORES} evaluadores por medicion` });
-  }
-  if ('evaluaciones' in row && !Array.isArray(row.evaluaciones)) {
-    return res.status(400).json({ ok: false, error: 'Evaluaciones debe ser una lista' });
-  }
+  const panelError = panelRejectionReason(row.evaluaciones);
+  if (panelError) return res.status(400).json({ ok: false, error: panelError });
 
   if ('evaluaciones' in row) {
     row.evaluaciones = sanitizeEvaluaciones(row.evaluaciones);
