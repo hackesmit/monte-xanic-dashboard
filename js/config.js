@@ -619,8 +619,11 @@ export const CONFIG = {
   // headers, '%Bayas Aceptable' and '%Bayas con enfermedad/picadura'. Both are
   // intentionally unmapped and dropped by the parser: they are recomputable
   // from the health_* counts (health_aceptable / total, etc.), so storing them
-  // would duplicate state. Unmapped headers are silently dropped (not passed
-  // through) by the pre-recepción parser's known-column lookup.
+  // would duplicate state. The banner-merged 'Calidad de uva' summary column is
+  // likewise unmapped (an empty label column with no storage target). Unmapped
+  // headers are silently dropped (not passed through) by the pre-recepción
+  // parser's known-column lookup; mt43-config-audit enforces that every real
+  // fixture header either maps here or sits in that explicit dropped allowlist.
   preReceptionsToSupabase: {
     'Vintrace':                              'vintrace',
     'No. Reporte':                           'medicion_code',
