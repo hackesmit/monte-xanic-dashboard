@@ -5,6 +5,10 @@ import { rateLimit } from './lib/rateLimit.js';
 export const ALLOWED_TABLES = {
   wine_samples: {
     conflict: 'sample_id,sample_date,sample_seq',
+    // sample_seq carries a deterministic DB default (1); it may be omitted from
+    // the payload without breaking upsert dedup. sample_id + sample_date are the
+    // meaningful key and must be present — see the key-integrity guard below.
+    keyDefault: new Set(['sample_seq']),
     maxRows: 500,
     required: ['sample_id'],
     columns: new Set([
@@ -30,6 +34,7 @@ export const ALLOWED_TABLES = {
   },
   berry_samples: {
     conflict: 'sample_id,sample_date,sample_seq',
+    keyDefault: new Set(['sample_seq']),
     maxRows: 1000,
     required: ['sample_id'],
     columns: new Set([
@@ -180,6 +185,40 @@ export default async function handler(req, res) {
     }
   }
 
+  // 4b. Upsert-key integrity. PostgREST resolves `on_conflict` against the
+  // table's unique constraint, but Postgres treats NULL as distinct: a NULL in
+  // any key column makes the constraint a no-op, so the row is INSERTed fresh on
+  // every retry instead of merged. A sync button's double-clicks, timeout
+  // retries, and overlapping runs would each leave a duplicate. Reject a row
+  // whose natural key is not fully present — the same guard /api/row already
+  // applies to its edit path. Columns with a deterministic non-null DB default
+  // (keyDefault, e.g. sample_seq) may be omitted: the default still lets the
+  // conflict arbiter match across retries.
+  const keyCols = (tableConfig.conflict || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (keyCols.length) {
+    const keyDefault = tableConfig.keyDefault;
+    for (let i = 0; i < rows.length; i++) {
+      for (const col of keyCols) {
+        const present = col in rows[i];
+        const empty = rows[i][col] === null || rows[i][col] === '';
+        if (keyDefault && keyDefault.has(col)) {
+          // Absent is fine (DB fills the default); an explicit null/'' is not —
+          // it would either duplicate or fail the NOT NULL column for the whole
+          // batch. Reject early with a clear per-row message.
+          if (present && empty) {
+            return res.status(400).json({ ok: false,
+              error: `Fila ${i + 1}: llave '${col}' no puede ser vacía` });
+          }
+          continue;
+        }
+        if (!present || rows[i][col] === undefined || empty) {
+          return res.status(400).json({ ok: false,
+            error: `Fila ${i + 1}: llave de conflicto '${col}' falta o está vacía` });
+        }
+      }
+    }
+  }
+
   // 5. Insert via Supabase service key (server-side only)
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_KEY;
@@ -189,11 +228,26 @@ export default async function handler(req, res) {
 
   try {
     const conflictCol = tableConfig.conflict;
+    // `missing=default` is what actually makes the keyDefault allowance above
+    // true. PostgREST builds one INSERT for the whole batch from the UNION of
+    // the keys present across rows, and without this preference a column that
+    // some rows carry and others omit is sent as NULL for the omitting rows.
+    // For sample_seq that means either failing its NOT NULL for the entire
+    // batch, or writing a NULL that makes the composite unique constraint a
+    // no-op and reintroduces duplicate-on-retry. Asking for the column default
+    // instead is the documented fix, and it only affects absent keys.
+    const prefer = [];
+    if (conflictCol) {
+      prefer.push('resolution=merge-duplicates');
+      if (tableConfig.keyDefault && tableConfig.keyDefault.size) prefer.push('missing=default');
+    } else {
+      prefer.push('return=minimal');
+    }
     const headers = {
       'Content-Type': 'application/json',
       'apikey': serviceKey,
       'Authorization': `Bearer ${serviceKey}`,
-      'Prefer': conflictCol ? `resolution=merge-duplicates` : 'return=minimal'
+      'Prefer': prefer.join(',')
     };
 
     // Supabase REST API upsert
