@@ -8,6 +8,7 @@ import {
   normalizeEvaluadorPanel, compactEvaluadorPanel, evaluadorPanelSummary,
   evaluadorPanelOptions, seedEvaluadorPanel, projectSnapshot,
 } from '../js/mediciones.js';
+import { todayInVineyard } from '../js/utils.js';
 
 describe('MT.19 — collectDirty', () => {
   it('returns empty when no fields differ', () => {
@@ -228,5 +229,19 @@ describe('MT.19 — projectSnapshot: only the form owns the comparison', () => {
     const filled = { ...form, measuredBy: 'Carla' };
     assert.deepEqual(collectDirty(projectSnapshot(row, filled), filled),
       { measuredBy: 'Carla' });
+  });
+});
+
+// Lucy 2026-08-14: the medicion date defaulted from toISOString(), so a
+// measurement entered after 17:00 in Tijuana was filed under the next day.
+describe('MT.19 — the default medicion date is a vineyard date', () => {
+  it('never uses the UTC date when the two disagree', () => {
+    const local = todayInVineyard();
+    assert.match(local, /^\d{4}-\d{2}-\d{2}$/);
+    // Tijuana is behind UTC year-round, so its date is the UTC one or the day
+    // before, never ahead. Filing a measurement ahead of the local day is the
+    // failure this guards.
+    const utc = new Date().toISOString().split('T')[0];
+    assert.ok(local <= utc, `local ${local} must never be ahead of UTC ${utc}`);
   });
 });

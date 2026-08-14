@@ -40,13 +40,19 @@ ALTER TABLE public.mediciones_tecnicas
 -- migration_phenolic_maturity.sql) so Postgres auto-named them. Drop whatever
 -- check currently constrains each column rather than guessing the name.
 --
--- Matched on the column the constraint actually covers, via conkey, and only
--- when it covers exactly that one column. Matching on the text of
--- pg_get_constraintdef would also catch a composite check that merely mentions
--- the column, for instance
+-- Two narrowing conditions, both needed, and both learned from review.
+--
+-- conkey, not the constraint text: matching on pg_get_constraintdef would also
+-- catch a composite check that merely mentions the column, for instance
 --   CHECK (health_grade IN (...) AND berry_count >= 0),
 -- and dropping that would silently discard the berry_count rule, which this
--- migration would never put back (lucy, 2026-08-12).
+-- migration would never put back.
+--
+-- And single-column is still not specific enough: an installation could carry
+-- an unrelated single-column rule such as CHECK (health_grade <> 'Contaminado').
+-- So the definition must also name one of the labels this migration is actually
+-- replacing. A vocabulary check necessarily mentions its own vocabulary; an
+-- unrelated business rule does not (lucy, 2026-08-14).
 DO $$
 DECLARE
   c RECORD;
@@ -66,7 +72,15 @@ BEGIN
         WHERE att.attrelid = con.conrelid
           AND att.attnum = con.conkey[1]
       ) IN ('health_grade', 'phenolic_maturity')
+      AND (
+        -- the pre-2026 sanitary vocabulary, or a re-run against the new one
+        pg_get_constraintdef(con.oid) LIKE '%Excelente%'
+        OR pg_get_constraintdef(con.oid) LIKE '%Muy limpio%'
+        -- the madurez vocabulary, unchanged in its three original labels
+        OR pg_get_constraintdef(con.oid) LIKE '%Sobresaliente%'
+      )
   LOOP
+    RAISE NOTICE 'dropping vocabulary constraint %', c.conname;
     EXECUTE format('ALTER TABLE public.mediciones_tecnicas DROP CONSTRAINT %I', c.conname);
   END LOOP;
 END $$;
