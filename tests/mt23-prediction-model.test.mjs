@@ -90,6 +90,33 @@ test('MT.23 historicalSlopePrior: V=0 returns betaHist=null, tau2Hist=Infinity',
   assert.equal(tau2Hist, Infinity);
 });
 
+// Degenerate case 1: a SINGLE historical vintage must not pin the posterior.
+// The old code set tau2Hist=1e-6 for V=1 (prior precision 1e6), so the lone
+// historical slope overwhelmed the current season entirely and quadrupled the
+// ETA. A single vintage gives no between-vintage variance estimate, so its
+// prior must be weak, never near-zero.
+test('MT.23 historicalSlopePrior: single vintage yields a weak (non-epsilon) prior', () => {
+  const { betaHist, tau2Hist, V } = historicalSlopePrior([mkVintage(0.05, 8)]);
+  assert.equal(V, 1);
+  assert.ok(Math.abs(betaHist - 0.05) < 1e-9, `betaHist=${betaHist}`);
+  // Never the old 1e-6 epsilon: variance scales with the slope (CV ≈ 150%).
+  assert.ok(tau2Hist > 1e-4, `tau2Hist=${tau2Hist} must not be a tiny epsilon`);
+  assert.ok(Math.abs(tau2Hist - (1.5 * 0.05) ** 2) < 1e-9, `tau2Hist=${tau2Hist}`);
+});
+
+test('MT.23 single historical vintage does not discard the current season', () => {
+  // Repro from the bead: one historical vintage slope 0.0500, current
+  // betaHat 0.200 (sigmaBeta2 0.01). Old behavior: betaPost pinned to 0.0500.
+  const { betaHist, tau2Hist } = historicalSlopePrior([mkVintage(0.05, 8)]);
+  const { betaPost } = bayesianCombine({
+    betaHat: 0.2, sigmaBeta2: 0.01, betaHist, tau2Hist,
+  });
+  // Corrected: the current season survives — posterior lifts well clear of the
+  // pinned 0.0500 and stays below the raw data estimate (a genuine blend).
+  assert.ok(betaPost > 0.09, `betaPost=${betaPost} — current season was discarded`);
+  assert.ok(betaPost < 0.2, `betaPost=${betaPost} — should stay below betaHat`);
+});
+
 import { bayesianCombine } from '../js/prediction.js';
 
 test('MT.23 bayesianCombine: V=0 ⇒ posterior == data estimate', () => {
