@@ -139,6 +139,56 @@ test('MT.23 bayesianCombine: equal precisions ⇒ posterior == midpoint', () => 
   assert.ok(Math.abs(out.sigmaBeta2Post - 0.005) < 1e-9);
 });
 
+// FINDING 1: the old ≥2-vintage variance floor (0.05·mean)² gave, for two
+// vintages both at slope 0.05, τ²≈6.25e-6 (precision 160 000) and re-pinned the
+// posterior to ~0.050094. bayesianCombine now caps the prior precision at the
+// current season's, so that same τ² can no longer dominate: the posterior is a
+// genuine blend that keeps ≥50 % current-season weight.
+test('MT.23 bayesianCombine: caps prior precision at data precision (no pinning)', () => {
+  // Reviewer repro: betaHat 0.2 (sigmaBeta2 0.01 ⇒ dataPrec 100), τ²=6.25e-6
+  // ⇒ raw prior precision 160 000, capped to 100. betaPost = (0.2·100 + 0.05·100)/200.
+  const out = bayesianCombine({ betaHat: 0.2, sigmaBeta2: 0.01,
+                                betaHist: 0.05, tau2Hist: 6.25e-6 });
+  assert.ok(Math.abs(out.betaPost - 0.125) < 1e-9,
+    `betaPost=${out.betaPost} — prior still pinning the posterior`);
+  assert.ok(out.betaPost > 0.09, `betaPost=${out.betaPost} — current season discarded`);
+  // Posterior precision is bounded by 2·dataPrec (prior never exceeds data).
+  assert.ok(Math.abs(out.sigmaBeta2Post - 0.005) < 1e-9, `sigmaBeta2Post=${out.sigmaBeta2Post}`);
+});
+
+// FINDING 1 end-to-end: two near-duplicate vintages (both ≈slope 0.05) produce a
+// collapsed sample variance, but the posterior is no longer pinned to 0.05.
+test('MT.23 near-duplicate vintages do not pin the posterior', () => {
+  const prior = historicalSlopePrior([mkVintage(0.05, 8), mkVintage(0.0500001, 8)]);
+  assert.equal(prior.V, 2);
+  const { betaPost } = bayesianCombine({
+    betaHat: 0.2, sigmaBeta2: 0.01, betaHist: prior.betaHist, tau2Hist: prior.tau2Hist,
+  });
+  assert.ok(betaPost > 0.09, `betaPost=${betaPost} — copied vintages re-pinned the posterior`);
+  assert.ok(betaPost < 0.2, `betaPost=${betaPost} — should stay below betaHat`);
+});
+
+// FINDING 2: the old near-zero guard only caught an EXACTLY zero mean. A lone
+// historical slope of 1e-6 gave τ²≈2.25e-12 (precision ≈4e11) and pinned the
+// posterior to a meaningless ~0 slope. A mean below the metric's absolute slope
+// scale is now treated as uninformative (τ²=Infinity ⇒ prior precision 0).
+test('MT.23 historicalSlopePrior: near-zero mean slope → uninformative prior', () => {
+  const prior = historicalSlopePrior([mkVintage(1e-6, 8)], { slopeScale: 0.01 });
+  assert.equal(prior.tau2Hist, Infinity, `tau2Hist=${prior.tau2Hist} — near-zero mean still informs`);
+  const { betaPost } = bayesianCombine({
+    betaHat: 0.2, sigmaBeta2: 0.01, betaHist: prior.betaHist, tau2Hist: prior.tau2Hist,
+  });
+  assert.ok(Math.abs(betaPost - 0.2) < 1e-9,
+    `betaPost=${betaPost} — a 1e-6 historical slope pinned the posterior near zero`);
+});
+
+// FINDING 2 boundary: a mean ABOVE the scale is still a real, informative prior.
+test('MT.23 historicalSlopePrior: mean above slope scale stays informative', () => {
+  const prior = historicalSlopePrior([mkVintage(0.05, 8)], { slopeScale: 0.01 });
+  assert.ok(Number.isFinite(prior.tau2Hist) && prior.tau2Hist > 0,
+    `tau2Hist=${prior.tau2Hist} — a genuine slope was wrongly dropped`);
+});
+
 import { etaDays, confidenceBand } from '../js/prediction.js';
 
 test('MT.23 etaDays: anchored to fitted value at t_today', () => {
