@@ -189,6 +189,62 @@ test('MT.23 historicalSlopePrior: mean above slope scale stays informative', () 
     `tau2Hist=${prior.tau2Hist} — a genuine slope was wrongly dropped`);
 });
 
+// FINDING (round 2): metric-impossible corrupt vintages must be rejected before
+// they inform the prior. Two Brix slopes of 100 and 100.000001 Bx/day have a
+// tiny variance (the between-vintage precision cap in bayesianCombine cannot
+// flag them), yet each is orders of magnitude beyond real ripening. Left in,
+// they take ~half the posterior weight and drag it to a meaningless ~50 Bx/day.
+test('MT.23 historicalSlopePrior: corrupt (metric-impossible) vintages are excluded and reported', () => {
+  const prior = historicalSlopePrior(
+    [mkVintage(100, 8), mkVintage(100.000001, 8)],
+    { slopeScale: 0.01, slopeMax: 2.0 }
+  );
+  // Both corrupt vintages are dropped, not blended.
+  assert.equal(prior.V, 0, `V=${prior.V} — corrupt vintages still reached the prior`);
+  assert.equal(prior.betaHist, null);
+  assert.equal(prior.tau2Hist, Infinity);
+  // ...and the exclusion is REPORTED, not silent.
+  assert.equal(prior.excludedSlopes.length, 2,
+    `excludedSlopes=${JSON.stringify(prior.excludedSlopes)} — corrupt slopes not reported`);
+  assert.ok(prior.excludedSlopes.every(s => Math.abs(s) > 2.0));
+
+  // End-to-end: the posterior is now the current season alone, not ~50.
+  const { betaPost } = bayesianCombine({
+    betaHat: 0.2, sigmaBeta2: 0.01, betaHist: prior.betaHist, tau2Hist: prior.tau2Hist,
+  });
+  assert.ok(Math.abs(betaPost - 0.2) < 1e-9,
+    `betaPost=${betaPost} — a metric-impossible vintage still drove the posterior`);
+});
+
+// A genuine (in-bounds) vintage alongside a corrupt one keeps the good signal
+// and drops only the impossible one.
+test('MT.23 historicalSlopePrior: a real vintage survives while a corrupt sibling is dropped', () => {
+  const prior = historicalSlopePrior(
+    [mkVintage(0.2, 8), mkVintage(100, 8)],
+    { slopeScale: 0.01, slopeMax: 2.0 }
+  );
+  assert.equal(prior.V, 1, `V=${prior.V} — expected only the real vintage kept`);
+  assert.ok(Math.abs(prior.betaHist - 0.2) < 1e-9, `betaHist=${prior.betaHist}`);
+  assert.equal(prior.excludedSlopes.length, 1);
+});
+
+// FINDING (round 2): precision-sum overflow. When both precisions are finite but
+// so large their sum overflows to Infinity (~1e308 each), the generic fallback
+// used to return the raw current fit and silently discard the prior. The guard
+// rescales so the weighted mean stays finite and both estimates are honoured.
+test('MT.23 bayesianCombine: precision-sum overflow does not silently drop the prior', () => {
+  // sigmaBeta2 and tau2Hist both ≈ 1e-308 ⇒ precisions ≈ 1e308, sum ⇒ Infinity.
+  const out = bayesianCombine({
+    betaHat: 0.2, sigmaBeta2: 1e-308,
+    betaHist: 0.6, tau2Hist: 1e-308,
+  });
+  assert.ok(Number.isFinite(out.betaPost), `betaPost=${out.betaPost} not finite`);
+  // Equal precisions ⇒ midpoint, NOT the raw current fit (0.2).
+  assert.ok(Math.abs(out.betaPost - 0.4) < 1e-9,
+    `betaPost=${out.betaPost} — prior was silently discarded on overflow`);
+  assert.equal(out.sigmaBeta2Post, 0);
+});
+
 import { etaDays, confidenceBand } from '../js/prediction.js';
 
 test('MT.23 etaDays: anchored to fitted value at t_today', () => {
