@@ -13,7 +13,19 @@ export const COLUMN_TYPES = {
     intCols: new Set([
       'vintage_year',
       'health_madura', 'health_inmadura', 'health_sobremadura', 'health_picadura',
-      'health_enfermedad', 'health_pasificada', 'health_aceptable', 'health_no_aceptable',
+      'health_enfermedad', 'health_quemadura',
+      'health_pasificada', 'health_aceptable', 'health_no_aceptable',
+    ]),
+    // Sanitary berry counts are tallies: a negative count is impossible and,
+    // left unguarded, a negative health_picadura yields a negative damage share
+    // that can win the cleanest sanitary bucket (xd-b0o). Reject < 0 at this
+    // server-authoritative gate, mirroring the scoreSanitaryPct parseCount guard.
+    // Every sanitary count in intCols above appears here; the next new tally
+    // must be added to both sets or the parameterized MT.18 test fails.
+    nonNegativeIntCols: new Set([
+      'health_madura', 'health_inmadura', 'health_sobremadura', 'health_picadura',
+      'health_enfermedad', 'health_quemadura',
+      'health_pasificada', 'health_aceptable', 'health_no_aceptable',
     ]),
     numericCols: new Set([
       'total_bins', 'tons_received', 'bin_temp_c', 'truck_temp_c',
@@ -75,6 +87,21 @@ export function validateRow(table, row, { action = 'update' } = {}) {
 
   const typeError = validateColumnTypes(row, spec);
   if (typeError) return { ok: false, error: typeError };
+
+  // validateColumnTypes already enforces integer-ness for these columns; this
+  // adds the non-negative floor a berry tally must satisfy. Number.isSafeInteger
+  // also rejects values above 2^53-1 where integer arithmetic silently loses
+  // precision, mirroring the scoreSanitaryPct parseCount guard so a payload
+  // that survives here cannot then fabricate a NaN percentage downstream.
+  if (spec.nonNegativeIntCols) {
+    for (const col of spec.nonNegativeIntCols) {
+      const v = row[col];
+      if (v === null || v === undefined) continue;
+      if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < 0) {
+        return { ok: false, error: `${col}=${v}: debe ser entero no negativo` };
+      }
+    }
+  }
 
   if (action === 'insert') {
     for (const f of spec.requiredOnInsert) {

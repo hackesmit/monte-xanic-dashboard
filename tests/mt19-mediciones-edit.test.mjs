@@ -7,8 +7,112 @@ import {
   collectDirty, ariaSortFor, shouldShowSourceBanner,
   normalizeEvaluadorPanel, compactEvaluadorPanel, evaluadorPanelSummary,
   evaluadorPanelOptions, seedEvaluadorPanel, projectSnapshot,
+  countInputValue, readCountInput,
 } from '../js/mediciones.js';
+import { DataStore } from '../js/dataLoader.js';
 import { todayInVineyard } from '../js/utils.js';
+
+// The five WineXRay counts plus the optional burn count, the fields the edit
+// modal populates from the snapshot and reads back on save.
+const COUNT_KEYS = [
+  'healthMadura', 'healthInmadura', 'healthSobremadura',
+  'healthPicadura', 'healthEnfermedad', 'healthQuemadura',
+];
+
+// Reproduce the modal's real count round-trip without a DOM: seed each input
+// from the snapshot with countInputValue, then read it back with readCountInput,
+// exactly as openEditModal + _readEditForm do. Returns the {healthX: value} the
+// form would carry for an untouched modal.
+function roundTripCounts(editing) {
+  const form = {};
+  for (const k of COUNT_KEYS) {
+    form[k] = readCountInput(countInputValue(editing[k]));
+  }
+  return form;
+}
+
+// xd-b0o blocker (adversarial review round 1): the null-preserving loader
+// un-did itself on first edit. The modal populated every count input with
+// `row.healthX ?? 0` and read it back as `intv(...) ?? 0`, so an untouched
+// modal over a partial uploaded row (absent counts null) already read 0 for
+// those counts; collectDirty saw snapshot-null vs form-0 as a real change, the
+// Save button lit on open, and any save wrote health_x = 0 over the DB NULL,
+// pinning the row to the clean bucket forever. These pin the fixed round-trip:
+// a null count survives untouched, a real 0 stays 0, a typed value still saves.
+describe('MT.19 — edit-modal count round-trip preserves NULL (xd-b0o)', () => {
+  it('countInputValue seeds a blank for an absent count, "0" for a real zero', () => {
+    assert.equal(countInputValue(null), '');
+    assert.equal(countInputValue(undefined), '');
+    assert.equal(countInputValue(0), '0');
+    assert.equal(countInputValue(7), '7');
+  });
+
+  it('readCountInput reads a blank input back as null, not a fabricated 0', () => {
+    assert.equal(readCountInput(''), null);
+    assert.equal(readCountInput(null), null);
+    assert.equal(readCountInput('0'), 0);
+    assert.equal(readCountInput('7'), 7);
+    assert.equal(readCountInput('abc'), null);
+  });
+
+  it('an untouched modal over a partial uploaded row marks no count dirty', () => {
+    // Absent health_enfermedad + health_quemadura (upload never carries burn).
+    const editing = DataStore._rowToMedicion({
+      id: 1, medicion_code: 'MT-26-001', vintage_year: 2026,
+      variety: 'Cabernet Sauvignon', lot_code: 'CS-TEST-1',
+      health_madura: 90, health_inmadura: 5, health_sobremadura: 2,
+      health_picadura: 1,
+    });
+    assert.equal(editing.healthEnfermedad, null);
+    assert.equal(editing.healthQuemadura, null);
+    const form = roundTripCounts(editing);
+    const dirty = collectDirty(projectSnapshot(editing, form), form);
+    assert.deepEqual(dirty, {},
+      'untouched modal must not mark absent counts dirty (Save stays disabled)');
+  });
+
+  it('a save over an untouched partial row writes no fabricated 0 count', () => {
+    const editing = DataStore._rowToMedicion({
+      id: 2, medicion_code: 'MT-26-002', vintage_year: 2026,
+      variety: 'Cabernet Sauvignon', lot_code: 'CS-TEST-1',
+      health_madura: 90, health_inmadura: 5, health_sobremadura: 2,
+      health_picadura: 1,
+    });
+    const form = roundTripCounts(editing);
+    const dirty = collectDirty(projectSnapshot(editing, form), form);
+    // submitEdit only maps keys present in `dirty` onto the DB row, so no
+    // health_* key here means the DB NULL is never overwritten with 0.
+    for (const k of COUNT_KEYS) {
+      assert.ok(!(k in dirty), `${k} must not be dirty on an untouched save`);
+    }
+  });
+
+  it('a genuine stored 0 round-trips as 0 and is not dirty', () => {
+    const editing = DataStore._rowToMedicion({
+      id: 3, medicion_code: 'MT-26-003', vintage_year: 2026,
+      variety: 'Cabernet Sauvignon', lot_code: 'CS-TEST-1',
+      health_madura: 95, health_inmadura: 3, health_sobremadura: 2,
+      health_picadura: 0, health_enfermedad: 0, health_quemadura: 0,
+    });
+    const form = roundTripCounts(editing);
+    assert.equal(form.healthPicadura, 0);
+    assert.deepEqual(collectDirty(projectSnapshot(editing, form), form), {});
+  });
+
+  it('typing a value into an absent count is a real, saveable edit', () => {
+    const editing = DataStore._rowToMedicion({
+      id: 4, medicion_code: 'MT-26-004', vintage_year: 2026,
+      variety: 'Cabernet Sauvignon', lot_code: 'CS-TEST-1',
+      health_madura: 90, health_inmadura: 5, health_sobremadura: 2,
+      health_picadura: 1,
+    });
+    const form = roundTripCounts(editing);
+    form.healthEnfermedad = readCountInput('3'); // user types 3 into the blank
+    const dirty = collectDirty(projectSnapshot(editing, form), form);
+    assert.deepEqual(dirty, { healthEnfermedad: 3 },
+      'a typed count must still register as a genuine edit');
+  });
+});
 
 describe('MT.19 — collectDirty', () => {
   it('returns empty when no fields differ', () => {
