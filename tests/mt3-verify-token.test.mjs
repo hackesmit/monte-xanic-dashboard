@@ -33,6 +33,8 @@ describe('MT.3 — verifyToken()', () => {
 
   it('accepts a valid, non-expired token', async () => {
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
+    // Default now runs the blacklist check; mock an empty (not-revoked) result.
+    globalThis.fetch = async () => ({ json: async () => [] });
     const result = await verifyToken(token);
     assert.ok(result.payload, 'Should return payload');
     assert.equal(result.payload.user, 'admin');
@@ -124,13 +126,26 @@ describe('MT.3 — verifyToken()', () => {
     assert.equal(result.error, undefined);
   });
 
-  it('skips blacklist check when checkBlacklist is false (default)', async () => {
+  it('checks the blacklist by default (no options) and rejects a revoked token', async () => {
+    // Regression guard for xd-318: api/mona.js and api/mona-data.js call verifyToken(token)
+    // with no options, so a revoked token must be rejected via the default.
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
     let fetchCalled = false;
     globalThis.fetch = async () => { fetchCalled = true; return { json: async () => [{ token_hash: 'x' }] }; };
     const result = await verifyToken(token);
+    assert.equal(fetchCalled, true, 'fetch should be called by default (blacklist on)');
+    assert.equal(result.error, 'Token revoked');
+    assert.equal(result.status, 401);
+  });
+
+  it('skips blacklist check when checkBlacklist is explicitly false', async () => {
+    // Only /api/logout opts out this way (it is about to blacklist the token).
+    const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
+    let fetchCalled = false;
+    globalThis.fetch = async () => { fetchCalled = true; return { json: async () => [{ token_hash: 'x' }] }; };
+    const result = await verifyToken(token, { checkBlacklist: false });
     assert.ok(result.payload);
-    assert.equal(fetchCalled, false, 'fetch should not be called without checkBlacklist');
+    assert.equal(fetchCalled, false, 'fetch should not be called when checkBlacklist is false');
   });
 
   it('rejects token when SESSION_SECRET is missing', async () => {

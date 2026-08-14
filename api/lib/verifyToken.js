@@ -1,10 +1,12 @@
 import crypto from 'crypto';
 
 /**
- * Verify HMAC session token: signature + expiry + optional blacklist check.
+ * Verify HMAC session token: signature + expiry + blacklist check.
+ * Blacklist checking is ON by default so a new endpoint cannot silently forget it;
+ * only /api/logout opts out explicitly (it blacklists the token it is verifying).
  * Returns { payload } on success, { error, status } on failure.
  */
-export async function verifyToken(token, { checkBlacklist = false } = {}) {
+export async function verifyToken(token, { checkBlacklist = true } = {}) {
   const secret = process.env.SESSION_SECRET;
   if (!token || !secret) return { error: 'Unauthorized', status: 401 };
 
