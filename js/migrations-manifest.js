@@ -38,4 +38,5 @@ export const MIGRATIONS = [
   'migration_mona_chat',
   'migration_mona_views_knowledge',
   'migration_evaluaciones_multi',
+  'migration_wine_samples_brix',
 ];
