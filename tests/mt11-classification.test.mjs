@@ -242,6 +242,176 @@ test('MT.11 scoreLot: medicion null → sanitary params dropped, not fail', () =
   assert.ok(r.missing.includes('visual'));
 });
 
+test('MT.11 scoreLot: partial sanitary counts → sanitary_pct missing, not best bucket', () => {
+  // Staff filled only health_madura; the other five counts are absent. The
+  // engine must NOT read the blanks as 0 and award the cleanest bucket (3).
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente', health_madura: 100,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'));
+  assert.equal(r.buckets?.sanitary_pct, undefined);
+});
+
+test('MT.11 scoreLot: complete realistic counts still score the true sanitary bucket', () => {
+  // Regression for xd-b0o: the partial row (only health_madura) used to score
+  // the CLEANEST bucket (3) while this fully-counted 10%-unhealthy row scores
+  // the WORST (1). The partial row must no longer earn a sanitary bucket at all,
+  // while complete data keeps scoring the bucket its counts actually earn.
+  const complete = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: 80, health_inmadura: 5, health_sobremadura: 5,
+                health_picadura: 5, health_enfermedad: 3, health_quemadura: 2, // 10% unhealthy
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const partial = mkLot({
+    medicion: { health_grade: 'Excelente', health_madura: 100,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const rc = scoreLot(complete);
+  const rp = scoreLot(partial);
+  assert.ok(!rc.missing.includes('sanitary_pct')); // complete data still scores
+  assert.equal(rc.buckets.sanitary_pct, 1);        // and earns its true (worst) bucket
+  assert.ok(rp.missing.includes('sanitary_pct'));   // partial data is flagged, not scored
+  assert.notEqual(rp.buckets?.sanitary_pct, 3);     // never the fabricated best bucket
+});
+
+test('MT.11 scoreLot: non-finite health count → sanitary_pct missing, not worst bucket', () => {
+  const lot = mkLot({
+    medicion: { ...mkLot().medicion, health_quemadura: NaN }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'));
+  assert.equal(r.buckets?.sanitary_pct, undefined);
+});
+
+test('MT.11 scoreLot: health_quemadura absent is optional → still scores (uploaded-row case)', () => {
+  // config.js preReceptionsToSupabase maps only the five WineXRay counts, so an
+  // uploaded lot never carries health_quemadura. Requiring all six would regress
+  // every uploaded row into missing[]; quemadura is optional and, when absent,
+  // is EXCLUDED (five-field metric) rather than defaulted to a fabricated 0.
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: 98, health_inmadura: 1, health_sobremadura: 0,
+                health_picadura: 1, health_enfermedad: 0, // no health_quemadura
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(!r.missing.includes('sanitary_pct'),
+    'the five required counts present means scored even with quemadura absent');
+  assert.equal(r.buckets.sanitary_pct, 2); // 1/100 = 1% unhealthy → B bucket
+});
+
+test('MT.11 scoreLot: absent quemadura scores identically to quemadura=0 (five-field identity)', () => {
+  // xd-b0o fix FOUR: an uncollected burn count is EXCLUDED (five-field metric),
+  // not defaulted to a fabricated 0. Prove the honest exclusion is arithmetically
+  // identical to adding 0 — a 0 adds nothing to either the unhealthy numerator or
+  // the total denominator — so two rows with identical five-field data can never
+  // score differently on whether burn happened to be recorded as 0. This pins the
+  // identity the code comment claims, so exclusion and defaulting can't diverge.
+  const base = { health_grade: 'Excelente',
+                 health_madura: 90, health_inmadura: 8, health_sobremadura: 2,
+                 health_picadura: 0, health_enfermedad: 0, // 0% unhealthy → bucket 3
+                 tons_received: 5, phenolic_maturity: null };
+  const absent = scoreLot(mkLot({ medicion: { ...base } }));            // no quemadura key
+  const zero   = scoreLot(mkLot({ medicion: { ...base, health_quemadura: 0 } }));
+  assert.equal(absent.buckets.sanitary_pct, 3);
+  assert.equal(absent.buckets.sanitary_pct, zero.buckets.sanitary_pct);
+  assert.equal(absent.score36, zero.score36, 'exclusion == defaulting-to-0 for this formula');
+  // And a real burn count still moves the needle (not silently dropped):
+  // 2/(100+2) = 1.96% unhealthy crosses the A→B threshold (a=0.5).
+  const burned = scoreLot(mkLot({ medicion: { ...base, health_quemadura: 2 } }));
+  assert.notEqual(burned.buckets.sanitary_pct, absent.buckets.sanitary_pct,
+    'a genuinely recorded burn count must still affect the sanitary bucket');
+});
+
+test('MT.11 scoreLot: negative sanitary count → sanitary_pct missing, never the cleanest bucket', () => {
+  // xd-b0o fix TWO: a negative count yields a negative damage share that would
+  // otherwise win the cleanest bucket. Reject it as invalid, not clean.
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: 90, health_inmadura: 5, health_sobremadura: 2,
+                health_picadura: -10, health_enfermedad: 3, health_quemadura: 0,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'));
+  assert.equal(r.buckets?.sanitary_pct, undefined);
+});
+
+test('MT.11 scoreLot: whitespace / boolean / fractional counts are rejected, not coerced to a clean 0', () => {
+  // xd-b0o fix THREE: only strict finite non-negative integers (or trimmed
+  // decimal-integer strings) count. Number('  ') === 0, Number(true) === 1 and
+  // Number(1.5) is finite, so each would sneak past a naive coercion and
+  // fabricate a reading. Every one of these must land the row in missing[].
+  for (const bad of ['   ', true, false, 1.5, 'abc', {}, []]) {
+    const lot = mkLot({
+      medicion: { health_grade: 'Excelente',
+                  health_madura: 90, health_inmadura: 5, health_sobremadura: 2,
+                  health_picadura: bad, health_enfermedad: 3, health_quemadura: 0,
+                  tons_received: 5, phenolic_maturity: null }
+    });
+    const r = scoreLot(lot);
+    assert.ok(r.missing.includes('sanitary_pct'),
+      `health_picadura=${JSON.stringify(bad)} must be rejected, not coerced`);
+    assert.equal(r.buckets?.sanitary_pct, undefined);
+  }
+});
+
+test('MT.11 scoreLot: a 400-digit string count overflows to Infinity → sanitary_pct missing', () => {
+  // xd-b0o round 2: the parser's string branch only checked /^\d+$/, so a huge
+  // all-digit string satisfied the regex, converted via Number() to Infinity,
+  // and returned Infinity without the finite/integer checks the numeric branch
+  // applied. That put Infinity into the total → Infinity/Infinity → NaN as the
+  // percentage, and NaN <= threshold is false so the row silently reached the
+  // WORST bucket instead of being flagged missing. Require Number.isSafeInteger
+  // after the conversion so both branches agree.
+  const overflow = '9'.repeat(400);
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: overflow, health_inmadura: 5, health_sobremadura: 2,
+                health_picadura: 1, health_enfermedad: 3, health_quemadura: 0,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'),
+    'a 400-digit overflow string must be missing, not scored');
+  assert.equal(r.buckets?.sanitary_pct, undefined);
+});
+
+test('MT.11 scoreLot: a value just above Number.MAX_SAFE_INTEGER → sanitary_pct missing', () => {
+  // 2^53 is the first integer that loses precision as a double, so an integer
+  // string beyond MAX_SAFE_INTEGER cannot be a real berry tally — arithmetic on
+  // it silently rounds. Reject as missing rather than let a corrupted count
+  // reach bucket selection. Try both the numeric and string branches.
+  for (const bad of [Number.MAX_SAFE_INTEGER + 1, String(Number.MAX_SAFE_INTEGER) + '0']) {
+    const lot = mkLot({
+      medicion: { health_grade: 'Excelente',
+                  health_madura: bad, health_inmadura: 5, health_sobremadura: 2,
+                  health_picadura: 1, health_enfermedad: 3, health_quemadura: 0,
+                  tons_received: 5, phenolic_maturity: null }
+    });
+    const r = scoreLot(lot);
+    assert.ok(r.missing.includes('sanitary_pct'),
+      `health_madura=${JSON.stringify(bad)} must reject as missing`);
+    assert.equal(r.buckets?.sanitary_pct, undefined);
+  }
+});
+
+test('MT.11 scoreLot: a trimmed decimal-integer string count is accepted', () => {
+  // The strict parser still accepts the legitimate case: a clean integer string.
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente',
+                health_madura: ' 98 ', health_inmadura: '1', health_sobremadura: '0',
+                health_picadura: '1', health_enfermedad: '0', health_quemadura: '0',
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(!r.missing.includes('sanitary_pct'));
+  assert.equal(r.buckets.sanitary_pct, 2); // 1/100 = 1% unhealthy → B bucket
+});
+
 test('MT.11 scoreLot: white rubric (SB) normalizes correctly', () => {
   const lot = mkLot({
     variety: 'Sauvignon Blanc', appellation: 'Valle de Ojos Negros',
