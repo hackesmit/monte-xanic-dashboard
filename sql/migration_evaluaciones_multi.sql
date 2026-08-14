@@ -50,9 +50,14 @@ ALTER TABLE public.mediciones_tecnicas
 --
 -- And single-column is still not specific enough: an installation could carry
 -- an unrelated single-column rule such as CHECK (health_grade <> 'Contaminado').
--- So the definition must also name one of the labels this migration is actually
--- replacing. A vocabulary check necessarily mentions its own vocabulary; an
--- unrelated business rule does not (lucy, 2026-08-14).
+-- Naming one label is not specific enough either, because that rule names one
+-- too. So the definition must contain the COMPLETE vocabulary this migration
+-- replaces, every label of the old set or every label of the new one. Only a
+-- membership check over the whole vocabulary does that; a business rule about
+-- a single grade cannot (lucy, 2026-08-14).
+--
+-- Labels are matched with their surrounding quotes so 'Limpio' cannot match
+-- inside 'Muy limpio' or 'Parcialmente limpio'.
 DO $$
 DECLARE
   c RECORD;
@@ -73,11 +78,21 @@ BEGIN
           AND att.attnum = con.conkey[1]
       ) IN ('health_grade', 'phenolic_maturity')
       AND (
-        -- the pre-2026 sanitary vocabulary, or a re-run against the new one
-        pg_get_constraintdef(con.oid) LIKE '%Excelente%'
-        OR pg_get_constraintdef(con.oid) LIKE '%Muy limpio%'
-        -- the madurez vocabulary, unchanged in its three original labels
-        OR pg_get_constraintdef(con.oid) LIKE '%Sobresaliente%'
+        -- the complete pre-2026 sanitary vocabulary
+        (    pg_get_constraintdef(con.oid) LIKE '%''Excelente''%'
+         AND pg_get_constraintdef(con.oid) LIKE '%''Bueno''%'
+         AND pg_get_constraintdef(con.oid) LIKE '%''Regular''%'
+         AND pg_get_constraintdef(con.oid) LIKE '%''Malo''%')
+        -- or the complete 2026 one, so a re-run still finds its own constraint
+        OR (    pg_get_constraintdef(con.oid) LIKE '%''Muy limpio''%'
+            AND pg_get_constraintdef(con.oid) LIKE '%''Limpio''%'
+            AND pg_get_constraintdef(con.oid) LIKE '%''Parcialmente limpio''%'
+            AND pg_get_constraintdef(con.oid) LIKE '%''Sucio''%'
+            AND pg_get_constraintdef(con.oid) LIKE '%''Contaminado''%')
+        -- the complete madurez vocabulary, original three or the 2026 five
+        OR (    pg_get_constraintdef(con.oid) LIKE '%''Sobresaliente''%'
+            AND pg_get_constraintdef(con.oid) LIKE '%''Parcial''%'
+            AND pg_get_constraintdef(con.oid) LIKE '%''No sobresaliente''%')
       )
   LOOP
     RAISE NOTICE 'dropping vocabulary constraint %', c.conname;

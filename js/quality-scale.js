@@ -87,6 +87,25 @@ export function panelRejectionReason(value) {
   if (exceedsPanelLimit(value)) {
     return `Un campo de evaluacion excede ${MAX_CAMPO_LEN} caracteres`;
   }
+  // Every field that is present must be a scalar the sanitizer can carry
+  // through unchanged. A number or boolean is fine, a workbook cell can be
+  // either and text() stringifies it faithfully. An object, array or function
+  // is not: text() turns it into null, so the row survives the length check
+  // while one of its fields is quietly erased. That is the same silent repair
+  // this function exists to prevent, one level down (lucy, 2026-08-14).
+  for (const e of value) {
+    if (!e || typeof e !== 'object' || Array.isArray(e)) {
+      return 'Evaluaciones contiene entradas invalidas';
+    }
+    for (const k of ['evaluador', 'sanidad', 'madurez']) {
+      if (!(k in e)) continue;
+      const v = e[k];
+      if (v === null || v === undefined) continue;
+      if (typeof v !== 'string' && typeof v !== 'number' && typeof v !== 'boolean') {
+        return `El campo ${k} de una evaluacion no es un valor simple`;
+      }
+    }
+  }
   const kept = sanitizeEvaluaciones(value);
   if ((kept ? kept.length : 0) !== value.length) {
     return 'Evaluaciones contiene entradas invalidas';
