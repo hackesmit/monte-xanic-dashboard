@@ -10,7 +10,16 @@ const H = () => ({ 'content-type': 'application/json', apikey: KEY, Authorizatio
 async function sb(path, opts = {}) {
   const res = await fetch(`${URL}/rest/v1/${path}`, { ...opts, headers: { ...H(), ...(opts.headers || {}) } });
   const text = await res.text();
-  return { ok: res.ok, status: res.status, json: text ? JSON.parse(text) : null };
+  const json = text ? JSON.parse(text) : null;
+  // fetch() does not throw on an HTTP error status. Every handler below reads
+  // r.json and reports success unconditionally, so a non-2xx here would mask a
+  // failed write as 200 { ok: true } (or a failed read as []). Throw so the
+  // handler's try/catch surfaces a real 500 instead.
+  if (!res.ok) {
+    const detail = (json && (json.message || json.error)) || `HTTP ${res.status}`;
+    throw new Error(`Supabase ${res.status}: ${String(detail).slice(0, 200)}`);
+  }
+  return { ok: res.ok, status: res.status, json };
 }
 
 const enc = encodeURIComponent;

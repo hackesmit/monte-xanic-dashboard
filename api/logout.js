@@ -30,8 +30,12 @@ export default async function handler(req, res) {
   const serviceKey = process.env.SUPABASE_SERVICE_KEY;
 
   if (supabaseUrl && serviceKey) {
+    // fetch() does not throw on an HTTP error status, so a rejected insert would
+    // otherwise report success while the token was never actually revoked. Treat
+    // any non-2xx (or network error) as failure so the caller sees a real error.
+    let resp;
     try {
-      await fetch(`${supabaseUrl}/rest/v1/token_blacklist`, {
+      resp = await fetch(`${supabaseUrl}/rest/v1/token_blacklist`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -43,6 +47,11 @@ export default async function handler(req, res) {
       });
     } catch (err) {
       console.error('[logout] Blacklist insert failed:', err.message);
+      return res.status(502).json({ ok: false, error: 'No se pudo revocar la sesión' });
+    }
+    if (!resp.ok) {
+      console.error('[logout] Blacklist insert rejected:', resp.status);
+      return res.status(502).json({ ok: false, error: 'No se pudo revocar la sesión' });
     }
   }
 
