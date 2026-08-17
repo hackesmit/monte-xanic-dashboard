@@ -5,12 +5,14 @@
 import { winexrayParser } from './winexray.js';
 import { recepcionParser } from './recepcion.js';
 import { prerecepcionParser } from './prerecepcion.js';
+import { seguimientoParser } from './seguimiento.js';
 
 export const PARSERS = {
   winexray:     winexrayParser,
   recepcion:    recepcionParser,
   prerecepcion: prerecepcionParser,
+  seguimiento:  seguimientoParser,
 };
 
 // Ordered list for UI button rendering
-export const PARSER_ORDER = ['winexray', 'recepcion', 'prerecepcion'];
+export const PARSER_ORDER = ['winexray', 'recepcion', 'prerecepcion', 'seguimiento'];

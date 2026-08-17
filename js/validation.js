@@ -77,6 +77,25 @@ export const COLUMN_TYPES = {
     ]),
     requiredOnInsert: new Set(['variety', 'valley']),
   },
+  // berry_samples type-guard for the Seguimiento de Maduración parser (WineXRay
+  // berry rows are not type-validated at parse time; the 2026 workbook rows are,
+  // to keep non-numeric lab entries out of Postgres numeric columns).
+  berry_samples: {
+    intCols: new Set(['vintage_year']),
+    numericCols: new Set([
+      'brix', 'ph', 'ta', 'malic_acid', 'berries_weight_g',
+      'berry_anthocyanins_mg_100b',
+    ]),
+    requiredOnInsert: new Set(['sample_id']),
+  },
+  seguimiento_lotes: {
+    intCols: new Set(['vintage_year']),
+    numericCols: new Set([
+      'ant_target', 'cantidad_proyectada',
+      'tons_seguimiento', 'tons_seguimiento_cached',
+    ]),
+    requiredOnInsert: new Set(['lot_code']),
+  },
 };
 
 export { validateColumnTypes };

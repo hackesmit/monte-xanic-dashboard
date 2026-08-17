@@ -22,6 +22,7 @@ const TABLE_DISPLAY = {
   reception_lots:   { emoji: '📦', label: 'Lotes de recepción' },
   prefermentativos: { emoji: '🧪', label: 'Prefermentativos' },
   pre_receptions:   { emoji: '📋', label: 'Pre-recepciones' },
+  seguimiento_lotes: { emoji: '📈', label: 'Seguimiento de lotes' },
 };
 
 const EXCLUDED_LABEL = {

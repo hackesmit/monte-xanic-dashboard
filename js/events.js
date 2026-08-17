@@ -291,11 +291,12 @@ export const Events = {
     const fileInput = document.getElementById('file-input');
     if (loaderBtn && fileInput) loaderBtn.addEventListener('click', () => fileInput.click());
 
-    // Three explicit DB upload buttons → UploadManager.startUpload(parserId, file, statusEl)
+    // Explicit DB upload buttons → UploadManager.startUpload(parserId, file, statusEl)
     const UPLOAD_BUTTONS = [
       { btn: 'upload-btn-winexray',     input: 'upload-file-winexray',     parser: 'winexray'     },
       { btn: 'upload-btn-recepcion',    input: 'upload-file-recepcion',    parser: 'recepcion'    },
       { btn: 'upload-btn-prerecepcion', input: 'upload-file-prerecepcion', parser: 'prerecepcion' },
+      { btn: 'upload-btn-seguimiento',  input: 'upload-file-seguimiento',  parser: 'seguimiento'  },
     ];
 
     for (const { btn, input, parser } of UPLOAD_BUTTONS) {
