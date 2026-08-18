@@ -141,7 +141,6 @@ const MS_PER_HUNDREDTH_DAY = 864000;     // 0.01 day, the DD.MM payload's resolu
 const MIN_HUNDREDTHS = 100;              // serial 1.00
 const MAX_HUNDREDTHS = 3200;             // serial 32.00: past 31.12, short of the
                                          // phantom leap day at 60
-const SERIAL_TOLERANCE_MS = 1000;        // storage noise only, never a real digit
 
 // Recover the DD.MM a date-formatted header cell was really given.
 //
@@ -165,11 +164,14 @@ function recoverSerialDate(date) {
   const ms = date.getTime() - EXCEL_1900_EPOCH;
   const hundredths = Math.round(ms / MS_PER_HUNDREDTH_DAY);
   if (hundredths < MIN_HUNDREDTHS || hundredths >= MAX_HUNDREDTHS) return null;
-  // The serial must BE a two-decimal value, not merely round to one. Anything
-  // further off than storage noise carries digits the DD.MM reading would
-  // discard, which means we do not actually know what was typed: refuse and let
-  // the ordering guard reject the file.
-  if (Math.abs(ms - hundredths * MS_PER_HUNDREDTH_DAY) > SERIAL_TOLERANCE_MS) return null;
+  // The serial must BE a two-decimal value, not merely round to one. Every DD.MM
+  // is a whole number of hundredths of a day, which is a whole number of
+  // milliseconds (864000 of them), and all 372 of them round-trip through
+  // SheetJS with zero error, so exact equality never refuses a legitimate
+  // header. Any residual at all means the cell carries digits the DD.MM reading
+  // would discard, so we do not know what was typed: refuse, and let the
+  // ordering guard reject the file rather than invent a date.
+  if (ms !== hundredths * MS_PER_HUNDREDTH_DAY) return null;
   const day = Math.floor(hundredths / 100);
   const month = hundredths % 100;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
