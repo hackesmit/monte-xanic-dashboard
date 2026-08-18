@@ -14,23 +14,37 @@
 //   - the seven-rows-per-lot metric block keyed by the Análisis column
 //     (TONS, °Brix, pH, AT, Peso baya, Ac. Málico, Antocianos)
 //   - the stray TONS row (row 6) and the repeated header row (row 7)
-//   - CRUCIALLY the out-of-order "07.01" column sitting between 06.07 and
-//     08.07 (a typo for 07.07). In the real file that cell deserializes to a
-//     Date(1900-01-07) rather than the text "07.01", so we reproduce it as a
-//     Date to keep the date-ordering guard honest.
+//   - CRUCIALLY the column-18 defect sitting between 06.07 and 08.07: in the
+//     real file that cell is DATE-formatted, so the typed "07.07" was stored
+//     as the number 7.07 and Excel displays it as "07.01". We reproduce the
+//     exact serial (see REAL_TYPO_DATE) so the recovery and the ordering
+//     guard are both exercised against the real shape, not a stand-in.
 //
 // What is sanitized: supplier and lot codes are placeholders, and the maturity
 // values are invented (not the winery's real readings).
 //
 // Regenerate with:  node tests/fixtures/make-seguimiento-fixture.mjs
 // If you change the shape, update tests/mt44-upload-seguimiento.test.mjs to
-// match — it asserts exact bucket counts and the 07.01 refusal.
+// match: it asserts exact bucket counts and the column-18 recovery.
 
 import * as XLSX from 'xlsx';
 import { writeFileSync } from 'node:fs';
 
 // ── Date header row (col 9 onward): daily 29.06 → 08.11, DD.MM text, EXCEPT
-// the 07.07 slot which holds the real file's "07.01" typo as a Date object. ──
+// the 07.07 slot, which holds the real file's column-18 defect as a date cell. ──
+// The real workbook's column-18 defect, reproduced exactly.
+//
+// That one cell carries a DD.MM *date* number format while its neighbours are
+// text. Typing "07.07" into it made Excel read the keystrokes as the NUMBER
+// 7.07, store serial 7.07 and render it through the format as "07.01". So the
+// cell is a date cell whose value sits 7.07 days past the pre-leap-bug epoch
+// (1899-12-31), that is 1900-01-07T01:40:48Z, NOT a clean midnight. The
+// fraction is the whole point: it is the month the winery typed, still intact,
+// and it is what the parser recovers. A midnight Date (serial 7.00) carries no
+// month at all and is a different, unrecoverable defect with its own test.
+export const REAL_TYPO_SERIAL = 7.07;
+export const REAL_TYPO_DATE = new Date(Date.UTC(1899, 11, 31) + REAL_TYPO_SERIAL * 86400000);
+
 export function buildDateHeaders() {
   const headers = [];
   const start = new Date(Date.UTC(2026, 5, 29)); // 29 June 2026
@@ -39,9 +53,7 @@ export function buildDateHeaders() {
     const dd = String(d.getUTCDate()).padStart(2, '0');
     const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
     if (dd === '07' && mm === '07') {
-      // The defect: 07.07 was entered as "07.01" and Excel parsed it as a real
-      // date (7 Jan 1900). Reproduce the Date so the guard sees the real shape.
-      headers.push(new Date(Date.UTC(1900, 0, 7)));
+      headers.push(REAL_TYPO_DATE);
     } else {
       headers.push(`${dd}.${mm}`); // text "DD.MM", no year — as in the source
     }

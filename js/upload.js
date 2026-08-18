@@ -195,7 +195,7 @@ export const UploadManager = {
 
   _renderPreviewCard(statusEl) {
     if (!statusEl || !this._pendingUpload) return;
-    const { parser, file, targets, excluded, rejected } = this._pendingUpload;
+    const { parser, file, targets, excluded, rejected, warnings } = this._pendingUpload;
     const totalRows = targets.reduce((s, t) => s + t.rows.length, 0);
 
     while (statusEl.firstChild) statusEl.removeChild(statusEl.firstChild);
@@ -232,6 +232,23 @@ export const UploadManager = {
         const row = document.createElement('div');
         row.className = 'upload-preview-row upload-preview-excluded';
         row.textContent = `${EXCLUDED_LABEL[key] || key}: ${count}`;
+        card.appendChild(row);
+      }
+    }
+
+    // Parser warnings: things the parser understood but had to interpret, or
+    // read despite a defect in the source (a date header stored as a number, an
+    // unmapped variety code). They do not block the upload, but the confirm step
+    // is the only moment the winery can act on them, so they are shown here
+    // rather than swallowed.
+    if (warnings && warnings.length) {
+      const warnH = document.createElement('h4');
+      warnH.textContent = 'Avisos (el archivo se cargó, revise el original)';
+      card.appendChild(warnH);
+      for (const w of warnings) {
+        const row = document.createElement('div');
+        row.className = 'upload-preview-row upload-preview-warning';
+        row.textContent = w;
         card.appendChild(row);
       }
     }

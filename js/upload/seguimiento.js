@@ -132,10 +132,53 @@ function extractVintage(rows, filename) {
   return null;
 }
 
-// Parse one date header cell into {label, month, day}. Handles both the text
-// "DD.MM" form and the Date object the typo cell deserializes to.
+// Excel epoch for serials below the 1900-02-29 phantom leap day. For serial < 60
+// SheetJS anchors the day count at 1899-12-31, so this inverse is exact there.
+// Every DD.MM value is at most 31.12, well inside that range, so the recovery
+// below never has to reason about the leap-day bug.
+const EXCEL_1900_EPOCH = Date.UTC(1899, 11, 31);
+const RECOVERABLE_SERIAL_MAX = 32;   // > 31.12, < 60 (the phantom leap day)
+
+// Recover the DD.MM a date-formatted header cell was really given.
+//
+// The winery's date row is text, EXCEPT wherever a cell got retyped while it
+// carried a DD.MM *date* number format. Typing "07.07" there does not make
+// Excel store 7 July: it reads the keystrokes as the NUMBER 7.07, stores serial
+// 7.07 and renders it through the DD.MM format as "07.01" (7 Jan 1900). The
+// 2026 workbook ships exactly that in column 18. Nothing is lost: the serial
+// IS the DD.MM that was typed, so read it back instead of bouncing the file:
+// integer part = day, the two-decimal fraction = month (toFixed(2) restores the
+// trailing zero, so 07.10 arrives as serial 7.1 and comes back as month 10).
+//
+// Only serials in the 1900 phantom range qualify. A real vintage date is a
+// 5-digit serial, so this can never reinterpret a genuine date cell.
+function recoverSerialDate(date) {
+  const serial = (date.getTime() - EXCEL_1900_EPOCH) / MS_PER_DAY;
+  if (!(serial >= 1) || serial >= RECOVERABLE_SERIAL_MAX) return null;
+  // Two decimals is the whole DD.MM payload; rounding also strips the float
+  // noise a serial round-trip leaves behind (29.06 arriving as
+  // 29.059999999999999), so the warning quotes what Excel actually stores.
+  const fixed = serial.toFixed(2);
+  const m = fixed.match(/^(\d{1,2})\.(\d{2})$/);
+  if (!m) return null;
+  const day = parseInt(m[1], 10);
+  const month = parseInt(m[2], 10);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  // What Excel puts on screen for that serial, so the warning can quote it.
+  const shown = `${pad2(date.getUTCDate())}.${pad2(date.getUTCMonth() + 1)}`;
+  return { label: `${pad2(day)}.${pad2(month)}`, month, day, recoveredFrom: fixed, shownAs: shown };
+}
+
+// Parse one date header cell into {label, month, day}. Handles the text "DD.MM"
+// form, a genuine date-typed cell, and the date-formatted cell that swallowed a
+// typed DD.MM as a bare number (recoverSerialDate above). A recovered column
+// carries `recoveredFrom` so the caller can warn about it; it is NOT trusted on
+// its own. It still has to clear the calendar, ordering and daily-continuity
+// checks in buildDateColumns like every other column.
 function parseDateHeader(cell) {
   if (cell instanceof Date && !Number.isNaN(cell.getTime())) {
+    const recovered = recoverSerialDate(cell);
+    if (recovered) return recovered;
     const month = cell.getUTCMonth() + 1;
     const day = cell.getUTCDate();
     return { label: `${pad2(day)}.${pad2(month)}`, month, day };
@@ -160,7 +203,13 @@ function parseDateHeader(cell) {
 //     repeat as well as a backwards jump like the 07.01 typo);
 //   - the run is daily-continuous (exactly one day between adjacent columns).
 // Any violation throws a Spanish error naming the offending column.
-function buildDateColumns(header, vintage, rows) {
+//
+// A header recovered from a date-formatted cell (parseDateHeader ->
+// recoverSerialDate) is validated by all three rules exactly like a text
+// header, so the recovery can never smuggle a wrong date past this function;
+// it only stops the file being refused over a lossless Excel artifact. Each
+// recovery appends a warning so the winery can repair the cell.
+function buildDateColumns(header, vintage, rows, warnings = []) {
   let lastHeaderCol = -1;
   for (let c = DATE_COL_START; c < header.length; c++) {
     if (!isBlank(header[c])) lastHeaderCol = c;
@@ -217,6 +266,14 @@ function buildDateColumns(header, vintage, rows) {
       throw new Error(
         `La columna de fecha "${parsed.label}" (columna ${c + 1}) no es una fecha válida del calendario. ` +
         `Corrija el encabezado en el archivo y vuelva a subirlo.`,
+      );
+    }
+    if (parsed.recoveredFrom !== undefined) {
+      warnings.push(
+        `Columna ${c + 1}: el encabezado de fecha está en una celda con formato de fecha, ` +
+        `así que Excel guardó lo tecleado como el número ${parsed.recoveredFrom} y lo muestra como ` +
+        `"${parsed.shownAs}". Se interpretó como ${parsed.label}. ` +
+        `Dé formato de texto a esa celda para eliminar la ambigüedad.`,
       );
     }
     cols.push({ colIdx: c, month: parsed.month, day: parsed.day, label: parsed.label, utc: probe.getTime() });
@@ -454,7 +511,7 @@ export const seguimientoParser = {
     // Validate the date-column headers (needs the vintage for the calendar
     // round-trip). Refuses the file on any hole in the daily run OR a populated
     // column under a blank/invalid header (issue FOUR).
-    const dateCols = buildDateColumns(header, workbookVintage, rows);
+    const dateCols = buildDateColumns(header, workbookVintage, rows, warnings);
 
     const berryRows = [];
     const lotRows = [];

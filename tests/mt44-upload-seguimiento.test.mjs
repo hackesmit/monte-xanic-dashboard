@@ -52,20 +52,33 @@ describe('MT.44 — Seguimiento de Maduración parser', () => {
   });
 
   // ── The non-negotiable defect guard ──
-  it('REFUSES the committed fixture, naming the out-of-order 07.01 column', async () => {
+  // The column-18 defect is a date-formatted cell holding serial 7.07, which
+  // Excel shows as "07.01". The serial still carries the month that was typed,
+  // so the parser recovers 07.07 rather than bouncing the file, and says so.
+  it('RECOVERS the committed fixture\'s column-18 date-formatted header as 07.07', async () => {
     const file = await committedFixture();
-    await assert.rejects(() => seguimientoParser.parse(file), (err) => {
-      assert.match(err.message, /07\.01/, 'error must name the offending column value');
-      assert.match(err.message, /fuera de orden|orden cronológico/i, 'error must explain the ordering break');
-      assert.match(err.message, /columna 18/, 'error must name the column position');
-      return true;
-    });
+    const res = await seguimientoParser.parse(file);
+    const warn = res.warnings.find(w => /Columna 18/.test(w));
+    assert.ok(warn, `a warning must name column 18; got ${JSON.stringify(res.warnings)}`);
+    assert.match(warn, /7\.07/, 'the warning must quote the stored number');
+    assert.match(warn, /"07\.01"/, 'the warning must quote what Excel displays');
+    assert.match(warn, /07\.07/, 'the warning must state the interpretation');
   });
 
-  it('does NOT auto-correct: no rows are produced from the typo file', async () => {
-    const file = await committedFixture();
-    // The whole file is refused — nothing lands, per "do not silently accept".
-    await assert.rejects(() => seguimientoParser.parse(file));
+  it('recovery is not a guess: the typo file yields byte-identical rows to the corrected file', async () => {
+    const typo = await seguimientoParser.parse(await committedFixture());
+    const fixed = await seguimientoParser.parse(correctedFile());
+    assert.equal(typo.targets.length, fixed.targets.length);
+    for (let i = 0; i < typo.targets.length; i++) {
+      assert.equal(typo.targets[i].table, fixed.targets[i].table);
+      assert.deepEqual(typo.targets[i].rows, fixed.targets[i].rows,
+        `${typo.targets[i].table} must match the hand-corrected file exactly`);
+    }
+  });
+
+  it('recovery never fires silently: the corrected file produces no column warning', async () => {
+    const res = await seguimientoParser.parse(correctedFile());
+    assert.equal(res.warnings.filter(w => /Columna \d+: el encabezado de fecha/.test(w)).length, 0);
   });
 
   it('accepts the same file once the date order is fixed', async () => {
@@ -277,6 +290,52 @@ describe('MT.44 — generated mutations each refuse the whole file, naming the o
 
   it('non-numeric TONS cell', () =>
     rejectsWith((aoa) => { aoa[8][26] = 'ABC'; }, /TONS/, /no num[eé]rico/));
+
+  // Serial recovery is deliberately narrow. It fires only on a date cell whose
+  // serial lands in the Excel 1900 phantom range AND whose two-decimal fraction
+  // is a real month. Everything else still refuses the whole file.
+
+  it('a midnight 1900 date header carries no month and is still refused', () =>
+    // Serial 7.00: the cell holds the bare number 7. Nothing says which month,
+    // so there is nothing to recover and the ordering guard must still fire.
+    rejectsWith((aoa, typoIdx) => { aoa[5][typoIdx] = new Date(Date.UTC(1900, 0, 7)); },
+      /07\.01/, /fuera de orden/));
+
+  it('a genuine out-of-order TEXT header is still refused (no recovery path)', () =>
+    rejectsWith((aoa) => { aoa[5][27] = '05.07'; }, /05\.07/, /fuera de orden/, /columna 28/));
+
+  it('a 1900 serial whose fraction is not a month is still refused', () =>
+    // Serial 7.50 would mean "month 50". Unrecoverable, so the file is refused.
+    rejectsWith((aoa, typoIdx) => {
+      aoa[5][typoIdx] = new Date(Date.UTC(1899, 11, 31) + 7.5 * 86400000);
+    }, /fuera de orden|calendario/),
+  );
+
+  it('a real (non-1900) date header is read as a date, not reinterpreted', () =>
+    // A genuine 2026 date cell in the wrong slot must break ordering, proving
+    // recovery cannot reach a 5-digit serial.
+    rejectsWith((aoa, typoIdx) => { aoa[5][typoIdx] = new Date(Date.UTC(2026, 7, 20)); },
+      /20\.08/, /fuera de orden|continuidad/));
+
+  it('a trailing-zero month survives the recovery (serial 7.1 is 07.10, not 07.01)', async () => {
+    // 07.10 typed into a date-formatted cell stores serial 7.1. Read as a Date
+    // that is 7 Jan; read as the number it is, it is 7 October. Put it in the
+    // 07.10 slot, where only the correct reading keeps the daily run intact.
+    const aoa = buildAoa().map(r => (r ? [...r] : r));
+    const hdr = aoa[5];
+    hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
+    const octIdx = hdr.indexOf('07.10');
+    assert.ok(octIdx > 0, 'fixture must contain a 07.10 column');
+    hdr[octIdx] = new Date(Date.UTC(1899, 11, 31) + 7.1 * 86400000);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const res = await seguimientoParser.parse(asFakeFile(Buffer.from(buf), 'seguimiento_oct.xlsx'));
+    const warn = res.warnings.find(w => new RegExp(`Columna ${octIdx + 1}:`).test(w));
+    assert.ok(warn, 'the October column must warn');
+    assert.match(warn, /Se interpretó como 07\.10/);
+  });
 });
 
 // ── Round-2 review (xd-6r7): one test per fix ONE..SIX. The workbook Variedad
