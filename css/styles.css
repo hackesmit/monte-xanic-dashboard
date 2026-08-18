@@ -2515,6 +2515,7 @@ canvas { max-width: 100%; }
 }
 .upload-preview-row.upload-preview-excluded { color: #777; }
 .upload-preview-row.upload-preview-rejected { color: #b85c00; }
+.upload-preview-row.upload-preview-warning { color: #8a6d00; white-space: normal; }
 
 .upload-preview-download {
   margin: 0.5rem 0;
