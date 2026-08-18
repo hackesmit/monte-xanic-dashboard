@@ -168,9 +168,19 @@ function recoverSerialDate(date) {
   // is a whole number of hundredths of a day, which is a whole number of
   // milliseconds (864000 of them), and all 372 of them round-trip through
   // SheetJS with zero error, so exact equality never refuses a legitimate
-  // header. Any residual at all means the cell carries digits the DD.MM reading
-  // would discard, so we do not know what was typed: refuse, and let the
-  // ordering guard reject the file rather than invent a date.
+  // header. A residual means the cell carries digits the DD.MM reading would
+  // discard, so we do not know what was typed: refuse, and let the ordering
+  // guard reject the file rather than invent a date.
+  //
+  // Precisely: this checks the serial AFTER SheetJS quantized it to integer
+  // milliseconds, so residuals below half a millisecond (5.8e-9 of a day) are
+  // invisible here. That is deliberate, not an oversight. The smallest digit a
+  // DD.MM header can carry is 0.01 day, a million times larger, so nothing
+  // inside that window can denote a different date: a serial of 7.070000001 is
+  // still 07.07 by any reading. Validating the pre-Date serial would mean
+  // reading the workbook a second time without cellDates, which buys nothing a
+  // winery spreadsheet can actually hit. See xd-3pm (lucy round 3) for the
+  // argument in full.
   if (ms !== hundredths * MS_PER_HUNDREDTH_DAY) return null;
   const day = Math.floor(hundredths / 100);
   const month = hundredths % 100;
