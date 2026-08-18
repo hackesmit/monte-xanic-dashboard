@@ -176,12 +176,17 @@ export function buildAoa() {
   return aoa;
 }
 
+// UTC:true on the WRITE side too: aoa_to_sheet otherwise serializes a JS Date
+// through the local zone, so the committed .xlsx would only be reproducible on a
+// UTC box and would carry a different serial anywhere else. With it, regenerating
+// this fixture in Tijuana produces the same bytes as regenerating it in UTC.
+//
 // aoa_to_sheet keeps each JS value's native type, so "29.06" stays a text cell
 // and the Date stays a date cell — exactly the mixed shape the parser must
 // tolerate. cellDates on write is not needed (Dates serialize as date cells).
 function writeFixture(path) {
   const aoa = buildAoa();
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Uva');
   // Empty 'Flujo Tons' + a derived 'SUMMARY' pivot, present but ignored by the

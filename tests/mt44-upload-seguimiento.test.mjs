@@ -32,7 +32,7 @@ function correctedFile(mutate) {
   const typoIdx = hdr.findIndex(v => v instanceof Date);
   hdr[typoIdx] = '07.07';
   if (mutate) mutate(aoa, typoIdx);
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Uva');
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), 'Flujo Tons');
@@ -251,7 +251,7 @@ describe('MT.44 — generated mutations each refuse the whole file, naming the o
     const typoIdx = hdr.findIndex(v => v instanceof Date);
     hdr[typoIdx] = '07.07';
     mutate(aoa, typoIdx);
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Uva');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -345,7 +345,7 @@ describe('MT.44 — generated mutations each refuse the whole file, naming the o
     const octIdx = hdr.indexOf('07.10');
     assert.ok(octIdx > 0, 'fixture must contain a 07.10 column');
     hdr[octIdx] = new Date(Date.UTC(1899, 11, 31) + 7.1 * 86400000);
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Uva');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -370,7 +370,7 @@ describe('MT.44 — round-2 review fixes (xd-6r7)', () => {
     const hdr = aoa[5];
     hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
     if (mutate) mutate(aoa);
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Uva');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -420,7 +420,7 @@ describe('MT.44 — round-2 review fixes (xd-6r7)', () => {
     const aoa = buildAoa().map(r => (r ? [...r] : r));
     aoa[5][aoa[5].findIndex(v => v instanceof Date)] = '07.07';
     aoa[0] = ['SEGUIMIENTO DE MADURACIÓN   FL 8.5.1  REV 5']; // year stripped from title
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Uva');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
@@ -433,7 +433,7 @@ describe('MT.44 — round-2 review fixes (xd-6r7)', () => {
     const aoa = buildAoa().map(r => (r ? [...r] : r));
     aoa[5][aoa[5].findIndex(v => v instanceof Date)] = '07.07';
     aoa[0] = ['SEGUIMIENTO DE MADURACIÓN   FL 8.5.1  REV 5']; // no year in the title
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Uva');
     const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });

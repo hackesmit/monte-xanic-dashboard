@@ -325,7 +325,18 @@ function buildDateColumns(header, vintage, rows, warnings = []) {
 }
 
 function sheetToArray(wb, name) {
-  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true });
+  // UTC:true is load-bearing, not decoration. Without it sheet_to_json runs
+  // utc_to_local on every date cell, so a serial is anchored at LOCAL midnight
+  // and the Date we get back depends on the browser's zone. This upload runs
+  // client-side in the lab's browser in Baja California, where the 1900 LMT
+  // offset is -7:48:04: not a whole number of hundredths of a day, so
+  // recoverSerialDate's exactness gate rejected every header and the real
+  // workbook stayed refused. In a whole-hour zone it is worse than a refusal,
+  // because a DIFFERENT serial then lands on the grid. UTC:true makes the
+  // serial round-trip zone-independent. Removing it silently breaks the
+  // recovery everywhere except a UTC box; tests/mt46-seguimiento-timezone
+  // exists to stop that.
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true, UTC: true });
 }
 
 const META_COLS = [0, 1, 2, 4, 5, 6, 7]; // every column except Lote(3) and Análisis(8)
@@ -504,6 +515,10 @@ export const seguimientoParser = {
 
     const rejected = [];
     const warnings = [];
+    // Counted separately from warnings.length: warnings also carries variety and
+    // date-header notices, so reusing the total would make meta.tonsMismatches
+    // report a number that has nothing to do with TONS.
+    let tonsMismatchCount = 0;
 
     // Group + structurally validate the lot blocks (refuses on corruption;
     // blank-Lote rows carrying real content are pushed to `rejected`).
@@ -654,6 +669,7 @@ export const seguimientoParser = {
         else if (Math.abs(cachedNum - tonsSeguimiento) > 0.01) mismatch = true;
       }
       if (mismatch) {
+        tonsMismatchCount++;
         warnings.push(
           tonsSeguimiento === null
             ? `Lote "${block.lote}": la hoja almacena un TONS (${cachedNum}) pero no hay celdas de TONS por fecha para recalcularlo.`
@@ -694,7 +710,7 @@ export const seguimientoParser = {
         filename: file.name,
         lots: lotRows.length,
         measurements: berryRows.length,
-        tonsMismatches: warnings.length,
+        tonsMismatches: tonsMismatchCount,
       },
     };
   },
