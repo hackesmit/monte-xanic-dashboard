@@ -77,7 +77,9 @@ const O1 = 17, O2 = 21, O3 = 26;
 
 export function buildAoa() {
   const aoa = [];
-  aoa[0] = ['SEGUIMIENTO DE MADURACIÓN   FL 8.5.1  REV 5'];
+  // The workbook states its vintage in the title (issue TWO: the parser derives
+  // the vintage from this "Vendimia AAAA" token, not from a vote over lot codes).
+  aoa[0] = ['SEGUIMIENTO DE MADURACIÓN VENDIMIA 2026   FL 8.5.1  REV 5'];
   aoa[1] = [];
   aoa[2] = ['Mes'];
   aoa[3] = [null, null, null, null, null, null, null, null, null, 'SEM 27'];
@@ -87,7 +89,11 @@ export function buildAoa() {
     'Variedad', 'Status', 'Proveedor', 'Lote', 'ANT Target', 'Código',
     'Cantidad proyectada', 'TONS', 'Análisis', ...DATE_HEADERS,
   ];
-  // Row 6: stray TONS row with no lot metadata (zeros) — must be skipped
+  // Row 6: stray TONS aggregate row with no lot metadata and all-ZERO dated
+  // cells, exactly as in the real file (its 133 date cells are 0). It is a legit
+  // template/aggregate stub that must be skipped: a blank-Lote row of zeros
+  // carries no lot data, so issue SIX must NOT reject it (a zero is treated like
+  // a blank, unlike a real non-zero reading under a missing Lote).
   aoa[6] = [null, null, null, null, null, null, null, null, 'TONS',
     ...DATE_HEADERS.map(() => 0)];
   // Row 7: repeated header inside the data region (note 'Pendiente' + dashes)

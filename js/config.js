@@ -207,9 +207,10 @@ export const CONFIG = {
   // add a test asserting each value is a key of varietyColors.
   varietyAbbr: {
     'CS':'Cabernet Sauvignon','CF':'Cabernet Franc','SY':'Syrah','ME':'Merlot',
-    'MA':'Malbec','GRE':'Grenache','GR':'Grenache','PV':'Petit Verdot',
+    'MA':'Malbec','MAL':'Malbec','GRE':'Grenache','GR':'Grenache','PV':'Petit Verdot',
     'TE':'Tempranillo','TEM':'Tempranillo','CA':'Caladoc','CAL':'Caladoc',
-    'MS':'Marselan','MRS':'Marselan','DU':'Durif','NB':'Nebbiolo','SB':'Sauvignon Blanc',
+    'MS':'Marselan','MRS':'Marselan','MAR':'Marselan','DU':'Durif','NB':'Nebbiolo',
+    'SB':'Sauvignon Blanc',
     'CH':'Chardonnay','VG':'Viognier','CB':'Chenin Blanc','MV':'Mourvèdre','PS':'Durif'
   },
 

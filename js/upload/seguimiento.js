@@ -53,6 +53,23 @@ function normMetric(s) {
     .toLowerCase();
 }
 
+// Expand a workbook Variedad code (SB, CS, MAL…) to the full varietal name the
+// dashboard's read path expects. Historical wine_samples rows carry full names
+// (Sauvignon Blanc, Cabernet Sauvignon…) and DataStore.getGrapeType / the
+// Tintas-Blancas toggle / the variety chips all key on those names —
+// CONFIG.normalizeVariety on the read side only maps Petite Sirah, it does NOT
+// expand abbreviations. So the parser must store the full name, or every 2026
+// lot splits from history and mis-classifies (SB → 'red', hidden under Blancas).
+// An unrecognized code passes through unchanged (a warning is emitted upstream)
+// rather than refusing the file, so a new abbreviation never stops ingestion.
+function expandVariety(raw) {
+  const v = normalizeValue(raw);          // blank markers → null
+  if (v === null) return null;
+  const code = String(v).trim();
+  const full = CONFIG.varietyAbbr[code] ?? code;
+  return CONFIG.normalizeVariety(full);
+}
+
 // Chemistry metrics → wine_samples columns the dashboard actually reads.
 // supabaseToBerryJS maps: brix→brix, ph→pH, ta→ta, berry_weight→berryFW
 // (the per-berry "Peso Baya (g)" column, NOT the whole-sample berries_weight_g),
@@ -93,6 +110,28 @@ function vintageFromLot(lotCode) {
   return (y >= 2015 && y <= 2040) ? y : null;
 }
 
+// Derive the workbook's vintage from the workbook ITSELF, not from a vote over
+// the lot prefixes (issue TWO). A majority/first-seen vote breaks on a tie and
+// lets a single mistyped prefix become authoritative; the winery's own workbook
+// states the vintage as "Vendimia AAAA" — in the preamble title of the Uva sheet
+// and in the file name. That string is authoritative; every lot prefix is then
+// checked AGAINST it and a disagreeing lot is rejected by name. Returns null
+// when no "Vendimia AAAA" can be found anywhere, so the caller refuses the file
+// rather than falling back to a guessed year.
+function extractVintage(rows, filename) {
+  const re = /vendimia\s*(\d{4})/i;
+  for (let r = 0; r <= HEADER_ROW; r++) {
+    for (const cell of (rows[r] || [])) {
+      if (cell == null) continue;
+      const m = String(cell).match(re);
+      if (m) return { year: parseInt(m[1], 10), source: `el título de la hoja` };
+    }
+  }
+  const mf = String(filename || '').match(re);
+  if (mf) return { year: parseInt(mf[1], 10), source: `el nombre del archivo` };
+  return null;
+}
+
 // Parse one date header cell into {label, month, day}. Handles both the text
 // "DD.MM" form and the Date object the typo cell deserializes to.
 function parseDateHeader(cell) {
@@ -121,21 +160,49 @@ function parseDateHeader(cell) {
 //     repeat as well as a backwards jump like the 07.01 typo);
 //   - the run is daily-continuous (exactly one day between adjacent columns).
 // Any violation throws a Spanish error naming the offending column.
-function buildDateColumns(header, vintage) {
-  let lastCol = -1;
+function buildDateColumns(header, vintage, rows) {
+  let lastHeaderCol = -1;
   for (let c = DATE_COL_START; c < header.length; c++) {
-    if (!isBlank(header[c])) lastCol = c;
+    if (!isBlank(header[c])) lastHeaderCol = c;
   }
-  if (lastCol < DATE_COL_START) {
+  if (lastHeaderCol < DATE_COL_START) {
     throw new Error('El archivo no contiene columnas de fecha en la fila de encabezado.');
   }
 
+  // Issue FOUR: the occupied extent is taken from the SHEET, not just the header
+  // row. A populated data column whose header is blank at the end of the range
+  // was previously discarded as padding; find the last column any data row
+  // populates so a value under a headerless trailing column is caught, not lost.
+  let maxDataCol = -1;
+  for (let r = HEADER_ROW + 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row) continue;
+    for (let c = row.length - 1; c > maxDataCol; c--) {
+      if (c >= DATE_COL_START && normalizeValue(row[c]) !== null) { maxDataCol = c; break; }
+    }
+  }
+  const extent = Math.max(lastHeaderCol, maxDataCol);
+  const columnPopulated = (c) => {
+    for (let r = HEADER_ROW + 1; r < rows.length; r++) {
+      if (rows[r] && normalizeValue(rows[r][c]) !== null) return true;
+    }
+    return false;
+  };
+
   const cols = [];
-  for (let c = DATE_COL_START; c <= lastCol; c++) {
+  for (let c = DATE_COL_START; c <= extent; c++) {
     const cell = header[c];
     if (isBlank(cell)) {
+      // A blank header BETWEEN dates (c ≤ last header) or ABOVE populated data
+      // (c > last header, but a data row fills it) is a hole: its values would
+      // vanish silently. Refuse, naming the column. A blank header with no data
+      // beyond the last date is trailing padding and never reaches here (extent
+      // caps the scan at the last populated/headed column).
+      const reason = c <= lastHeaderCol ? 'entre columnas de fecha'
+        : columnPopulated(c) ? 'pero hay datos en esa columna'
+        : 'antes de una columna con datos sin encabezado';
       throw new Error(
-        `El encabezado de fecha está vacío en la columna ${c + 1}, entre columnas de fecha. ` +
+        `El encabezado de fecha está vacío en la columna ${c + 1}, ${reason}. ` +
         `Toda columna de fecha debe tener un encabezado DD.MM; complete o elimine la columna y vuelva a subir el archivo.`,
       );
     }
@@ -182,17 +249,57 @@ function sheetToArray(wb, name) {
   return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true });
 }
 
+const META_COLS = [0, 1, 2, 4, 5, 6, 7]; // every column except Lote(3) and Análisis(8)
+
+// Does a blank-Lote row carry a MEANINGFUL dated value? The real file's stray
+// TONS row (row 6) is a template aggregate whose dated cells are all 0 — that
+// carries no lot data to lose, so a 0 (like a blank/dash) does not count as
+// content; only a non-zero number or a non-numeric string does. A genuine data
+// row with a real reading under a missing Lote is thus still surfaced.
+function hasDatedValue(row) {
+  for (let c = DATE_COL_START; c < row.length; c++) {
+    const v = normalizeValue(row[c]);
+    if (v !== null && v !== 0) return true;
+  }
+  return false;
+}
+
+// Classify a blank-Lote row's payload for issue SIX. Two blank-Lote shapes are
+// LEGITIMATE in this workbook and must be skipped: the stray per-day TONS totals
+// row (row 6 — no lot metadata, a known "TONS" label, and dated total cells) and
+// the trailing empty template blocks (a known label, nothing else). Every real
+// lot row repeats its full metadata (Variedad/Status/Proveedor/forecast) on all
+// seven rows, so a genuine data row whose Lote was dropped still carries that
+// metadata — which is how it is told apart from the aggregate stub. A blank-Lote
+// row is therefore an anomaly to surface (not silently drop) only when it carries
+// lot metadata, an UNKNOWN Análisis label, or dated values under NO recognizable
+// metric label (data that cannot be attributed to any metric or lot).
+function blankLoteAnomaly(row) {
+  if (META_COLS.some(c => !isBlank(row[c]))) return 'metadata';
+  const label = String(row[8] ?? '').trim();
+  const knownLabel = label !== '' && CANONICAL_METRICS.includes(normMetric(row[8]));
+  if (label !== '' && !knownLabel) return 'una métrica no reconocida';
+  if (!knownLabel && hasDatedValue(row)) return 'valores por fecha sin una métrica reconocida';
+  return null; // no metadata + a known metric label (or nothing) → a legit stub
+}
+
 // Group the seven-rows-per-lot blocks and validate their structure. A block is
-// a run of consecutive rows sharing the same Lote code. Rows with an empty Lote
-// (the stray TONS row 6, the trailing template blocks) and repeated header rows
-// are skipped rather than treated as lots. Refuses the whole file on: a lot in
-// non-contiguous blocks, a duplicate metric row, an unknown Análisis label, or
-// a block missing any canonical metric (which is also how a blank-Lote metric
-// row is caught — it is skipped, leaving its lot short a metric).
-function buildBlocks(rows) {
+// a run of SEVEN PHYSICALLY CONSECUTIVE rows sharing one Lote code. The known
+// preamble (fully-blank rows, the stray TONS row 6, the repeated header row 7)
+// is allowed ONLY before the first lot block; once the first lot row is seen,
+// every accepted metric row must sit exactly one physical row after the previous
+// (issue THREE) — a blank row, a repeated header or a blank-Lote row between two
+// metric rows would otherwise let seven NON-consecutive rows satisfy the
+// exactly-seven invariant, and the intervening row's data would vanish. Refuses
+// the whole file on: a non-contiguous / duplicate metric row, a duplicate or
+// non-contiguous lot, an unknown Análisis label, or a block missing any metric.
+// Blank-Lote rows carrying real content (issue SIX) are pushed to `rejected`.
+function buildBlocks(rows, rejected) {
   const blocks = [];
   const seenLots = new Set();
   let current = null;
+  let firstLotSeen = false;
+  let prevMetricRowIdx = -1;
 
   const assertComplete = (block) => {
     for (const m of CANONICAL_METRICS) {
@@ -210,14 +317,28 @@ function buildBlocks(rows) {
     const row = rows[i];
     if (!row || row.every(c => c === null || String(c).trim() === '')) continue;
 
-    // Repeated header row (row 7 and any like it).
+    // Repeated header row (row 7 and any like it) — a non-metric row; skipping
+    // it does not advance prevMetricRowIdx, so if it sits inside the data region
+    // the contiguity check below refuses the file at the next metric row.
     if (String(row[0] ?? '').trim() === 'Variedad' || normMetric(row[8]) === 'analisis') continue;
 
     const lote = String(row[3] ?? '').trim();
     // No lot code: the stray TONS row and the trailing empty template blocks.
-    // A blank-Lote row that sits mid-block leaves its lot short a metric, which
-    // assertComplete catches — so skipping here is safe, not silent.
-    if (!lote) continue;
+    // A legit stub (only a known metric label) is skipped; anything carrying
+    // metadata, an unknown label or dated values is surfaced (issue SIX) rather
+    // than silently dropped. Either way it is NOT an accepted metric row, so it
+    // leaves a physical gap the contiguity check catches if it is mid-block.
+    if (!lote) {
+      const anomaly = blankLoteAnomaly(row);
+      if (anomaly) {
+        rejected.push({
+          row: { Fila: i + 1 },
+          motivo_rechazo: `Fila ${i + 1}: fila sin código de Lote que contiene ${anomaly}. ` +
+            `No se puede asignar a ningún lote; corrija el archivo (agregue el código de Lote o elimine la fila).`,
+        });
+      }
+      continue;
+    }
 
     const metric = normMetric(row[8]);
     if (!CANONICAL_METRICS.includes(metric)) {
@@ -225,6 +346,16 @@ function buildBlocks(rows) {
         `Etiqueta de Análisis no reconocida "${String(row[8] ?? '').trim()}" en el lote "${lote}" (fila ${i + 1}). ` +
         `Cada lote debe tener exactamente: ${CANONICAL_METRICS.map(k => METRIC_LABELS[k]).join(', ')}. ` +
         `Corrija el archivo y vuelva a subirlo.`,
+      );
+    }
+
+    // Physical contiguity (issue THREE): once the first lot row is seen, every
+    // accepted metric row must be exactly one row after the previous one.
+    if (firstLotSeen && i !== prevMetricRowIdx + 1) {
+      throw new Error(
+        `La fila ${i + 1} (lote "${lote}", métrica "${METRIC_LABELS[metric]}") no es contigua con la fila anterior del bloque: ` +
+        `una fila en blanco, un encabezado repetido o una fila sin Lote interrumpe las siete filas consecutivas del lote. ` +
+        `Cada lote debe ocupar siete filas consecutivas. Corrija el archivo y vuelva a subirlo.`,
       );
     }
 
@@ -238,13 +369,15 @@ function buildBlocks(rows) {
       if (current) assertComplete(current);
       current = {
         lote,
-        variety:  normalizeValue(row[0]),
+        varietyCode: (normalizeValue(row[0]) != null) ? String(normalizeValue(row[0])).trim() : null,
+        variety:  expandVariety(row[0]),
         status:   row[1] != null ? String(row[1]).trim() : null,
         proveedor: row[2] != null ? String(row[2]).trim() : null,
         ant_target: normalizeValue(row[4]),
         codigo:   row[5] != null ? String(row[5]).trim() : null,
         cantidad_proyectada: normalizeValue(row[6]),
         tons_cached: normalizeValue(row[7]),
+        tons_cached_raw: row[7],
         metricRows: {},
       };
       seenLots.add(lote);
@@ -258,6 +391,8 @@ function buildBlocks(rows) {
       );
     }
     current.metricRows[metric] = row;
+    firstLotSeen = true;
+    prevMetricRowIdx = i;
   }
   if (current) assertComplete(current);
   return blocks;
@@ -288,38 +423,56 @@ export const seguimientoParser = {
       throw new Error('Este archivo no parece ser un Seguimiento de Maduración: no se encontró el encabezado esperado (Lote / Análisis) en la fila 6.');
     }
 
-    // Group + structurally validate the lot blocks (refuses on corruption).
-    const blocks = buildBlocks(rows);
-
-    // Derive the workbook vintage ONCE, by majority vote across the lot codes
-    // (issue SEVEN). One workbook is one vintage; a single mistyped prefix must
-    // be the outlier that gets rejected, not the value that flips the whole book
-    // — so the mode, not the first lot, wins. Ties break to the first seen.
-    let workbookVintage = null;
-    {
-      const counts = new Map();
-      for (const block of blocks) {
-        const v = vintageFromLot(block.lote);
-        if (v === null) continue;
-        if (!counts.has(v)) counts.set(v, 0);
-        counts.set(v, counts.get(v) + 1);
-      }
-      let best = -1;
-      for (const [v, n] of counts) {
-        if (n > best) { best = n; workbookVintage = v; }
-      }
-    }
-
-    // Validate the date-column headers (needs the vintage for the calendar
-    // round-trip). Refuses the file on any hole in the daily run.
-    const dateCols = buildDateColumns(header, workbookVintage ?? 2026);
-
-    const berryRows = [];
-    const lotRows = [];
     const rejected = [];
     const warnings = [];
 
+    // Group + structurally validate the lot blocks (refuses on corruption;
+    // blank-Lote rows carrying real content are pushed to `rejected`).
+    const blocks = buildBlocks(rows, rejected);
+
+    // Issue SIX: a structurally valid file with ZERO lot blocks would otherwise
+    // parse successfully into two empty targets. Require at least one lot block.
+    if (blocks.length === 0) {
+      throw new Error(
+        'El archivo no contiene ningún bloque de lote (siete filas por lote bajo el encabezado). ' +
+        'No hay datos que cargar; verifique que subió el archivo correcto.',
+      );
+    }
+
+    // Issue TWO: derive the workbook vintage from the workbook itself
+    // ("Vendimia AAAA" in the title or the file name), NOT from a vote over the
+    // lot prefixes. If it cannot be found, refuse the file rather than guessing.
+    const vintageInfo = extractVintage(rows, file.name);
+    if (!vintageInfo) {
+      throw new Error(
+        'No se pudo determinar la vendimia del archivo: no se encontró "Vendimia AAAA" ni en el título de la hoja ' +
+        'ni en el nombre del archivo. Corrija el archivo o su nombre y vuelva a subirlo.',
+      );
+    }
+    const workbookVintage = vintageInfo.year;
+
+    // Validate the date-column headers (needs the vintage for the calendar
+    // round-trip). Refuses the file on any hole in the daily run OR a populated
+    // column under a blank/invalid header (issue FOUR).
+    const dateCols = buildDateColumns(header, workbookVintage, rows);
+
+    const berryRows = [];
+    const lotRows = [];
+
     for (const block of blocks) {
+      // Issue ONE (safety net): a Variedad code the map does not know is stored
+      // raw (a full name it might already be) but flagged, so an unmapped code is
+      // never silent. The workbook's known set is fully covered by CONFIG.varietyAbbr.
+      if (block.varietyCode &&
+          !(block.varietyCode in CONFIG.varietyAbbr) &&
+          !CONFIG.grapeTypes.red.includes(block.varietyCode) &&
+          !CONFIG.grapeTypes.white.includes(block.varietyCode)) {
+        warnings.push(
+          `Lote "${block.lote}": la abreviatura de variedad "${block.varietyCode}" no está en el catálogo (CONFIG.varietyAbbr); ` +
+          `se guardó sin expandir y puede aparecer separada del historial. Agregue la abreviatura al catálogo.`,
+        );
+      }
+
       const vintage = vintageFromLot(block.lote);
       if (vintage === null) {
         rejected.push({
@@ -328,12 +481,13 @@ export const seguimientoParser = {
         });
         continue;
       }
-      // One workbook = one vintage. A lot whose prefix disagrees is a capture
-      // error; reject it rather than emit its series under the wrong year.
+      // One workbook = one vintage, taken from the workbook itself (issue TWO).
+      // A lot whose prefix disagrees is a capture error; reject it by name rather
+      // than emit its series under the wrong year.
       if (vintage !== workbookVintage) {
         rejected.push({
           row: { Lote: block.lote },
-          motivo_rechazo: `Lote "${block.lote}": el prefijo del código implica la vendimia ${vintage}, pero el libro es de la vendimia ${workbookVintage}. Un libro no puede mezclar vendimias.`,
+          motivo_rechazo: `Lote "${block.lote}": el prefijo del código implica la vendimia ${vintage}, pero según ${vintageInfo.source} el libro es de la vendimia ${workbookVintage}. Un libro no puede mezclar vendimias.`,
         });
         continue;
       }
@@ -398,6 +552,17 @@ export const seguimientoParser = {
       }
       // Round to cents to avoid float-accumulation noise on the sum.
       const tonsSeguimiento = sawTons ? Math.round(recomputed * 100) / 100 : null;
+      // Issue FIVE: the cached TONS cell (col 7, the +SUM formula's stored value)
+      // was previously coerced to null when non-numeric ("ABC"), silently losing
+      // a corruption. If it is non-blank and does not normalize to a finite
+      // number, refuse the file naming the lot rather than nulling it.
+      if (!isBlank(block.tons_cached_raw) &&
+          (typeof block.tons_cached !== 'number' || !Number.isFinite(block.tons_cached))) {
+        throw new Error(
+          `El lote "${block.lote}" tiene un valor de TONS (almacenado en la hoja) no numérico ` +
+          `("${String(block.tons_cached_raw).trim()}"). Corrija el archivo y vuelva a subirlo.`,
+        );
+      }
       const cachedNum = (typeof block.tons_cached === 'number' && Number.isFinite(block.tons_cached))
         ? block.tons_cached : null;
       // A disagreement is: recomputed != cached (cent tolerance so a rounded sum
