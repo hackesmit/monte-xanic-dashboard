@@ -304,6 +304,14 @@ describe('MT.44 — generated mutations each refuse the whole file, naming the o
   it('a genuine out-of-order TEXT header is still refused (no recovery path)', () =>
     rejectsWith((aoa) => { aoa[5][27] = '05.07'; }, /05\.07/, /fuera de orden/, /columna 28/));
 
+  it('a serial that only ROUNDS to a DD.MM is refused, not rounded into a date', () =>
+    // Lucy round 1, BLOCKER: 7.074 is not a DD.MM payload. An earlier toFixed(2)
+    // read it as 07.07, continuity then passed, and a whole column landed on a
+    // day nobody typed. The serial must BE two decimals, not round to two.
+    rejectsWith((aoa, typoIdx) => {
+      aoa[5][typoIdx] = new Date(Date.UTC(1899, 11, 31) + 7.074 * 86400000);
+    }, /fuera de orden|calendario|continuidad/));
+
   it('a 1900 serial whose fraction is not a month is still refused', () =>
     // Serial 7.50 would mean "month 50". Unrecoverable, so the file is refused.
     rejectsWith((aoa, typoIdx) => {
