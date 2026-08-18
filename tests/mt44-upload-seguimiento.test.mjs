@@ -12,6 +12,7 @@ import { readFile } from 'node:fs/promises';
 import * as XLSX from 'xlsx';
 import { seguimientoParser } from '../js/upload/seguimiento.js';
 import { ALLOWED_TABLES } from '../api/upload.js';
+import { CONFIG } from '../js/config.js';
 import { buildAoa } from './fixtures/make-seguimiento-fixture.mjs';
 
 function asFakeFile(buffer, name) {
@@ -89,7 +90,9 @@ describe('MT.44 — Seguimiento de Maduración parser', () => {
     assert.ok(a, 'expected a berry row for lot A on 2026-07-16');
     assert.equal(a.sample_type, 'Berries');
     assert.equal(a.vintage_year, 2026);
-    assert.equal(a.variety, 'SB');
+    // Issue ONE: the workbook stores the abbreviation "SB"; the parser expands it
+    // through CONFIG.varietyAbbr to the full name the dashboard read path expects.
+    assert.equal(a.variety, 'Sauvignon Blanc');
     assert.equal(a.brix, 20.5);
     assert.equal(a.ph, 3.10);
     assert.equal(a.ta, 10.8);
@@ -259,8 +262,10 @@ describe('MT.44 — generated mutations each refuse the whole file, naming the o
   it('duplicate metric row for one lot', () =>
     rejectsWith((aoa) => { const dup = [...aoa[9]]; aoa.splice(15, 0, dup); }, /°Brix/, /repetida/));
 
-  it('missing metric (a metric row with a blank Lote drops it)', () =>
-    rejectsWith((aoa) => { aoa[9][3] = null; }, /26AAAA1A-C/, /°Brix/, /no tiene la m[eé]trica/));
+  it('a metric row with a blank Lote breaks the seven-consecutive-rows block (issue THREE)', () =>
+    // Blanking the Lote turns row into a metadata-carrying blank-Lote row that no
+    // longer joins the block; the next metric row is then non-contiguous.
+    rejectsWith((aoa) => { aoa[9][3] = null; }, /26AAAA1A-C/, /no es contigua|consecutivas/));
 
   it('unknown Análisis label', () =>
     rejectsWith((aoa) => { const row = [...aoa[9]]; row[8] = 'YAN'; aoa.splice(15, 0, row); },
@@ -272,4 +277,161 @@ describe('MT.44 — generated mutations each refuse the whole file, naming the o
 
   it('non-numeric TONS cell', () =>
     rejectsWith((aoa) => { aoa[8][26] = 'ABC'; }, /TONS/, /no num[eé]rico/));
+});
+
+// ── Round-2 review (xd-6r7): one test per fix ONE..SIX. The workbook Variedad
+// column holds abbreviations; the read path expects full names; the vintage is
+// stated by the workbook, not voted from lot prefixes; a lot is seven PHYSICALLY
+// consecutive rows; a populated column needs a valid date header; a non-numeric
+// CACHED TONS is a corruption; and a file with no lot block is not "success". ──
+describe('MT.44 — round-2 review fixes (xd-6r7)', () => {
+  // Build a corrected (07.01→07.07) file with an optional mutation. The file name
+  // deliberately carries NO "Vendimia" token, so a passing vintage proves the
+  // parser read it from the workbook TITLE, not the file name.
+  const corrected = (mutate) => {
+    const aoa = buildAoa().map(r => (r ? [...r] : r));
+    const hdr = aoa[5];
+    hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
+    if (mutate) mutate(aoa);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    return asFakeFile(Buffer.from(buf), 'seguimiento_sin_nombre.xlsx');
+  };
+
+  // ── ONE: variety abbreviation → full name the read path expects ──
+  const WORKBOOK_CODES = ['CAL', 'CB', 'CF', 'CH', 'CS', 'DU', 'GRE', 'MAL', 'MAR', 'ME', 'PV', 'SB', 'SY', 'TEM'];
+  it('ONE: every workbook Variedad code resolves to a name in CONFIG.grapeTypes', () => {
+    const known = new Set([...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white]);
+    for (const code of WORKBOOK_CODES) {
+      const full = CONFIG.varietyAbbr[code];
+      assert.ok(full, `CONFIG.varietyAbbr is missing the workbook code "${code}"`);
+      assert.ok(known.has(full), `"${code}" → "${full}" is not a grapeTypes varietal name`);
+    }
+    // Resolved from the workbook's own lot codes, not guessed.
+    assert.equal(CONFIG.varietyAbbr.MAL, 'Malbec');
+    assert.equal(CONFIG.varietyAbbr.MAR, 'Marselan');
+  });
+
+  it('ONE: the parser stores the full varietal name, not the abbreviation', async () => {
+    const res = await seguimientoParser.parse(corrected());
+    const sb = res.targets[0].rows.find(r => r.sample_id === '26AAAA1A-C');
+    assert.equal(sb.variety, 'Sauvignon Blanc', 'SB must expand to Sauvignon Blanc');
+    const cs = res.targets[1].rows.find(r => r.lot_code === '26BBBB2A');
+    assert.equal(cs.variety, 'Cabernet Sauvignon', 'CS must expand on the lot row too');
+    // and it must classify white, so the Tintas/Blancas toggle keeps it a white
+    assert.equal(CONFIG.grapeTypes.white.includes(sb.variety), true);
+  });
+
+  // ── TWO: vintage from the workbook, not a vote; disagreeing lot rejected ──
+  it('TWO: a lot whose prefix disagrees with the workbook vintage is rejected by name', async () => {
+    // Lot A becomes a 25-prefixed block; the title still says Vendimia 2026.
+    const res = await seguimientoParser.parse(corrected((aoa) => {
+      for (let i = 8; i < 15; i++) aoa[i][3] = '25AAAA1A-C';
+    }));
+    assert.ok(res.rejected.some(r => /25AAAA1A-C/.test(r.motivo_rechazo) &&
+      /2025/.test(r.motivo_rechazo) && /2026/.test(r.motivo_rechazo)),
+      'the mistyped lot must be rejected naming both years');
+    assert.ok(!res.targets[1].rows.some(r => r.lot_code === '25AAAA1A-C'),
+      'the disagreeing lot must not land');
+    // the agreeing lots still land under 2026
+    assert.ok(res.targets[1].rows.every(r => r.vintage_year === 2026));
+  });
+
+  it('TWO: a file with no "Vendimia AAAA" anywhere is refused, not guessed', async () => {
+    const aoa = buildAoa().map(r => (r ? [...r] : r));
+    aoa[5][aoa[5].findIndex(v => v instanceof Date)] = '07.07';
+    aoa[0] = ['SEGUIMIENTO DE MADURACIÓN   FL 8.5.1  REV 5']; // year stripped from title
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    await assert.rejects(
+      () => seguimientoParser.parse(asFakeFile(Buffer.from(buf), 'archivo_sin_anio.xlsx')),
+      /vendimia/i);
+  });
+
+  it('TWO: the vintage is read from the file name when the title lacks it', async () => {
+    const aoa = buildAoa().map(r => (r ? [...r] : r));
+    aoa[5][aoa[5].findIndex(v => v instanceof Date)] = '07.07';
+    aoa[0] = ['SEGUIMIENTO DE MADURACIÓN   FL 8.5.1  REV 5']; // no year in the title
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const res = await seguimientoParser.parse(
+      asFakeFile(Buffer.from(buf), 'Seguimiento de maduración Vendimia 2026.xlsx'));
+    assert.ok(res.targets[1].rows.length > 0);
+    assert.ok(res.targets[1].rows.every(r => r.vintage_year === 2026));
+  });
+
+  // ── THREE: seven PHYSICALLY consecutive rows ──
+  it('THREE: a blank row between two metric rows of a lot refuses the file', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(corrected((aoa) => {
+        aoa.splice(11, 0, new Array(aoa[5].length).fill(null)); // blank row mid lot A
+      })),
+      /no es contigua|consecutivas/);
+  });
+
+  it('THREE: a repeated header row between two metric rows refuses the file', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(corrected((aoa) => {
+        aoa.splice(11, 0, [...aoa[7]]); // repeated header inside lot A
+      })),
+      /no es contigua|consecutivas/);
+  });
+
+  // ── FOUR: a populated column needs a valid date header ──
+  it('FOUR: a populated column with a blank trailing date header refuses the file', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(corrected((aoa) => {
+        const last = aoa[5].length;
+        aoa[5][last] = null; aoa[5][last + 1] = null;
+        aoa[9][last + 1] = 55.5; // a real value under a headerless column
+      })),
+      /vac[ií]o/);
+  });
+
+  // ── FIVE: a non-numeric CACHED TONS (col 7) is a corruption, not a null ──
+  it('FIVE: a non-numeric cached TONS cell refuses the file, naming the lot', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(corrected((aoa) => { aoa[8][7] = 'ABC'; })),
+      (err) => {
+        assert.match(err.message, /26AAAA1A-C/);
+        assert.match(err.message, /no num[eé]rico/);
+        return true;
+      });
+  });
+
+  // ── SIX: at least one lot block; blank-Lote content is surfaced ──
+  it('SIX: a structurally valid file with zero lot blocks is refused', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(corrected((aoa) => { aoa.splice(8); })),
+      /ning[uú]n bloque de lote/);
+  });
+
+  it('SIX: a blank-Lote row carrying lot metadata is surfaced, not silently dropped', async () => {
+    // A metadata-bearing row with its Lote dropped, appended AFTER the last lot
+    // (so contiguity does not fire) must still be rejected, not skipped.
+    const res = await seguimientoParser.parse(corrected((aoa) => {
+      const orphan = [...aoa[35]]; // lot D's last row, full metadata
+      orphan[3] = null;
+      aoa.push(orphan);
+    }));
+    assert.ok(res.rejected.some(r => /sin código de Lote/.test(r.motivo_rechazo)),
+      'the orphaned metadata row must appear in rejected');
+  });
+
+  it('SIX: the legit stray daily-TONS aggregate row (no metadata) is skipped cleanly', async () => {
+    // Row 6 of the real workbook is a per-day TONS totals row: blank Lote, a known
+    // "TONS" label, dated totals, no lot metadata. It must NOT be rejected.
+    const res = await seguimientoParser.parse(corrected((aoa) => {
+      aoa[6][10] = 14; aoa[6][11] = 8; // give the stray TONS row real daily totals
+    }));
+    assert.ok(!res.rejected.some(r => /Fila 7/.test(r.motivo_rechazo)),
+      'the stray daily-TONS aggregate row must be skipped, not rejected');
+    assert.equal(res.targets[1].rows.length, 4, 'still exactly the 4 real lots');
+  });
 });
