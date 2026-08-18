@@ -132,10 +132,75 @@ function extractVintage(rows, filename) {
   return null;
 }
 
-// Parse one date header cell into {label, month, day}. Handles both the text
-// "DD.MM" form and the Date object the typo cell deserializes to.
+// Excel epoch for serials below the 1900-02-29 phantom leap day. For serial < 60
+// SheetJS anchors the day count at 1899-12-31, so this inverse is exact there.
+// Every DD.MM value is at most 31.12, well inside that range, so the recovery
+// below never has to reason about the leap-day bug.
+const EXCEL_1900_EPOCH = Date.UTC(1899, 11, 31);
+const MS_PER_HUNDREDTH_DAY = 864000;     // 0.01 day, the DD.MM payload's resolution
+const MIN_HUNDREDTHS = 100;              // serial 1.00
+const MAX_HUNDREDTHS = 3200;             // serial 32.00: past 31.12, short of the
+                                         // phantom leap day at 60
+
+// Recover the DD.MM a date-formatted header cell was really given.
+//
+// The winery's date row is text, EXCEPT wherever a cell got retyped while it
+// carried a DD.MM *date* number format. Typing "07.07" there does not make
+// Excel store 7 July: it reads the keystrokes as the NUMBER 7.07, stores serial
+// 7.07 and renders it through the DD.MM format as "07.01" (7 Jan 1900). The
+// 2026 workbook ships exactly that in column 18. Nothing is lost: the serial
+// IS the DD.MM that was typed, so read it back instead of bouncing the file:
+// integer part = day, the two-decimal fraction = month. The serial is read as a
+// whole number of hundredths of a day, so the trailing zero survives: 07.10
+// arrives as serial 7.1, that is 710 hundredths, and comes back as month 10.
+//
+// Only serials in the 1900 phantom range qualify. A real vintage date is a
+// 5-digit serial, so this can never reinterpret a genuine date cell.
+function recoverSerialDate(date) {
+  // Integer milliseconds throughout: a DD.MM payload is an exact whole number of
+  // hundredths of a day, so this never has to round a float into a date. Do NOT
+  // reintroduce toFixed(2) here: it would quietly turn an arbitrary serial like
+  // 7.074 into "07.07" and land a whole column on a day nobody typed.
+  const ms = date.getTime() - EXCEL_1900_EPOCH;
+  const hundredths = Math.round(ms / MS_PER_HUNDREDTH_DAY);
+  if (hundredths < MIN_HUNDREDTHS || hundredths >= MAX_HUNDREDTHS) return null;
+  // The serial must BE a two-decimal value, not merely round to one. Every DD.MM
+  // is a whole number of hundredths of a day, which is a whole number of
+  // milliseconds (864000 of them), and all 372 of them round-trip through
+  // SheetJS with zero error, so exact equality never refuses a legitimate
+  // header. A residual means the cell carries digits the DD.MM reading would
+  // discard, so we do not know what was typed: refuse, and let the ordering
+  // guard reject the file rather than invent a date.
+  //
+  // Precisely: this checks the serial AFTER SheetJS quantized it to integer
+  // milliseconds, so residuals below half a millisecond (5.8e-9 of a day) are
+  // invisible here. That is deliberate, not an oversight. The smallest digit a
+  // DD.MM header can carry is 0.01 day, a million times larger, so nothing
+  // inside that window can denote a different date: a serial of 7.070000001 is
+  // still 07.07 by any reading. Validating the pre-Date serial would mean
+  // reading the workbook a second time without cellDates, which buys nothing a
+  // winery spreadsheet can actually hit. See xd-3pm (lucy round 3) for the
+  // argument in full.
+  if (ms !== hundredths * MS_PER_HUNDREDTH_DAY) return null;
+  const day = Math.floor(hundredths / 100);
+  const month = hundredths % 100;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const stored = `${day}.${pad2(month)}`;
+  // What Excel puts on screen for that serial, so the warning can quote it.
+  const shown = `${pad2(date.getUTCDate())}.${pad2(date.getUTCMonth() + 1)}`;
+  return { label: `${pad2(day)}.${pad2(month)}`, month, day, recoveredFrom: stored, shownAs: shown };
+}
+
+// Parse one date header cell into {label, month, day}. Handles the text "DD.MM"
+// form, a genuine date-typed cell, and the date-formatted cell that swallowed a
+// typed DD.MM as a bare number (recoverSerialDate above). A recovered column
+// carries `recoveredFrom` so the caller can warn about it; it is NOT trusted on
+// its own. It still has to clear the calendar, ordering and daily-continuity
+// checks in buildDateColumns like every other column.
 function parseDateHeader(cell) {
   if (cell instanceof Date && !Number.isNaN(cell.getTime())) {
+    const recovered = recoverSerialDate(cell);
+    if (recovered) return recovered;
     const month = cell.getUTCMonth() + 1;
     const day = cell.getUTCDate();
     return { label: `${pad2(day)}.${pad2(month)}`, month, day };
@@ -160,7 +225,13 @@ function parseDateHeader(cell) {
 //     repeat as well as a backwards jump like the 07.01 typo);
 //   - the run is daily-continuous (exactly one day between adjacent columns).
 // Any violation throws a Spanish error naming the offending column.
-function buildDateColumns(header, vintage, rows) {
+//
+// A header recovered from a date-formatted cell (parseDateHeader ->
+// recoverSerialDate) is validated by all three rules exactly like a text
+// header, so the recovery can never smuggle a wrong date past this function;
+// it only stops the file being refused over a lossless Excel artifact. Each
+// recovery appends a warning so the winery can repair the cell.
+function buildDateColumns(header, vintage, rows, warnings = []) {
   let lastHeaderCol = -1;
   for (let c = DATE_COL_START; c < header.length; c++) {
     if (!isBlank(header[c])) lastHeaderCol = c;
@@ -219,6 +290,14 @@ function buildDateColumns(header, vintage, rows) {
         `Corrija el encabezado en el archivo y vuelva a subirlo.`,
       );
     }
+    if (parsed.recoveredFrom !== undefined) {
+      warnings.push(
+        `Columna ${c + 1}: el encabezado de fecha está en una celda con formato de fecha, ` +
+        `así que Excel guardó lo tecleado como el número ${parsed.recoveredFrom} y lo muestra como ` +
+        `"${parsed.shownAs}". Se interpretó como ${parsed.label}. ` +
+        `Dé formato de texto a esa celda para eliminar la ambigüedad.`,
+      );
+    }
     cols.push({ colIdx: c, month: parsed.month, day: parsed.day, label: parsed.label, utc: probe.getTime() });
   }
 
@@ -246,7 +325,18 @@ function buildDateColumns(header, vintage, rows) {
 }
 
 function sheetToArray(wb, name) {
-  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true });
+  // UTC:true is load-bearing, not decoration. Without it sheet_to_json runs
+  // utc_to_local on every date cell, so a serial is anchored at LOCAL midnight
+  // and the Date we get back depends on the browser's zone. This upload runs
+  // client-side in the lab's browser in Baja California, where the 1900 LMT
+  // offset is -7:48:04: not a whole number of hundredths of a day, so
+  // recoverSerialDate's exactness gate rejected every header and the real
+  // workbook stayed refused. In a whole-hour zone it is worse than a refusal,
+  // because a DIFFERENT serial then lands on the grid. UTC:true makes the
+  // serial round-trip zone-independent. Removing it silently breaks the
+  // recovery everywhere except a UTC box; tests/mt46-seguimiento-timezone
+  // exists to stop that.
+  return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true, UTC: true });
 }
 
 const META_COLS = [0, 1, 2, 4, 5, 6, 7]; // every column except Lote(3) and Análisis(8)
@@ -425,6 +515,10 @@ export const seguimientoParser = {
 
     const rejected = [];
     const warnings = [];
+    // Counted separately from warnings.length: warnings also carries variety and
+    // date-header notices, so reusing the total would make meta.tonsMismatches
+    // report a number that has nothing to do with TONS.
+    let tonsMismatchCount = 0;
 
     // Group + structurally validate the lot blocks (refuses on corruption;
     // blank-Lote rows carrying real content are pushed to `rejected`).
@@ -454,7 +548,7 @@ export const seguimientoParser = {
     // Validate the date-column headers (needs the vintage for the calendar
     // round-trip). Refuses the file on any hole in the daily run OR a populated
     // column under a blank/invalid header (issue FOUR).
-    const dateCols = buildDateColumns(header, workbookVintage, rows);
+    const dateCols = buildDateColumns(header, workbookVintage, rows, warnings);
 
     const berryRows = [];
     const lotRows = [];
@@ -575,6 +669,7 @@ export const seguimientoParser = {
         else if (Math.abs(cachedNum - tonsSeguimiento) > 0.01) mismatch = true;
       }
       if (mismatch) {
+        tonsMismatchCount++;
         warnings.push(
           tonsSeguimiento === null
             ? `Lote "${block.lote}": la hoja almacena un TONS (${cachedNum}) pero no hay celdas de TONS por fecha para recalcularlo.`
@@ -615,7 +710,7 @@ export const seguimientoParser = {
         filename: file.name,
         lots: lotRows.length,
         measurements: berryRows.length,
-        tonsMismatches: warnings.length,
+        tonsMismatches: tonsMismatchCount,
       },
     };
   },
