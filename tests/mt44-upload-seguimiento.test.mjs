@@ -312,6 +312,16 @@ describe('MT.44 — generated mutations each refuse the whole file, naming the o
       aoa[5][typoIdx] = new Date(Date.UTC(1899, 11, 31) + 7.074 * 86400000);
     }, /fuera de orden|calendario|continuidad/));
 
+  it('a serial off the hundredth grid by 1ms or 1000ms is refused (no tolerance window)', async () => {
+    // Lucy round 2, BLOCKER: a 1s tolerance let 7.07+1000ms recover as 07.07.
+    // Both the smallest and the old boundary residual must refuse.
+    for (const offsetMs of [1, 1000, -1]) {
+      await rejectsWith((aoa, typoIdx) => {
+        aoa[5][typoIdx] = new Date(Date.UTC(1899, 11, 31) + 7.07 * 86400000 + offsetMs);
+      }, /fuera de orden|calendario|continuidad/);
+    }
+  });
+
   it('a 1900 serial whose fraction is not a month is still refused', () =>
     // Serial 7.50 would mean "month 50". Unrecoverable, so the file is refused.
     rejectsWith((aoa, typoIdx) => {
