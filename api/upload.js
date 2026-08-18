@@ -50,13 +50,14 @@ export const ALLOWED_TABLES = {
       'berry_sugars_g','berry_acids_g','berry_water_g','berry_skins_seeds_g',
       'ipt','tant','fant','bant','ptan','irps',
       'l_star','a_star','b_star','color_i','color_t',
-      'brix','ph','ta','malic_acid',
+      'brix','ph','ta',
     ]),
   },
 
   // 2026 "Seguimiento de Maduración" per-lot forecast/tonnage/status. The
-  // pivoted workbook's per-(lot,date) chemistry goes to berry_samples; this
-  // holds what berry_samples has no columns for. tons_seguimiento and
+  // pivoted workbook's per-(lot,date) chemistry goes to wine_samples (the table
+  // the dashboard reads, sample_type='Berries'); this holds the per-lot data
+  // wine_samples has no columns for. tons_seguimiento and
   // cantidad_proyectada are PROVISIONAL/forecast — never authoritative harvested
   // tonnage (see sql/migration_seguimiento_lotes.sql).
   seguimiento_lotes: {

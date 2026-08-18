@@ -1,8 +1,10 @@
 // MT.44 — Seguimiento de Maduración parser: the 2026 pivoted-calendar workbook
 // that replaces WineXRay as the berry-maturity source. Unpivots (lot, metric,
-// date) into berry_samples + a per-lot seguimiento_lotes row, refuses the file
-// when a date column breaks chronological order (the 07.01 typo), and keeps the
-// forecast (cantidad_proyectada) and the workbook TONS as two distinct fields.
+// date) into wine_samples (sample_type='Berries', the table the dashboard reads)
+// + a per-lot seguimiento_lotes row, refuses the whole file on any structural
+// corruption (out-of-order/duplicate/empty/impossible date header, duplicate or
+// missing or unknown metric row, non-contiguous lot block, non-numeric TONS),
+// and keeps the forecast (cantidad_proyectada) and the workbook TONS distinct.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -68,14 +70,16 @@ describe('MT.44 — Seguimiento de Maduración parser', () => {
   it('accepts the same file once the date order is fixed', async () => {
     const result = await seguimientoParser.parse(correctedFile());
     assert.equal(result.targets.length, 2);
-    assert.equal(result.targets[0].table, 'berry_samples');
+    // Issue ONE: chemistry lands in wine_samples (sample_type='Berries') — the
+    // table the dashboard actually reads — NOT the dead-end berry_samples.
+    assert.equal(result.targets[0].table, 'wine_samples');
     assert.equal(result.targets[1].table, 'seguimiento_lotes');
     assert.equal(result.targets[0].conflictKey, 'sample_id,sample_date,sample_seq');
     assert.equal(result.targets[1].conflictKey, 'lot_code,vintage_year');
   });
 
-  // ── Unpivot into berry_samples ──
-  it('unpivots per-(lot,date) chemistry into berry_samples, skipping blanks and dashes', async () => {
+  // ── Unpivot into wine_samples (sample_type 'Berries') ──
+  it('unpivots per-(lot,date) chemistry into wine_samples, skipping blanks and dashes', async () => {
     const result = await seguimientoParser.parse(correctedFile());
     const berry = result.targets[0].rows;
     // 4 sanitized lots: A→3 dates, B→2, C→2, D→1 (its blank/dash date is skipped)
@@ -92,14 +96,35 @@ describe('MT.44 — Seguimiento de Maduración parser', () => {
     assert.equal(a.malic_acid, 4.5);
     assert.equal(a.below_detection, false);
     // dates with no chemistry at all must not produce a row
-    assert.ok(!berry.some(r => r.sample_id === '26CCCC3A' && r.sample_date === '2026-07-16' && r.brix === null && r.ph === null && r.ta === null && r.malic_acid === null && r.berry_anthocyanins_mg_100b === null));
+    assert.ok(!berry.some(r => r.sample_id === '26CCCC3A' && r.sample_date === '2026-07-16' && r.brix === null && r.ph === null && r.ta === null && r.malic_acid === null && r.berry_anthocyanins === null));
   });
 
-  it('maps Ac. Málico into the new malic_acid column and Antocianos into anthocyanins', async () => {
+  it('maps every chemistry metric onto the wine_samples columns the dashboard reads', async () => {
     const result = await seguimientoParser.parse(correctedFile());
     const berry = result.targets[0].rows;
+    // supabaseToBerryJS reads: brix, ph, ta, berry_weight→berryFW,
+    // berry_anthocyanins→anthocyanins. malic_acid is stored (no chart field yet).
     assert.ok(berry.some(r => typeof r.malic_acid === 'number'), 'Ac. Málico must land in malic_acid');
-    assert.ok(berry.some(r => typeof r.berry_anthocyanins_mg_100b === 'number'), 'Antocianos must land in berry_anthocyanins_mg_100b');
+    assert.ok(berry.some(r => typeof r.berry_anthocyanins === 'number'), 'Antocianos must land in berry_anthocyanins');
+    // never the mixed-up berry_samples column names (would silently strip/not chart)
+    for (const r of berry) {
+      assert.ok(!('berry_anthocyanins_mg_100b' in r), 'must not use the berry_samples anthocyanin column');
+      assert.ok(!('berries_weight_g' in r), 'must not use the whole-sample weight column');
+      assert.ok(!('berry_fresh_weight_g' in r), 'must not use a non-wine_samples column');
+    }
+  });
+
+  // Issue TWO: Peso baya is a PER-BERRY weight (~1.5 g), not the whole-sample
+  // weight (~272 g). On wine_samples the whitelisted+charted per-berry column
+  // (supabaseToBerryJS berry_weight→berryFW, "Peso Baya (g)") is berry_weight.
+  it('maps Peso baya into berry_weight (per-berry), never berries_weight_g (whole-sample)', async () => {
+    const result = await seguimientoParser.parse(correctedFile());
+    const berry = result.targets[0].rows;
+    // fixture lot A carries Peso baya = 1.42 g on 2026-07-25 (offset O3)
+    const a = berry.find(r => r.sample_id === '26AAAA1A-C' && r.sample_date === '2026-07-25');
+    assert.ok(a, 'expected a berry row for lot A on 2026-07-25');
+    assert.equal(a.berry_weight, 1.42, 'Peso baya must land in berry_weight');
+    assert.equal(a.berries_weight_g ?? null, null, 'Peso baya must NOT land in berries_weight_g');
   });
 
   it('derives vintage_year from the 26 lot-code prefix', async () => {
@@ -148,9 +173,9 @@ describe('MT.44 — Seguimiento de Maduración parser', () => {
     assert.equal(b.status, 'No Recibido');
   });
 
-  // ── Weighting-leak guard: seguimiento tonnage must never reach the maturity
-  //    table the tonnage-weighted means read. berry_samples is that table. ──
-  it('never puts a tonnage/forecast field on a berry_samples row', async () => {
+  // ── Weighting-leak guard: seguimiento tonnage must never reach a berry row,
+  //    which the tonnage-weighted means read. ──
+  it('never puts a tonnage/forecast field on a berry row', async () => {
     const result = await seguimientoParser.parse(correctedFile());
     for (const r of result.targets[0].rows) {
       for (const k of ['tons_seguimiento', 'tons_seguimiento_cached', 'cantidad_proyectada', 'tons_mismatch']) {
@@ -186,7 +211,65 @@ describe('MT.44 — Seguimiento de Maduración parser', () => {
     }
   });
 
-  it('whitelists the new berry_samples.malic_acid column', () => {
-    assert.ok(ALLOWED_TABLES.berry_samples.columns.has('malic_acid'));
+  it('the wine_samples whitelist covers every chemistry column the parser writes', () => {
+    // Issue ONE: chemistry targets wine_samples now, so the columns it emits
+    // must all be whitelisted (unlisted columns are silently stripped by the API).
+    const cols = ALLOWED_TABLES.wine_samples.columns;
+    for (const col of ['brix', 'ph', 'ta', 'berry_weight', 'berry_anthocyanins', 'malic_acid']) {
+      assert.ok(cols.has(col), `${col} missing from wine_samples whitelist`);
+    }
   });
+});
+
+// ── Issue NINE: the committed fixture's lot blocks are all perfectly formed,
+// so none of the refusal paths are exercised by the happy-path tests above.
+// These build the same corrected shape and inject ONE defect each, asserting
+// the WHOLE file is refused with a Spanish error that names the offender. The
+// non-negotiable refusal rule: a corrupt source never yields partial data. ──
+describe('MT.44 — generated mutations each refuse the whole file, naming the offender', () => {
+  // The typo slot lives at date offset O1_TYPO=8 (07.07 → col index 17, col 18).
+  // Offsets used by the fixture: 16.07=col 26, 17.07=col 27, 20.07=col 30.
+  const buildMutated = (mutate) => {
+    const aoa = buildAoa().map(r => (r ? [...r] : r));
+    const hdr = aoa[5];
+    const typoIdx = hdr.findIndex(v => v instanceof Date);
+    hdr[typoIdx] = '07.07';
+    mutate(aoa, typoIdx);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    return asFakeFile(Buffer.from(buf), 'seguimiento_mutated.xlsx');
+  };
+  const rejectsWith = (mutate, ...patterns) =>
+    assert.rejects(() => seguimientoParser.parse(buildMutated(mutate)), (err) => {
+      for (const p of patterns) assert.match(err.message, p, `message must match ${p}`);
+      return true;
+    });
+
+  it('duplicate date header (16.07 twice)', () =>
+    rejectsWith((aoa) => { aoa[5][27] = '16.07'; }, /16\.07/, /se repite/));
+
+  it('empty date header among the dates', () =>
+    rejectsWith((aoa) => { aoa[5][27] = null; aoa[9][27] = 88.8; }, /vac[ií]o/, /columna 28/));
+
+  it('impossible calendar date (31.06)', () =>
+    rejectsWith((aoa) => { aoa[5][11] = '31.06'; }, /31\.06/, /calendario/));
+
+  it('duplicate metric row for one lot', () =>
+    rejectsWith((aoa) => { const dup = [...aoa[9]]; aoa.splice(15, 0, dup); }, /°Brix/, /repetida/));
+
+  it('missing metric (a metric row with a blank Lote drops it)', () =>
+    rejectsWith((aoa) => { aoa[9][3] = null; }, /26AAAA1A-C/, /°Brix/, /no tiene la m[eé]trica/));
+
+  it('unknown Análisis label', () =>
+    rejectsWith((aoa) => { const row = [...aoa[9]]; row[8] = 'YAN'; aoa.splice(15, 0, row); },
+      /YAN/, /no reconocida/));
+
+  it('non-contiguous lot block (lot A repeated at the end)', () =>
+    rejectsWith((aoa) => { const blk = aoa.slice(8, 15).map(r => [...r]); for (const r of blk) aoa.push(r); },
+      /26AAAA1A-C/, /no contiguos/));
+
+  it('non-numeric TONS cell', () =>
+    rejectsWith((aoa) => { aoa[8][26] = 'ABC'; }, /TONS/, /no num[eé]rico/));
 });

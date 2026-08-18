@@ -41,5 +41,17 @@ CREATE TABLE IF NOT EXISTS public.seguimiento_lotes (
 CREATE INDEX IF NOT EXISTS seguimiento_lotes_vintage
   ON public.seguimiento_lotes (vintage_year);
 
+-- Security (matches migration_rls_lockdown's category 3, server-only tables).
+-- This table holds supplier names and commercial forecasts — the winery's 2026
+-- harvest plan. It is written ONLY through /api/upload with the service key
+-- (which bypasses RLS) and is NOT read client-side (no dataLoader/consumer
+-- references it). So it needs no anon/authenticated access at all: enable RLS
+-- with NO policies (default-deny) and revoke the default table grants the
+-- public schema hands the anon/authenticated roles, so neither the anon key nor
+-- a logged-in session can read the forecast or supplier list. Add a narrow
+-- public_read SELECT policy here ONLY if a future client view needs it.
+ALTER TABLE public.seguimiento_lotes ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.seguimiento_lotes FROM anon, authenticated;
+
 INSERT INTO public.applied_migrations (name) VALUES ('migration_seguimiento_lotes')
   ON CONFLICT (name) DO NOTHING;
