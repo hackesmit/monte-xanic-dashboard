@@ -137,7 +137,11 @@ function extractVintage(rows, filename) {
 // Every DD.MM value is at most 31.12, well inside that range, so the recovery
 // below never has to reason about the leap-day bug.
 const EXCEL_1900_EPOCH = Date.UTC(1899, 11, 31);
-const RECOVERABLE_SERIAL_MAX = 32;   // > 31.12, < 60 (the phantom leap day)
+const MS_PER_HUNDREDTH_DAY = 864000;     // 0.01 day, the DD.MM payload's resolution
+const MIN_HUNDREDTHS = 100;              // serial 1.00
+const MAX_HUNDREDTHS = 3200;             // serial 32.00: past 31.12, short of the
+                                         // phantom leap day at 60
+const SERIAL_TOLERANCE_MS = 1000;        // storage noise only, never a real digit
 
 // Recover the DD.MM a date-formatted header cell was really given.
 //
@@ -147,26 +151,32 @@ const RECOVERABLE_SERIAL_MAX = 32;   // > 31.12, < 60 (the phantom leap day)
 // 7.07 and renders it through the DD.MM format as "07.01" (7 Jan 1900). The
 // 2026 workbook ships exactly that in column 18. Nothing is lost: the serial
 // IS the DD.MM that was typed, so read it back instead of bouncing the file:
-// integer part = day, the two-decimal fraction = month (toFixed(2) restores the
-// trailing zero, so 07.10 arrives as serial 7.1 and comes back as month 10).
+// integer part = day, the two-decimal fraction = month. The serial is read as a
+// whole number of hundredths of a day, so the trailing zero survives: 07.10
+// arrives as serial 7.1, that is 710 hundredths, and comes back as month 10.
 //
 // Only serials in the 1900 phantom range qualify. A real vintage date is a
 // 5-digit serial, so this can never reinterpret a genuine date cell.
 function recoverSerialDate(date) {
-  const serial = (date.getTime() - EXCEL_1900_EPOCH) / MS_PER_DAY;
-  if (!(serial >= 1) || serial >= RECOVERABLE_SERIAL_MAX) return null;
-  // Two decimals is the whole DD.MM payload; rounding also strips the float
-  // noise a serial round-trip leaves behind (29.06 arriving as
-  // 29.059999999999999), so the warning quotes what Excel actually stores.
-  const fixed = serial.toFixed(2);
-  const m = fixed.match(/^(\d{1,2})\.(\d{2})$/);
-  if (!m) return null;
-  const day = parseInt(m[1], 10);
-  const month = parseInt(m[2], 10);
+  // Integer milliseconds throughout: a DD.MM payload is an exact whole number of
+  // hundredths of a day, so this never has to round a float into a date. Do NOT
+  // reintroduce toFixed(2) here: it would quietly turn an arbitrary serial like
+  // 7.074 into "07.07" and land a whole column on a day nobody typed.
+  const ms = date.getTime() - EXCEL_1900_EPOCH;
+  const hundredths = Math.round(ms / MS_PER_HUNDREDTH_DAY);
+  if (hundredths < MIN_HUNDREDTHS || hundredths >= MAX_HUNDREDTHS) return null;
+  // The serial must BE a two-decimal value, not merely round to one. Anything
+  // further off than storage noise carries digits the DD.MM reading would
+  // discard, which means we do not actually know what was typed: refuse and let
+  // the ordering guard reject the file.
+  if (Math.abs(ms - hundredths * MS_PER_HUNDREDTH_DAY) > SERIAL_TOLERANCE_MS) return null;
+  const day = Math.floor(hundredths / 100);
+  const month = hundredths % 100;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const stored = `${day}.${pad2(month)}`;
   // What Excel puts on screen for that serial, so the warning can quote it.
   const shown = `${pad2(date.getUTCDate())}.${pad2(date.getUTCMonth() + 1)}`;
-  return { label: `${pad2(day)}.${pad2(month)}`, month, day, recoveredFrom: fixed, shownAs: shown };
+  return { label: `${pad2(day)}.${pad2(month)}`, month, day, recoveredFrom: stored, shownAs: shown };
 }
 
 // Parse one date header cell into {label, month, day}. Handles the text "DD.MM"
