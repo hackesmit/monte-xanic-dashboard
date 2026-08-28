@@ -137,6 +137,34 @@ That function gets the WineXRay login from Vercel encrypted environment variable
 
 **Make sync idempotent, not merely upserting.** Reusing the upsert code is not sufficient on its own. A double-clicked button, a retry after a timeout, and two overlapping syncs are all ordinary events here. The requirement is that the natural key is enforced by a database unique constraint rather than assumed by application code, that writes go through an atomic on-conflict upsert against that constraint, and that overlapping runs are collapsed so a second sync cannot interleave with a first. `xd-qub` is auditing whether the existing `(sample_id, sample_date, sample_seq)` key actually holds; the sync button must not ship before that answer is known.
 
+### What shipped (xd-b0e, 2026-08-28)
+
+The sync is a Vercel serverless function. Daniel chose that host over an hqbox job, accepting the consequence stated in the table at the top of this document: the WineXRay login lives in Vercel encrypted environment variables, so rotation has two places to touch.
+
+| Piece | File | Responsibility |
+| --- | --- | --- |
+| Adapter | `api/_lib/winexrayClient.js` | login, `/api/results`, `/api/export`, CSV download. Holds the credential and the `_ncfa` cookie. Never returns either. |
+| Write core | `api/_lib/upsertRows.js` | column whitelist, required fields, upsert-key integrity, Supabase upsert. Extracted from `api/upload.js` so the manual path and the sync path run one implementation. |
+| Write whitelist | `api/_lib/allowedTables.js` | the per-table conflict key, row cap and column set, imported by both handlers. |
+| Endpoint | `api/winexray-sync.js` | session gate (lab role only), rate limit, in-flight collapse, date defaulting, then parse and upsert. |
+| Button | `index.html` `#sync-btn-winexray`, `js/events.js`, `UploadManager.syncWineXRay` in `js/upload.js` | calls our own endpoint, renders a Spanish result. The manual `.csv` button stays as the fallback. |
+
+Environment variables the deployed function needs, set in the Vercel project (Production and Preview):
+
+- `WINEXRAY_USERNAME`
+- `WINEXRAY_PASSWORD`
+
+Both already exist in Proton Pass as the item `www.winexray.com`. `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are already set for `/api/upload` and are reused unchanged.
+
+Behaviour worth knowing:
+
+- **Incremental by default.** With no body the endpoint reads the newest `sample_date` across `berry_samples` and `wine_samples`, re-fetches from seven days before it, and ends today in `America/Tijuana`. The overlap is free because re-fetched rows collapse onto the same natural key. With no history at all it pulls from July 1 of the current year. An explicit `{"from":"YYYY-MM-DD","to":"YYYY-MM-DD"}` overrides both.
+- **Idempotency is the database's job, not the button's.** Writes go through the composite unique constraint on `(sample_id, sample_date, sample_seq)` with `resolution=merge-duplicates`. The in-memory in-flight collapse in the handler is a latency guard for a double-clicked button on one warm instance; it is not a distributed lock and is not what makes a retry safe.
+- **The parser is reused, not reimplemented.** The fetched CSV goes straight into `winexrayParser`, which owns the Windows-1252 fallback and the repair for the unquoted `Total Phenolics Index (IPT, d-less)` header. `dataLoader.loadFile` is browser-only (it pulls in the Supabase client), so the server path uses the parser directly; the parser carries its own copy of the same quote-injection repair, which is what makes that safe.
+- **Failure is never a silent no-op.** Every adapter error is an authored Spanish message carrying no credential, cookie, URL or export GUID.
+
+Live verification on 2026-08-28, through the shipped adapter rather than by hand: window 2026-08-01 to 2026-08-28 returned 39 samples and an 18250 byte CSV, which the parser split into 4 `wine_samples` and 25 `berry_samples` with 10 Control Wine excluded and 0 rejected, and the upsert issued `on_conflict=sample_id,sample_date,sample_seq` with `Prefer: resolution=merge-duplicates,missing=default` and every row carrying a complete natural key.
+
 ## FieldClimate (Pessl Instruments)
 
 Weather station platform. The target is the station at Sector 3A, which maps to lot code `MX-3A` in `config.js`: Monte Xanic (VDG), Sauvignon Blanc, 2.17 ha.
