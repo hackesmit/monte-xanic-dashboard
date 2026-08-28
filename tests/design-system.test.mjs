@@ -70,17 +70,18 @@ describe('MT.50 - design system tokens', () => {
     );
   });
 
-  test('border-radius uses the shape scale', () => {
-    const SCALE = new Set(['2px', '4px', '8px', '50%', '0', '0px', 'inherit', 'initial']);
+  test('border-radius is token-driven, not literal', () => {
+    // A literal that happens to match the scale still defeats the point: the
+    // next person copies it and the scale erodes. Only `0` is allowed raw.
+    const RAW_OK = new Set(['0', '0px', 'inherit', 'initial']);
     const violations = [];
 
     for (const { file, css } of sources) {
       const body = stripTokenBlocks(stripComments(css));
       for (const value of declarations(body, 'border-radius')) {
-        if (value.includes('var(--radius-')) continue;
         // Multi-value corners (e.g. sheet tops) are checked per corner.
         const parts = value.split(/\s+/);
-        const bad = parts.filter((p) => !SCALE.has(p) && !p.startsWith('var('));
+        const bad = parts.filter((p) => !RAW_OK.has(p) && !p.startsWith('var(--radius-'));
         if (bad.length) {
           violations.push(`${file}:${lineOf(css, value)} -> border-radius: ${value}`);
         }
@@ -90,33 +91,30 @@ describe('MT.50 - design system tokens', () => {
     assert.deepEqual(
       violations,
       [],
-      `border-radius must come from --radius-sharp/base/panel/round ` +
-        `(2px, 4px, 8px, 50%):\n  ${violations.join('\n  ')}`
+      `border-radius must use var(--radius-sharp|base|panel|round), not a ` +
+        `literal:\n  ${violations.join('\n  ')}`
     );
   });
 
-  test('font-size uses the type scale', () => {
-    const SCALE = new Set(['8px', '9px', '11px', '13px', '16px', '20px', '24px', '30px', '48px']);
-    // Relative and keyword sizes are intentional where they appear.
-    const RELATIVE = /^(inherit|initial|smaller|larger|\d*\.?\d+(em|rem|%)|0\.\d+em)$/;
+  test('font-size is token-driven, not literal', () => {
+    // Relative sizes stay allowed: they scale with their context on purpose.
+    const RELATIVE = /^(inherit|initial|smaller|larger|\d*\.?\d+(em|rem|%))$/;
     const violations = [];
 
     for (const { file, css } of sources) {
       const body = stripTokenBlocks(stripComments(css));
       for (const value of declarations(body, 'font-size')) {
-        if (value.includes('var(--text-')) continue;
-        if (RELATIVE.test(value)) continue;
-        if (!SCALE.has(value)) {
-          violations.push(`${file}:${lineOf(css, `font-size: ${value}`)} -> font-size: ${value}`);
-        }
+        const bare = value.replace(/\s*!important$/, '').trim();
+        if (bare.startsWith('var(--text-')) continue;
+        if (RELATIVE.test(bare)) continue;
+        violations.push(`${file}:${lineOf(css, `font-size: ${value}`)} -> font-size: ${value}`);
       }
     }
 
     assert.deepEqual(
       violations,
       [],
-      `font-size must come from the --text-* scale ` +
-        `(8/9/11/13/16/20/24/30/48px):\n  ${violations.join('\n  ')}`
+      `font-size must use var(--text-*), not a literal pixel value:\n  ${violations.join('\n  ')}`
     );
   });
 

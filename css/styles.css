@@ -394,7 +394,9 @@ body.demo-mode-active .demo-banner { display: block; }
   .weather-forecast-btn,
   #weather-forecast-horizon {
     min-height: 44px;
-    font-size: var(--text-md)!important;
+    /* --text-lg, not --text-md: this carries !important, so a 13px value here
+       outranks the generic 16px focus-zoom floor below and iOS keeps zooming. */
+    font-size: var(--text-lg)!important;
   }
   .weather-forecast-btn {
     padding: 10px 14px !important;
@@ -2857,7 +2859,7 @@ body.demo-mode-active .row-clickable        { display: none; }
 .nav-select-inline { font-size: var(--text-sm); padding: 3px 8px; min-width: auto; }
 .nav-select-date   { padding: 3px 6px; }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
   /* -- 1. iOS focus-zoom floor -- */
   .nav-select,
   .nav-select-inline,
@@ -2882,6 +2884,20 @@ body.demo-mode-active .row-clickable        { display: none; }
   #map-metric-select { font-size: var(--text-lg); }
 
   /* -- 2. Touch targets -- */
+
+  /* Re-declared here rather than only in the width-gated block above: a phone
+     in landscape (844px) and every tablet are past 768px but still touch-only,
+     so those layout-scoped rules never reach them. Layout changes (bottom
+     sheet, single column) stay width-gated on purpose; only sizing is promoted. */
+  .nav-tab { min-height: 44px; touch-action: manipulation; }
+  .ranch-tab { min-height: 44px; }
+  #map-metric-select { min-height: 44px; }
+  .form-group input,
+  .form-group select { min-height: 44px; }
+  .btn-gold { min-height: 44px; }
+  .weather-forecast-btn,
+  #weather-forecast-horizon { min-height: 44px; }
+  .upload-buttons .loader-btn-db { min-height: 44px; }
 
   /* Header controls: 36px wide before. */
   .theme-toggle,
@@ -2934,6 +2950,14 @@ body.demo-mode-active .row-clickable        { display: none; }
   /* Numeric inputs in the objetivos settings table need room at 16px. */
   .settings-table input { width: 88px; min-height: 44px; }
 
+  /* Modal controls. .row-edit-close was pinned at 32x32; the footer buttons
+     and close glyphs rendered around 30-36px. */
+  .row-edit-close,
+  .row-edit-modal .modal-close,
+  .modal-close { min-width: 44px; min-height: 44px; }
+  .btn-danger,
+  .btn-secondary { min-height: 44px; padding: 10px 16px; }
+
   /* -- Upload modal -- */
   /* 48px/60px padding left ~230px of usable width at 390px viewport. */
   .loader-card { padding: 28px 18px; width: 94vw; max-height: 88vh; }
@@ -2976,7 +3000,7 @@ body.demo-mode-active .row-clickable        { display: none; }
    left alone here to preserve the 48px desktop gutter. */
 header { padding-top: env(safe-area-inset-top); }
 
-@media (max-width: 768px) {
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
   /* Landscape on a notched iPhone puts the notch on one side, so the 12px
      mobile gutter set earlier is widened only when an inset exists. */
   header {

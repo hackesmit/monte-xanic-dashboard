@@ -165,8 +165,10 @@
 
 /* Mobile touch pass. mona.css loads after styles.css, so the 16px focus-zoom
    floor and the 44px touch floor for Mona's own controls have to live here to
-   win over the base rules above. See the matching block in css/styles.css. */
-@media (max-width: 768px) {
+   win over the base rules above. See the matching block in css/styles.css.
+   Coarse-pointer clause covers landscape phones and tablets, which are wider
+   than 768px but still touch-only. */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
   .mona-input,
   .mona-kb-add input { font-size: var(--text-lg); min-height: 44px; }
   .mona-send,
@@ -178,6 +180,10 @@
   .mona-kb-actions button { min-height: 44px; }
   .mona-conv-del { min-width: 44px; min-height: 44px; }
   .mona-saved-del { min-height: 44px; }
+  /* Conversation rows are the primary way to switch threads, and the pin
+     control is how a chart reaches Guardados. Both rendered around 30-36px. */
+  .mona-conv-item { min-height: 44px; }
+  .mona-pin-btn { min-height: 44px; padding: 10px 16px; }
 }
 
 /* The conversation delete control is opacity-0 until the row is hovered, which
