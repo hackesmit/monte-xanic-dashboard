@@ -16,6 +16,8 @@ import { ALLOWED_TABLES } from './allowedTables.js';
 
 const reply = (status, body) => ({ status, body });
 
+const UPSERT_TIMEOUT_MS = 20000;
+
 export { ALLOWED_TABLES };
 
 /**
@@ -38,6 +40,16 @@ export async function upsertRows({ table, rows }) {
   }
 
   // 4. Strip unknown columns and validate required fields
+  // A null or array entry would make Object.keys throw and turn malformed
+  // client input into a 500. Both callers share this core, so the guard has to
+  // live here rather than in either handler.
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r === null || typeof r !== 'object' || Array.isArray(r)) {
+      return reply(400, { ok: false, error: `Fila ${i + 1}: formato inválido` });
+    }
+  }
+
   const { columns, required } = tableConfig;
   if (columns) {
     for (const row of rows) {
@@ -159,28 +171,44 @@ export async function upsertRows({ table, rows }) {
       url += `?on_conflict=${encodeURIComponent(conflictCol)}`;
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(rows)
-    });
+    // A stalled Supabase leaves the serverless invocation hanging until the
+    // platform kills it, with no Spanish error for the caller. The timer stays
+    // armed through the error-body read for the same reason.
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), UPSERT_TIMEOUT_MS);
+    let response;
+    try {
+      response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(rows),
+        signal: ac.signal,
+      });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error(`[upload] Supabase error for ${table}:`, errText);
-      // Parse Supabase error for user-facing detail
-      let detail = 'Error al insertar datos';
-      try {
-        const errObj = JSON.parse(errText);
-        if (errObj.message) detail += ': ' + errObj.message;
-      } catch (_) { /* ignore parse error */ }
-      // Schema-cache errors → translate the opaque PostgREST message into
-      // an actionable hint pointing at the missing migration (Round 36).
-      if (/schema cache|column .+ does not exist/i.test(errText)) {
-        detail += ' — la migración correspondiente parece no estar aplicada. ' +
-          'Revisa /api/migrations-status o ejecuta los archivos pendientes en sql/.';
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[upload] Supabase error for ${table}:`, errText);
+        // Parse Supabase error for user-facing detail
+        let detail = 'Error al insertar datos';
+        try {
+          const errObj = JSON.parse(errText);
+          if (errObj.message) detail += ': ' + errObj.message;
+        } catch (_) { /* ignore parse error */ }
+        // Schema-cache errors → translate the opaque PostgREST message into
+        // an actionable hint pointing at the missing migration (Round 36).
+        if (/schema cache|column .+ does not exist/i.test(errText)) {
+          detail += ' — la migración correspondiente parece no estar aplicada. ' +
+            'Revisa /api/migrations-status o ejecuta los archivos pendientes en sql/.';
+        }
+        return reply(500, { ok: false, error: detail });
       }
-      return reply(500, { ok: false, error: detail });
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        return reply(504, { ok: false, error: 'La base de datos no respondió a tiempo.' });
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
 
     return reply(200, { ok: true, count: rows.length });
