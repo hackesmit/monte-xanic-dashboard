@@ -175,3 +175,64 @@ test('MT.49 — the too-many-pages guard is a Spanish error, not a truncated suc
     e => e instanceof WineXRayError && e.code === 'winexray_too_many'
   );
 });
+
+// ── Round 3: completeness of the round-1 and round-2 fixes ────────────
+
+test('MT.49 — a short page with rows still missing is not accepted as the end', async () => {
+  // Ordering is by a non-unique key, so a page can repeat a row and come back
+  // short while results remain. Breaking on "short" dropped the tail silently.
+  const p0 = Array.from({ length: 500 }, (_, i) => ({ id: i + 1 }));
+  const p1 = Array.from({ length: 120 }, (_, i) => ({ id: 500 + i }));   // repeats 500
+  const p2 = [{ id: 620 }];
+  const pages = [
+    json({ count: 620, results: p0 }),
+    json({ count: 620, results: p1 }),
+    json({ count: 620, results: p2 }),
+    json({ count: 620, results: [] }),
+  ];
+  let i = 0;
+  const c = new WineXRayClient({
+    username: 'u', password: 'p',
+    fetchImpl: async () => (i === 0 ? (i++, LOGIN_OK) : pages[i++ - 1]),
+  });
+  await c.login();
+  const rows = await c.listResults({ from: '2026-07-01', to: '2026-10-31' });
+  assert.equal(rows.length, 620, 'the trailing sample must not be dropped');
+  assert.ok(rows.some(r => r.id === 620), 'id 620 must be present');
+});
+
+test('MT.49 — fewer rows than the server reports is an error, not a green partial', async () => {
+  const p0 = Array.from({ length: 500 }, (_, i) => ({ id: i + 1 }));
+  const pages = [json({ count: 620, results: p0 }), json({ count: 620, results: [] })];
+  let i = 0;
+  const c = new WineXRayClient({
+    username: 'u', password: 'p',
+    fetchImpl: async () => (i === 0 ? (i++, LOGIN_OK) : pages[i++ - 1]),
+  });
+  await c.login();
+  await assert.rejects(
+    () => c.listResults({ from: '2026-07-01', to: '2026-10-31' }),
+    e => e instanceof WineXRayError && e.code === 'winexray_incomplete'
+  );
+});
+
+test('MT.49 — a cursor body that stalls times out in Spanish, not a hung run', async () => {
+  const realFetch = globalThis.fetch;
+  // Headers arrive promptly; the body never settles unless the signal aborts.
+  globalThis.fetch = async (url, opts) => ({
+    ok: true, status: 200,
+    headers: { get: () => 'application/json' },
+    json: () => new Promise((_, reject) => {
+      opts.signal.addEventListener('abort', () => {
+        const e = new Error('aborted'); e.name = 'AbortError'; reject(e);
+      });
+    }),
+  });
+  try {
+    const res = httpRes();
+    await handler({ method: 'POST', headers: { 'x-real-ip': '10.9.9.9', 'x-session-token': mintToken('lab') },
+      body: {}, socket: {} }, res);
+    assert.equal(res.out.statusCode, 502);
+    assert.match(res.out.body.error, /no respondió a tiempo|no se pudo consultar/i);
+  } finally { globalThis.fetch = realFetch; }
+});

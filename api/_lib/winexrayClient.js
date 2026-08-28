@@ -208,8 +208,13 @@ export class WineXRayClient {
         all.push(r);
       }
 
-      if (batch.length < pageLimit) break;
+      // Terminate on the server's own count, or on a genuinely EMPTY page.
+      // A merely SHORT page is not proof of the end: the list is ordered by a
+      // non-unique key, so rows can repeat across page boundaries and dedupe
+      // can leave a page short while results remain. Breaking on a short page
+      // silently dropped the tail and still reported success.
       if (expected !== null && all.length >= expected) break;
+      if (batch.length === 0) break;
 
       if (page === maxPages - 1) {
         throw new WineXRayError(
@@ -217,6 +222,15 @@ export class WineXRayClient {
           { code: 'winexray_too_many', status: 400 }
         );
       }
+    }
+
+    // Never hand back a partial set as a success. If the server said how many
+    // there are and we have fewer, that is an inconsistency, not a result.
+    if (expected !== null && all.length < expected) {
+      throw new WineXRayError(
+        'WineXRay devolvió menos muestras de las que reporta. Intenta de nuevo.',
+        { code: 'winexray_incomplete', status: 502 }
+      );
     }
     return all;
   }

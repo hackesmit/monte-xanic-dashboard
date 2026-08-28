@@ -88,18 +88,22 @@ async function resumeCursor(supabaseUrl, serviceKey) {
     const url = `${supabaseUrl}/rest/v1/${table}?select=sample_date&order=sample_date.desc&limit=1`;
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), 15000);
-    let res;
+    // The timer must stay armed through the BODY read: a response whose
+    // headers arrive promptly and whose body then stalls would otherwise hang
+    // the invocation past any timeout.
+    let rows;
     try {
-      res = await fetch(url, { headers, signal: ac.signal });
+      const res = await fetch(url, { headers, signal: ac.signal });
+      if (!res.ok) throw new SyncError('No se pudo consultar la última muestra almacenada.');
+      rows = await res.json();
     } catch (err) {
+      if (err instanceof SyncError) throw err;
       throw new SyncError(err?.name === 'AbortError'
         ? 'La base de datos no respondió a tiempo.'
         : 'No se pudo consultar la base de datos.');
     } finally {
       clearTimeout(timer);
     }
-    if (!res.ok) throw new SyncError('No se pudo consultar la última muestra almacenada.');
-    const rows = await res.json();
     const d = rows?.[0]?.sample_date;
     // A table with no rows at all cannot bound the cursor; a full-season pull
     // is the correct answer for it.
