@@ -81,45 +81,63 @@ export class WineXRayClient {
     this._cookie = null; // in-memory for the life of the run only
   }
 
-  async _request(path, { method = 'GET', body, headers = {}, expect } = {}) {
+  async _request(path, { method = 'GET', body, headers = {}, expect, as = 'none' } = {}) {
     const url = assertSameOrigin(ORIGIN + path);
     const h = { Accept: '*/*', ...headers };
     // Hand-built Cookie header: there is no cookie jar server-side, and the
     // recon's "the browser attaches it automatically" does not hold here.
     if (this._cookie) h.Cookie = this._cookie;
 
-    // A stalled upstream must fail cleanly rather than hang the function.
+    // A stalled upstream must fail cleanly rather than hang the function. The
+    // timer has to stay armed through BODY consumption, not just until headers
+    // arrive: a server that sends headers promptly and then stalls mid-body
+    // would otherwise hang the invocation until the platform kills it.
     const ac = new AbortController();
     const timer = setTimeout(() => ac.abort(), this._timeoutMs);
-    let res;
     try {
-      res = await this._fetch(url.toString(), {
-        method, body, headers: h, redirect: 'manual', signal: ac.signal,
-      });
-    } catch (err) {
-      if (err?.name === 'AbortError') {
-        throw new WineXRayError('WineXRay no respondió a tiempo.', { code: 'winexray_timeout', status: 504 });
+      let res;
+      try {
+        res = await this._fetch(url.toString(), {
+          method, body, headers: h, redirect: 'manual', signal: ac.signal,
+        });
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          throw new WineXRayError('WineXRay no respondió a tiempo.', { code: 'winexray_timeout', status: 504 });
+        }
+        // Deliberately does not interpolate err.message: it can contain the URL.
+        throw new WineXRayError('No se pudo conectar con WineXRay.', { code: 'winexray_network', status: 502 });
       }
-      // Deliberately does not interpolate err.message: it can contain the URL.
-      throw new WineXRayError('No se pudo conectar con WineXRay.', { code: 'winexray_network', status: 502 });
-    } finally {
-      clearTimeout(timer);
-    }
 
-    if (expect !== 'login') {
+      if (expect === 'login') return { res, data: null };
+
       assertNotLoginRedirect(res);
       if (!res.ok) {
         throw new WineXRayError(`WineXRay respondió con un error (${res.status}).`, { code: 'winexray_http', status: 502 });
       }
       assertContentType(res, expect);
+
+      let data;
+      try {
+        if (as === 'json') data = await res.json();
+        else if (as === 'text') data = await res.text();
+        else if (as === 'arrayBuffer') data = await res.arrayBuffer();
+        else data = null;
+      } catch (err) {
+        if (err?.name === 'AbortError') {
+          throw new WineXRayError('WineXRay no respondió a tiempo.', { code: 'winexray_timeout', status: 504 });
+        }
+        throw new WineXRayError('WineXRay devolvió una respuesta ilegible.', { code: 'winexray_body', status: 502 });
+      }
+      return { res, data };
+    } finally {
+      clearTimeout(timer);
     }
-    return res;
   }
 
   /** Exchange the login for the _ncfa session cookie. Reads the 303, never follows it. */
   async login() {
     const form = new URLSearchParams({ username: this._username, password: this._password });
-    const res = await this._request('/login?returnUrl=/client-center', {
+    const { res } = await this._request('/login?returnUrl=/client-center', {
       method: 'POST',
       body: form.toString(),
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -166,10 +184,10 @@ export class WineXRayClient {
     let expected = null;
 
     for (let page = 0; page < maxPages; page++) {
-      const res = await this._request('/api/results', {
+      const { data: json } = await this._request('/api/results', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        expect: 'application/json',
+        expect: 'application/json', as: 'json',
         body: JSON.stringify({
           orderBy: 'sampleDate', reverse: true, currentPage: page, pageLimit,
           search: '', searchField: 'assayId', searchFieldMatchType: 'Like',
@@ -178,7 +196,6 @@ export class WineXRayClient {
           loadMaxBatchId: true,
         }),
       });
-      const json = await res.json();
       const batch = Array.isArray(json?.results) ? json.results : [];
       if (expected === null && Number.isFinite(json?.count)) expected = json.count;
 
@@ -207,16 +224,16 @@ export class WineXRayClient {
   /** Turn sample ids into an export GUID. */
   async createExport(ids) {
     if (!ids.length) throw new WineXRayError('No hay muestras para exportar.', { code: 'winexray_empty', status: 400 });
-    const res = await this._request('/api/export', {
+    const { data: raw } = await this._request('/api/export', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      expect: 'text/plain',
+      expect: 'text/plain', as: 'text',
       body: JSON.stringify({
         keys: ids.map(id => ({ id, expand: false })),
         orderBy: 'sampleDate', reverse: true,
       }),
     });
-    const guid = (await res.text()).trim();
+    const guid = String(raw || '').trim();
     if (!/^[0-9a-fA-F-]{32,40}$/.test(guid)) {
       throw new WineXRayError('WineXRay no devolvió un identificador de exportación válido.', { code: 'winexray_guid', status: 502 });
     }
@@ -229,10 +246,10 @@ export class WineXRayClient {
    * Windows-1252 — decoding here as UTF-8 would mangle "Peña").
    */
   async downloadCsv(guid) {
-    const res = await this._request(`/api/export/result.csv?guid=${encodeURIComponent(guid)}`, {
-      expect: 'text/csv',
+    const { data } = await this._request(`/api/export/result.csv?guid=${encodeURIComponent(guid)}`, {
+      expect: 'text/csv', as: 'arrayBuffer',
     });
-    return await res.arrayBuffer();
+    return data;
   }
 
   /** login -> results -> export -> csv, in one call. */

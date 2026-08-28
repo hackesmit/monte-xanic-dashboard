@@ -13,10 +13,19 @@
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
 import { upsertRows } from './_lib/upsertRows.js';
+import { ALLOWED_TABLES } from './_lib/allowedTables.js';
 import { WineXRayClient, WineXRayError } from './_lib/winexrayClient.js';
 import { winexrayParser } from '../js/upload/winexray.js';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+// Round-trips through Date so an impossible day is rejected rather than
+// silently rolling over (JS turns 2026-02-31 into 2026-03-03).
+function isRealDate(v) {
+  if (!DATE_ONLY.test(v)) return false;
+  const d = new Date(`${v}T00:00:00Z`);
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
+}
 
 /** A sync-side failure carrying a Spanish, user-safe message. */
 class SyncError extends Error {
@@ -105,6 +114,7 @@ async function resumeCursor(supabaseUrl, serviceKey) {
 async function runSync({ from, to }, deps = {}) {
   const makeClient = deps.makeClient || (opts => new WineXRayClient(opts));
   const upsert = deps.upsert || upsertRows;
+  const parse = deps.parse || (file => winexrayParser.parse(file));
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_KEY;
   if (!supabaseUrl || !serviceKey) {
@@ -112,6 +122,7 @@ async function runSync({ from, to }, deps = {}) {
   }
 
   const today = todayInVineyard();
+  const end = to || today;
   let start = from;
   if (!start) {
     const newest = await resumeCursor(supabaseUrl, serviceKey);
@@ -119,13 +130,15 @@ async function runSync({ from, to }, deps = {}) {
     // the season in progress is the PREVIOUS year's, so anchoring on this
     // year's July 1 would ask for a window that has not happened yet and,
     // after clamping, sync a single day.
-    start = newest ? shiftDays(newest, -LOOKBACK_DAYS) : seasonStartFor(today);
+    start = newest ? shiftDays(newest, -LOOKBACK_DAYS) : seasonStartFor(end);
   }
-  const end = to || today;
-  // Only an inverted range is clamped, and only by moving the START back to
-  // the end. Never move the end backwards: that would silently shrink a window
-  // the caller asked for.
-  if (start > end) start = end;
+  // A DERIVED start later than the end means the stored cursor is ahead of an
+  // explicitly requested historical `to`. Clamping silently turned that into a
+  // one-day sync that still reported success, so it is refused instead.
+  if (start > end) {
+    return { status: 400, body: { ok: false,
+      error: `El rango solicitado es inválido: la última muestra almacenada (${start}) es posterior a la fecha final (${end}). Indica un 'from' explícito.` } };
+  }
 
   const client = makeClient({
     username: process.env.WINEXRAY_USERNAME,
@@ -143,19 +156,35 @@ async function runSync({ from, to }, deps = {}) {
   // Same parser as the manual upload: it owns the Windows-1252 fallback and the
   // repair for the unquoted "Total Phenolics Index (IPT, d-less)" header, whose
   // embedded comma otherwise shifts every later column one position.
-  const parsed = await winexrayParser.parse({
+  const parsed = await parse({
     name: 'winexray-sync.csv',
     async arrayBuffer() { return buffer; },
   });
 
+  // Chunk by the table's own cap. upsertRows rejects a batch larger than
+  // maxRows, so submitting a whole season-sized target in one call would fail
+  // the ordinary path with a 400 and, if an earlier target already committed,
+  // leave a partial write. The manual upload path chunks for the same reason.
   const written = {};
   for (const target of parsed.targets) {
     if (!target.rows.length) continue;
-    const { status, body } = await upsert({ table: target.table, rows: target.rows });
-    if (status !== 200) {
-      return { status, body: { ...body, tabla: target.table, rango: { desde: start, hasta: end } } };
+    const cap = ALLOWED_TABLES[target.table]?.maxRows || 500;
+    let count = 0;
+    for (let i = 0; i < target.rows.length; i += cap) {
+      const chunk = target.rows.slice(i, i + cap);
+      const { status, body } = await upsert({ table: target.table, rows: chunk });
+      if (status !== 200) {
+        // Report what did land, so a partial write is visible rather than
+        // looking like nothing happened.
+        return { status, body: {
+          ...body, tabla: target.table,
+          escritos: { ...written, [target.table]: count },
+          rango: { desde: start, hasta: end },
+        } };
+      }
+      count += body.count ?? chunk.length;
     }
-    written[target.table] = body.count;
+    written[target.table] = count;
   }
 
   const total = Object.values(written).reduce((a, b) => a + b, 0);
@@ -195,8 +224,15 @@ export default async function handler(req, res, deps = {}) {
   }
 
   const { from, to } = req.body || {};
-  if ((from && !DATE_ONLY.test(from)) || (to && !DATE_ONLY.test(to))) {
+  // Shape AND calendar validity: '2026-02-31' matches the regex but is not a
+  // day, and passing it upstream produces a confusing failure far from here.
+  if ((from && !isRealDate(from)) || (to && !isRealDate(to))) {
     return res.status(400).json({ ok: false, error: 'Formato de fecha inválido (se espera AAAA-MM-DD)' });
+  }
+  // An explicitly inverted range is a caller mistake. Clamping it into a
+  // one-day window turned that mistake into a misleading successful sync.
+  if (from && to && from > to) {
+    return res.status(400).json({ ok: false, error: "El rango es inválido: 'from' es posterior a 'to'." });
   }
 
   // A second caller for the SAME window joins the run already in flight. A

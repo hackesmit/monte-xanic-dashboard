@@ -37,7 +37,13 @@ function mkRes() {
   };
 }
 
-const mkReq = (over = {}) => ({ method: 'POST', headers: {}, body: {}, socket: {}, ...over });
+// Each request gets its own client IP: the endpoint's rate limiter allows 6 per
+// window, and a shared IP would make later tests assert against a 429.
+let ipSeq = 0;
+const mkReq = (over = {}) => ({
+  method: 'POST', body: {}, socket: {}, ...over,
+  headers: { 'x-real-ip': `10.0.0.${++ipSeq}`, ...(over.headers || {}) },
+});
 
 async function fixtureBuffer() {
   const buf = await readFile(new URL('./fixtures/winexray_mixed.csv', import.meta.url));
@@ -157,10 +163,59 @@ test('MT.48 — an upsert failure surfaces the table and range, not a silent no-
   assert.deepEqual(out.body.rango, { desde: '2026-07-01', hasta: '2026-07-31' });
 });
 
-test('MT.48 — start after end is clamped rather than sent as an inverted range', async () => {
+test('MT.48 — an inverted range is refused, never quietly narrowed', async () => {
+  // Clamping an inverted range into a one-day window turned a caller mistake
+  // into a misleading successful sync (adversarial review, round 2).
   let asked = null;
-  await runSync({ from: '2026-09-30', to: '2026-07-01' }, {
+  const out = await runSync({ from: '2026-09-30', to: '2026-07-01' }, {
     makeClient: () => ({ async fetchExportCsv(range) { asked = range; return { buffer: null, sampleCount: 0 }; } }),
   });
-  assert.ok(asked.from <= asked.to, `range must not be inverted: ${JSON.stringify(asked)}`);
+  assert.equal(out.status, 400);
+  assert.equal(out.body.ok, false);
+  assert.equal(asked, null, 'WineXRay must not be contacted for an invalid range');
+});
+
+test('MT.48 — the handler rejects an inverted range before any work', async () => {
+  const res = mkRes();
+  await handler(mkReq({
+    headers: { 'x-session-token': mintToken('lab') },
+    body: { from: '2026-09-30', to: '2026-07-01' },
+  }), res);
+  assert.equal(res.out.statusCode, 400);
+  assert.match(res.out.body.error, /'from' es posterior a 'to'/);
+});
+
+test('MT.48 — an impossible calendar date is rejected', async () => {
+  for (const bad of ['2026-02-31', '2026-13-01', '2026-00-10']) {
+    const res = mkRes();
+    await handler(mkReq({ headers: { 'x-session-token': mintToken('lab') }, body: { from: bad } }), res);
+    assert.equal(res.out.statusCode, 400, `${bad} must be refused`);
+  }
+});
+
+test('MT.48 — targets larger than the table cap are chunked, not rejected', async () => {
+  // berry_samples caps at 1000 rows per call; a season-sized target used to be
+  // submitted whole and came back 400 (adversarial review, round 2).
+  const { ALLOWED_TABLES } = await import('../api/_lib/allowedTables.js');
+  const cap = ALLOWED_TABLES.berry_samples.maxRows;
+  const big = Array.from({ length: cap + 250 }, (_, i) => ({
+    sample_id: `26MX-${i}`, sample_date: '2026-08-01', sample_type: 'Berries',
+  }));
+  const batches = [];
+  const out = await runSync({ from: '2026-08-01', to: '2026-08-31' }, {
+    makeClient: () => ({ async fetchExportCsv() { return { buffer: new ArrayBuffer(8), sampleCount: big.length }; } }),
+    parse: async () => ({
+      targets: [{ table: 'berry_samples', rows: big }],
+      excluded: {}, rejected: [], meta: { totalRows: big.length },
+    }),
+    upsert: async ({ rows }) => {
+      batches.push(rows.length);
+      return { status: 200, body: { ok: true, count: rows.length } };
+    },
+  });
+  assert.equal(out.status, 200);
+  assert.ok(batches.length > 1, 'a target over the cap must be split');
+  assert.ok(batches.every(n => n <= cap), `every batch must respect the ${cap}-row cap`);
+  assert.equal(batches.reduce((a, b) => a + b, 0), big.length, 'no rows may be dropped');
+  assert.equal(out.body.count, big.length);
 });
