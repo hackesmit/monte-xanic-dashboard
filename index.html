@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#C4A060">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -56,7 +56,7 @@
     <div class="loader-sub">
       Arrastre o seleccione su exportación WineXRay (.csv o .xlsx) para visualizar sin guardar.
     </div>
-    <input type="file" id="file-input" multiple accept=".xlsx,.xls,.csv" style="display:none" aria-label="Seleccionar archivos locales">
+    <input type="file" id="file-input" multiple accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,.csv,text/csv,text/comma-separated-values,application/csv" style="display:none" aria-label="Seleccionar archivos locales">
     <button class="loader-btn">Seleccionar Archivos</button>
     <div class="loader-files" id="loader-status"></div>
 
@@ -72,17 +72,17 @@
         <button type="button" id="upload-btn-winexray" class="loader-btn loader-btn-db">
           📄 Cargar WineXRay (.csv)
         </button>
-        <input type="file" id="upload-file-winexray" accept=".csv" style="display:none" aria-label="Cargar archivo WineXRay">
+        <input type="file" id="upload-file-winexray" accept=".csv,text/csv,text/comma-separated-values,application/csv" style="display:none" aria-label="Cargar archivo WineXRay">
 
         <button type="button" id="upload-btn-recepcion" class="loader-btn loader-btn-db">
           📄 Cargar Recepción de Tanque (.xlsx)
         </button>
-        <input type="file" id="upload-file-recepcion" accept=".xlsx,.xls" style="display:none" aria-label="Cargar archivo Recepción de Tanque">
+        <input type="file" id="upload-file-recepcion" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none" aria-label="Cargar archivo Recepción de Tanque">
 
         <button type="button" id="upload-btn-prerecepcion" class="loader-btn loader-btn-db">
           📄 Cargar Pre-recepción (.xlsx)
         </button>
-        <input type="file" id="upload-file-prerecepcion" accept=".xlsx,.xls" style="display:none" aria-label="Cargar archivo Pre-recepción">
+        <input type="file" id="upload-file-prerecepcion" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none" aria-label="Cargar archivo Pre-recepción">
       </div>
 
       <div id="db-upload-status" class="loader-files" data-state="idle" role="status" aria-live="polite"></div>
@@ -646,26 +646,26 @@
 
       <div class="section-label" style="margin-top:24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span id="weather-section-title">Clima durante la Vendimia — Valle de Guadalupe</span>
-        <select id="weather-valley-select" class="nav-select" style="font-size:11px;padding:3px 8px;min-width:auto">
+        <select id="weather-valley-select" class="nav-select nav-select-inline">
           <option value="VDG">VDG</option>
           <option value="VON">VON</option>
           <option value="SV">SV</option>
         </select>
-        <select id="weather-agg-select" class="nav-select" style="font-size:11px;padding:3px 8px;min-width:auto">
+        <select id="weather-agg-select" class="nav-select nav-select-inline">
           <option value="day">Día</option>
           <option value="week">Semana</option>
           <option value="month">Mes</option>
         </select>
-        <select id="weather-timeframe-select" class="nav-select" style="font-size:11px;padding:3px 8px;min-width:auto">
+        <select id="weather-timeframe-select" class="nav-select nav-select-inline">
           <option value="season">Temporada</option>
           <option value="year">Año Completo</option>
           <option value="30d">Últimos 30 Días</option>
           <option value="custom">Personalizado</option>
         </select>
         <span id="weather-custom-dates" style="display:none;gap:6px;align-items:center">
-          <input type="date" id="weather-custom-start" class="nav-select" style="font-size:11px;padding:3px 6px">
+          <input type="date" id="weather-custom-start" class="nav-select nav-select-inline nav-select-date">
           <span style="color:var(--text-dim)">–</span>
-          <input type="date" id="weather-custom-end" class="nav-select" style="font-size:11px;padding:3px 6px">
+          <input type="date" id="weather-custom-end" class="nav-select nav-select-inline nav-select-date">
         </span>
         <button id="weather-forecast-toggle" type="button" class="nav-select weather-forecast-btn" style="font-size:11px;padding:3px 10px;min-width:auto;cursor:pointer" aria-pressed="false" title="Mostrar pronóstico de Open-Meteo">Mostrar pronóstico</button>
         <select id="weather-forecast-horizon" class="nav-select" style="display:none;font-size:11px;padding:3px 8px;min-width:auto" title="Horizonte de pronóstico">
