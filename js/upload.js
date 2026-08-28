@@ -22,6 +22,7 @@ const TABLE_DISPLAY = {
   reception_lots:   { emoji: '📦', label: 'Lotes de recepción' },
   prefermentativos: { emoji: '🧪', label: 'Prefermentativos' },
   pre_receptions:   { emoji: '📋', label: 'Pre-recepciones' },
+  seguimiento_lotes: { emoji: '📈', label: 'Seguimiento de lotes' },
 };
 
 const EXCLUDED_LABEL = {
@@ -185,6 +186,61 @@ export const UploadManager = {
     return { count: total, error: null };
   },
 
+  // ── WineXRay sync (no file handling by the user) ──────────────────
+  // Calls our own endpoint, which holds the WineXRay login server-side and
+  // returns only a summary. The credential, the session cookie and the export
+  // GUID never reach this code. The manual .csv button stays as the fallback.
+  async syncWineXRay(statusEl, { from, to } = {}) {
+    if (this._uploading) {
+      this._setStatus(statusEl, 'error', 'Carga en progreso, espere...');
+      return { ok: false };
+    }
+    if (!Auth.canUpload()) {
+      this._setStatus(statusEl, 'error', '\u2717 Sin permisos para sincronizar datos.');
+      return { ok: false };
+    }
+    if (DemoMode.isActive()) {
+      this._setStatus(statusEl, 'error', '\u2717 Modo demo activo \u2014 desactívelo para sincronizar datos reales.');
+      return { ok: false };
+    }
+    const token = Auth.getToken();
+    if (!token) {
+      this._setStatus(statusEl, 'error', '\u2717 No autorizado \u2014 inicie sesión.');
+      return { ok: false };
+    }
+
+    this._uploading = true;
+    this._setStatus(statusEl, 'pending', '\u23f3 Sincronizando con WineXRay…');
+    try {
+      const resp = await fetch('/api/winexray-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': token },
+        body: JSON.stringify({ from, to }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      // Failure is visible and in Spanish, never a silent no-op.
+      if (!resp.ok || !data.ok) {
+        this._setStatus(statusEl, 'error', `\u2717 ${this._esc(data.error || 'Error al sincronizar con WineXRay.')}`);
+        return { ok: false, error: data.error };
+      }
+      this._setStatus(statusEl, 'success', `\u2713 ${this._esc(data.mensaje || 'Sincronización completa.')}`);
+      if (data.count) {
+        try {
+          await DataStore.loadFromSupabase();
+          await DataStore.loadMediciones();
+          if (App && App.refresh) App.refresh();
+        } catch (_) { /* refresh is best-effort */ }
+      }
+      return { ok: true, count: data.count || 0, data };
+    } catch (err) {
+      console.error('[sync] WineXRay sync failed:', err);
+      this._setStatus(statusEl, 'error', '\u2717 Error de red al sincronizar con WineXRay.');
+      return { ok: false, error: err.message };
+    } finally {
+      this._uploading = false;
+    }
+  },
+
   // UI helpers (preview card + summary DOM rendering) — implemented in Task 13
   _setStatus(el, state, msg) {
     if (!el) return;
@@ -194,7 +250,7 @@ export const UploadManager = {
 
   _renderPreviewCard(statusEl) {
     if (!statusEl || !this._pendingUpload) return;
-    const { parser, file, targets, excluded, rejected } = this._pendingUpload;
+    const { parser, file, targets, excluded, rejected, warnings } = this._pendingUpload;
     const totalRows = targets.reduce((s, t) => s + t.rows.length, 0);
 
     while (statusEl.firstChild) statusEl.removeChild(statusEl.firstChild);
@@ -231,6 +287,23 @@ export const UploadManager = {
         const row = document.createElement('div');
         row.className = 'upload-preview-row upload-preview-excluded';
         row.textContent = `${EXCLUDED_LABEL[key] || key}: ${count}`;
+        card.appendChild(row);
+      }
+    }
+
+    // Parser warnings: things the parser understood but had to interpret, or
+    // read despite a defect in the source (a date header stored as a number, an
+    // unmapped variety code). They do not block the upload, but the confirm step
+    // is the only moment the winery can act on them, so they are shown here
+    // rather than swallowed.
+    if (warnings && warnings.length) {
+      const warnH = document.createElement('h4');
+      warnH.textContent = 'Avisos (el archivo se cargó, revise el original)';
+      card.appendChild(warnH);
+      for (const w of warnings) {
+        const row = document.createElement('div');
+        row.className = 'upload-preview-row upload-preview-warning';
+        row.textContent = w;
         card.appendChild(row);
       }
     }

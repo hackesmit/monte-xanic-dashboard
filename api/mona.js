@@ -1,8 +1,8 @@
 // api/mona.js — stateless proxy to the Claude Messages API (SSE passthrough).
 // Session-token gated, rate-limited, server-side system prompt + API key.
-import { verifyToken } from './lib/verifyToken.js';
-import { clientIp } from './lib/rateLimit.js';
-import { validateChatRequest } from './lib/monaValidate.js';
+import { verifyToken } from './_lib/verifyToken.js';
+import { clientIp } from './_lib/rateLimit.js';
+import { validateChatRequest } from './_lib/monaValidate.js';
 
 const MODEL = 'claude-sonnet-4-6';
 const MAX_TOKENS = 4096;

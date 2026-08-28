@@ -291,11 +291,24 @@ export const Events = {
     const fileInput = document.getElementById('file-input');
     if (loaderBtn && fileInput) loaderBtn.addEventListener('click', () => fileInput.click());
 
-    // Three explicit DB upload buttons → UploadManager.startUpload(parserId, file, statusEl)
+    // WineXRay sync button → our own endpoint; no file picker involved.
+    // Disabled for the duration of the run so a double-click cannot start two.
+    const syncBtn = document.getElementById('sync-btn-winexray');
+    if (syncBtn) {
+      syncBtn.addEventListener('click', async () => {
+        const statusEl = document.getElementById('db-upload-status');
+        syncBtn.disabled = true;
+        try { await UploadManager.syncWineXRay(statusEl); }
+        finally { syncBtn.disabled = false; }
+      });
+    }
+
+    // Explicit DB upload buttons → UploadManager.startUpload(parserId, file, statusEl)
     const UPLOAD_BUTTONS = [
       { btn: 'upload-btn-winexray',     input: 'upload-file-winexray',     parser: 'winexray'     },
       { btn: 'upload-btn-recepcion',    input: 'upload-file-recepcion',    parser: 'recepcion'    },
       { btn: 'upload-btn-prerecepcion', input: 'upload-file-prerecepcion', parser: 'prerecepcion' },
+      { btn: 'upload-btn-seguimiento',  input: 'upload-file-seguimiento',  parser: 'seguimiento'  },
     ];
 
     for (const { btn, input, parser } of UPLOAD_BUTTONS) {

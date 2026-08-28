@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateChatRequest, MAX_MESSAGES } from '../api/lib/monaValidate.js';
+import { validateChatRequest, MAX_MESSAGES } from '../api/_lib/monaValidate.js';
 
 test('accepts a well-formed request', () => {
   const r = validateChatRequest({ messages: [{ role: 'user', content: 'Hola Mona' }] });

@@ -1,5 +1,5 @@
-import { verifyToken } from './lib/verifyToken.js';
-import { rateLimit } from './lib/rateLimit.js';
+import { verifyToken } from './_lib/verifyToken.js';
+import { rateLimit } from './_lib/rateLimit.js';
 import { ALLOWED_TABLES } from './upload.js';
 import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../js/quality-scale.js';
 import { validateRow } from '../js/validation.js';

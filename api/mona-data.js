@@ -1,7 +1,7 @@
 // api/mona-data.js — token-gated persistence for Mona (service-key Supabase REST).
 // All mona_* tables are server-only (RLS on, no anon policies), so every read/write
 // goes through here. Username/role come from the verified token, never the body.
-import { verifyToken } from './lib/verifyToken.js';
+import { verifyToken } from './_lib/verifyToken.js';
 
 const URL = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -10,7 +10,16 @@ const H = () => ({ 'content-type': 'application/json', apikey: KEY, Authorizatio
 async function sb(path, opts = {}) {
   const res = await fetch(`${URL}/rest/v1/${path}`, { ...opts, headers: { ...H(), ...(opts.headers || {}) } });
   const text = await res.text();
-  return { ok: res.ok, status: res.status, json: text ? JSON.parse(text) : null };
+  const json = text ? JSON.parse(text) : null;
+  // fetch() does not throw on an HTTP error status. Every handler below reads
+  // r.json and reports success unconditionally, so a non-2xx here would mask a
+  // failed write as 200 { ok: true } (or a failed read as []). Throw so the
+  // handler's try/catch surfaces a real 500 instead.
+  if (!res.ok) {
+    const detail = (json && (json.message || json.error)) || `HTTP ${res.status}`;
+    throw new Error(`Supabase ${res.status}: ${String(detail).slice(0, 200)}`);
+  }
+  return { ok: res.ok, status: res.status, json };
 }
 
 const enc = encodeURIComponent;

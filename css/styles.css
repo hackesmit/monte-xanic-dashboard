@@ -2553,6 +2553,7 @@ canvas { max-width: 100%; }
 }
 .upload-preview-row.upload-preview-excluded { color: var(--muted); }
 .upload-preview-row.upload-preview-rejected { color: var(--flag-warning); }
+.upload-preview-row.upload-preview-warning  { color: var(--flag-alert); white-space: normal; }
 
 .upload-preview-download {
   margin: 0.5rem 0;

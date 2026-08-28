@@ -65,10 +65,15 @@
       <div class="loader-divider"></div>
       <div class="loader-section-label">Guardar en Base de Datos</div>
       <div class="loader-sub">
-        Seleccione un archivo según su tipo. Cada uno va a su destino específico.
+        Sincronice WineXRay directamente, o seleccione un archivo según su tipo.
+        Cada uno va a su destino específico.
       </div>
 
       <div class="upload-buttons">
+        <button type="button" id="sync-btn-winexray" class="loader-btn loader-btn-db">
+          ↻ Sincronizar WineXRay
+        </button>
+
         <button type="button" id="upload-btn-winexray" class="loader-btn loader-btn-db">
           📄 Cargar WineXRay (.csv)
         </button>
@@ -83,6 +88,11 @@
           📄 Cargar Pre-recepción (.xlsx)
         </button>
         <input type="file" id="upload-file-prerecepcion" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" style="display:none" aria-label="Cargar archivo Pre-recepción">
+
+        <button type="button" id="upload-btn-seguimiento" class="loader-btn loader-btn-db">
+          📄 Cargar Seguimiento de Maduración (.xlsx)
+        </button>
+        <input type="file" id="upload-file-seguimiento" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" style="display:none" aria-label="Cargar archivo Seguimiento de Maduración">
       </div>
 
       <div id="db-upload-status" class="loader-files" data-state="idle" role="status" aria-live="polite"></div>
