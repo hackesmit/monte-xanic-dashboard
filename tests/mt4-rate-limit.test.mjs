@@ -6,7 +6,7 @@ import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 // Fresh import for each test file run (module-level state in buckets Map)
-const { rateLimit } = await import('../api/lib/rateLimit.js');
+const { rateLimit } = await import('../api/_lib/rateLimit.js');
 
 /** Create a mock req object */
 function mockReq(ip = '1.2.3.4', url = '/api/test') {

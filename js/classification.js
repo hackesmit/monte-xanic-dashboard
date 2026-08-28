@@ -77,17 +77,83 @@ export function scoreParam(spec, value) {
 
 // ── Sanitary conteo + visual ─────────────────────────────────────────
 
+// The berry-count breakdown the sanitary percentage is computed from. The five
+// required counts are the WineXRay set config.js maps on upload
+// (preReceptionsToSupabase); every one must be present, or the percentage is
+// off a fabricated total. health_quemadura is optional — upload rows never
+// carry it, so requiring it would regress every uploaded lot into missing[].
+// When burn was not collected the metric is FIVE-FIELD: quemadura is excluded,
+// not defaulted to a fabricated 0 (see scoreSanitaryPct + mt11 identity test).
+const SANITARY_COUNT_FIELDS = [
+  'health_madura', 'health_inmadura', 'health_sobremadura',
+  'health_picadura', 'health_enfermedad',
+];
+
+// Strict non-negative-integer parse for a sanitary berry count. A count is only
+// real when it is a finite integer number or a trimmed decimal-integer string.
+// Number('') and Number('  ') return a finite 0, Number(true) returns 1, and
+// Number([]) returns 0, so blank, whitespace, boolean, and other coercible
+// non-numbers must be rejected BEFORE any coercion rather than fabricating a
+// clean 0 — the identical defect class fixed in the predictor (xd-6jg). A
+// negative or fractional value cannot be a berry tally and rejects too:
+// a negative health_picadura would otherwise yield a negative damage share and
+// win the cleanest bucket. Both branches also require a SAFE integer (≤ 2^53-1):
+// an all-digit string like '9'.repeat(400) matches /^\d+$/ but converts to
+// Infinity, and any value above Number.MAX_SAFE_INTEGER silently loses precision
+// and would then produce Infinity/Infinity → NaN in the percentage. Returns a
+// non-negative safe integer, or null when the value is missing/invalid.
+function parseCount(v) {
+  if (typeof v === 'number') {
+    return Number.isSafeInteger(v) && v >= 0 ? v : null;
+  }
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (!/^\d+$/.test(s)) return null;
+    const n = Number(s);
+    return Number.isSafeInteger(n) && n >= 0 ? n : null;
+  }
+  return null;
+}
+
 function scoreSanitaryPct(medicion) {
   if (!medicion) return null;
-  const unhealthy = (medicion.health_picadura || 0)
-                  + (medicion.health_enfermedad || 0)
-                  + (medicion.health_quemadura || 0);
-  const total = (medicion.health_madura || 0)
-              + (medicion.health_inmadura || 0)
-              + (medicion.health_sobremadura || 0)
-              + unhealthy;
-  if (total === 0) return null;
+  // A medicion where staff filled only some counts (e.g. health_madura) used
+  // to read the blanks as 0 and score the BEST bucket off a 100%-clean total
+  // that was never counted — partial data outscoring complete data. Require
+  // the whole required count set present and valid; otherwise it is missing,
+  // not clean. parseCount also stops a poisoned count (NaN, negative, string
+  // garbage) from picking a bucket.
+  const counts = [];
+  for (const field of SANITARY_COUNT_FIELDS) {
+    const n = parseCount(medicion[field]);
+    if (n === null) return null;
+    counts.push(n);
+  }
+  // Optional burn count. When it was never collected it is ABSENT (null /
+  // undefined) and EXCLUDED — the metric is five-field. Excluding it is
+  // arithmetically identical to adding 0 here: a 0 count adds nothing to either
+  // the unhealthy numerator or the total denominator, so two rows with the same
+  // five counts score identically whether or not burn was recorded as 0. mt11
+  // pins that identity so the honest five-field semantics can never silently
+  // diverge from the math. A present-but-invalid burn count (negative,
+  // fractional, boolean, non-numeric) is a poisoned reading and rejects the
+  // whole medicion.
+  const rawQuemadura = medicion.health_quemadura;
+  let quemadura = 0;
+  if (rawQuemadura !== null && rawQuemadura !== undefined) {
+    quemadura = parseCount(rawQuemadura);
+    if (quemadura === null) return null;
+  }
+  const [madura, inmadura, sobremadura, picadura, enfermedad] = counts;
+  const unhealthy = picadura + enfermedad + quemadura;
+  const total = madura + inmadura + sobremadura + unhealthy;
+  // Defense-in-depth: parseCount already rejects non-safe integers, so a
+  // non-finite total or pct here would mean the guard above regressed. A NaN
+  // percentage would silently reach bucket selection (NaN <= a is false, NaN <= b
+  // is false → worst bucket, treating a fabricated reading as real damage).
+  if (!Number.isFinite(total) || total === 0) return null;
   const pct = unhealthy / total * 100;
+  if (!Number.isFinite(pct)) return null;
   const { a, b } = CONFIG.sanitaryThresholds.pct;
   if (pct <= a) return 3;
   if (pct <= b) return 2;

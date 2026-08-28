@@ -163,6 +163,8 @@ INSERT INTO public.dim_variedad_sinonimo (sinonimo, variedad) VALUES
   ('GR', 'Grenache'),
   ('GRE', 'Grenache'),
   ('MA', 'Malbec'),
+  ('MAL', 'Malbec'),
+  ('MAR', 'Marselan'),
   ('ME', 'Merlot'),
   ('MRS', 'Marselan'),
   ('MS', 'Marselan'),
