@@ -157,8 +157,16 @@
     border-radius: 0;
   }
   /* The widget is anchored to the root, which sits 20px off the viewport
-     corner; clear the iOS home indicator underneath it. */
+     corner; clear the iOS home indicator underneath the FAB. */
   #mona-widget-root { bottom: calc(20px + env(safe-area-inset-bottom)); }
+  /* The full-screen widget is absolutely positioned against that root, so the
+     inset added above shifts it up too, leaving a gap at the bottom and
+     clipping the header off the top. Subtract the same inset back out so the
+     widget still lands flush on the viewport. */
+  .mona-widget { bottom: calc(-20px - env(safe-area-inset-bottom)); }
+  /* Full-screen means the header sits in the notch/Dynamic Island area under
+     viewport-fit=cover. */
+  .mona-widget-head { padding-top: calc(12px + env(safe-area-inset-top)); }
   .mona-input-row { padding-bottom: calc(2px + env(safe-area-inset-bottom)); }
   .mona-saved-grid { grid-template-columns: 1fr; }
 }
