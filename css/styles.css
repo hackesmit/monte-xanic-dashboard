@@ -2674,6 +2674,10 @@ body.demo-mode-active .row-clickable        { display: none; }
      chrome and the home indicator. */
   .row-edit-modal form { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .row-edit-modal .modal-footer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  /* Full-screen under viewport-fit=cover puts the header and its close button
+     behind the status bar / Dynamic Island. */
+  .row-edit-modal form { padding-top: calc(20px + env(safe-area-inset-top)); }
+  .row-edit-close { top: calc(12px + env(safe-area-inset-top)); }
   .row-edit-modal form { padding: 16px; }
   .table-toolbar       { gap: 8px; }
   .table-search        { font-size: var(--text-md); }
