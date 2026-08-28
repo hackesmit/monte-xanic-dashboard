@@ -76,14 +76,23 @@ describe('MT.50 - design system tokens', () => {
     const RAW_OK = new Set(['0', '0px', 'inherit', 'initial']);
     const violations = [];
 
+    // Longhands count too: border-bottom-right-radius slipped past the first
+    // version of this check.
+    const PROPS = [
+      'border-radius',
+      'border-top-left-radius', 'border-top-right-radius',
+      'border-bottom-left-radius', 'border-bottom-right-radius',
+    ];
     for (const { file, css } of sources) {
       const body = stripTokenBlocks(stripComments(css));
-      for (const value of declarations(body, 'border-radius')) {
-        // Multi-value corners (e.g. sheet tops) are checked per corner.
-        const parts = value.split(/\s+/);
-        const bad = parts.filter((p) => !RAW_OK.has(p) && !p.startsWith('var(--radius-'));
-        if (bad.length) {
-          violations.push(`${file}:${lineOf(css, value)} -> border-radius: ${value}`);
+      for (const prop of PROPS) {
+        for (const value of declarations(body, prop)) {
+          // Multi-value corners (e.g. sheet tops) are checked per corner.
+          const parts = value.split(/\s+/);
+          const bad = parts.filter((p) => !RAW_OK.has(p) && !p.startsWith('var(--radius-'));
+          if (bad.length) {
+            violations.push(`${file}:${lineOf(css, value)} -> ${prop}: ${value}`);
+          }
         }
       }
     }

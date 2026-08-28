@@ -24,6 +24,41 @@ function luminance(rgb) {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
 }
 
+// WCAG relative luminance + contrast ratio.
+function relLum(rgb) {
+  const m = rgb.match(/rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)/);
+  if (!m) return null;
+  const [r, g, b] = [m[1], m[2], m[3]].map((v) => {
+    const c = Number(v) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function contrast(fg, bg) {
+  const a = relLum(fg);
+  const b = relLum(bg);
+  if (a === null || b === null) return null;
+  return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+}
+
+async function bootTheme(page, context, theme, view) {
+  await context.addInitScript((t) => {
+    try {
+      localStorage.setItem('xanic_session_token', 'e2e.dev.bypass');
+      localStorage.setItem('xanic_user_role', 'admin');
+      localStorage.setItem('xanic_theme', t);
+    } catch (_) { /* ignore */ }
+  }, theme);
+  await page.goto('/');
+  await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+  await page.click('#demo-toggle-btn');
+  await page.waitForTimeout(1800);
+  if (view) {
+    await page.click(`.nav-tab[data-view="${view}"]`);
+    await page.waitForTimeout(1200);
+  }
+}
+
 async function bootDark(page, context, view) {
   await context.addInitScript(() => {
     try {
@@ -101,3 +136,32 @@ test('predictor card text stays readable against its card', async ({ page, conte
     `text ${pair.textColor} on card ${pair.cardBg} has too little contrast`
   ).toBeGreaterThan(0.2);
 });
+
+// --gold is mid-dark on BOTH themes, so anything filled with it needs a
+// foreground that does not invert. Using --black gave white-on-gold in light
+// mode at about 3.9:1, under the 4.5:1 floor. Caught by cross-vendor review.
+for (const theme of ['light', 'dark']) {
+  test(`gold-filled controls keep readable contrast in ${theme}`, async ({ page, context }) => {
+    await bootTheme(page, context, theme, 'prediccion');
+    const samples = await page.$$eval('.chip-bar .chip.chip-active, .btn-gold', (els) =>
+      els
+        .filter((el) => {
+          const r = el.getBoundingClientRect();
+          return r.width > 0 && r.height > 0;
+        })
+        .map((el) => ({
+          sel: String(el.className).slice(0, 40),
+          fg: getComputedStyle(el).color,
+          bg: getComputedStyle(el).backgroundColor,
+        }))
+    );
+    expect(samples.length, 'a gold-filled control is rendered').toBeGreaterThan(0);
+    const poor = samples
+      .map((s) => ({ ...s, ratio: contrast(s.fg, s.bg) }))
+      .filter((s) => s.ratio !== null && s.ratio < 4.5);
+    expect(
+      poor,
+      `gold-filled controls under 4.5:1 in ${theme}:\n${JSON.stringify(poor, null, 2)}`
+    ).toEqual([]);
+  });
+}
