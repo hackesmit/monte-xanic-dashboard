@@ -8,6 +8,10 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 - All UI labels in Spanish. Never translate to English.
 - All units metric (C, g/L, mg/L, ppm, Bx).
 - Every new feature must be mobile responsive.
+- All CSS uses the design tokens. Never write a literal colour, radius, font
+  size, font family or transition duration where a token exists. See
+  [docs/Design-System.md](docs/Design-System.md); enforced by
+  `tests/design-system.test.mjs`.
 - Vite build. Dependencies managed via npm.
 - No frameworks. Vanilla JS ES modules only.
 - Run `npm run dev` for local development.

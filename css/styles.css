@@ -1,6 +1,9 @@
 /* ── Monte Xanic / Kompali — Vendimia Dashboard ── */
 
 @font-face {
+  /* This is the font's registration name, not a lookup. It must stay a literal:
+     a var() here is invalid and silently prevents the face from loading at all,
+     dropping the whole app to the fallback sans. */
   font-family: 'Sackers Gothic Medium';
   src: url('../assets/fonts/SackersGothicMedium.ttf') format('truetype');
   font-weight: normal;
@@ -57,6 +60,41 @@
   --motion-slow:   320ms;
   --ease-standard: cubic-bezier(0.2, 0, 0, 1);
   --ease-entrance: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* -- Shape tokens --
+     Theme-agnostic. The dashboard's identity is sharp and editorial (wine
+     label, not chat app), so the scale tops out at 8px. Anything that needs
+     to read as a pill or a circle uses --radius-round.
+       --radius-sharp: chips, inputs, tags, small controls
+       --radius-base : cards, buttons, panels
+       --radius-panel: modals, sheets, floating surfaces
+     Enforced by tests/design-system.test.mjs. */
+  --radius-sharp: 2px;
+  --radius-base:  4px;
+  --radius-panel: 8px;
+  --radius-round: 50%;
+
+  /* -- Type scale --
+     Nine steps replacing 19 ad hoc pixel values. The dense label sizes
+     (2xs..sm) carry the uppercase Sackers Gothic labels; md is body copy;
+     lg and up are display. Enforced by tests/design-system.test.mjs. */
+  --text-2xs: 8px;
+  --text-xs:  9px;
+  --text-sm:  11px;
+  --text-md:  13px;
+  --text-lg:  16px;
+  --text-xl:  20px;
+  --text-2xl: 24px;
+  --text-3xl: 30px;
+  --text-4xl: 48px;
+
+  /* -- Font stacks --
+     Always use these rather than naming a family inline: 22 rules previously
+     wrote 'Sackers Gothic Medium' with no fallback, so a failed font load
+     dropped them to the browser serif while the rest stayed sans. */
+  --font-display: 'Sackers Gothic Medium', sans-serif;
+  --font-body:    sans-serif;
+  --font-mono:    ui-monospace, Menlo, Consolas, monospace;
 }
 
 /* ══ LIGHT THEME ══ */
@@ -114,10 +152,10 @@ body.modal-open {
 body {
   background: var(--black);
   color: var(--text);
-  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-family: var(--font-display);
   font-weight: 300;
   min-height: 100vh;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
   transition: background var(--motion-base), color var(--motion-base);
 }
@@ -150,8 +188,8 @@ header {
   display: block;
 }
 .header-tagline {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 11px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   color: var(--muted);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -172,14 +210,14 @@ header {
 }
 .hdr-stat:last-child { border-right: none; }
 .hdr-num {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 28px;
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
   font-weight: 300;
   color: var(--white);
   line-height: 1;
 }
 .hdr-lbl {
-  font-size: 10px;
+  font-size: var(--text-sm);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--gold-dim);
@@ -197,7 +235,7 @@ header {
   border: none;
   border-left: 1px solid var(--border);
   cursor: pointer;
-  font-size: 18px;
+  font-size: var(--text-xl);
   color: var(--muted);
   transition: color var(--motion-base), background var(--motion-base);
 }
@@ -206,8 +244,8 @@ header {
   background: rgba(196,160,96,0.06);
 }
 .help-toggle {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   font-weight: 500;
 }
 
@@ -222,8 +260,8 @@ header {
   border: none;
   border-left: 1px solid var(--border);
   cursor: pointer;
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 11px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   letter-spacing: 0.06em;
   color: var(--muted);
   transition: color var(--motion-base), background var(--motion-base);
@@ -239,9 +277,9 @@ header {
 .demo-banner {
   display: none;
   background: linear-gradient(90deg, rgba(124,255,168,0.18), rgba(196,160,96,0.14));
-  color: var(--fg);
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 12px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: var(--text-md);
   letter-spacing: 0.05em;
   text-align: center;
   padding: 8px 16px;
@@ -249,8 +287,8 @@ header {
 }
 body.demo-mode-active .demo-banner { display: block; }
 @media (max-width: 768px) {
-  .demo-toggle { min-width: 44px; font-size: 10px; padding: 0 6px; }
-  .demo-banner { font-size: 11px; padding: 6px 10px; }
+  .demo-toggle { min-width: 44px; font-size: var(--text-sm); padding: 0 6px; }
+  .demo-banner { font-size: var(--text-sm); padding: 6px 10px; }
 }
 
 /* ── LAYOUT ── */
@@ -278,8 +316,8 @@ body.demo-mode-active .demo-banner { display: block; }
 .nav-tab {
   flex: 1 1 calc(50% - 3px);
   padding: 9px 4px;
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 9px;
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -304,8 +342,8 @@ body.demo-mode-active .demo-banner { display: block; }
   display: block;
   width: 100%;
   padding: 11px 16px;
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -329,7 +367,7 @@ body.demo-mode-active .demo-banner { display: block; }
 .nav-select option {
   background: var(--near-black);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--text-md);
   padding: 8px;
 }
 
@@ -356,7 +394,7 @@ body.demo-mode-active .demo-banner { display: block; }
   .weather-forecast-btn,
   #weather-forecast-horizon {
     min-height: 44px;
-    font-size: 12px !important;
+    font-size: var(--text-md)!important;
   }
   .weather-forecast-btn {
     padding: 10px 14px !important;
@@ -368,7 +406,7 @@ body.demo-mode-active .demo-banner { display: block; }
 
 .filter-section { margin-bottom: 20px; }
 .filter-label {
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--gold);
@@ -388,14 +426,14 @@ body.demo-mode-active .demo-banner { display: block; }
   display: block;
   width: 100%;
   padding: 5px;
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
   background: transparent;
   border: 1px solid var(--border);
   cursor: pointer;
-  font-family: 'Sackers Gothic Medium';
+  font-family: var(--font-display);
   margin-bottom: 8px;
   transition: all var(--motion-fast);
 }
@@ -416,8 +454,8 @@ body.demo-mode-active .demo-banner { display: block; }
   padding: 4px 9px;
   border: 1px solid var(--border);
   cursor: pointer;
-  font-size: 10px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   color: var(--muted);
   background: transparent;
   transition: all var(--motion-fast);
@@ -458,10 +496,10 @@ body.demo-mode-active .demo-banner { display: block; }
 .type-btn {
   flex: 1;
   padding: 5px 8px;
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  font-family: 'Sackers Gothic Medium';
+  font-family: var(--font-display);
   font-weight: 400;
   background: transparent;
   border: 1px solid var(--border);
@@ -495,8 +533,8 @@ body.demo-mode-active .demo-banner { display: block; }
 .lot-search {
   width: 100%;
   padding: 5px 8px;
-  font-size: 10px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   background: var(--card);
   border: 1px solid var(--border);
   color: var(--text);
@@ -515,7 +553,7 @@ body.demo-mode-active .demo-banner { display: block; }
   transition: background var(--motion-base);
 }
 .section-label {
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.25em;
   text-transform: uppercase;
   color: var(--gold-dim);
@@ -560,7 +598,7 @@ body.demo-mode-active .demo-banner { display: block; }
 }
 .kpi-card:hover::before { opacity: 1; }
 .kpi-label {
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
@@ -568,17 +606,17 @@ body.demo-mode-active .demo-banner { display: block; }
   margin-bottom: 10px;
 }
 .kpi-value {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 30px;
+  font-family: var(--font-display);
+  font-size: var(--text-3xl);
   font-weight: 300;
   color: var(--white);
   line-height: 1;
 }
 .kpi-unit {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--muted);
   margin-left: 3px;
-  font-family: 'Sackers Gothic Medium';
+  font-family: var(--font-display);
 }
 
 /* ── CHARTS ── */
@@ -601,8 +639,8 @@ body.demo-mode-active .demo-banner { display: block; }
   top: 12px;
   right: 12px;
   padding: 3px 8px;
-  font-size: 8px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-2xs);
+  font-family: var(--font-display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -624,15 +662,15 @@ body.demo-mode-active .demo-banner { display: block; }
   flex-direction: column;
   background: var(--card2);
   border: 1px solid var(--border-gold);
-  border-radius: 2px;
+  border-radius: var(--radius-sharp);
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   z-index: 10;
   overflow: hidden;
 }
 .chart-export-menu button {
   padding: 6px 16px;
-  font-family: 'Sackers Gothic Medium';
-  font-size: 8px;
+  font-family: var(--font-display);
+  font-size: var(--text-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text);
@@ -651,14 +689,14 @@ body.demo-mode-active .demo-banner { display: block; }
 }
 .chart-wide { grid-column: 1 / -1; }
 .chart-title {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 16px;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   font-weight: 400;
   color: var(--white);
   margin-bottom: 2px;
 }
 .chart-sub {
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
@@ -676,8 +714,8 @@ body.demo-mode-active .demo-banner { display: block; }
 }
 .page-export-btn {
   padding: 4px 14px;
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -699,8 +737,8 @@ body.demo-mode-active .demo-banner { display: block; }
 }
 .chart-toggle {
   padding: 3px 10px;
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -731,7 +769,7 @@ body.demo-mode-active .demo-banner { display: block; }
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--muted);
   cursor: pointer;
   transition: color var(--motion-fast);
@@ -741,7 +779,7 @@ body.demo-mode-active .demo-banner { display: block; }
 .legend-dot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   flex-shrink: 0;
 }
 .legend-bar.legend-show-all .legend-overflow { display: flex !important; }
@@ -754,8 +792,8 @@ body.demo-mode-active .demo-banner { display: block; }
 }
 .color-mode-btn {
   padding: 4px 10px;
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -793,7 +831,7 @@ body.demo-mode-active .demo-banner { display: block; }
 .data-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .data-table thead {
   position: sticky;
@@ -803,20 +841,20 @@ body.demo-mode-active .demo-banner { display: block; }
 .data-table th {
   background: var(--table-header-bg);
   color: var(--gold-dim);
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   padding: 9px 14px;
   text-align: left;
   border-bottom: 1px solid var(--border-gold);
   font-weight: 400;
-  font-family: 'Sackers Gothic Medium';
+  font-family: var(--font-display);
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--motion-base);
 }
 .data-table th:hover { color: var(--gold); }
-.data-table th .sort-arrow { margin-left: 4px; font-size: 8px; }
+.data-table th .sort-arrow { margin-left: 4px; font-size: var(--text-2xs); }
 .data-table td {
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
@@ -828,7 +866,7 @@ body.demo-mode-active .demo-banner { display: block; }
   background: rgba(196,160,96,0.04);
 }
 .table-footnote {
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--muted);
   padding: 6px 0 0;
   font-style: italic;
@@ -849,7 +887,7 @@ body.demo-mode-active .demo-banner { display: block; }
 
 .badge {
   padding: 2px 8px;
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   font-weight: 400;
@@ -864,7 +902,7 @@ body.demo-mode-active .demo-banner { display: block; }
   color: var(--muted);
 }
 .count-tag {
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--muted);
   letter-spacing: 0.08em;
 }
@@ -900,7 +938,7 @@ body.demo-mode-active .demo-banner { display: block; }
   background: transparent;
   border: none;
   color: var(--muted);
-  font-size: 24px;
+  font-size: var(--text-2xl);
   cursor: pointer;
   line-height: 1;
   padding: 4px 8px;
@@ -912,18 +950,18 @@ body.demo-mode-active .demo-banner { display: block; }
   background: rgba(196,160,96,0.04);
 }
 .loader-icon {
-  font-size: 48px;
+  font-size: var(--text-4xl);
   margin-bottom: 20px;
   opacity: 0.6;
 }
 .loader-title {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 22px;
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
   color: var(--white);
   margin-bottom: 8px;
 }
 .loader-sub {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--muted);
   margin-bottom: 24px;
   line-height: 1.6;
@@ -933,8 +971,8 @@ body.demo-mode-active .demo-banner { display: block; }
   background: var(--gold);
   color: #000;
   border: none;
-  font-family: 'Sackers Gothic Medium';
-  font-size: 11px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -944,8 +982,8 @@ body.demo-mode-active .demo-banner { display: block; }
 .loader-btn:hover { background: var(--gold-lt); }
 
 .loader-section-label {
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
@@ -972,12 +1010,12 @@ body.demo-mode-active .demo-banner { display: block; }
 
 /* DB status badge (header) */
 .db-badge {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 9px;
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0.12em;
   padding: 3px 7px;
-  border-radius: 3px;
+  border-radius: var(--radius-sharp);
   cursor: default;
   white-space: nowrap;
 }
@@ -991,7 +1029,7 @@ body.demo-mode-active .demo-banner { display: block; }
 
 .loader-files {
   margin-top: 20px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--muted);
 }
 .loader-file-item {
@@ -1011,7 +1049,7 @@ body.demo-mode-active .demo-banner { display: block; }
   padding: 10px 14px;
   pointer-events: none;
   z-index: 9999;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--text);
   max-width: 300px;
   opacity: 0;
@@ -1027,7 +1065,7 @@ body.demo-mode-active .demo-banner { display: block; }
   display: flex;
   justify-content: space-between;
   gap: 16px;
-  font-size: 10px;
+  font-size: var(--text-sm);
   padding: 1px 0;
 }
 .tooltip-box .tt-label { color: var(--muted); }
@@ -1085,8 +1123,8 @@ body.demo-mode-active .demo-banner { display: block; }
   flex-shrink: 0;
 }
 .help-title {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 20px;
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
   color: var(--white);
   font-weight: 400;
 }
@@ -1094,7 +1132,7 @@ body.demo-mode-active .demo-banner { display: block; }
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 24px;
+  font-size: var(--text-2xl);
   cursor: pointer;
   padding: 4px 8px;
   transition: color var(--motion-fast);
@@ -1103,7 +1141,7 @@ body.demo-mode-active .demo-banner { display: block; }
 .help-body {
   padding: 24px 28px;
   overflow-y: auto;
-  font-size: 12px;
+  font-size: var(--text-md);
   line-height: 1.7;
   color: var(--text);
 }
@@ -1111,8 +1149,8 @@ body.demo-mode-active .demo-banner { display: block; }
   margin-bottom: 24px;
 }
 .help-section h3 {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 15px;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   color: var(--gold);
   font-weight: 400;
   margin-bottom: 8px;
@@ -1130,16 +1168,16 @@ body.demo-mode-active .demo-banner { display: block; }
 .help-section code {
   background: var(--surface);
   padding: 1px 6px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--gold-lt);
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
 }
 .help-section pre {
   background: var(--surface);
   padding: 10px 14px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--gold-lt);
-  font-family: 'Consolas', 'Monaco', monospace;
+  font-family: var(--font-mono);
   margin: 8px 0;
   overflow-x: auto;
 }
@@ -1179,7 +1217,7 @@ canvas { max-width: 100%; }
   .hdr-stat { display: none; }
   #db-status-badge { display: none; }
   .header-right { border-left: none; }
-  .theme-toggle, .help-toggle { width: 36px; font-size: 15px; }
+  .theme-toggle, .help-toggle { width: 36px; font-size: var(--text-lg); }
 
   /* ── Layout ── */
   .layout { grid-template-columns: 1fr; height: auto; }
@@ -1195,7 +1233,7 @@ canvas { max-width: 100%; }
     flex: 1 1 calc(25% - 3px);
     min-height: 44px;
     /* 8 px was under Material's 10 px label floor. */
-    font-size: 10px;
+    font-size: var(--text-sm);
     touch-action: manipulation;
   }
 
@@ -1226,7 +1264,7 @@ canvas { max-width: 100%; }
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     border-top: none;
-    border-radius: 14px 14px 0 0;
+    border-radius: var(--radius-panel) var(--radius-panel) 0 0;
     padding: 0 16px 32px;
     background: var(--near-black);
     box-shadow: 0 -8px 32px rgba(0,0,0,0.6);
@@ -1252,7 +1290,7 @@ canvas { max-width: 100%; }
     width: 36px;
     height: 4px;
     background: var(--muted);
-    border-radius: 2px;
+    border-radius: var(--radius-sharp);
     margin: 10px auto 0;
     opacity: 0.4;
   }
@@ -1269,8 +1307,8 @@ canvas { max-width: 100%; }
     margin-bottom: 14px;
   }
   .sheet-title {
-    font-family: 'Sackers Gothic Medium', sans-serif;
-    font-size: 11px;
+    font-family: var(--font-display);
+    font-size: var(--text-sm);
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--gold);
@@ -1281,11 +1319,11 @@ canvas { max-width: 100%; }
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 20px;
+    font-size: var(--text-xl);
     color: var(--muted);
     background: transparent;
     border: 1px solid var(--border);
-    border-radius: 50%;
+    border-radius: var(--radius-round);
     cursor: pointer;
     transition: color var(--motion-fast), border-color var(--motion-fast);
     -webkit-tap-highlight-color: transparent;
@@ -1305,13 +1343,13 @@ canvas { max-width: 100%; }
   /* auto-fit so 5 cards don't orphan at 320 px (was repeat(2, 1fr) → 2+2+1). */
   .kpi-row { grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); }
   .kpi-card { padding: 12px 10px 10px; }
-  .kpi-value { font-size: 22px; }
-  .kpi-label { font-size: 7px; letter-spacing: 0.16em; margin-bottom: 6px; }
+  .kpi-value { font-size: var(--text-2xl); }
+  .kpi-label { font-size: var(--text-2xs); letter-spacing: 0.16em; margin-bottom: 6px; }
 
   /* ── Charts ── */
   .chart-card { padding: 10px 10px 8px; }
-  .chart-title { font-size: 12px; }
-  .chart-sub { font-size: 8px; margin-bottom: 10px; }
+  .chart-title { font-size: var(--text-md); }
+  .chart-sub { font-size: var(--text-2xs); margin-bottom: 10px; }
   /* Per-chart ⤓ is too small to tap reliably on mobile (18×14 px). Hide it —
      the section-level "Exportar Vista" button remains and covers the whole view. */
   .chart-export-btn { display: none; }
@@ -1352,8 +1390,8 @@ canvas { max-width: 100%; }
   .lot-chips-container { max-height: 120px; }
 
   /* ── Tables ── */
-  .data-table th { padding: 5px 6px; font-size: 8px; }
-  .data-table td { padding: 4px 6px; font-size: 10px; }
+  .data-table th { padding: 5px 6px; font-size: var(--text-2xs); }
+  .data-table td { padding: 4px 6px; font-size: var(--text-sm); }
   /* Horizontal-scroll affordance: subtle inset shadow on right edge hints
      that there is more content to swipe toward. Using inset box-shadow keeps
      it glued to the scroll container (no pseudo-positioning gymnastics). */
@@ -1370,8 +1408,8 @@ canvas { max-width: 100%; }
     justify-content: space-between;
     width: 100%;
     padding: 10px 12px;
-    font-family: 'Sackers Gothic Medium', sans-serif;
-    font-size: 9px;
+    font-family: var(--font-display);
+    font-size: var(--text-xs);
     font-weight: 400;
     letter-spacing: 0.18em;
     text-transform: uppercase;
@@ -1384,7 +1422,7 @@ canvas { max-width: 100%; }
   .mobile-section-toggle:hover { background: rgba(196,160,96,0.06); }
   .mobile-section-toggle::after {
     content: '\25BC';
-    font-size: 8px;
+    font-size: var(--text-2xs);
     transition: transform var(--motion-base);
   }
   .mobile-section-group.expanded .mobile-section-toggle::after {
@@ -1401,11 +1439,11 @@ canvas { max-width: 100%; }
 
   /* ── Color mode tabs stacking ── */
   .color-mode-tabs { gap: 4px; }
-  .color-mode-btn { font-size: 8px; padding: 3px 8px; }
+  .color-mode-btn { font-size: var(--text-2xs); padding: 3px 8px; }
 
   /* ── Evo controls compact ── */
   .evo-controls { gap: 6px; }
-  .evo-toggle-label { padding: 2px 6px; font-size: 9px; }
+  .evo-toggle-label { padding: 2px 6px; font-size: var(--text-xs); }
 
   /* ── Explorer ── */
   .explorer-config-row { flex-direction: column; align-items: stretch; }
@@ -1448,8 +1486,8 @@ canvas { max-width: 100%; }
   z-index: 8999;
   min-height: 44px;
   padding: 0 18px;
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 9px;
+  font-family: var(--font-display);
+  font-size: var(--text-xs);
   font-weight: 500;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1469,11 +1507,11 @@ canvas { max-width: 100%; }
   justify-content: center;
   min-width: 18px;
   height: 18px;
-  font-size: 9px;
+  font-size: var(--text-xs);
   font-weight: 500;
   color: var(--gold);
   background: var(--near-black);
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   padding: 0 4px;
 }
 @media (max-width: 768px) {
@@ -1485,8 +1523,8 @@ canvas { max-width: 100%; }
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   letter-spacing: 0.1em;
   color: var(--muted);
   background: var(--card);
@@ -1503,7 +1541,7 @@ canvas { max-width: 100%; }
 }
 .mobile-filter-summary .summary-clear {
   flex-shrink: 0;
-  font-size: 8px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1511,7 +1549,7 @@ canvas { max-width: 100%; }
   border: 1px solid var(--border);
   padding: 2px 8px;
   cursor: pointer;
-  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-family: var(--font-display);
   transition: all var(--motion-fast);
 }
 .mobile-filter-summary .summary-clear:hover {
@@ -1549,7 +1587,7 @@ canvas { max-width: 100%; }
   height: 36px;
   border: 2px solid var(--border);
   border-top-color: var(--gold);
-  border-radius: 50%;
+  border-radius: var(--radius-round);
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -1560,8 +1598,8 @@ canvas { max-width: 100%; }
 .lottie-loader:not(:defined) { display: none; }
 .lottie-loader:defined ~ .spinner-fallback { display: none; }
 .spinner-text {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1576,11 +1614,11 @@ canvas { max-width: 100%; }
   background: var(--surface);
   border: 1px solid var(--border-gold);
   color: var(--muted);
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   letter-spacing: 0.12em;
   padding: 10px 20px;
-  border-radius: 2px;
+  border-radius: var(--radius-sharp);
   z-index: 9000;
   opacity: 0;
   transition: transform var(--motion-base) var(--ease-standard), opacity var(--motion-base) var(--ease-standard);
@@ -1601,7 +1639,7 @@ canvas { max-width: 100%; }
   color: #6b4f00;
   border-bottom: 1px solid #d4a900;
   padding: 12px 20px;
-  font-size: 13px;
+  font-size: var(--text-md);
   line-height: 1.5;
   text-align: left;
 }
@@ -1609,9 +1647,9 @@ canvas { max-width: 100%; }
 .migrations-banner code {
   background: rgba(0,0,0,0.06);
   padding: 1px 6px;
-  border-radius: 3px;
-  font-family: ui-monospace, Menlo, Consolas, monospace;
-  font-size: 12px;
+  border-radius: var(--radius-sharp);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
 }
 [data-theme="dark"] .migrations-banner {
   background: #3a2e0c;
@@ -1659,7 +1697,7 @@ canvas { max-width: 100%; }
   padding: 52px 40px 40px;
   background: var(--surface);
   border: 1px solid var(--border-gold);
-  border-radius: 2px;
+  border-radius: var(--radius-sharp);
   box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 20px 60px rgba(0,0,0,0.4), 0 0 80px rgba(196,160,96,0.04);
   animation: loginCardFadeIn 0.6s ease-out both;
 }
@@ -1679,7 +1717,7 @@ canvas { max-width: 100%; }
   animation: loginFadeIn 0.5s ease-out 0.2s both;
 }
 .login-tagline {
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1689,7 +1727,7 @@ canvas { max-width: 100%; }
 .login-label {
   display: block;
   text-align: left;
-  font-size: 9px;
+  font-size: var(--text-xs);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1700,12 +1738,12 @@ canvas { max-width: 100%; }
   display: block;
   width: 100%;
   padding: 12px 14px;
-  font-family: sans-serif;
-  font-size: 14px;
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
   color: var(--text);
   background: var(--black);
   border: 1px solid var(--border);
-  border-radius: 2px;
+  border-radius: var(--radius-sharp);
   outline: none;
   margin-bottom: 20px;
   transition: border-color var(--motion-base), box-shadow var(--motion-base);
@@ -1726,15 +1764,15 @@ canvas { max-width: 100%; }
   display: block;
   width: 100%;
   padding: 14px;
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 11px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   font-weight: 500;
   letter-spacing: 0.18em;
   text-transform: uppercase;
   color: #000;
   background: linear-gradient(135deg, var(--gold) 0%, var(--gold-lt) 100%);
   border: none;
-  border-radius: 2px;
+  border-radius: var(--radius-sharp);
   cursor: pointer;
   transition: background var(--motion-base), transform var(--motion-fast), box-shadow var(--motion-base);
   margin-top: 8px;
@@ -1755,13 +1793,13 @@ canvas { max-width: 100%; }
 }
 .login-error {
   margin-top: 14px;
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--flag-error);
   min-height: 16px;
 }
 .login-footer {
   margin-top: 44px;
-  font-size: 8px;
+  font-size: var(--text-2xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1787,7 +1825,7 @@ canvas { max-width: 100%; }
     z-index: 10002;
     border: 1px solid var(--border);
     background: rgba(0, 0, 0, 0.25);
-    border-radius: 4px;
+    border-radius: var(--radius-base);
     opacity: 0.8;
   }
 }
@@ -1816,8 +1854,8 @@ canvas { max-width: 100%; }
 }
 .explorer-toggle-btn {
   padding: 4px 12px;
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -1832,8 +1870,8 @@ canvas { max-width: 100%; }
 }
 .explorer-summary {
   flex: 1;
-  font-size: 10px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   letter-spacing: 0.08em;
   color: var(--gold-lt);
   text-transform: uppercase;
@@ -1844,7 +1882,7 @@ canvas { max-width: 100%; }
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 16px;
+  font-size: var(--text-lg);
   background: transparent;
   border: 1px solid var(--border);
   color: var(--muted);
@@ -1876,7 +1914,7 @@ canvas { max-width: 100%; }
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--muted);
   cursor: pointer;
   transition: color var(--motion-fast);
@@ -1899,8 +1937,8 @@ canvas { max-width: 100%; }
   flex: 1;
   min-width: 140px;
   padding: 5px 8px;
-  font-size: 11px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -1910,16 +1948,16 @@ canvas { max-width: 100%; }
   border-color: var(--gold-dim);
 }
 .lot-picker-count {
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--gold-lt);
-  font-family: 'Sackers Gothic Medium';
+  font-family: var(--font-display);
   letter-spacing: 0.08em;
   white-space: nowrap;
 }
 .lot-picker-btn {
   padding: 3px 10px;
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   background: transparent;
@@ -1943,7 +1981,7 @@ canvas { max-width: 100%; }
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--muted);
   cursor: pointer;
   padding: 2px 0;
@@ -1969,16 +2007,16 @@ canvas { max-width: 100%; }
   display: flex;
   flex-direction: column;
   gap: 4px;
-  font-size: 9px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-xs);
+  font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--muted);
 }
 .explorer-select {
   padding: 5px 8px;
-  font-size: 11px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   background: var(--surface);
   border: 1px solid var(--border);
   color: var(--text);
@@ -1996,8 +2034,8 @@ canvas { max-width: 100%; }
 }
 .explorer-render-btn {
   padding: 6px 18px;
-  font-size: 10px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   background: var(--gold);
@@ -2017,8 +2055,8 @@ canvas { max-width: 100%; }
   display: block;
   width: 100%;
   padding: 14px;
-  font-size: 10px;
-  font-family: 'Sackers Gothic Medium';
+  font-size: var(--text-sm);
+  font-family: var(--font-display);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   background: transparent;
@@ -2046,11 +2084,11 @@ canvas { max-width: 100%; }
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--muted);
   padding: 3px 8px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-base);
   transition: all var(--motion-fast) var(--ease-standard);
   user-select: none;
 }
@@ -2070,7 +2108,7 @@ canvas { max-width: 100%; }
   cursor: pointer;
 }
 .evo-toggle-text {
-  font-family: 'Sackers Gothic Medium', sans-serif;
+  font-family: var(--font-display);
   letter-spacing: 0.3px;
 }
 
@@ -2094,9 +2132,9 @@ canvas { max-width: 100%; }
   border: 1px solid var(--border-gold);
   color: var(--muted);
   padding: 6px 14px;
-  border-radius: 4px;
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 11px;
+  border-radius: var(--radius-base);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   letter-spacing: 0.5px;
   cursor: pointer;
   transition: all var(--motion-fast) var(--ease-standard);
@@ -2131,8 +2169,8 @@ canvas { max-width: 100%; }
    uses <span> which defaulted to inline and broke at <=1280px — the widest
    value "23/24" clipped to "23/2" and labels wrapped mid-word). Column
    layout + nowrap gives every value the full card width. */
-.map-kpis .kpi-value { font-size: 22px; white-space: nowrap; }
-.map-kpis .kpi-label { font-size: 11px; margin-bottom: 0; white-space: nowrap; }
+.map-kpis .kpi-value { font-size: var(--text-2xl); white-space: nowrap; }
+.map-kpis .kpi-label { font-size: var(--text-sm); margin-bottom: 0; white-space: nowrap; }
 
 .map-body {
   display: flex;
@@ -2159,8 +2197,8 @@ canvas { max-width: 100%; }
   flex: 1 1 100%;
 }
 .scale-label {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   letter-spacing: 0.5px;
   color: var(--muted);
   margin-bottom: 4px;
@@ -2173,11 +2211,11 @@ canvas { max-width: 100%; }
 .scale-gradient {
   flex: 1;
   height: 10px;
-  border-radius: 3px;
+  border-radius: var(--radius-sharp);
   border: 1px solid var(--border);
 }
 .scale-tick {
-  font-size: 10px;
+  font-size: var(--text-sm);
   color: var(--muted);
   min-width: 28px;
 }
@@ -2189,7 +2227,7 @@ canvas { max-width: 100%; }
   overflow-y: auto;
   background: var(--card);
   border: 1px solid var(--border-gold);
-  border-radius: 6px;
+  border-radius: var(--radius-base);
   display: none;
 }
 .section-detail-panel.open {
@@ -2203,13 +2241,13 @@ canvas { max-width: 100%; }
   border-bottom: 1px solid var(--border);
 }
 .detail-title {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 14px;
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
   color: var(--gold);
   letter-spacing: 0.5px;
 }
 .detail-sub {
-  font-size: 11px;
+  font-size: var(--text-sm);
   color: var(--muted);
   margin-top: 2px;
 }
@@ -2217,7 +2255,7 @@ canvas { max-width: 100%; }
   background: none;
   border: none;
   color: var(--muted);
-  font-size: 20px;
+  font-size: var(--text-xl);
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
@@ -2227,8 +2265,8 @@ canvas { max-width: 100%; }
   padding: 12px 16px 16px;
 }
 .detail-section-label {
-  font-family: 'Sackers Gothic Medium', sans-serif;
-  font-size: 10px;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
   letter-spacing: 0.5px;
   color: var(--muted);
   text-transform: uppercase;
@@ -2242,7 +2280,7 @@ canvas { max-width: 100%; }
 .detail-metric {
   display: flex;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--text-md);
 }
 .dm-label { color: var(--muted); }
 .dm-value { color: var(--text); font-weight: 400; }
@@ -2251,7 +2289,7 @@ canvas { max-width: 100%; }
   overflow-x: auto;
 }
 .detail-lots-table .data-table {
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 
 /* ── Map mobile responsive ── */
@@ -2302,28 +2340,28 @@ canvas { max-width: 100%; }
 }
 
 /* ══ MEDICIONES FORM ══ */
-.medicion-form { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.medicion-form { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius-panel); padding: 16px; margin-bottom: 16px; }
 .form-row { display: flex; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
 .form-group { flex: 1; min-width: 140px; }
-.form-group label { display: block; font-size: 10px; color: var(--muted); margin-bottom: 4px; font-family: 'Sackers Gothic Medium', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
-.form-group input, .form-group select { width: 100%; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 4px; color: var(--text); font-size: 13px; font-family: sans-serif; box-sizing: border-box; }
+.form-group label { display: block; font-size: var(--text-sm); color: var(--muted); margin-bottom: 4px; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.5px; }
+.form-group input, .form-group select { width: 100%; padding: 7px 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-base); color: var(--text); font-size: var(--text-md); font-family: var(--font-body); box-sizing: border-box; }
 .form-group input:focus, .form-group select:focus { border-color: var(--gold); outline: none; }
 .form-group-sm { min-width: 80px; flex: 0 1 100px; }
-.health-row { background: var(--surface); border-radius: 6px; padding: 10px 12px; }
+.health-row { background: var(--surface); border-radius: var(--radius-base); padding: 10px 12px; }
 
 /* Evaluator panel (Vendimia 2026). One row per person, unbounded, with the
    running average underneath so whoever is entering data sees the number the
    quality score will actually use. */
 .evaluador-panel { display: flex; flex-direction: column; gap: 8px; }
-.evaluador-row { display: flex; gap: 12px; align-items: flex-end; background: var(--surface); border-radius: 6px; padding: 10px 12px; flex-wrap: wrap; }
+.evaluador-row { display: flex; gap: 12px; align-items: flex-end; background: var(--surface); border-radius: var(--radius-base); padding: 10px 12px; flex-wrap: wrap; }
 .evaluador-row .form-group { min-width: 130px; }
-.evaluador-remove { flex: 0 0 auto; padding: 7px 12px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; cursor: pointer; font-family: 'Sackers Gothic Medium', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+.evaluador-remove { flex: 0 0 auto; padding: 7px 12px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: var(--radius-base); font-size: var(--text-sm); cursor: pointer; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.5px; }
 .evaluador-remove:hover:not(:disabled) { border-color: var(--flag-error); color: var(--flag-error); }
 .evaluador-remove:disabled { opacity: 0.35; cursor: not-allowed; }
 .evaluador-foot { display: flex; align-items: center; gap: 12px; margin: 8px 0 10px; flex-wrap: wrap; }
-.evaluador-add { padding: 7px 14px; background: transparent; color: var(--gold); border: 1px dashed var(--gold); border-radius: 4px; font-size: 11px; cursor: pointer; font-family: 'Sackers Gothic Medium', sans-serif; text-transform: uppercase; letter-spacing: 0.5px; }
+.evaluador-add { padding: 7px 14px; background: transparent; color: var(--gold); border: 1px dashed var(--gold); border-radius: var(--radius-base); font-size: var(--text-sm); cursor: pointer; font-family: var(--font-display); text-transform: uppercase; letter-spacing: 0.5px; }
 .evaluador-add:hover { background: var(--surface); }
-.evaluador-avg { font-size: 12px; color: var(--muted); }
+.evaluador-avg { font-size: var(--text-md); color: var(--muted); }
 
 /* On a phone the three fields stack, so the remove button goes full width
    underneath rather than squeezing into a leftover sliver. */
@@ -2334,15 +2372,15 @@ canvas { max-width: 100%; }
 }
 
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-.btn-gold { padding: 8px 20px; background: var(--gold); color: var(--black); border: none; border-radius: 4px; font-family: 'Sackers Gothic Medium', sans-serif; font-size: 11px; letter-spacing: 0.5px; cursor: pointer; text-transform: uppercase; }
+.btn-gold { padding: 8px 20px; background: var(--gold); color: var(--black); border: none; border-radius: var(--radius-base); font-family: var(--font-display); font-size: var(--text-sm); letter-spacing: 0.5px; cursor: pointer; text-transform: uppercase; }
 .btn-gold:hover { background: var(--gold-lt); }
 .btn-gold:disabled { opacity: 0.5; cursor: not-allowed; }
-.form-status { font-size: 12px; color: var(--muted); }
+.form-status { font-size: var(--text-md); color: var(--muted); }
 .form-status.success { color: var(--success-color); }
 .form-status.error { color: var(--flag-error); }
 
 /* Health mini-bar in table */
-.health-mini-bar { display: flex; height: 14px; border-radius: 3px; overflow: hidden; min-width: 80px; }
+.health-mini-bar { display: flex; height: 14px; border-radius: var(--radius-sharp); overflow: hidden; min-width: 80px; }
 .health-mini-bar span { display: block; height: 100%; }
 .hb-madura { background: #7EC87A; }
 .hb-inmadura { background: #60A8C0; }
@@ -2358,14 +2396,14 @@ canvas { max-width: 100%; }
      iOS Safari from auto-zooming the viewport on focus. */
   .form-group input, .form-group select {
     padding: 11px 12px;
-    font-size: 16px;
+    font-size: var(--text-lg);
     min-height: 44px;
   }
   /* Primary action buttons — default rendered ~26 px tall at 11 px font. */
   .btn-gold {
     min-height: 44px;
     padding: 12px 28px;
-    font-size: 12px;
+    font-size: var(--text-md);
   }
 }
 
@@ -2373,8 +2411,8 @@ canvas { max-width: 100%; }
 .grade-chip {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 11px;
+  border-radius: var(--radius-base);
+  font-size: var(--text-sm);
   font-weight: 700;
   color: #fff;
   text-align: center;
@@ -2398,13 +2436,13 @@ canvas { max-width: 100%; }
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--text-sm);
 }
 .map-legend-discrete .legend-swatch {
   display: inline-block;
   width: 14px;
   height: 14px;
-  border-radius: 2px;
+  border-radius: var(--radius-sharp);
   border: 1px solid rgba(0, 0, 0, 0.15);
 }
 
@@ -2426,23 +2464,23 @@ canvas { max-width: 100%; }
 .detail-grade-label {
   font-weight: 600;
   text-transform: uppercase;
-  font-size: 11px;
+  font-size: var(--text-sm);
   letter-spacing: 0.5px;
 }
 .detail-grade-score {
-  font-size: 12px;
+  font-size: var(--text-md);
   color: var(--muted, #777);
 }
 .detail-grade-pct {
-  font-size: 11px;
+  font-size: var(--text-sm);
   padding: 2px 8px;
   background: rgba(196, 160, 80, 0.15);
-  border-radius: 3px;
+  border-radius: var(--radius-sharp);
   color: var(--gold, #c4a050);
 }
 .detail-grade-breakdown summary {
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--text-sm);
   margin-top: 8px;
   user-select: none;
   color: var(--gold-lt, #d4b47a);
@@ -2454,7 +2492,7 @@ canvas { max-width: 100%; }
 }
 .detail-grade-breakdown li {
   padding: 3px 0;
-  font-size: 12px;
+  font-size: var(--text-md);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2483,38 +2521,38 @@ canvas { max-width: 100%; }
 
 /* ── Preview card (rendered into #db-upload-status by js/upload.js) ─ */
 
-#db-upload-status[data-state="error"]   { color: #b00020; }
-#db-upload-status[data-state="pending"] { color: #555; font-style: italic; }
+#db-upload-status[data-state="error"]   { color: var(--error-color); }
+#db-upload-status[data-state="pending"] { color: var(--muted); font-style: italic; }
 
 .upload-preview-card {
   padding: 1rem;
   margin-top: 0.75rem;
-  background: var(--card-bg, #fafafa);
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 8px;
+  background: var(--card2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
 }
 
 .upload-preview-header {
   font-weight: 600;
   margin-bottom: 0.75rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border-color, #ddd);
+  border-bottom: 1px solid var(--border);
 }
 
 .upload-preview-card h4 {
   margin: 0.75rem 0 0.25rem;
-  font-size: 0.9rem;
-  color: #444;
+  font-size: var(--text-md);
+  color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
 
 .upload-preview-row {
   padding: 0.25rem 0;
-  font-size: 0.95rem;
+  font-size: var(--text-md);
 }
-.upload-preview-row.upload-preview-excluded { color: #777; }
-.upload-preview-row.upload-preview-rejected { color: #b85c00; }
+.upload-preview-row.upload-preview-excluded { color: var(--muted); }
+.upload-preview-row.upload-preview-rejected { color: var(--flag-warning); }
 
 .upload-preview-download {
   margin: 0.5rem 0;
@@ -2525,7 +2563,7 @@ canvas { max-width: 100%; }
   gap: 0.75rem;
   margin-top: 1rem;
   padding-top: 0.75rem;
-  border-top: 1px solid var(--border-color, #ddd);
+  border-top: 1px solid var(--border);
 }
 .upload-preview-actions .btn {
   flex: 1;
@@ -2540,11 +2578,11 @@ canvas { max-width: 100%; }
 
 .upload-summary {
   padding: 0.75rem 1rem;
-  border-radius: 6px;
+  border-radius: var(--radius-base);
   margin-top: 0.75rem;
 }
-.upload-summary-success { background: #e8f5e9; border: 1px solid #81c784; color: #1b5e20; }
-.upload-summary-partial { background: #fff3e0; border: 1px solid #ffb74d; color: #b85c00; }
+.upload-summary-success { background: rgba(126,200,122,0.12); border: 1px solid var(--success-color); color: var(--success-color); }
+.upload-summary-partial { background: rgba(224,144,48,0.12); border: 1px solid var(--flag-warning); color: var(--flag-warning); }
 
 /* ── Round 37: editable-table styles ── */
 
@@ -2564,42 +2602,42 @@ canvas { max-width: 100%; }
   margin-bottom: 12px; flex-wrap: wrap;
 }
 .table-toolbar .section-label    { margin: 0; }
-.table-toolbar .table-toolbar-count { margin-left: auto; color: var(--muted); font-size: 11px; }
+.table-toolbar .table-toolbar-count { margin-left: auto; color: var(--muted); font-size: var(--text-sm); }
 .table-search {
   flex: 1 1 240px; min-width: 200px;
-  padding: 6px 10px; border: 1px solid var(--border, #ddd); border-radius: 4px;
-  font-size: 12px;
+  padding: 6px 10px; border: 1px solid var(--border, #ddd); border-radius: var(--radius-base);
+  font-size: var(--text-md);
 }
 
 /* Edit modal */
-.row-edit-modal              { padding: 0; border: none; border-radius: 6px; max-width: 800px; width: 90vw; }
+.row-edit-modal              { padding: 0; border: none; border-radius: var(--radius-base); max-width: 800px; width: 90vw; }
 .row-edit-modal::backdrop    { background: rgba(0,0,0,0.45); }
 .row-edit-modal form         { padding: 20px 24px; }
 .row-edit-modal .modal-header   { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border, #ddd); padding-bottom: 12px; }
-.row-edit-modal .modal-header h2 { margin: 0; font-size: 16px; flex: 1 1 auto; }
-.row-edit-modal .modal-audit-line { margin: 4px 0 0 0; font-size: 11px; color: var(--muted); flex-basis: 100%; }
-.row-edit-modal .modal-close   { background: none; border: none; font-size: 22px; cursor: pointer; line-height: 1; }
+.row-edit-modal .modal-header h2 { margin: 0; font-size: var(--text-lg); flex: 1 1 auto; }
+.row-edit-modal .modal-audit-line { margin: 4px 0 0 0; font-size: var(--text-sm); color: var(--muted); flex-basis: 100%; }
+.row-edit-modal .modal-close   { background: none; border: none; font-size: var(--text-2xl); cursor: pointer; line-height: 1; }
 .row-edit-modal .modal-footer  { display: flex; align-items: center; gap: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border, #ddd); }
 .row-edit-modal .modal-footer .btn-secondary { margin-left: auto; }
 .btn-danger {
   background: #c0392b; color: #fff; border: none; padding: 8px 14px;
-  border-radius: 4px; cursor: pointer; font-size: 12px;
+  border-radius: var(--radius-base); cursor: pointer; font-size: var(--text-md);
 }
 .btn-danger:hover { background: #a93226; }
 .btn-secondary {
   background: transparent; color: var(--text, #333); border: 1px solid var(--border, #ddd);
-  padding: 8px 14px; border-radius: 4px; cursor: pointer; font-size: 12px;
+  padding: 8px 14px; border-radius: var(--radius-base); cursor: pointer; font-size: var(--text-md);
 }
 
 /* Source-banner (only visible for source='upload' rows) */
 .source-banner {
-  background: rgba(245, 197, 66, 0.18); border-left: 3px solid #F5C542;
-  padding: 8px 12px; margin-bottom: 12px; font-size: 11px; color: #6B5A1A;
+  background: rgba(245, 197, 66, 0.18); border-left: 3px solid var(--flag-alert);
+  padding: 8px 12px; margin-bottom: 12px; font-size: var(--text-sm); color: var(--gold-lt);
 }
 
 /* Dirty-field marker */
 .field-dirty input,
-.field-dirty select { border-left: 3px solid #d4af37; }
+.field-dirty select { border-left: 3px solid var(--gold); }
 
 /* Permission-driven hides (body classes set by auth.js) */
 body:not(.can-write)  #medicion-form,
@@ -2615,7 +2653,7 @@ body.demo-mode-active .row-clickable        { display: none; }
   .row-edit-modal      { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
   .row-edit-modal form { padding: 16px; }
   .table-toolbar       { gap: 8px; }
-  .table-search        { font-size: 13px; }
+  .table-search        { font-size: var(--text-md); }
 }
 
 /* ── Harvest predictor view ─────────────────────────────────────────── */
@@ -2627,27 +2665,35 @@ body.demo-mode-active .row-clickable        { display: none; }
 .chip-bar {
   display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0 14px 0;
 }
-.chip {
-  background: #fff; border: 1px solid #d8d3ca; border-radius: 16px;
-  padding: 4px 12px; font-size: 12px; color: #5a534a; cursor: pointer;
+/* Scoped to .chip-bar (the predictor's own valley selector, the only place
+   these are used). As a bare `.chip` this block sat after the themed filter
+   chip rules near the top of this file and overrode them everywhere, so the
+   sidebar's Varietal/Origen chips rendered with a hardcoded white background
+   and light-theme text in dark mode. */
+.chip-bar .chip {
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  padding: 4px 12px; font-size: var(--text-md); color: var(--text); cursor: pointer;
 }
-.chip.chip-active { background: #5b2d3a; color: #fff; border-color: #5b2d3a; }
+.chip-bar .chip.chip-active {
+  background: var(--gold); color: var(--black); border-color: var(--gold);
+}
 .pred-card {
-  background: #fff; border-radius: 10px; padding: 14px;
-  border: 1px solid #e6e3dc;
+  background: var(--card); border-radius: var(--radius-panel); padding: 14px;
+  border: 1px solid var(--border);
 }
-.pred-card-alert  { background: #fef8f2; border-color: #e6cdb0; }
-.pred-card-empty  { background: #f7f5f1; border-style: dashed; }
+.pred-card-alert  { background: rgba(224,144,48,0.10); border-color: var(--flag-warning); }
+.pred-card-empty  { background: var(--card2); border-style: dashed; }
 .pred-card-header { display: flex; justify-content: space-between; align-items: flex-start; }
-.pred-card-date   { font-size: 20px; font-weight: 600; color: #5b2d3a; margin-top: 8px;
+.pred-card-date   { font-size: var(--text-xl); font-weight: 600; color: var(--gold-lt); margin-top: 8px;
                     line-height: 1.15; }
-.pred-card-status { font-size: 12px; font-weight: 500; color: #7a4250; margin-top: 8px;
+.pred-card-status { font-size: var(--text-md); font-weight: 500; color: var(--gold); margin-top: 8px;
                     line-height: 1.25; text-transform: none; letter-spacing: .02em; }
-.pred-card-sub    { font-size: 11px; color: #7a7368; }
-.pred-card-foot   { display: flex; justify-content: space-between; font-size: 11px;
-                    color: #5a534a; padding-top: 8px; border-top: 1px solid #f0ebe4;
+.pred-card-sub    { font-size: var(--text-sm); color: var(--muted); }
+.pred-card-foot   { display: flex; justify-content: space-between; font-size: var(--text-sm);
+                    color: var(--muted); padding-top: 8px; border-top: 1px solid var(--border);
                     margin-top: 10px; }
-.pred-badge       { font-size: 11px; padding: 3px 8px; border-radius: 10px; color: #fff; }
+.pred-badge       { font-size: var(--text-sm); padding: 3px 8px; border-radius: var(--radius-panel); color: #fff; }
 .pred-badge-alta  { background: #2e7d4f; }
 .pred-badge-media { background: #c08a2d; }
 .pred-badge-baja  { background: #b04040; }
@@ -2670,9 +2716,9 @@ body.demo-mode-active .row-clickable        { display: none; }
   padding: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid #e6e3dc;
-  border-radius: 12px;
-  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--card);
   /* Animatable closed state — applies when [open] is not present */
   opacity: 0;
   transform: translateY(8px) scale(0.96);
@@ -2717,21 +2763,21 @@ body.demo-mode-active .row-clickable        { display: none; }
   gap: 16px; padding-bottom: 4px;
 }
 .pred-detail-variety {
-  margin: 0; font-size: 20px; font-weight: 600; color: #2d2520;
+  margin: 0; font-size: var(--text-xl); font-weight: 600; color: var(--text);
   line-height: 1.2;
 }
 .pred-detail-appellation {
-  margin-top: 4px; font-size: 13px; color: #7a7368;
+  margin-top: 4px; font-size: var(--text-md); color: var(--muted);
 }
 .pred-detail-badge { /* badges reuse .pred-badge classes via JS */ }
 
 .pred-detail-status {
-  font-size: 22px; font-weight: 600; color: #5b2d3a;
+  font-size: var(--text-2xl); font-weight: 600; color: var(--gold-lt);
   margin-top: 14px; line-height: 1.2;
 }
-.pred-detail-status.is-reason { font-size: 16px; color: #7a4250; }
+.pred-detail-status.is-reason { font-size: var(--text-lg); color: var(--gold); }
 .pred-detail-sub {
-  font-size: 12px; color: #7a7368; margin-top: 4px; padding-bottom: 14px;
+  font-size: var(--text-md); color: var(--muted); margin-top: 4px; padding-bottom: 14px;
 }
 
 .pred-detail-grid {
@@ -2742,47 +2788,204 @@ body.demo-mode-active .row-clickable        { display: none; }
   .pred-detail-grid { grid-template-columns: 1fr; }
 }
 .pred-detail-axis-label {
-  font-size: 10px; color: #7a7368; text-transform: uppercase;
+  font-size: var(--text-sm); color: var(--muted); text-transform: uppercase;
   letter-spacing: .04em; margin-bottom: 4px;
 }
 .pred-detail-mini { position: relative; height: 220px; }
 
 .pred-detail-targets, .pred-detail-diagnostic, .pred-detail-reason {
-  border-top: 1px solid #f0ebe4; padding-top: 14px; padding-bottom: 14px;
+  border-top: 1px solid var(--border); padding-top: 14px; padding-bottom: 14px;
 }
 .pred-detail-targets h3, .pred-detail-diagnostic h3, .pred-detail-reason h3 {
-  margin: 0 0 8px 0; font-size: 11px; text-transform: uppercase;
-  letter-spacing: .05em; color: #5a534a;
+  margin: 0 0 8px 0; font-size: var(--text-sm); text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted);
 }
 .pred-detail-targets-body, .pred-detail-diagnostic-body {
   display: grid; grid-template-columns: auto 1fr;
-  column-gap: 16px; row-gap: 4px; font-size: 13px; color: #2d2520;
+  column-gap: 16px; row-gap: 4px; font-size: var(--text-md); color: var(--text);
 }
 .pred-detail-targets-body dt, .pred-detail-diagnostic-body dt {
-  color: #7a7368;
+  color: var(--muted);
 }
 .pred-detail-reason-body {
-  margin: 0; font-size: 13px; line-height: 1.45; color: #5b2d3a;
+  margin: 0; font-size: var(--text-md); line-height: 1.45; color: var(--gold-lt);
 }
 
 .row-edit-close {
   position: absolute; top: 12px; right: 12px;
   width: 32px; height: 32px; border: none; background: transparent;
-  font-size: 20px; line-height: 1; color: #5a534a; cursor: pointer;
-  border-radius: 6px; transition: background var(--motion-fast);
+  font-size: var(--text-xl); line-height: 1; color: var(--muted); cursor: pointer;
+  border-radius: var(--radius-base); transition: background var(--motion-fast);
 }
-.row-edit-close:hover { background: #f0ebe4; }
+.row-edit-close:hover { background: var(--card2); }
 
 .link-button {
-  font-size: 12px; color: #5b2d3a; text-decoration: underline; cursor: pointer;
+  font-size: var(--text-md); color: var(--gold-lt); text-decoration: underline; cursor: pointer;
   background: none; border: none; padding: 0;
 }
-.settings-table   { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 12px; }
-.settings-table th, .settings-table td { padding: 8px 10px; border-bottom: 1px solid #f0ebe4; }
-.settings-table th { background: #f7f5f1; font-size: 11px; text-transform: uppercase;
-                     letter-spacing: .5px; color: #5a534a; text-align: left; }
+.settings-table   { width: 100%; border-collapse: collapse; font-size: var(--text-md); margin-top: 12px; }
+.settings-table th, .settings-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.settings-table th { background: var(--table-header-bg); font-size: var(--text-sm); text-transform: uppercase;
+                     letter-spacing: .5px; color: var(--muted); text-align: left; }
 .settings-table th.num, .settings-table td.num { text-align: right; }
-.settings-table input { width: 70px; padding: 4px 6px; border: 1px solid #d8d3ca;
-                        border-radius: 4px; font-size: 13px; }
-.settings-meta { font-size: 12px; color: #7a7368; margin: 6px 0 8px 0; }
+.settings-table input { width: 70px; padding: 4px 6px; border: 1px solid var(--border);
+                        border-radius: var(--radius-base); font-size: var(--text-md);
+                        background: var(--surface); color: var(--text); }
+.settings-meta { font-size: var(--text-md); color: var(--muted); margin: 6px 0 8px 0; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* ==================================================================
+   Mobile touch pass (Android + iOS)
+   ==================================================================
+   Everything below is scoped to small screens or to coarse pointers,
+   so desktop rendering is unchanged.
+
+   Two classes of defect are addressed:
+
+   1. iOS Safari zooms the viewport whenever a text-entry control with a
+      computed font-size under 16px receives focus, and it does not zoom
+      back out. Every such control is raised to 16px on mobile.
+   2. Controls under the 44px touch floor (Apple HIG / Material 48dp).
+      Measured with tests/e2e/mobile-responsive.spec.js at 320 and 390
+      CSS px before and after.
+   ------------------------------------------------------------------ */
+
+/* Desktop values for the weather controls, previously inline `style`
+   attributes. Inline styles outrank media queries, so they are kept here
+   instead to let the mobile block below override them. */
+.nav-select-inline { font-size: var(--text-sm); padding: 3px 8px; min-width: auto; }
+.nav-select-date   { padding: 3px 6px; }
+
+@media (max-width: 768px) {
+  /* -- 1. iOS focus-zoom floor -- */
+  .nav-select,
+  .nav-select-inline,
+  .nav-select-date,
+  .login-input,
+  .table-search,
+  .settings-table input,
+  .mona-input,
+  .mona-kb-add input,
+  input[type="text"],
+  input[type="search"],
+  input[type="password"],
+  input[type="number"],
+  input[type="email"],
+  input[type="tel"],
+  input[type="date"],
+  textarea,
+  select {
+    font-size: var(--text-lg);
+  }
+  /* Higher specificity than the id-based base rule. */
+  #map-metric-select { font-size: var(--text-lg); }
+
+  /* -- 2. Touch targets -- */
+
+  /* Header controls: 36px wide before. */
+  .theme-toggle,
+  .help-toggle { min-width: 44px; }
+
+  /* Primary export affordance on mobile: the per-chart button is hidden
+     here, so this and its menu are the only export path. Was 23px tall,
+     with 16px menu rows. */
+  .page-export-btn { min-height: 44px; padding: 10px 16px; }
+  .chart-export-menu button { min-height: 44px; padding: 12px 20px; font-size: var(--text-sm); }
+
+  /* Chart / series controls. The .color-mode-btn override earlier in this
+     file sets padding 3px 8px, so this must stay after it. */
+  .color-mode-btn,
+  .chart-toggle { min-height: 44px; padding: 10px 14px; display: inline-flex; align-items: center; }
+
+  /* Collapsible section headers on the berry view: 35px before. */
+  .mobile-section-toggle { min-height: 44px; }
+
+  /* Compound-evolution checkbox: the label was 23px tall and the box 12px. */
+  .evo-toggle-label { min-height: 44px; display: inline-flex; align-items: center; }
+  .evo-compound-toggle { width: 20px; height: 20px; }
+
+  /* Chart legends toggle series visibility (charts.js emits role="button").
+     Static map/legend keys have neither attribute and stay compact. */
+  .legend-item[data-series],
+  .legend-item[role="button"] { min-height: 44px; display: inline-flex; align-items: center; }
+
+  /* Explorer controls. */
+  .explorer-toggle-btn { min-height: 44px; padding: 10px 14px; }
+  .explorer-remove-btn,
+  .explorer-expand-toggle { min-height: 44px; min-width: 44px; }
+
+  /* Mediciones table search: 29px before. */
+  .table-search { min-height: 44px; padding: 10px 12px; }
+
+  /* Filter chips were capped at 36px, under both the 44pt (Apple) and 48dp
+     (Material) floors. They sit in a horizontal scroll strip, so the extra
+     height costs no width. */
+  .chip { min-height: 44px; }
+
+  /* Inline text action ("Ajustes de objetivos"): 36px, padding 0. */
+  .link-button { min-height: 44px; display: inline-flex; align-items: center; }
+
+  /* Vintage / weather selects: 23px before. */
+  .nav-select { min-height: 44px; }
+  .nav-select-inline { padding: 10px 12px; }
+  .nav-select-date { padding: 10px 10px; }
+
+  /* Numeric inputs in the objetivos settings table need room at 16px. */
+  .settings-table input { width: 88px; min-height: 44px; }
+
+  /* -- Upload modal -- */
+  /* 48px/60px padding left ~230px of usable width at 390px viewport. */
+  .loader-card { padding: 28px 18px; width: 94vw; max-height: 88vh; }
+  .loader-close { min-width: 44px; min-height: 44px; top: 6px; right: 6px; }
+  /* "Seleccionar Archivos": 33px tall before. The .loader-btn-db variants
+     already carry min-height 44px. */
+  .loader-btn { min-height: 44px; }
+  .loader-icon { font-size: var(--text-3xl); margin-bottom: 12px; }
+  .loader-title { font-size: var(--text-lg); }
+
+  /* -- Mona chat -- */
+  .mona-new-conv,
+  .mona-kb-open,
+  .mona-input,
+  .mona-send { min-height: 44px; }
+  .mona-retry { min-height: 44px; padding: 8px 14px; }
+  .mona-widget-head-actions button { min-width: 44px; min-height: 44px; }
+  .mona-kb-add button,
+  .mona-kb-actions button,
+  .mona-kb-add input { min-height: 44px; }
+  .mona-conv-del { min-width: 44px; min-height: 44px; }
+}
+
+/* -- 3. Hover-only affordances on touch devices --
+   `hover: none` matches phones and tablets, where a :hover-gated control can
+   never be revealed. Both of these are opacity-0 until hover on desktop. */
+@media (hover: none) {
+  .mona-conv-del { opacity: 1; }
+  .chart-export-btn { opacity: 1; }
+}
+
+/* -- 4. Safe-area insets --
+   index.html declares apple-mobile-web-app-capable + black-translucent, so
+   when the dashboard is launched from the iPhone Home Screen its content
+   renders under the status bar and the home indicator. viewport-fit=cover
+   (set in index.html) makes these env() values resolve; without the padding
+   below the header and the filter sheet sit under system UI. */
+/* Top inset only. env() resolves to 0 on every non-notched device and in the
+   browser tab, so this is inert outside standalone iOS. Horizontal padding is
+   left alone here to preserve the 48px desktop gutter. */
+header { padding-top: env(safe-area-inset-top); }
+
+@media (max-width: 768px) {
+  /* Landscape on a notched iPhone puts the notch on one side, so the 12px
+     mobile gutter set earlier is widened only when an inset exists. */
+  header {
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+  /* Bottom sheet and FAB clear the home indicator. */
+  .sidebar.sheet-open { padding-bottom: calc(32px + env(safe-area-inset-bottom)); }
+  .mobile-fab { bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .data-loader-overlay {
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+}
