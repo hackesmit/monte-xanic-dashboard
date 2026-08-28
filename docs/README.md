@@ -17,6 +17,7 @@
 | Understand the domain | [Domain-Model.md](Domain-Model.md) |
 | Know upload/validation rules | [Data-Validation.md](Data-Validation.md) |
 | Understand the development workflow | [Development-Rules.md](Development-Rules.md) |
+| Write or change any CSS | [Design-System.md](Design-System.md) |
 
 ## Canonical Sources
 
