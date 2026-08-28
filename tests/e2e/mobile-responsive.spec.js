@@ -183,6 +183,19 @@ for (const vp of VIEWPORTS) {
       const offenders = [];
       for (const view of VIEWS) {
         if (!(await switchView(page, view))) continue;
+        // Controls that are display:none until a toggle is pressed are still
+        // focusable once revealed, so reveal them rather than skipping them.
+        // #weather-forecast-horizon carries an !important font-size and was
+        // missed entirely by the first version of this test.
+        await page.evaluate(() => {
+          ['weather-forecast-horizon', 'weather-custom-start', 'weather-custom-end']
+            .forEach((id) => {
+              const el = document.getElementById(id);
+              if (el) el.style.display = 'inline-block';
+            });
+          const dates = document.getElementById('weather-custom-dates');
+          if (dates) dates.style.display = 'inline-flex';
+        });
         const found = await page.$$eval(
           'input, select, textarea',
           (els) =>
@@ -214,31 +227,53 @@ for (const vp of VIEWPORTS) {
     test('interactive controls are ≥ 44 px on every view', async ({ page, context }) => {
       await installBypassToken(context);
       await gotoDashboard(page);
-      // Excluded by design:
-      //  - .map-legend-discrete .legend-item is a static colour key, not a control.
-      //  - .evo-compound-toggle is a 20px checkbox inside a 44px <label>, which
-      //    is the actual tap target.
-      const SEL = [
-        '.page-export-btn',
-        '.color-mode-btn',
-        '.chart-toggle',
-        '.mobile-section-toggle',
-        '.evo-toggle-label',
-        '.legend-item[data-series]',
-        '.legend-item[role="button"]',
-        '.explorer-toggle-btn',
-        '.explorer-remove-btn',
-        '.table-search',
-        '.nav-select',
-        '.chip',
-        '.link-button',
-        '.theme-toggle',
-        '.help-toggle',
+      // Sweep every visible interactive element rather than a hand-picked list:
+      // a curated list only ever proves the things someone remembered to add.
+      const SEL = 'button, [role="button"], select, a[data-view], ' +
+                  'input:not([type="hidden"]):not([type="file"])';
+      // Exempted by design, each for a stated reason.
+      const EXEMPT = [
+        // Static colour key on the map, not a control.
+        '.map-legend-discrete .legend-item',
+        // 20px checkbox inside a 44px <label>, which is the real tap target.
+        '.evo-compound-toggle',
+        // Native checkboxes inside larger labelled rows.
+        '.lot-picker-item input[type="checkbox"]',
       ].join(', ');
+
       const offenders = [];
       for (const view of VIEWS) {
         if (!(await switchView(page, view))) continue;
-        const found = await measureTapTargets(page, SEL, 44);
+        const found = await page.$$eval(
+          SEL,
+          (els, args) => {
+            const [min, exempt] = args;
+            const exemptEls = new Set(
+              exempt ? Array.from(document.querySelectorAll(exempt)) : []
+            );
+            return els
+              .filter((el) => !exemptEls.has(el))
+              .map((el) => {
+                const r = el.getBoundingClientRect();
+                const cs = getComputedStyle(el);
+                const visible =
+                  cs.display !== 'none' &&
+                  cs.visibility !== 'hidden' &&
+                  parseFloat(cs.opacity) > 0 &&
+                  r.width > 0 &&
+                  r.height > 0;
+                return {
+                  visible,
+                  sel: el.id ? `#${el.id}` : `.${String(el.className).trim().split(/\s+/)[0]}`,
+                  text: (el.textContent || '').trim().slice(0, 24),
+                  w: Math.round(r.width),
+                  h: Math.round(r.height),
+                };
+              })
+              .filter((m) => m.visible && (m.w < min || m.h < min));
+          },
+          [44, EXEMPT]
+        );
         found.forEach((f) => offenders.push({ view, ...f }));
       }
       expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
@@ -292,6 +327,50 @@ for (const vp of VIEWPORTS) {
           );
         }
       }
+    });
+  });
+}
+
+// A phone in landscape is 844px wide, past the 768px breakpoint, but still a
+// touch-only device. The touch pass was width-gated until the cross-vendor
+// review caught it, so these two cases guard the coarse-pointer clause.
+for (const dev of [
+  { name: 'phone landscape', width: 844, height: 390 },
+  { name: 'tablet portrait', width: 820, height: 1180 },
+]) {
+  test.describe(`Touch @ ${dev.name}`, () => {
+    test.use({
+      viewport: { width: dev.width, height: dev.height },
+      hasTouch: true,
+      isMobile: true,
+    });
+
+    test('touch floors still apply past the 768px breakpoint', async ({ page, context }) => {
+      await installBypassToken(context);
+      await gotoDashboard(page);
+      await page.evaluate(() => {
+        const sel = document.getElementById('weather-forecast-horizon');
+        if (sel) sel.style.display = 'inline-block';
+      });
+
+      const zoom = await page.$$eval('input, select, textarea', (els) =>
+        els
+          .filter((el) => {
+            const cs = getComputedStyle(el);
+            const r = el.getBoundingClientRect();
+            const type = (el.getAttribute('type') || 'text').toLowerCase();
+            const exempt = ['checkbox', 'radio', 'file', 'range', 'submit', 'button', 'color'];
+            return (
+              cs.display !== 'none' && r.width > 0 && r.height > 0 &&
+              !exempt.includes(type) && parseFloat(cs.fontSize) < 16
+            );
+          })
+          .map((el) => ({ id: el.id || String(el.className).slice(0, 30), fs: getComputedStyle(el).fontSize }))
+      );
+      expect(zoom, `text controls under 16px on ${dev.name}:\n${JSON.stringify(zoom, null, 2)}`).toEqual([]);
+
+      const small = await measureTapTargets(page, '.nav-tab, .chip, .page-export-btn, .chart-toggle', 44);
+      expect(small, `controls under 44px on ${dev.name}:\n${JSON.stringify(small, null, 2)}`).toEqual([]);
     });
   });
 }
