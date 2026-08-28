@@ -186,6 +186,60 @@ export const UploadManager = {
     return { count: total, error: null };
   },
 
+  // ── WineXRay sync (no file handling by the user) ──────────────────
+  // Calls our own endpoint, which holds the WineXRay login server-side and
+  // returns only a summary. The credential, the session cookie and the export
+  // GUID never reach this code. The manual .csv button stays as the fallback.
+  async syncWineXRay(statusEl, { from, to } = {}) {
+    if (this._uploading) {
+      this._setStatus(statusEl, 'error', 'Carga en progreso, espere...');
+      return { ok: false };
+    }
+    if (!Auth.canUpload()) {
+      this._setStatus(statusEl, 'error', '\u2717 Sin permisos para sincronizar datos.');
+      return { ok: false };
+    }
+    if (DemoMode.isActive()) {
+      this._setStatus(statusEl, 'error', '\u2717 Modo demo activo \u2014 desactívelo para sincronizar datos reales.');
+      return { ok: false };
+    }
+    const token = Auth.getToken();
+    if (!token) {
+      this._setStatus(statusEl, 'error', '\u2717 No autorizado \u2014 inicie sesión.');
+      return { ok: false };
+    }
+
+    this._uploading = true;
+    this._setStatus(statusEl, 'pending', '\u23f3 Sincronizando con WineXRay…');
+    try {
+      const resp = await fetch('/api/winexray-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': token },
+        body: JSON.stringify({ from, to }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      // Failure is visible and in Spanish, never a silent no-op.
+      if (!resp.ok || !data.ok) {
+        this._setStatus(statusEl, 'error', `\u2717 ${this._esc(data.error || 'Error al sincronizar con WineXRay.')}`);
+        return { ok: false, error: data.error };
+      }
+      this._setStatus(statusEl, 'success', `\u2713 ${this._esc(data.mensaje || 'Sincronización completa.')}`);
+      if (data.count) {
+        try {
+          await DataStore.loadFromSupabase();
+          await DataStore.loadMediciones();
+          if (App && App.refresh) App.refresh();
+        } catch (_) { /* refresh is best-effort */ }
+      }
+      return { ok: true, count: data.count || 0, data };
+    } catch (err) {
+      this._setStatus(statusEl, 'error', `\u2717 ${this._esc(err.message || 'Error de red al sincronizar.')}`);
+      return { ok: false, error: err.message };
+    } finally {
+      this._uploading = false;
+    }
+  },
+
   // UI helpers (preview card + summary DOM rendering) — implemented in Task 13
   _setStatus(el, state, msg) {
     if (!el) return;
