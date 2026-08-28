@@ -23,7 +23,8 @@ const VIEWPORTS = [
   { name: '390x844', width: 390, height: 844 }, // iPhone 14
 ];
 
-const VIEWS = ['berry', 'wine', 'extraction', 'vintage', 'map', 'explorer', 'mediciones'];
+const VIEWS = ['berry', 'wine', 'extraction', 'vintage', 'map', 'explorer', 'mediciones',
+               'prediccion', 'mona', 'guardados'];
 
 async function installBypassToken(context) {
   await context.addInitScript(() => {
@@ -171,5 +172,152 @@ for (const vp of VIEWPORTS) {
       );
       expect(violations, JSON.stringify(violations, null, 2)).toEqual([]);
     });
+
+    // ---- R38: full-surface touch pass ----
+
+    test('no text-entry control renders under 16 px (iOS focus-zoom)', async ({ page, context }) => {
+      // Safari on iOS zooms the viewport whenever a focused text control has a
+      // computed font-size below 16px, and never zooms back out.
+      await installBypassToken(context);
+      await gotoDashboard(page);
+      const offenders = [];
+      for (const view of VIEWS) {
+        if (!(await switchView(page, view))) continue;
+        const found = await page.$$eval(
+          'input, select, textarea',
+          (els) =>
+            els
+              .filter((el) => {
+                const cs = getComputedStyle(el);
+                const r = el.getBoundingClientRect();
+                const type = (el.getAttribute('type') || 'text').toLowerCase();
+                const exempt = ['checkbox', 'radio', 'file', 'range', 'submit', 'button', 'color'];
+                return (
+                  cs.display !== 'none' &&
+                  cs.visibility !== 'hidden' &&
+                  r.width > 0 &&
+                  r.height > 0 &&
+                  !exempt.includes(type) &&
+                  parseFloat(cs.fontSize) < 16
+                );
+              })
+              .map((el) => ({
+                id: el.id || String(el.className).slice(0, 40),
+                fontSize: getComputedStyle(el).fontSize,
+              }))
+        );
+        found.forEach((f) => offenders.push({ view, ...f }));
+      }
+      expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
+    });
+
+    test('interactive controls are ≥ 44 px on every view', async ({ page, context }) => {
+      await installBypassToken(context);
+      await gotoDashboard(page);
+      // Excluded by design:
+      //  - .map-legend-discrete .legend-item is a static colour key, not a control.
+      //  - .evo-compound-toggle is a 20px checkbox inside a 44px <label>, which
+      //    is the actual tap target.
+      const SEL = [
+        '.page-export-btn',
+        '.color-mode-btn',
+        '.chart-toggle',
+        '.mobile-section-toggle',
+        '.evo-toggle-label',
+        '.legend-item[data-series]',
+        '.legend-item[role="button"]',
+        '.explorer-toggle-btn',
+        '.explorer-remove-btn',
+        '.table-search',
+        '.nav-select',
+        '.chip',
+        '.link-button',
+        '.theme-toggle',
+        '.help-toggle',
+      ].join(', ');
+      const offenders = [];
+      for (const view of VIEWS) {
+        if (!(await switchView(page, view))) continue;
+        const found = await measureTapTargets(page, SEL, 44);
+        found.forEach((f) => offenders.push({ view, ...f }));
+      }
+      expect(offenders, JSON.stringify(offenders, null, 2)).toEqual([]);
+    });
+
+    test('upload modal fits the viewport and every control is ≥ 44 px', async ({ page, context }) => {
+      await installBypassToken(context);
+      await gotoDashboard(page);
+      const reveal = () =>
+        page.evaluate(() => {
+          const m = document.getElementById('data-loader');
+          const db = document.getElementById('db-upload-section');
+          if (m) m.style.display = 'flex';
+          // Role-gated to lab/admin; reveal directly so the test does not
+          // depend on /api/verify, which is unreachable under `vite dev`.
+          if (db) db.style.display = 'block';
+        });
+      await reveal();
+      await page.waitForTimeout(600);
+      // App.hideDataLoader() can fire when the initial data load settles.
+      await reveal();
+      await page.waitForTimeout(200);
+
+      const violations = await measureTapTargets(page, '#data-loader button', 44);
+      expect(violations, `upload controls under 44px:\n${JSON.stringify(violations, null, 2)}`).toEqual([]);
+
+      const card = await page.evaluate(() => {
+        const r = document.querySelector('.loader-card').getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height), winW: window.innerWidth, winH: window.innerHeight };
+      });
+      expect(card.w, `loader-card ${card.w}px wider than ${card.winW}px viewport`).toBeLessThanOrEqual(card.winW);
+      expect(card.h, `loader-card ${card.h}px taller than ${card.winH}px viewport`).toBeLessThanOrEqual(card.winH);
+    });
+
+    test('file inputs advertise MIME types as well as extensions', async ({ page, context }) => {
+      // Android document providers (Drive, Files) filter strictly on MIME and
+      // grey out valid spreadsheets when `accept` lists extensions only.
+      await installBypassToken(context);
+      await gotoDashboard(page);
+      const accepts = await page.$$eval('input[type="file"]', (els) =>
+        els.map((el) => ({ id: el.id, accept: el.getAttribute('accept') || '' }))
+      );
+      expect(accepts.length).toBeGreaterThan(0);
+      for (const a of accepts) {
+        const wantsCsv = a.accept.includes('.csv');
+        const wantsXlsx = a.accept.includes('.xlsx');
+        if (wantsCsv) expect(a.accept, `${a.id} missing text/csv`).toContain('text/csv');
+        if (wantsXlsx) {
+          expect(a.accept, `${a.id} missing xlsx MIME`).toContain(
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          );
+        }
+      }
+    });
   });
 }
+
+// Coarse-pointer behaviour is viewport-independent, so it runs once.
+test.describe('Touch device (hover: none)', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
+
+  test('hover-gated controls are reachable without a hover state', async ({ page, context }) => {
+    await installBypassToken(context);
+    await page.goto('/');
+    await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+    // Both of these sit at opacity 0 until :hover on desktop, which a touch
+    // device can never satisfy.
+    const opacity = await page.evaluate(() => {
+      const probe = (cls) => {
+        const el = document.createElement('button');
+        el.className = cls;
+        document.body.appendChild(el);
+        const o = getComputedStyle(el).opacity;
+        el.remove();
+        return o;
+      };
+      return { convDel: probe('mona-conv-del'), chartExport: probe('chart-export-btn') };
+    });
+    expect(opacity.convDel, 'mona-conv-del hidden on touch').not.toBe('0');
+    expect(opacity.chartExport, 'chart-export-btn hidden on touch').not.toBe('0');
+  });
+});
