@@ -69,6 +69,15 @@
        --radius-base : cards, buttons, panels
        --radius-panel: modals, sheets, floating surfaces
      Enforced by tests/design-system.test.mjs. */
+  /* Foreground for gold-filled controls. Deliberately NOT redefined in the
+     light theme: --gold is mid-dark on both grounds, so a foreground that
+     inverts (like --black) gives white-on-gold in light mode, around 3.9:1.
+     This stays dark in both themes. Pure black rather than #1A1A1A because the
+     light theme's gold (#9B7D3A) only reaches 4.47:1 against #1A1A1A, just
+     under the 4.5:1 floor; black gives 5.4:1. Matches .loader-btn's existing
+     black-on-gold. */
+  --on-gold: #000000;
+
   --radius-sharp: 2px;
   --radius-base:  4px;
   --radius-panel: 8px;
@@ -2374,7 +2383,7 @@ canvas { max-width: 100%; }
 }
 
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-.btn-gold { padding: 8px 20px; background: var(--gold); color: var(--black); border: none; border-radius: var(--radius-base); font-family: var(--font-display); font-size: var(--text-sm); letter-spacing: 0.5px; cursor: pointer; text-transform: uppercase; }
+.btn-gold { padding: 8px 20px; background: var(--gold); color: var(--on-gold); border: none; border-radius: var(--radius-base); font-family: var(--font-display); font-size: var(--text-sm); letter-spacing: 0.5px; cursor: pointer; text-transform: uppercase; }
 .btn-gold:hover { background: var(--gold-lt); }
 .btn-gold:disabled { opacity: 0.5; cursor: not-allowed; }
 .form-status { font-size: var(--text-md); color: var(--muted); }
@@ -2653,7 +2662,18 @@ body.demo-mode-active .row-clickable        { display: none; }
 
 /* Mobile: modal full-screen */
 @media (max-width: 720px) {
-  .row-edit-modal      { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border-radius: 0; }
+  .row-edit-modal      {
+    width: 100vw; max-width: 100vw; border-radius: 0;
+    height: 100vh; max-height: 100vh;
+    height: 100dvh; max-height: 100dvh;
+  }
+  /* Scoped to [open]: a bare `display: flex` here overrides the closed
+     <dialog>'s default display:none and renders it on every view. */
+  .row-edit-modal[open] { display: flex; flex-direction: column; }
+  /* The form scrolls, so the footer actions stay reachable above the browser
+     chrome and the home indicator. */
+  .row-edit-modal form { flex: 1 1 auto; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .row-edit-modal .modal-footer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   .row-edit-modal form { padding: 16px; }
   .table-toolbar       { gap: 8px; }
   .table-search        { font-size: var(--text-md); }
@@ -2679,7 +2699,7 @@ body.demo-mode-active .row-clickable        { display: none; }
   padding: 4px 12px; font-size: var(--text-md); color: var(--text); cursor: pointer;
 }
 .chip-bar .chip.chip-active {
-  background: var(--gold); color: var(--black); border-color: var(--gold);
+  background: var(--gold); color: var(--on-gold); border-color: var(--gold);
 }
 .pred-card {
   background: var(--card); border-radius: var(--radius-panel); padding: 14px;
@@ -2957,6 +2977,10 @@ body.demo-mode-active .row-clickable        { display: none; }
   .modal-close { min-width: 44px; min-height: 44px; }
   .btn-danger,
   .btn-secondary { min-height: 44px; padding: 10px 16px; }
+
+  /* Mediciones evaluator row, writable-admin only, so easy to miss. ~30px. */
+  .evaluador-add,
+  .evaluador-remove { min-height: 44px; padding: 10px 14px; }
 
   /* -- Upload modal -- */
   /* 48px/60px padding left ~230px of usable width at 390px viewport. */
