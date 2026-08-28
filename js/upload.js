@@ -233,7 +233,8 @@ export const UploadManager = {
       }
       return { ok: true, count: data.count || 0, data };
     } catch (err) {
-      this._setStatus(statusEl, 'error', `\u2717 ${this._esc(err.message || 'Error de red al sincronizar.')}`);
+      console.error('[sync] WineXRay sync failed:', err);
+      this._setStatus(statusEl, 'error', '\u2717 Error de red al sincronizar con WineXRay.');
       return { ok: false, error: err.message };
     } finally {
       this._uploading = false;

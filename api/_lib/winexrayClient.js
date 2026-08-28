@@ -142,28 +142,66 @@ export class WineXRayClient {
   }
 
   /**
-   * Date-bounded sample list. Returns the raw result objects; we only need ids.
+   * Date-bounded sample list, paginated to exhaustion.
+   *
    * `from`/`to` must be YYYY-MM-DD — an ISO timestamp makes the server 500.
+   *
+   * Pagination is not optional. A single page silently truncates a busy window
+   * and the caller still reports success, which is the worst failure shape on
+   * this surface: samples missing with a green result. We page until the
+   * server's own `count` is reached or a short page comes back.
+   *
+   * seasonStart/seasonEnd must SPAN the requested window. Deriving them from
+   * `from` alone truncated any range crossing a year boundary.
    */
-  async listResults({ from, to, pageLimit = 500 }) {
+  async listResults({ from, to, pageLimit = 500, maxPages = 50 }) {
     if (!DATE_ONLY.test(from) || !DATE_ONLY.test(to)) {
       throw new WineXRayError('Rango de fechas inválido para WineXRay.', { code: 'winexray_date', status: 400 });
     }
-    const year = from.slice(0, 4);
-    const res = await this._request('/api/results', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      expect: 'application/json',
-      body: JSON.stringify({
-        orderBy: 'sampleDate', reverse: true, currentPage: 0, pageLimit,
-        search: '', searchField: 'assayId', searchFieldMatchType: 'Like',
-        dateStart: from, dateEnd: to, dateSearchField: 'sampleDate',
-        seasonStart: `${year}-01-01`, seasonEnd: `${year}-12-31`,
-        loadMaxBatchId: true,
-      }),
-    });
-    const json = await res.json();
-    return Array.isArray(json?.results) ? json.results : [];
+    const seasonStart = `${from.slice(0, 4)}-01-01`;
+    const seasonEnd = `${to.slice(0, 4)}-12-31`;
+
+    const all = [];
+    const seen = new Set();
+    let expected = null;
+
+    for (let page = 0; page < maxPages; page++) {
+      const res = await this._request('/api/results', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        expect: 'application/json',
+        body: JSON.stringify({
+          orderBy: 'sampleDate', reverse: true, currentPage: page, pageLimit,
+          search: '', searchField: 'assayId', searchFieldMatchType: 'Like',
+          dateStart: from, dateEnd: to, dateSearchField: 'sampleDate',
+          seasonStart, seasonEnd,
+          loadMaxBatchId: true,
+        }),
+      });
+      const json = await res.json();
+      const batch = Array.isArray(json?.results) ? json.results : [];
+      if (expected === null && Number.isFinite(json?.count)) expected = json.count;
+
+      for (const r of batch) {
+        // Dedupe defensively: paging a list ordered by a non-unique key can
+        // repeat a row across page boundaries.
+        const id = r?.id;
+        if (id === undefined || id === null || seen.has(id)) continue;
+        seen.add(id);
+        all.push(r);
+      }
+
+      if (batch.length < pageLimit) break;
+      if (expected !== null && all.length >= expected) break;
+
+      if (page === maxPages - 1) {
+        throw new WineXRayError(
+          'El rango solicitado devuelve demasiadas muestras. Sincroniza un periodo más corto.',
+          { code: 'winexray_too_many', status: 400 }
+        );
+      }
+    }
+    return all;
   }
 
   /** Turn sample ids into an export GUID. */
