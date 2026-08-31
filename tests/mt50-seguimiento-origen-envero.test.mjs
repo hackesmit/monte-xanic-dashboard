@@ -26,6 +26,7 @@ import * as XLSX from 'xlsx';
 import { seguimientoParser } from '../js/upload/seguimiento.js';
 import { buildAoa } from './fixtures/make-seguimiento-fixture.mjs';
 import { ALLOWED_TABLES } from '../api/upload.js';
+import { CONFIG } from '../js/config.js';
 
 function asFakeFile(buffer, name) {
   return {
@@ -437,5 +438,72 @@ describe('MT.50 R1 — per-lot metadata is read from any row of the block', () =
       () => parse((aoa) => { aoa[11][6] = new Date(Date.UTC(2026, 6, 1)); }),
       /valores distintos de "Fecha de envero"/,
     );
+  });
+});
+
+// ── Round 2 adversarial review (cross-vendor) findings ──────────────────────
+import { readFileSync } from 'node:fs';
+
+describe('MT.50 R2 — the R14 synonyms reach an already-migrated database', () => {
+  // MAJOR. sql/migration_dim_catalogs.sql is generated from config.js, so
+  // regenerating it picked up the two new R14 aliases — but that migration is
+  // already recorded in applied_migrations on any existing installation and
+  // will never run again. Editing an applied migration is not a delivery
+  // mechanism, so the new migration has to carry the rows too, or the SQL
+  // catalog silently stays behind the JS one.
+  it('backfills both aliases from the new migration', () => {
+    const sql = readFileSync(new URL('../sql/migration_seguimiento_origen_envero.sql', import.meta.url), 'utf8');
+    assert.match(sql, /INSERT INTO public\.dim_rancho_sinonimo/);
+    assert.match(sql, /'Valle de Guadalupe \(R14\)'/);
+    assert.match(sql, /'Valle de Guadalupe \(Rancho 14\)'/);
+    // Guarded, because a fresh install may run this before dim_catalogs exists.
+    assert.match(sql, /to_regclass\('public\.dim_rancho_sinonimo'\)/);
+    assert.match(sql, /ON CONFLICT \(sinonimo\) DO UPDATE/);
+  });
+
+  // Every appellationFixes entry resolving to a ranch must be reproducible in
+  // SQL, which is the whole point of the dim_* catalogs.
+  it('keeps the JS and SQL rancho synonym catalogs in agreement', () => {
+    const sql = readFileSync(new URL('../sql/migration_dim_catalogs.sql', import.meta.url), 'utf8');
+    for (const k of ['Valle de Guadalupe (R14)', 'Valle de Guadalupe (Rancho 14)']) {
+      assert.equal(CONFIG.appellationFixes[k], 'Rancho 14 (VDG)');
+      assert.ok(sql.includes(`('${k}', 'Rancho 14 (VDG)')`), `${k} missing from the generated catalog`);
+    }
+  });
+});
+
+describe('MT.50 R2 — prototype keys are not mistaken for catalog entries', () => {
+  // MINOR. `'constructor' in CONFIG.originColors` is true via the prototype
+  // chain, so an origin literally named "constructor" would skip the
+  // uncatalogued-origin warning and land silently.
+  it('warns for an origin named after an Object.prototype member', async () => {
+    for (const name of ['constructor', 'toString']) {
+      const r = await parse((aoa) => {
+        for (let i = 8; i < 15; i++) aoa[i][5] = name;
+      });
+      assert.ok(
+        r.warnings.some(w => w.includes('26AAAA1A-C') && w.includes('catálogo')),
+        `no uncatalogued-origin warning for ${name}: ${JSON.stringify(r.warnings)}`,
+      );
+    }
+  });
+});
+
+describe('MT.50 R2 — the unclaimed-column check uses resolved indices', () => {
+  // MINOR. assertNoUnclaimedMetaData identified the repeated header row with a
+  // hard-coded row[0], inside the very function whose purpose is to stop
+  // hard-coded indices. With Variedad moved, a repeated header label would be
+  // misread as lot data and refuse a valid file.
+  it('accepts a valid file when Variedad is not the first column', async () => {
+    const r = await parse((aoa) => {
+      // Swap Variedad and Status in the header and in every data row.
+      for (const row of aoa) {
+        if (!row || row.length < 2) continue;
+        [row[0], row[1]] = [row[1], row[0]];
+      }
+    });
+    assert.equal(lotRows(r).length, 4);
+    assert.equal(lot(r, '26AAAA1A-C').variety, 'Sauvignon Blanc');
+    assert.equal(lot(r, '26AAAA1A-C').status, 'Recibido');
   });
 });
