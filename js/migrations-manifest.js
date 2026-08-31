@@ -41,4 +41,5 @@ export const MIGRATIONS = [
   'migration_wine_samples_brix',
   'migration_seguimiento_lotes',
   'migration_dim_catalogs',
+  'migration_seguimiento_origen_envero',
 ];

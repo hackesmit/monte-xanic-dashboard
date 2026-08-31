@@ -121,6 +121,43 @@ describe('MT.43 — normalizeAppellation idempotency', () => {
     }
   });
 
+  // xd-49p.1 — the exact 7 Origen strings the 2026 "Seguimiento de Maduración"
+  // workbook ships (revision of 2026-08-31, which introduced the column). Two
+  // of them used to fall through to the non-validating pass-through branch and
+  // reach wine_samples.appellation as raw workbook text:
+  //   - 'Valle de Guadalupe (Monte Xanic) ' carries a TRAILING SPACE, so it
+  //     missed appellationFixes and split 21 lots off the historical
+  //     'Monte Xanic (VDG)' series in every origin chip, legend and
+  //     origin-coloured chart;
+  //   - 'Valle de Guadalupe (R14)' was absent from the map entirely, even
+  //     though _codeToRanch already resolved the R14 code to Rancho 14 (VDG).
+  // Every value must land on a ranch-first name that originColors knows, so
+  // resolveOriginColor gives it its real colour instead of a hashed one.
+  it('maps every Origen value in the 2026 Seguimiento workbook to a known ranch', () => {
+    const WORKBOOK_ORIGENES = {
+      'Valle de Guadalupe (Monte Xanic) ':  'Monte Xanic (VDG)',   // trailing space is real
+      'Valle de Guadalupe (Siete Leguas)':  'Siete Leguas (VDG)',
+      'Valle de Guadalupe (Olé)':           'Olé (VDG)',
+      'Valle de Guadalupe (R14)':           'Rancho 14 (VDG)',
+      'Valle de Ojos Negros (Ojos Negros)': 'Ojos Negros (VON)',
+      'Valle de Ojos Negros (Viña Alta)':   'Viña Alta (VON)',
+      'Valle de Ojos Negros (Kompali)':     'Kompali (VON)',
+    };
+    for (const [raw, expected] of Object.entries(WORKBOOK_ORIGENES)) {
+      const got = CONFIG.normalizeAppellation(raw);
+      assert.equal(got, expected, `Origen ${JSON.stringify(raw)} -> ${JSON.stringify(got)}`);
+      assert.ok(originKeys.has(got), `${got} is not an originColors key, so it would get a hashed colour`);
+      assert.equal(CONFIG.normalizeAppellation(got), got, `${got} not idempotent`);
+    }
+  });
+
+  // The trim must not become a licence to mangle: surrounding whitespace is
+  // stripped, but an unknown appellation still passes through otherwise intact.
+  it('trims surrounding whitespace without altering an unknown appellation', () => {
+    assert.equal(CONFIG.normalizeAppellation('  Ribera del Duero  '), 'Ribera del Duero');
+    assert.equal(CONFIG.normalizeAppellation('   '), '   ');
+  });
+
   // Fix (3): pin the documented unknown-input pass-through contract. An
   // appellation that is neither a bare valley (which resolves from the sample
   // code) nor a known appellationFixes key / originColors ranch must come back

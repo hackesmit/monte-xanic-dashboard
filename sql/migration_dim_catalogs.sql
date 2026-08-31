@@ -106,6 +106,8 @@ INSERT INTO public.dim_rancho_sinonimo (sinonimo, rancho) VALUES
   ('Valle de Guadalupe (Monte Xanic)', 'Monte Xanic (VDG)'),
   ('Valle de Guadalupe (Ole)', 'Olé (VDG)'),
   ('Valle de Guadalupe (Olé)', 'Olé (VDG)'),
+  ('Valle de Guadalupe (R14)', 'Rancho 14 (VDG)'),
+  ('Valle de Guadalupe (Rancho 14)', 'Rancho 14 (VDG)'),
   ('Valle de Guadalupe (Siete Leguas)', 'Siete Leguas (VDG)'),
   ('Valle de Ojos Negros (Dominio de las Abejas)', 'Dominio de las Abejas (VON)'),
   ('Valle de Ojos Negros (Dubacano)', 'Dubacano (SV)'),
