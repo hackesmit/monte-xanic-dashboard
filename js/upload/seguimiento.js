@@ -39,8 +39,95 @@ import { normalizeValue, validateColumnTypes } from './normalize.js';
 import { COLUMN_TYPES } from '../validation.js';
 
 const HEADER_ROW = 5;      // 0-based index of the real header row
-const DATE_COL_START = 9;  // first date column (col index 9)
 const MS_PER_DAY = 86400000;
+
+// ── Column layout is resolved BY HEADER NAME, never by fixed index ──
+//
+// Until 2026-08-31 this parser hard-coded every column position (Lote at 3,
+// Análisis at 8, dates from 9). That revision of the workbook inserted TWO new
+// columns, Origen and Fecha de envero, at positions 5 and 6, shifting Código,
+// Cantidad proyectada, TONS, Análisis and the entire 133-column date run two to
+// the right. The whole file was refused at the header assertion and all 1526
+// chemistry readings across 76 lots bounced.
+//
+// The winery owns this spreadsheet and will reshape it again, so the durable
+// fix is to bind each column by its header text. The date region then starts
+// immediately after Análisis instead of at a constant, which is what makes the
+// layout genuinely position-independent rather than merely re-numbered.
+//
+// A REQUIRED header that is missing refuses the file by name (the same refusal
+// philosophy as the rest of this parser: never guess a column). OPTIONAL
+// headers may be absent, which is what lets the two pre-Origen fixtures keep
+// parsing unchanged.
+const COLUMN_SPECS = [
+  { key: 'variedad',   header: 'Variedad',            required: true  },
+  { key: 'status',     header: 'Status',              required: true  },
+  { key: 'proveedor',  header: 'Proveedor',           required: true  },
+  { key: 'lote',       header: 'Lote',                required: true  },
+  { key: 'antTarget',  header: 'ANT Target',          required: true  },
+  { key: 'origen',     header: 'Origen',              required: false },
+  { key: 'envero',     header: 'Fecha de envero',     required: false },
+  { key: 'codigo',     header: 'Código',              required: true  },
+  { key: 'proyectada', header: 'Cantidad proyectada', required: true  },
+  { key: 'tons',       header: 'TONS',                required: true  },
+  { key: 'analisis',   header: 'Análisis',            required: true  },
+];
+
+// Header text as written by the winery is not stable: cells carry trailing
+// spaces ('Origen ', 'Fecha de envero '), inconsistent accents and case. Match
+// on an accent-, space- and case-insensitive form so a cosmetic edit in Excel
+// cannot silently unbind a column and drop its data.
+function normHeader(s) {
+  return String(s ?? '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+// Resolve every column position from the header row. Returns { cols, dateStart }
+// where cols maps each spec key to a 0-based index (or -1 when an optional
+// header is absent).
+//
+// A DUPLICATE header is refused, not silently first-wins: two columns claiming
+// to be 'Análisis' means we cannot know which one carries the metric labels,
+// and binding the wrong one would mis-attribute every reading in the file.
+function resolveColumns(header) {
+  const seen = new Map();
+  for (let c = 0; c < header.length; c++) {
+    const h = normHeader(header[c]);
+    if (!h) continue;
+    if (!seen.has(h)) seen.set(h, []);
+    seen.get(h).push(c);
+  }
+
+  const cols = {};
+  for (const spec of COLUMN_SPECS) {
+    const hits = seen.get(normHeader(spec.header)) || [];
+    if (hits.length > 1) {
+      throw new Error(
+        `El encabezado "${spec.header}" aparece ${hits.length} veces (columnas ` +
+        `${hits.map(c => c + 1).join(', ')}). No se puede determinar cuál contiene los datos. ` +
+        `Corrija el archivo y vuelva a subirlo.`,
+      );
+    }
+    if (hits.length === 0) {
+      if (spec.required) {
+        throw new Error(
+          `Este archivo no parece ser un Seguimiento de Maduración: falta la columna ` +
+          `"${spec.header}" en la fila ${HEADER_ROW + 1}.`,
+        );
+      }
+      cols[spec.key] = -1;
+      continue;
+    }
+    cols[spec.key] = hits[0];
+  }
+
+  // The date run begins immediately after Análisis, which is the last metadata
+  // column in every revision of this workbook.
+  return { cols, dateStart: cols.analisis + 1 };
+}
 
 // Normalize an Análisis label for matching: strip the degree sign U+00B0 AND
 // the ordinal indicator U+00BA (a lookalike the source uses for "ºBrix"),
@@ -96,6 +183,58 @@ const METRIC_LABELS = {
 };
 
 function pad2(n) { return String(n).padStart(2, '0'); }
+
+// Parse the "Fecha de envero" cell into an ISO YYYY-MM-DD, or null.
+//
+// Returns { date, warning }. A cell Excel stored as a real date is taken at
+// face value. ANYTHING ELSE IS REFUSED, NOT GUESSED: the real 2026 workbook
+// ships lot 26CALMX1E with the text '30/6/269', which is a fat-fingered
+// '30/6/26'. Reading that as 30 June 2026 would be a guess, and this parser's
+// whole contract is that a wrong date lands a reading on a day nobody
+// recorded. So the envero is dropped and the lot is NAMED in a Spanish warning
+// so the lab repairs the cell; its chemistry still ingests, it simply stays off
+// the días-post-envero timeline until the source is fixed.
+//
+// A blank cell is legitimate and silent: lots not yet received have no envero.
+function parseEnvero(raw, lote) {
+  if (raw === null || raw === undefined) return { date: null, warning: null };
+  if (raw instanceof Date) {
+    if (Number.isNaN(raw.getTime())) {
+      return {
+        date: null,
+        warning: `Lote "${lote}": la fecha de envero no es una fecha válida y se guardó vacía.`,
+      };
+    }
+    return {
+      date: `${raw.getUTCFullYear()}-${pad2(raw.getUTCMonth() + 1)}-${pad2(raw.getUTCDate())}`,
+      warning: null,
+    };
+  }
+  const str = String(raw).trim();
+  if (str === '' || EMPTY_ENVERO.has(str)) return { date: null, warning: null };
+  return {
+    date: null,
+    warning:
+      `Lote "${lote}": la fecha de envero "${str}" no es una fecha reconocible (se esperaba una celda ` +
+      `con formato de fecha). No se adivinó un valor, así que el lote se guardó sin fecha de envero y ` +
+      `sus mediciones no aparecerán en las gráficas de días post-envero hasta corregir la celda.`,
+  };
+}
+
+const EMPTY_ENVERO = new Set(['-', '\u2014', 'NA', 'N/A', 'na', 'n/a']);
+
+// Whole days between the envero date and a sample date, both ISO. Both are
+// parsed at UTC midnight so the result never depends on the browser's timezone
+// (this upload runs client-side in the lab's browser in Baja California; see
+// the UTC:true note on sheetToArray and tests/mt46-seguimiento-timezone).
+// Returns null when either side is missing.
+function daysPostEnvero(enveroIso, sampleIso) {
+  if (!enveroIso || !sampleIso) return null;
+  const a = Date.parse(`${enveroIso}T00:00:00Z`);
+  const b = Date.parse(`${sampleIso}T00:00:00Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.round((b - a) / MS_PER_DAY);
+}
 
 function isBlank(cell) {
   return cell === null || cell === undefined || String(cell).trim() === '';
@@ -231,12 +370,12 @@ function parseDateHeader(cell) {
 // header, so the recovery can never smuggle a wrong date past this function;
 // it only stops the file being refused over a lossless Excel artifact. Each
 // recovery appends a warning so the winery can repair the cell.
-function buildDateColumns(header, vintage, rows, warnings = []) {
+function buildDateColumns(header, vintage, rows, warnings = [], dateStart) {
   let lastHeaderCol = -1;
-  for (let c = DATE_COL_START; c < header.length; c++) {
+  for (let c = dateStart; c < header.length; c++) {
     if (!isBlank(header[c])) lastHeaderCol = c;
   }
-  if (lastHeaderCol < DATE_COL_START) {
+  if (lastHeaderCol < dateStart) {
     throw new Error('El archivo no contiene columnas de fecha en la fila de encabezado.');
   }
 
@@ -249,7 +388,7 @@ function buildDateColumns(header, vintage, rows, warnings = []) {
     const row = rows[r];
     if (!row) continue;
     for (let c = row.length - 1; c > maxDataCol; c--) {
-      if (c >= DATE_COL_START && normalizeValue(row[c]) !== null) { maxDataCol = c; break; }
+      if (c >= dateStart && normalizeValue(row[c]) !== null) { maxDataCol = c; break; }
     }
   }
   const extent = Math.max(lastHeaderCol, maxDataCol);
@@ -261,7 +400,7 @@ function buildDateColumns(header, vintage, rows, warnings = []) {
   };
 
   const cols = [];
-  for (let c = DATE_COL_START; c <= extent; c++) {
+  for (let c = dateStart; c <= extent; c++) {
     const cell = header[c];
     if (isBlank(cell)) {
       // A blank header BETWEEN dates (c ≤ last header) or ABOVE populated data
@@ -339,15 +478,23 @@ function sheetToArray(wb, name) {
   return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true, UTC: true });
 }
 
-const META_COLS = [0, 1, 2, 4, 5, 6, 7]; // every column except Lote(3) and Análisis(8)
+// Every resolved metadata column except Lote and Análisis (the two that
+// classify a row rather than describe its lot). Derived from the resolved
+// layout so it follows the workbook when columns move.
+function metaCols(cols) {
+  return COLUMN_SPECS
+    .filter(spec => spec.key !== 'lote' && spec.key !== 'analisis')
+    .map(spec => cols[spec.key])
+    .filter(c => c >= 0);
+}
 
 // Does a blank-Lote row carry a MEANINGFUL dated value? The real file's stray
 // TONS row (row 6) is a template aggregate whose dated cells are all 0 — that
 // carries no lot data to lose, so a 0 (like a blank/dash) does not count as
 // content; only a non-zero number or a non-numeric string does. A genuine data
 // row with a real reading under a missing Lote is thus still surfaced.
-function hasDatedValue(row) {
-  for (let c = DATE_COL_START; c < row.length; c++) {
+function hasDatedValue(row, dateStart) {
+  for (let c = dateStart; c < row.length; c++) {
     const v = normalizeValue(row[c]);
     if (v !== null && v !== 0) return true;
   }
@@ -364,12 +511,12 @@ function hasDatedValue(row) {
 // row is therefore an anomaly to surface (not silently drop) only when it carries
 // lot metadata, an UNKNOWN Análisis label, or dated values under NO recognizable
 // metric label (data that cannot be attributed to any metric or lot).
-function blankLoteAnomaly(row) {
-  if (META_COLS.some(c => !isBlank(row[c]))) return 'metadata';
-  const label = String(row[8] ?? '').trim();
-  const knownLabel = label !== '' && CANONICAL_METRICS.includes(normMetric(row[8]));
+function blankLoteAnomaly(row, cols, dateStart) {
+  if (metaCols(cols).some(c => !isBlank(row[c]))) return 'metadata';
+  const label = String(row[cols.analisis] ?? '').trim();
+  const knownLabel = label !== '' && CANONICAL_METRICS.includes(normMetric(row[cols.analisis]));
   if (label !== '' && !knownLabel) return 'una métrica no reconocida';
-  if (!knownLabel && hasDatedValue(row)) return 'valores por fecha sin una métrica reconocida';
+  if (!knownLabel && hasDatedValue(row, dateStart)) return 'valores por fecha sin una métrica reconocida';
   return null; // no metadata + a known metric label (or nothing) → a legit stub
 }
 
@@ -384,7 +531,7 @@ function blankLoteAnomaly(row) {
 // the whole file on: a non-contiguous / duplicate metric row, a duplicate or
 // non-contiguous lot, an unknown Análisis label, or a block missing any metric.
 // Blank-Lote rows carrying real content (issue SIX) are pushed to `rejected`.
-function buildBlocks(rows, rejected) {
+function buildBlocks(rows, rejected, cols, dateStart) {
   const blocks = [];
   const seenLots = new Set();
   let current = null;
@@ -410,16 +557,16 @@ function buildBlocks(rows, rejected) {
     // Repeated header row (row 7 and any like it) — a non-metric row; skipping
     // it does not advance prevMetricRowIdx, so if it sits inside the data region
     // the contiguity check below refuses the file at the next metric row.
-    if (String(row[0] ?? '').trim() === 'Variedad' || normMetric(row[8]) === 'analisis') continue;
+    if (normHeader(row[cols.variedad]) === 'variedad' || normMetric(row[cols.analisis]) === 'analisis') continue;
 
-    const lote = String(row[3] ?? '').trim();
+    const lote = String(row[cols.lote] ?? '').trim();
     // No lot code: the stray TONS row and the trailing empty template blocks.
     // A legit stub (only a known metric label) is skipped; anything carrying
     // metadata, an unknown label or dated values is surfaced (issue SIX) rather
     // than silently dropped. Either way it is NOT an accepted metric row, so it
     // leaves a physical gap the contiguity check catches if it is mid-block.
     if (!lote) {
-      const anomaly = blankLoteAnomaly(row);
+      const anomaly = blankLoteAnomaly(row, cols, dateStart);
       if (anomaly) {
         rejected.push({
           row: { Fila: i + 1 },
@@ -430,10 +577,10 @@ function buildBlocks(rows, rejected) {
       continue;
     }
 
-    const metric = normMetric(row[8]);
+    const metric = normMetric(row[cols.analisis]);
     if (!CANONICAL_METRICS.includes(metric)) {
       throw new Error(
-        `Etiqueta de Análisis no reconocida "${String(row[8] ?? '').trim()}" en el lote "${lote}" (fila ${i + 1}). ` +
+        `Etiqueta de Análisis no reconocida "${String(row[cols.analisis] ?? '').trim()}" en el lote "${lote}" (fila ${i + 1}). ` +
         `Cada lote debe tener exactamente: ${CANONICAL_METRICS.map(k => METRIC_LABELS[k]).join(', ')}. ` +
         `Corrija el archivo y vuelva a subirlo.`,
       );
@@ -457,17 +604,26 @@ function buildBlocks(rows, rejected) {
         );
       }
       if (current) assertComplete(current);
+      const rawOrigen = cols.origen >= 0 ? row[cols.origen] : null;
+      const rawEnvero = cols.envero >= 0 ? row[cols.envero] : null;
       current = {
         lote,
-        varietyCode: (normalizeValue(row[0]) != null) ? String(normalizeValue(row[0])).trim() : null,
-        variety:  expandVariety(row[0]),
-        status:   row[1] != null ? String(row[1]).trim() : null,
-        proveedor: row[2] != null ? String(row[2]).trim() : null,
-        ant_target: normalizeValue(row[4]),
-        codigo:   row[5] != null ? String(row[5]).trim() : null,
-        cantidad_proyectada: normalizeValue(row[6]),
-        tons_cached: normalizeValue(row[7]),
-        tons_cached_raw: row[7],
+        varietyCode: (normalizeValue(row[cols.variedad]) != null) ? String(normalizeValue(row[cols.variedad])).trim() : null,
+        variety:  expandVariety(row[cols.variedad]),
+        status:   row[cols.status] != null ? String(row[cols.status]).trim() : null,
+        proveedor: row[cols.proveedor] != null ? String(row[cols.proveedor]).trim() : null,
+        ant_target: normalizeValue(row[cols.antTarget]),
+        codigo:   row[cols.codigo] != null ? String(row[cols.codigo]).trim() : null,
+        cantidad_proyectada: normalizeValue(row[cols.proyectada]),
+        tons_cached: normalizeValue(row[cols.tons]),
+        tons_cached_raw: row[cols.tons],
+        // Origen is normalized to the ranch-first catalog name here, at the
+        // boundary, so no raw workbook string (the real file ships
+        // 'Valle de Guadalupe (Monte Xanic) ' with a trailing space) can reach
+        // wine_samples.appellation and split the lot from its history.
+        appellation: rawOrigen != null ? CONFIG.normalizeAppellation(String(rawOrigen), lote) : null,
+        origenRaw: rawOrigen,
+        enveroRaw: rawEnvero,
         metricRows: {},
       };
       seenLots.add(lote);
@@ -508,10 +664,12 @@ export const seguimientoParser = {
 
     const rows = sheetToArray(wb, uvaName);
     const header = rows[HEADER_ROW];
-    if (!header || String(header[3] ?? '').trim() !== 'Lote' ||
-        normMetric(header[8]) !== 'analisis') {
-      throw new Error('Este archivo no parece ser un Seguimiento de Maduración: no se encontró el encabezado esperado (Lote / Análisis) en la fila 6.');
+    if (!header) {
+      throw new Error(`Este archivo no parece ser un Seguimiento de Maduración: no se encontró la fila de encabezado ${HEADER_ROW + 1}.`);
     }
+    // Bind every column by header name. Refuses by name on a missing required
+    // header or a duplicated one, rather than binding the wrong column.
+    const { cols, dateStart } = resolveColumns(header);
 
     const rejected = [];
     const warnings = [];
@@ -522,7 +680,7 @@ export const seguimientoParser = {
 
     // Group + structurally validate the lot blocks (refuses on corruption;
     // blank-Lote rows carrying real content are pushed to `rejected`).
-    const blocks = buildBlocks(rows, rejected);
+    const blocks = buildBlocks(rows, rejected, cols, dateStart);
 
     // Issue SIX: a structurally valid file with ZERO lot blocks would otherwise
     // parse successfully into two empty targets. Require at least one lot block.
@@ -548,7 +706,7 @@ export const seguimientoParser = {
     // Validate the date-column headers (needs the vintage for the calendar
     // round-trip). Refuses the file on any hole in the daily run OR a populated
     // column under a blank/invalid header (issue FOUR).
-    const dateCols = buildDateColumns(header, workbookVintage, rows, warnings);
+    const dateCols = buildDateColumns(header, workbookVintage, rows, warnings, dateStart);
 
     const berryRows = [];
     const lotRows = [];
@@ -586,6 +744,11 @@ export const seguimientoParser = {
         continue;
       }
 
+      // Envero (veraison) date for this lot. Refused rather than guessed when
+      // unreadable; a warning names the lot either way.
+      const envero = parseEnvero(block.enveroRaw, block.lote);
+      if (envero.warning) warnings.push(envero.warning);
+
       // ── wine_samples (sample_type 'Berries'): one row per (lot, date) with
       //    any chemistry value. This is the table the maturity charts read. ──
       for (const dc of dateCols) {
@@ -601,12 +764,25 @@ export const seguimientoParser = {
 
         // Fixed key set across every berry row (Round 33: PostgREST rejects
         // mixed-shape batches). sample_seq is assigned by the controller.
+        const sampleDate = `${workbookVintage}-${pad2(dc.month)}-${pad2(dc.day)}`;
         const obj = {
           sample_id: block.lote,
-          sample_date: `${workbookVintage}-${pad2(dc.month)}-${pad2(dc.day)}`,
+          sample_date: sampleDate,
           sample_type: 'Berries',
           vintage_year: workbookVintage,
           variety: block.variety ?? null,
+          // The origin the dashboard groups and colours by. Already normalized
+          // to the ranch-first catalog name on the block.
+          appellation: block.appellation ?? null,
+          // crush_date + days_post_crush are what put this reading on the
+          // maturity timeline. charts.groupScatterData drops any row whose
+          // daysPostCrush is not a NUMBER, so before the workbook carried an
+          // envero date every 2026 point was silently absent from
+          // chartBrix/Ant/PH/TA/Weight/Evolution/Vintage*. A lot with no
+          // readable envero still ingests its chemistry (KPIs, table and the
+          // per-variety bars use it); it just stays off the timeline.
+          crush_date: envero.date,
+          days_post_crush: daysPostEnvero(envero.date, sampleDate),
           below_detection: false,
           brix: null, ph: null, ta: null,
           berry_weight: null, malic_acid: null, berry_anthocyanins: null,
@@ -686,6 +862,8 @@ export const seguimientoParser = {
         ant_target: block.ant_target ?? null,
         codigo: block.codigo ?? null,
         cantidad_proyectada: block.cantidad_proyectada ?? null,
+        origen: block.appellation ?? null,
+        fecha_envero: envero.date,
         tons_seguimiento: tonsSeguimiento,
         tons_seguimiento_cached: cachedNum,
         tons_mismatch: mismatch,

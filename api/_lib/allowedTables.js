@@ -66,6 +66,9 @@ export const ALLOWED_TABLES = {
     columns: new Set([
       'lot_code','vintage_year','variety','proveedor','status',
       'ant_target','codigo','cantidad_proyectada',
+      // xd-49p — the 2026-08-31 workbook revision's two new per-lot columns.
+      // origen is the NORMALIZED ranch-first name, not the raw workbook string.
+      'origen','fecha_envero',
       'tons_seguimiento','tons_seguimiento_cached','tons_mismatch',
     ]),
   },

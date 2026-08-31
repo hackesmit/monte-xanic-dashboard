@@ -65,11 +65,17 @@ const METRICS = ['TONS', '°Brix', 'pH', 'AT', 'Peso baya', 'Ac. Málico', 'Anto
 
 // A lot = 7 consecutive rows (one per metric). `values` maps metric -> {colOffset: value}
 // where colOffset is the 0-based index into the date columns.
-function lotBlock(meta, values) {
-  return METRICS.map(metric => {
+function lotBlock(meta, values, withOrigen = false) {
+  return METRICS.map((metric, mi) => {
+    // Origen repeats on all seven rows (as the real file does); Fecha de envero
+    // appears ONLY on the block's first row, which is also how the winery
+    // writes it. The parser reads both off the first row of the block.
+    const extra = withOrigen
+      ? [meta.origen ?? null, mi === 0 ? (meta.envero ?? null) : null]
+      : [];
     const row = [
       meta.variedad, meta.status, meta.proveedor, meta.lote,
-      meta.antTarget ?? null, meta.codigo ?? null,
+      meta.antTarget ?? null, ...extra, meta.codigo ?? null,
       meta.cantidadProyectada, meta.tonsCached, metric,
     ];
     const dateVals = values[metric] || {};
@@ -87,38 +93,52 @@ const DATE_HEADERS = buildDateHeaders();
 // typo slot). Offsets are into the date columns; 17 = 16.07, 21 = 20.07, etc.
 const O1 = 17, O2 = 21, O3 = 26;
 
-export function buildAoa() {
+export function buildAoa({ withOrigen = false } = {}) {
+  // withOrigen reproduces the 2026-08-31 revision, which inserted Origen and
+  // Fecha de envero at positions 5 and 6 and pushed Código, Cantidad
+  // proyectada, TONS, Análisis and the whole date run two columns right. The
+  // default (false) keeps the ORIGINAL shape so the existing cases keep proving
+  // the parser still reads a pre-Origen workbook.
+  const pad = withOrigen ? [null, null] : [];
   const aoa = [];
   // The workbook states its vintage in the title (issue TWO: the parser derives
   // the vintage from this "Vendimia AAAA" token, not from a vote over lot codes).
   aoa[0] = ['SEGUIMIENTO DE MADURACIÓN VENDIMIA 2026   FL 8.5.1  REV 5'];
   aoa[1] = [];
   aoa[2] = ['Mes'];
-  aoa[3] = [null, null, null, null, null, null, null, null, null, 'SEM 27'];
-  aoa[4] = [null, null, null, null, null, null, null, null, null, 'Lu', 'Ma', 'Mi'];
+  aoa[3] = [null, null, null, null, null, ...pad, null, null, null, null, 'SEM 27'];
+  aoa[4] = [null, null, null, null, null, ...pad, null, null, null, null, 'Lu', 'Ma', 'Mi'];
   // Row 5: the real header
   aoa[5] = [
-    'Variedad', 'Status', 'Proveedor', 'Lote', 'ANT Target', 'Código',
-    'Cantidad proyectada', 'TONS', 'Análisis', ...DATE_HEADERS,
+    'Variedad', 'Status', 'Proveedor', 'Lote', 'ANT Target',
+    // The real revision ships these two header cells with a trailing space.
+    ...(withOrigen ? ['Origen ', 'Fecha de envero '] : []),
+    'Código', 'Cantidad proyectada', 'TONS', 'Análisis', ...DATE_HEADERS,
   ];
   // Row 6: stray TONS aggregate row with no lot metadata and all-ZERO dated
   // cells, exactly as in the real file (its 133 date cells are 0). It is a legit
   // template/aggregate stub that must be skipped: a blank-Lote row of zeros
   // carries no lot data, so issue SIX must NOT reject it (a zero is treated like
   // a blank, unlike a real non-zero reading under a missing Lote).
-  aoa[6] = [null, null, null, null, null, null, null, null, 'TONS',
+  aoa[6] = [null, null, null, null, null, ...pad, null, null, null, 'TONS',
     ...DATE_HEADERS.map(() => 0)];
   // Row 7: repeated header inside the data region (note 'Pendiente' + dashes)
   aoa[7] = [
-    'Variedad', 'Status', 'Proveedor', 'Lote', 'ANT Target', 'Pendiente',
-    'Cantidad proyectada', 'TONS', 'Análisis', ...DATE_HEADERS.map(() => '-'),
+    'Variedad', 'Status', 'Proveedor', 'Lote', 'ANT Target',
+    ...(withOrigen ? [null, null] : []),
+    'Pendiente', 'Cantidad proyectada', 'TONS', 'Análisis',
+    ...DATE_HEADERS.map(() => '-'),
   ];
 
   const lots = [
     // Lot A — Recibido. tons cached (10) == recomputed dated cells (7+3=10).
     lotBlock(
       { variedad: 'SB', status: 'Recibido', proveedor: 'PROV1', lote: '26AAAA1A-C',
-        cantidadProyectada: 10, tonsCached: 10 },
+        cantidadProyectada: 10, tonsCached: 10,
+        // Trailing space is deliberate: the real workbook ships it, and it used
+        // to make this value miss appellationFixes entirely.
+        origen: 'Valle de Guadalupe (Monte Xanic) ',
+        envero: new Date(Date.UTC(2026, 5, 17)) },
       {
         TONS: { [O1]: 7, [O2]: 3 },
         '°Brix': { [O1]: 20.5, [O2]: 22.4, [O3]: 23.6 },
@@ -128,12 +148,15 @@ export function buildAoa() {
         'Ac. Málico': { [O1]: 4.5, [O2]: 3.6, [O3]: 3.2 },
         Antocianos: { [O3]: 18.7 },
       },
+      withOrigen,
     ),
     // Lot B — No Recibido. tons cached (10) DISAGREES with recomputed (5+2=7):
     // a stale cached formula → tons_mismatch must be surfaced.
     lotBlock(
       { variedad: 'SB', status: 'No Recibido', proveedor: 'PROV1', lote: '26AAAA1B',
-        cantidadProyectada: 12, tonsCached: 10 },
+        cantidadProyectada: 12, tonsCached: 10,
+        // No envero: a not-yet-received lot. Its chemistry must still ingest.
+        origen: 'Valle de Ojos Negros (Viña Alta)', envero: null },
       {
         TONS: { [O1]: 5, [O2]: 2 },
         '°Brix': { [O1]: 19.4, [O2]: 20.6 },
@@ -141,11 +164,15 @@ export function buildAoa() {
         AT: { [O1]: 11.2, [O2]: 9.9 },
         'Ac. Málico': { [O1]: 4.8, [O2]: 3.9 },
       },
+      withOrigen,
     ),
     // Lot C — Recibido, cached == recomputed (4). Antocianos + Peso baya blank.
     lotBlock(
       { variedad: 'CS', status: 'Recibido', proveedor: 'PROV2', lote: '26BBBB2A',
-        cantidadProyectada: 4, tonsCached: 4 },
+        cantidadProyectada: 4, tonsCached: 4,
+        // The R14 supplier-code origin, absent from the map before xd-49p.1.
+        origen: 'Valle de Guadalupe (R14)',
+        envero: new Date(Date.UTC(2026, 6, 3)) },
       {
         TONS: { [O2]: 4 },
         '°Brix': { [O1]: 21.1, [O3]: 24.0 },
@@ -153,12 +180,16 @@ export function buildAoa() {
         AT: { [O1]: 12.0, [O3]: 7.8 },
         'Ac. Málico': { [O1]: 4.9, [O3]: 2.4 },
       },
+      withOrigen,
     ),
     // Lot D — Recibido, all-blank on many dates (only one reading) to exercise
     // blank/dash skipping. Uses explicit dash markers on some cells.
     lotBlock(
       { variedad: 'ME', status: 'Recibido', proveedor: 'PROV2', lote: '26CCCC3A',
-        cantidadProyectada: 6, tonsCached: 6 },
+        cantidadProyectada: 6, tonsCached: 6,
+        // The real file's fat-fingered envero ('30/6/269' on 26CALMX1E). Must
+        // be refused with a warning, never guessed into a date.
+        origen: 'Valle de Guadalupe (Olé)', envero: '30/6/269' },
       {
         TONS: { [O3]: 6 },
         '°Brix': { [O1]: '-', [O3]: 22.9 },
@@ -166,6 +197,7 @@ export function buildAoa() {
         AT: { [O3]: 8.5 },
         'Ac. Málico': { [O3]: 3.0 },
       },
+      withOrigen,
     ),
   ];
 
