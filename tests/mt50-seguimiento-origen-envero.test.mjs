@@ -91,15 +91,18 @@ describe('MT.50 — the shifted (Origen + Fecha de envero) layout parses', () =>
 
     assert.equal(lotRows(r).length, 4);
     assert.equal(berryRows(r).length, 8);
-    // The optional columns are simply absent; nothing is invented for them.
+    // The optional columns are simply absent, and nothing is invented for them.
+    // They are OMITTED rather than written as explicit nulls, so a re-upload of
+    // an archived pre-Origen file cannot erase data a newer one wrote (see the
+    // R1 'legacy upload cannot erase' cases below).
     for (const l of lotRows(r)) {
-      assert.equal(l.origen, null);
-      assert.equal(l.fecha_envero, null);
+      assert.ok(!('origen' in l));
+      assert.ok(!('fecha_envero' in l));
     }
     for (const b of berryRows(r)) {
-      assert.equal(b.appellation, null);
-      assert.equal(b.crush_date, null);
-      assert.equal(b.days_post_crush, null);
+      assert.ok(!('appellation' in b));
+      assert.ok(!('crush_date' in b));
+      assert.ok(!('days_post_crush' in b));
     }
   });
 });
@@ -258,5 +261,181 @@ describe('MT.50 — every emitted column survives the API write allowlist', () =
     for (const k of ['appellation', 'crush_date', 'days_post_crush']) {
       assert.ok(berry.has(k), `wine_samples.${k} missing from the allowlist`);
     }
+  });
+});
+
+// ── Round 1 adversarial review (cross-vendor) findings ──────────────────────
+// Four defects were raised against the header-name rewrite. Each is pinned
+// here by the exact trigger the reviewer gave.
+
+describe('MT.50 R1 — a renamed or unknown metadata column refuses', () => {
+  // BLOCKER. Making the two new headers merely "optional" reopened the exact
+  // hole this rewrite closed: rename 'Origen' to 'Origin' and the column
+  // resolves to -1, the file is accepted, and every lot's origin is silently
+  // dropped. Absent may only mean "the column is not there".
+  it('refuses when Origen is renamed rather than dropping the column', async () => {
+    await assert.rejects(
+      () => parse((aoa) => { aoa[5][5] = 'Origin'; }),
+      /columna 6 "Origin" contiene datos pero no corresponde a ninguna columna conocida/,
+    );
+  });
+
+  it('refuses when Fecha de envero is renamed', async () => {
+    await assert.rejects(
+      () => parse((aoa) => { aoa[5][6] = 'Fecha envero'; }),
+      /contiene datos pero no corresponde a ninguna columna conocida/,
+    );
+  });
+
+  // The general case that started the bead: a brand-new column the winery
+  // inserts must surface at once, not be ignored until someone notices months
+  // of missing data.
+  it('refuses an entirely new populated column', async () => {
+    await assert.rejects(
+      () => parse((aoa) => {
+        aoa[5].splice(7, 0, 'Nueva Columna');
+        for (let r = 8; r < aoa.length; r++) if (aoa[r]) aoa[r].splice(7, 0, 'algo');
+      }),
+      /no corresponde a ninguna columna conocida/,
+    );
+  });
+
+  // A header that is missing with no data under it is genuinely absent, which
+  // is what keeps the pre-Origen workbooks parsing.
+  it('accepts a truly absent optional column', async () => {
+    const aoa = buildAoa({ withOrigen: false }).map(r => (r ? [...r] : r));
+    const hdr = aoa[5];
+    hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), 'Flujo Tons');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const r = await seguimientoParser.parse(asFakeFile(Buffer.from(buf), 'seguimiento Vendimia 2026.xlsx'));
+    assert.equal(lotRows(r).length, 4);
+  });
+});
+
+describe('MT.50 R1 — an uncatalogued origin is surfaced, not written silently', () => {
+  // MAJOR. normalizeAppellation is deliberately non-validating, so a genuinely
+  // new ranch passes through as raw workbook text and creates an uncatalogued
+  // origin group. A new supplier is normal business and must not block the
+  // harvest's chemistry, so the file is accepted — but never silently.
+  it('warns naming the lot and the unrecognised origin', async () => {
+    const r = await parse((aoa) => {
+      for (let i = 8; i < 15; i++) aoa[i][5] = 'Valle de Guadalupe (Nuevo Rancho)';
+    });
+    assert.ok(
+      r.warnings.some(w => w.includes('26AAAA1A-C') && w.includes('Nuevo Rancho') && w.includes('catálogo')),
+      `no warning for the uncatalogued origin: ${JSON.stringify(r.warnings)}`,
+    );
+    assert.equal(lotRows(r).length, 4, 'the file must still ingest');
+  });
+
+  it('does not warn for an origin that is in the catalog', async () => {
+    const r = await parse();
+    assert.ok(!r.warnings.some(w => w.includes('catálogo')), JSON.stringify(r.warnings));
+  });
+});
+
+describe('MT.50 R1 — a legacy upload cannot erase newer origin/envero data', () => {
+  // MAJOR. These targets upsert on (sample_id, sample_date, sample_seq) and
+  // (lot_code, vintage_year). Emitting the optional fields as explicit nulls
+  // from a pre-Origen workbook would overwrite origin and timeline data written
+  // by a newer file, so re-uploading an archived copy would silently undo the
+  // current vintage. Absent column means "says nothing", not "says empty".
+  it('omits the keys entirely when the workbook has no such column', async () => {
+    const aoa = buildAoa({ withOrigen: false }).map(r => (r ? [...r] : r));
+    const hdr = aoa[5];
+    hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), 'Flujo Tons');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    const r = await seguimientoParser.parse(asFakeFile(Buffer.from(buf), 'seguimiento Vendimia 2026.xlsx'));
+
+    for (const b of berryRows(r)) {
+      for (const k of ['appellation', 'crush_date', 'days_post_crush']) {
+        assert.ok(!(k in b), `${k} present as an explicit null would erase newer data`);
+      }
+    }
+    for (const l of lotRows(r)) {
+      assert.ok(!('origen' in l));
+      assert.ok(!('fecha_envero' in l));
+    }
+  });
+
+  // Round 33: PostgREST rejects mixed-shape batches, so whatever the decision,
+  // every row in one file must carry the identical key set.
+  it('keeps one uniform key set across every row of a file', async () => {
+    for (const withOrigen of [false, true]) {
+      const aoa = buildAoa({ withOrigen }).map(r => (r ? [...r] : r));
+      const hdr = aoa[5];
+      hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
+      const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), 'Flujo Tons');
+      const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+      const r = await seguimientoParser.parse(asFakeFile(Buffer.from(buf), 'seguimiento Vendimia 2026.xlsx'));
+      for (const target of r.targets) {
+        const shapes = new Set(target.rows.map(row => Object.keys(row).sort().join(',')));
+        assert.equal(shapes.size, 1,
+          `${target.table} has ${shapes.size} row shapes (withOrigen=${withOrigen}); PostgREST rejects mixed batches`);
+      }
+    }
+  });
+
+  // A blank envero in a workbook that DOES have the column is the winery
+  // saying "no envero yet", which is a real statement and must be written.
+  it('still writes an explicit null when the column exists but the cell is blank', async () => {
+    const r = await parse();
+    const rows = berryRows(r).filter(b => b.sample_id === '26AAAA1B');
+    assert.ok(rows.length > 0);
+    for (const b of rows) {
+      assert.ok('crush_date' in b);
+      assert.equal(b.crush_date, null);
+    }
+  });
+});
+
+describe('MT.50 R1 — per-lot metadata is read from any row of the block', () => {
+  // MAJOR. Origen repeats on all seven rows in the real file but Fecha de
+  // envero appears only on the first, and nothing guarantees which row the
+  // winery uses next time. Reading only row 0 loses the value the moment it
+  // moves — and for envero that silently drops the lot off the timeline.
+  it('finds an envero written on a later metric row', async () => {
+    const r = await parse((aoa) => {
+      aoa[8][6] = null;                              // clear the TONS row
+      aoa[9][6] = new Date(Date.UTC(2026, 5, 17));   // put it on the Brix row
+    });
+    const b = berryRows(r).find(x => x.sample_id === '26AAAA1A-C' && x.sample_date === '2026-07-16');
+    assert.equal(b.crush_date, '2026-06-17');
+    assert.equal(b.days_post_crush, 29);
+  });
+
+  it('finds an Origen written on only one row of the block', async () => {
+    const r = await parse((aoa) => {
+      for (let i = 8; i < 15; i++) aoa[i][5] = null;
+      aoa[11][5] = 'Valle de Guadalupe (Siete Leguas)';
+    });
+    assert.equal(lot(r, '26AAAA1A-C').origen, 'Siete Leguas (VDG)');
+  });
+
+  // A lot cannot have two origins or two envero dates. Guessing which row wins
+  // would mis-attribute the whole lot, so the file is refused.
+  it('refuses two different Origen values inside one block', async () => {
+    await assert.rejects(
+      () => parse((aoa) => { aoa[11][5] = 'Valle de Ojos Negros (Kompali)'; }),
+      /El lote "26AAAA1A-C" tiene valores distintos de "Origen"/,
+    );
+  });
+
+  it('refuses two different envero dates inside one block', async () => {
+    await assert.rejects(
+      () => parse((aoa) => { aoa[11][6] = new Date(Date.UTC(2026, 6, 1)); }),
+      /valores distintos de "Fecha de envero"/,
+    );
   });
 });
