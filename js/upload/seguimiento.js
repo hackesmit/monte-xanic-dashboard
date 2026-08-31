@@ -152,14 +152,18 @@ function resolveColumns(header) {
 
 // Refuse any unclaimed metadata column that actually carries data. Needs the
 // data rows, so it runs after the header resolution rather than inside it.
-function assertNoUnclaimedMetaData(rows, unknownMetaCols, header) {
+function assertNoUnclaimedMetaData(rows, unknownMetaCols, header, cols) {
   for (const c of unknownMetaCols) {
     let populated = false;
     for (let r = HEADER_ROW + 1; r < rows.length && !populated; r++) {
       const row = rows[r];
       if (!row) continue;
-      // The repeated header row inside the data region is not data.
-      if (normHeader(row[0]) === 'variedad') continue;
+      // The repeated header row inside the data region is not data. Identify it
+      // through the RESOLVED columns, not a hard-coded index — hard-coding one
+      // here would defeat the point of this whole function, and would misread a
+      // repeated header label as lot data if Variedad ever moves off column A.
+      if (normHeader(row[cols.variedad]) === 'variedad' ||
+          normMetric(row[cols.analisis]) === 'analisis') continue;
       if (!isBlank(row[c]) && String(row[c]).trim() !== '-') populated = true;
     }
     if (!populated) continue;
@@ -738,7 +742,7 @@ export const seguimientoParser = {
     const { cols, dateStart, unknownMetaCols } = resolveColumns(header);
     // A populated-but-unrecognised metadata column refuses the file rather than
     // being silently ignored (a renamed 'Origen' would otherwise vanish).
-    assertNoUnclaimedMetaData(rows, unknownMetaCols, header);
+    assertNoUnclaimedMetaData(rows, unknownMetaCols, header, cols);
     // Per-FILE: does this revision of the workbook carry the optional columns?
     const hasOrigen = cols.origen >= 0;
     const hasEnvero = cols.envero >= 0;
@@ -788,7 +792,7 @@ export const seguimientoParser = {
       // raw (a full name it might already be) but flagged, so an unmapped code is
       // never silent. The workbook's known set is fully covered by CONFIG.varietyAbbr.
       if (block.varietyCode &&
-          !(block.varietyCode in CONFIG.varietyAbbr) &&
+          !Object.hasOwn(CONFIG.varietyAbbr, block.varietyCode) &&
           !CONFIG.grapeTypes.red.includes(block.varietyCode) &&
           !CONFIG.grapeTypes.white.includes(block.varietyCode)) {
         warnings.push(
@@ -838,7 +842,10 @@ export const seguimientoParser = {
       let appellation = null;
       if (rawOrigen != null) {
         appellation = CONFIG.normalizeAppellation(String(rawOrigen), block.lote);
-        if (appellation != null && !(appellation in CONFIG.originColors)) {
+        // Object.hasOwn, not `in`: `'constructor' in CONFIG.originColors` is
+        // true via the prototype chain, which would silently suppress the
+        // warning for an origin literally named "constructor" or "toString".
+        if (appellation != null && !Object.hasOwn(CONFIG.originColors, appellation)) {
           warnings.push(
             `Lote "${block.lote}": el origen "${String(rawOrigen).trim()}" no está en el catálogo ` +
             `(CONFIG.appellationFixes / originColors); se guardó como "${appellation}" y aparecerá ` +
