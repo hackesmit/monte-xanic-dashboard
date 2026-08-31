@@ -55,6 +55,10 @@ export const CONFIG = {
     'Valle de Guadalupe (Olé)':                      'Olé (VDG)',
     'Valle de Guadalupe (Ole)':                      'Olé (VDG)',
     'Valle de Guadalupe (Siete Leguas)':             'Siete Leguas (VDG)',
+    // The 2026 Seguimiento workbook names Rancho 14 by its supplier code and
+    // places it in Valle de Guadalupe; _codeToRanch already maps R14 the same way.
+    'Valle de Guadalupe (R14)':                      'Rancho 14 (VDG)',
+    'Valle de Guadalupe (Rancho 14)':                'Rancho 14 (VDG)',
     'Valle de Ojos Negros (Rancho 14)':              'Rancho 14 (VDG)',
     'Valle de Ojos Negros (Kompali)':                'Kompali (VON)',
     'Valle de Ojos Negros (Viña Alta)':              'Viña Alta (VON)',
@@ -143,8 +147,14 @@ export const CONFIG = {
 
   normalizeAppellation(name, sampleId) {
     if (!name) return name;
-    // Fix mojibake/replacement characters (U+FFFD from encoding errors in DB)
-    let fixed = name;
+    // Trim BEFORE any lookup. The 2026 Seguimiento workbook ships its Origen
+    // column with a trailing space ('Valle de Guadalupe (Monte Xanic) '), which
+    // missed appellationFixes entirely and fell through to the pass-through
+    // branch, splitting 21 lots from the historical 'Monte Xanic (VDG)' series
+    // in every origin chip, legend and origin-coloured chart. Trimming is
+    // idempotent, so the pass-through stays idempotent too.
+    let fixed = String(name).trim();
+    if (!fixed) return name;
     if (fixed.includes('\uFFFD')) {
       fixed = fixed
         .replace('Vi\uFFFDa', 'Viña').replace('Ol\uFFFD', 'Olé')

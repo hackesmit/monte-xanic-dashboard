@@ -36,6 +36,13 @@ export const COLUMN_TYPES = {
   },
   wine_samples: {
     intCols: new Set(['vintage_year', 'days_post_crush', 'berry_count']),
+    // crush_date is the envero date the maturity timeline is measured from, so a
+    // coerced or malformed value would silently shift a whole lot's series.
+    // sample_date is deliberately NOT listed here: every writer already routes
+    // it through normalizeDate (ISO or null), and validateColumnTypes is shared
+    // with the row-editor path, so adding it is an unscoped behaviour change.
+    // Tracked as a follow-up rather than smuggled into this bead.
+    dateCols: new Set(['crush_date']),
     numericCols: new Set([
       // wine_samples + shared with berry_samples
       'brix', 'ph', 'ta', 'ipt',
@@ -94,6 +101,10 @@ export const COLUMN_TYPES = {
       'ant_target', 'cantidad_proyectada',
       'tons_seguimiento', 'tons_seguimiento_cached',
     ]),
+    // xd-49p.2 — the 2026 workbook's "Fecha de envero" column. Nullable by
+    // design: lots not yet received legitimately have no envero, and their
+    // chemistry must still ingest.
+    dateCols: new Set(['fecha_envero']),
     requiredOnInsert: new Set(['lot_code']),
   },
 };
