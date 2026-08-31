@@ -126,7 +126,51 @@ function resolveColumns(header) {
 
   // The date run begins immediately after Análisis, which is the last metadata
   // column in every revision of this workbook.
-  return { cols, dateStart: cols.analisis + 1 };
+  const dateStart = cols.analisis + 1;
+
+  // Making Origen and Fecha de envero merely "optional" would reopen exactly
+  // the hole this rewrite closed: rename 'Origen' to 'Origin' in Excel and the
+  // column resolves to -1, the file is happily accepted, and every lot's origin
+  // is silently dropped. Absent is only legitimate for a column that ISN'T
+  // THERE — so any metadata column that carries data but whose header we cannot
+  // name is refused, and so is a metadata column with data and no header at all.
+  //
+  // This also catches the general case that started this bead: a NEW column the
+  // winery inserts is surfaced immediately instead of being ignored until
+  // someone notices the missing data months later.
+  const claimed = new Set(Object.values(cols).filter(c => c >= 0));
+  const unknown = [];
+  for (let c = 0; c < dateStart; c++) {
+    if (claimed.has(c)) continue;
+    unknown.push(c);
+  }
+  if (unknown.length) {
+    return { cols, dateStart, unknownMetaCols: unknown };
+  }
+  return { cols, dateStart, unknownMetaCols: [] };
+}
+
+// Refuse any unclaimed metadata column that actually carries data. Needs the
+// data rows, so it runs after the header resolution rather than inside it.
+function assertNoUnclaimedMetaData(rows, unknownMetaCols, header) {
+  for (const c of unknownMetaCols) {
+    let populated = false;
+    for (let r = HEADER_ROW + 1; r < rows.length && !populated; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      // The repeated header row inside the data region is not data.
+      if (normHeader(row[0]) === 'variedad') continue;
+      if (!isBlank(row[c]) && String(row[c]).trim() !== '-') populated = true;
+    }
+    if (!populated) continue;
+    const label = isBlank(header[c]) ? '(sin encabezado)' : `"${String(header[c]).trim()}"`;
+    throw new Error(
+      `La columna ${c + 1} ${label} contiene datos pero no corresponde a ninguna columna conocida ` +
+      `del Seguimiento de Maduración. No se puede guardar su contenido y no se ignora en silencio. ` +
+      `Si es una columna nueva, hay que darle soporte; si es un encabezado mal escrito, corríjalo ` +
+      `(por ejemplo "Origen" o "Fecha de envero") y vuelva a subir el archivo.`,
+    );
+  }
 }
 
 // Normalize an Análisis label for matching: strip the degree sign U+00B0 AND
@@ -520,6 +564,37 @@ function blankLoteAnomaly(row, cols, dateStart) {
   return null; // no metadata + a known metric label (or nothing) → a legit stub
 }
 
+// Read one per-lot metadata cell that is NOT repeated reliably across the
+// block. Origen repeats on all seven rows in the real file, but Fecha de
+// envero appears only on the first — and nothing in the workbook guarantees
+// which row the winery will use next time. Reading only row 0 (as this parser
+// first did) silently loses the value the moment it moves, which for envero
+// means the lot drops off the timeline with no error at all.
+//
+// So scan every row of the block: ignore blanks, take the single non-blank
+// value wherever it sits, and REFUSE the file when two rows disagree — a lot
+// cannot have two origins or two envero dates, and guessing which one is
+// authoritative would mis-attribute the whole lot.
+function collectBlockField(block, colIdx, label) {
+  if (colIdx < 0) return null;
+  const seen = [];
+  for (const row of Object.values(block.metricRows)) {
+    const v = row[colIdx];
+    if (isBlank(v)) continue;
+    const key = v instanceof Date ? v.getTime() : String(v).trim();
+    if (!seen.some(e => e.key === key)) seen.push({ key, value: v });
+  }
+  if (seen.length === 0) return null;
+  if (seen.length > 1) {
+    throw new Error(
+      `El lote "${block.lote}" tiene valores distintos de "${label}" en sus siete filas ` +
+      `(${seen.map(e => `"${String(e.value).trim()}"`).join(', ')}). ` +
+      `Un lote no puede tener más de un valor. Corrija el archivo y vuelva a subirlo.`,
+    );
+  }
+  return seen[0].value;
+}
+
 // Group the seven-rows-per-lot blocks and validate their structure. A block is
 // a run of SEVEN PHYSICALLY CONSECUTIVE rows sharing one Lote code. The known
 // preamble (fully-blank rows, the stray TONS row 6, the repeated header row 7)
@@ -604,8 +679,6 @@ function buildBlocks(rows, rejected, cols, dateStart) {
         );
       }
       if (current) assertComplete(current);
-      const rawOrigen = cols.origen >= 0 ? row[cols.origen] : null;
-      const rawEnvero = cols.envero >= 0 ? row[cols.envero] : null;
       current = {
         lote,
         varietyCode: (normalizeValue(row[cols.variedad]) != null) ? String(normalizeValue(row[cols.variedad])).trim() : null,
@@ -617,13 +690,6 @@ function buildBlocks(rows, rejected, cols, dateStart) {
         cantidad_proyectada: normalizeValue(row[cols.proyectada]),
         tons_cached: normalizeValue(row[cols.tons]),
         tons_cached_raw: row[cols.tons],
-        // Origen is normalized to the ranch-first catalog name here, at the
-        // boundary, so no raw workbook string (the real file ships
-        // 'Valle de Guadalupe (Monte Xanic) ' with a trailing space) can reach
-        // wine_samples.appellation and split the lot from its history.
-        appellation: rawOrigen != null ? CONFIG.normalizeAppellation(String(rawOrigen), lote) : null,
-        origenRaw: rawOrigen,
-        enveroRaw: rawEnvero,
         metricRows: {},
       };
       seenLots.add(lote);
@@ -669,7 +735,13 @@ export const seguimientoParser = {
     }
     // Bind every column by header name. Refuses by name on a missing required
     // header or a duplicated one, rather than binding the wrong column.
-    const { cols, dateStart } = resolveColumns(header);
+    const { cols, dateStart, unknownMetaCols } = resolveColumns(header);
+    // A populated-but-unrecognised metadata column refuses the file rather than
+    // being silently ignored (a renamed 'Origen' would otherwise vanish).
+    assertNoUnclaimedMetaData(rows, unknownMetaCols, header);
+    // Per-FILE: does this revision of the workbook carry the optional columns?
+    const hasOrigen = cols.origen >= 0;
+    const hasEnvero = cols.envero >= 0;
 
     const rejected = [];
     const warnings = [];
@@ -744,9 +816,40 @@ export const seguimientoParser = {
         continue;
       }
 
+      // Origen and Fecha de envero are read from ANY of the block's seven rows
+      // (they are not repeated consistently) and refuse the file if two rows
+      // disagree.
+      const rawOrigen = collectBlockField(block, cols.origen, 'Origen');
+      const rawEnvero = collectBlockField(block, cols.envero, 'Fecha de envero');
+
+      // Normalize Origen to the ranch-first catalog name at the boundary, so no
+      // raw workbook string (the real file ships 'Valle de Guadalupe (Monte
+      // Xanic) ' with a trailing space) reaches the database and splits the lot
+      // from its history.
+      //
+      // normalizeAppellation is deliberately NON-VALIDATING: an origin it does
+      // not know passes through unchanged. That is right for the read path but
+      // means a genuinely new ranch would land in the database as raw workbook
+      // text and create an uncatalogued origin group. We do not refuse the file
+      // over it — a new supplier is normal business and must not block the
+      // harvest's chemistry — but it is never silent: the lot and the
+      // unrecognized value are named so the catalog gets updated. This mirrors
+      // how an unknown Variedad abbreviation is handled a few lines below.
+      let appellation = null;
+      if (rawOrigen != null) {
+        appellation = CONFIG.normalizeAppellation(String(rawOrigen), block.lote);
+        if (appellation != null && !(appellation in CONFIG.originColors)) {
+          warnings.push(
+            `Lote "${block.lote}": el origen "${String(rawOrigen).trim()}" no está en el catálogo ` +
+            `(CONFIG.appellationFixes / originColors); se guardó como "${appellation}" y aparecerá ` +
+            `como un origen aparte, con un color generado. Agregue el origen al catálogo.`,
+          );
+        }
+      }
+
       // Envero (veraison) date for this lot. Refused rather than guessed when
       // unreadable; a warning names the lot either way.
-      const envero = parseEnvero(block.enveroRaw, block.lote);
+      const envero = parseEnvero(rawEnvero, block.lote);
       if (envero.warning) warnings.push(envero.warning);
 
       // ── wine_samples (sample_type 'Berries'): one row per (lot, date) with
@@ -771,21 +874,32 @@ export const seguimientoParser = {
           sample_type: 'Berries',
           vintage_year: workbookVintage,
           variety: block.variety ?? null,
-          // The origin the dashboard groups and colours by. Already normalized
-          // to the ranch-first catalog name on the block.
-          appellation: block.appellation ?? null,
-          // crush_date + days_post_crush are what put this reading on the
-          // maturity timeline. charts.groupScatterData drops any row whose
-          // daysPostCrush is not a NUMBER, so before the workbook carried an
-          // envero date every 2026 point was silently absent from
-          // chartBrix/Ant/PH/TA/Weight/Evolution/Vintage*. A lot with no
-          // readable envero still ingests its chemistry (KPIs, table and the
-          // per-variety bars use it); it just stays off the timeline.
-          crush_date: envero.date,
-          days_post_crush: daysPostEnvero(envero.date, sampleDate),
           below_detection: false,
           brix: null, ph: null, ta: null,
           berry_weight: null, malic_acid: null, berry_anthocyanins: null,
+          // The optional columns are spread in ONLY when the workbook actually
+          // has them (see hasOrigen / hasEnvero). This is an upsert on
+          // (sample_id, sample_date, sample_seq), so emitting them as explicit
+          // nulls from a pre-Origen workbook would ERASE origin and timeline
+          // data written by a newer file — re-uploading an archived copy would
+          // silently undo the current vintage. Absent column means "this file
+          // says nothing", not "this file says empty".
+          //
+          // The key set stays uniform across every row of a given file because
+          // these flags are per-FILE, not per-lot, which preserves the Round 33
+          // invariant that PostgREST rejects mixed-shape batches.
+          ...(hasOrigen ? { appellation } : {}),
+          ...(hasEnvero ? {
+            // crush_date + days_post_crush are what put this reading on the
+            // maturity timeline. charts.groupScatterData drops any row whose
+            // daysPostCrush is not a NUMBER, so before the workbook carried an
+            // envero date every 2026 point was silently absent from
+            // chartBrix/Ant/PH/TA/Weight/Evolution/Vintage*. A lot with no
+            // readable envero still ingests its chemistry (KPIs, table and the
+            // per-variety bars use it); it just stays off the timeline.
+            crush_date: envero.date,
+            days_post_crush: daysPostEnvero(envero.date, sampleDate),
+          } : {}),
         };
         for (const col of BERRY_COLUMNS) obj[col] = chem[col];
 
@@ -862,8 +976,10 @@ export const seguimientoParser = {
         ant_target: block.ant_target ?? null,
         codigo: block.codigo ?? null,
         cantidad_proyectada: block.cantidad_proyectada ?? null,
-        origen: block.appellation ?? null,
-        fecha_envero: envero.date,
+        // Same reasoning as the berry rows: omitted, not nulled, when the
+        // workbook has no such column, so a legacy upload cannot erase them.
+        ...(hasOrigen ? { origen: appellation } : {}),
+        ...(hasEnvero ? { fecha_envero: envero.date } : {}),
         tons_seguimiento: tonsSeguimiento,
         tons_seguimiento_cached: cachedNum,
         tons_mismatch: mismatch,
