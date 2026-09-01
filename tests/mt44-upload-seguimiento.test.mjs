@@ -112,16 +112,23 @@ describe('MT.44 — Seguimiento de Maduración parser', () => {
     assert.equal(a.malic_acid, 4.5);
     assert.equal(a.below_detection, false);
     // dates with no chemistry at all must not produce a row
-    assert.ok(!berry.some(r => r.sample_id === '26CCCC3A' && r.sample_date === '2026-07-16' && r.brix === null && r.ph === null && r.ta === null && r.malic_acid === null && r.berry_anthocyanins === null));
+    assert.ok(!berry.some(r => r.sample_id === '26CCCC3A' && r.sample_date === '2026-07-16' && r.brix === null && r.ph === null && r.ta === null && r.malic_acid === null && r.tant === null));
   });
 
   it('maps every chemistry metric onto the wine_samples columns the dashboard reads', async () => {
     const result = await seguimientoParser.parse(correctedFile());
     const berry = result.targets[0].rows;
-    // supabaseToBerryJS reads: brix, ph, ta, berry_weight→berryFW,
-    // berry_anthocyanins→anthocyanins. malic_acid is stored (no chart field yet).
+    // supabaseToBerryJS reads: brix, ph, ta, berry_weight→berryFW, tant→tANT.
+    // malic_acid is stored (no chart field yet).
     assert.ok(berry.some(r => typeof r.malic_acid === 'number'), 'Ac. Málico must land in malic_acid');
-    assert.ok(berry.some(r => typeof r.berry_anthocyanins === 'number'), 'Antocianos must land in berry_anthocyanins');
+    // Antocianos is TOTAL anthocyanins on the ppm-ME scale and belongs in
+    // `tant`, which is the series chartAnt plots as 'tANT (ppm ME)'. It used to
+    // go to berry_anthocyanins ('Berry Extractable Anthocyanins (mg/100b)'), a
+    // different measurement in different units that nothing on the maturity
+    // timeline reads, so every 2026 reading was stored but invisible.
+    assert.ok(berry.some(r => typeof r.tant === 'number'), 'Antocianos must land in tant');
+    assert.ok(!berry.some(r => typeof r.berry_anthocyanins === 'number'),
+      'Antocianos must NOT be written to berry_anthocyanins (wrong units, unread by any chart)');
     // never the mixed-up berry_samples column names (would silently strip/not chart)
     for (const r of berry) {
       assert.ok(!('berry_anthocyanins_mg_100b' in r), 'must not use the berry_samples anthocyanin column');

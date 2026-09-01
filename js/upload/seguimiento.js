@@ -217,7 +217,21 @@ const METRIC_TO_BERRY = {
   at:         'ta',
   pesobaya:   'berry_weight',
   acmalico:   'malic_acid',
-  antocianos: 'berry_anthocyanins',
+  // Antocianos -> tant, NOT berry_anthocyanins. The workbook's Antocianos row is
+  // TOTAL anthocyanins on the ppm-ME scale, which is the `tant` column and the
+  // series chartAnt plots ('tANT (ppm ME)'). Three things pin this:
+  //   - the workbook's own per-lot "ANT Target" column, which is the target for
+  //     THIS metric, runs 595..1725 (median 1080), and the Antocianos readings
+  //     run 19.1..1492 (median 694) - the same scale;
+  //   - CONFIG.prefermentToSupabase already maps the winery's Spanish header
+  //     'Antocianinas WX (FFA)' to 'tant', right beside 'tANT' -> 'tant';
+  //   - prediction.js and predictionView.js both read
+  //     firstFiniteReading(row.tANT, row.tant, ...), preferring tant.
+  // berry_anthocyanins is a DIFFERENT measurement in different units - its
+  // header is 'Berry Extractable Anthocyanins (mg/100b)', mg per 100 berries -
+  // and nothing on the maturity timeline reads it. Sending Antocianos there
+  // meant every 2026 reading was stored but invisible on chartAnt.
+  antocianos: 'tant',
 };
 const BERRY_COLUMNS = Object.values(METRIC_TO_BERRY);
 
@@ -883,7 +897,15 @@ export const seguimientoParser = {
           variety: block.variety ?? null,
           below_detection: false,
           brix: null, ph: null, ta: null,
-          berry_weight: null, malic_acid: null, berry_anthocyanins: null,
+          berry_weight: null, malic_acid: null, tant: null,
+          // Explicitly cleared, not merely omitted. Earlier revisions of this
+          // parser mis-filed Antocianos into berry_anthocyanins, so rows this
+          // parser already wrote carry a ppm-ME number in an mg/100-berry
+          // column. These are this parser's OWN rows, keyed by
+          // (sample_id, sample_date, sample_seq), so re-uploading the workbook
+          // corrects them rather than leaving two conflicting anthocyanin
+          // readings on the same sample.
+          berry_anthocyanins: null,
           // The optional columns are spread in ONLY when the workbook actually
           // has them (see hasOrigen / hasEnvero). This is an upsert on
           // (sample_id, sample_date, sample_seq), so emitting them as explicit
