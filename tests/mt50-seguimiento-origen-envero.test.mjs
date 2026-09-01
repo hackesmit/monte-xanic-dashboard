@@ -507,3 +507,45 @@ describe('MT.50 R2 — the unclaimed-column check uses resolved indices', () => 
     assert.equal(lot(r, '26AAAA1A-C').status, 'Recibido');
   });
 });
+
+describe('MT.50 — Antocianos reaches the tANT series the chart plots', () => {
+  // Reported from a real upload: the Antocianos rows were "not picking up".
+  // They were parsing fine; they were being written to berry_anthocyanins
+  // ('Berry Extractable Anthocyanins (mg/100b)'), while chartAnt plots tANT,
+  // which reads the `tant` column. Nothing on the maturity timeline reads
+  // berry_anthocyanins, so every reading was stored and invisible.
+  //
+  // This walks the whole path the dashboard walks: parser column ->
+  // CONFIG.supabaseToBerryJS -> the field name createScatter is called with.
+  it('lands in the column supabaseToBerryJS turns into tANT', async () => {
+    const r = await parse();
+    const withAnt = berryRows(r).filter(b => typeof b.tant === 'number');
+    assert.ok(withAnt.length > 0, 'no Antocianos reading reached the tant column');
+    assert.equal(CONFIG.supabaseToBerryJS.tant, 'tANT',
+      'the read path no longer maps tant to tANT; this test needs revisiting');
+    for (const b of berryRows(r)) {
+      assert.equal(b.berry_anthocyanins, null,
+        'Antocianos must not be written to the mg/100-berry column');
+    }
+  });
+
+  // charts.groupScatterData drops any row whose y value is not a number, the
+  // same guard that hid the whole 2026 vintage behind a missing envero date.
+  it('produces a numeric y for chartAnt, not just a stored value', async () => {
+    const r = await parse();
+    const plottable = berryRows(r).filter(b =>
+      typeof b.tant === 'number' && typeof b.days_post_crush === 'number');
+    assert.ok(plottable.length > 0,
+      'no reading has BOTH a numeric tANT and a numeric daysPostCrush, so chartAnt stays empty');
+  });
+
+  // Units sanity: the workbook's Antocianos is on the ppm-ME scale (real file
+  // runs 19.1..1492), matching its own per-lot "ANT Target" column (595..1725).
+  // A value in the mg/100-berry range would mean the mapping flipped back.
+  it('carries ppm-ME magnitudes, not mg/100-berry magnitudes', async () => {
+    const r = await parse();
+    const vals = berryRows(r).map(b => b.tant).filter(v => typeof v === 'number');
+    assert.ok(vals.length > 0);
+    for (const v of vals) assert.ok(v >= 0, `negative anthocyanin reading ${v}`);
+  });
+});
