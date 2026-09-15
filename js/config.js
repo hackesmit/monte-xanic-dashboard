@@ -1276,7 +1276,18 @@ export const CONFIG = {
     },
     'Valle de San Vicente': {
       'Grenache': 'GRE-CALADOC-VDG-VSV',
-      'Caladoc':  'GRE-CALADOC-VDG-VSV'
+      'Caladoc':  'GRE-CALADOC-VDG-VSV',
+      // Daniel, 2026-09-15. MT-25-033 (Syrah, SYDUB-1) and MT-25-034 (Malbec,
+      // MADUB-1), both from Dubacano, were the only two mediciones in the 2025
+      // vintage with no rubric at all. San Vicente already shares its Grenache
+      // and Caladoc rubric with Valle de Guadalupe, so valley sharing with VDG
+      // is the established precedent, and VDG's thresholds sit closer to San
+      // Vicente's coastal conditions than the high-altitude Ojos Negros ones.
+      // Malbec is not named in CS-SY-VDG's title; it rides the same red
+      // thresholds by that valley-sharing rule. Reversible: this is a lookup
+      // entry, not a threshold change.
+      'Syrah':    'CS-SY-VDG',
+      'Malbec':   'CS-SY-VDG'
     }
   },
 

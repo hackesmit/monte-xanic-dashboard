@@ -59,6 +59,26 @@ test('MT.11 resolveRubric: CS in VDG → CS-SY-VDG (different thresholds)', () =
 test('MT.11 resolveRubric: unknown variety → null', () => {
   assert.equal(resolveRubric('Nebbiolo', 'Valle de Ojos Negros'), null);
 });
+// Daniel, 2026-09-15: San Vicente shares Valle de Guadalupe's red rubric.
+// MT-25-033 (Syrah) and MT-25-034 (Malbec), both from Dubacano, were the only
+// two mediciones of the 2025 vintage that resolved no rubric at all.
+test('MT.11 resolveRubric: Syrah in VSV takes CS-SY-VDG by valley sharing', () => {
+  assert.equal(resolveRubric('Syrah', 'Valle de San Vicente')?.id, 'CS-SY-VDG');
+  assert.equal(resolveRubric('Syrah', 'Dubacano (SV)')?.id, 'CS-SY-VDG');
+});
+test('MT.11 resolveRubric: Malbec in VSV takes CS-SY-VDG by valley sharing', () => {
+  assert.equal(resolveRubric('Malbec', 'Valle de San Vicente')?.id, 'CS-SY-VDG');
+  assert.equal(resolveRubric('Malbec', 'Dubacano (SV)')?.id, 'CS-SY-VDG');
+});
+test('MT.11 resolveRubric: the VSV entries leave the other valleys alone', () => {
+  // Adding a variety to one valley must not reassign it anywhere else.
+  assert.equal(resolveRubric('Syrah', 'Valle de Ojos Negros')?.id, 'CS-SY-MAL-MRS-TEM-VON');
+  assert.equal(resolveRubric('Syrah', 'Valle de Guadalupe')?.id, 'CS-SY-VDG');
+  assert.equal(resolveRubric('Malbec', 'Valle de Ojos Negros')?.id, 'CS-SY-MAL-MRS-TEM-VON');
+  assert.equal(resolveRubric('Malbec', 'Valle de Guadalupe'), null);
+  assert.equal(resolveRubric('Grenache', 'Valle de San Vicente')?.id, 'GRE-CALADOC-VDG-VSV');
+  assert.equal(resolveRubric('Caladoc', 'Valle de San Vicente')?.id, 'GRE-CALADOC-VDG-VSV');
+});
 
 // ── scoreParam — threshold bucketing ────────────────────────────────
 test('MT.11 scoreParam le-a-le-b: pH=3.60 → A (≤3.67)', () => {
