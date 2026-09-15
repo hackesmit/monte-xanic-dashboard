@@ -2,6 +2,7 @@
 import { CONFIG } from './config.js';
 import { Identity } from './identity.js';
 import { weightedMean } from './aggregations.js';
+import { expandLotCode } from './utils.js';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
@@ -725,16 +726,10 @@ export const DataStore = {
 
   // Expand a multi-lot code ('SBVDG-2A/2B', 'GREVA-3A,4A') into per-lot
   // codes sharing the head: ['SBVDG-2A/2B', 'SBVDG-2A', 'SBVDG-2B'].
-  // The verbatim code stays first so exact matches always win.
+  // Delegates to the shared helper in utils.js so classification.js can do the
+  // same expansion from the lookup side without importing the data layer.
   _expandLotCode(code) {
-    if (!code) return [];
-    const c = String(code);
-    if (!/[/,]/.test(c)) return [c];
-    const dash = c.indexOf('-');
-    if (dash < 0) return [c];
-    const head = c.slice(0, dash);
-    const parts = c.slice(dash + 1).split(/[/,]/).map(x => x.trim()).filter(Boolean);
-    return [c, ...parts.map(x => `${head}-${x}`)];
+    return expandLotCode(code);
   },
 
   // Normalize a lot code for cross-table matching.
