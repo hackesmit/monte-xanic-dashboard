@@ -109,6 +109,49 @@ export const DataStore = {
     return obj;
   },
 
+  // Null-preserving numeric coercion for a lab reading.
+  //
+  // Absence and zero are DIFFERENT facts here and both are load-bearing: a
+  // 0.00 g/L gluconic acid is the best bucket in every rubric, while a missing
+  // one has to reach scoreParam as null so the axis lands in missing[] instead
+  // of scoring a reading nobody took. So neither `row.x ? Number(row.x) : null`
+  // (loses the 0) nor a bare Number() (turns '' and null into 0, true into 1,
+  // {} into NaN) is safe. Supabase returns `numeric` columns as strings, so
+  // strings must coerce; everything that is not a finite number rejects.
+  _labNumber(v) {
+    if (v === null || v === undefined || v === '') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+    if (typeof v !== 'string') return null;   // booleans, objects, arrays
+    const s = v.trim();
+    if (s === '') return null;
+    const n = Number(s);
+    return Number.isFinite(n) ? n : null;
+  },
+
+  // Lift the lab chemistry mediciones_tecnicas stores into the JS vocabulary
+  // the rubric speaks, so a medicion can be scored and displayed from its own
+  // analysis instead of borrowing a WineXRay berry row's.
+  //
+  // Names match CONFIG.rubrics params (brix / pH / ta / av / ag / polyphenols /
+  // anthocyanins) so scoreFromMedicion can spread this straight onto the lot
+  // shape. 'at' on the workbook is acidez total, which the rubric calls `ta`.
+  // am (malic) and catechins are not rubric axes; they are carried because the
+  // Mediciones detail panel shows the full physicochemical picture.
+  _medicionChemistry(row) {
+    const n = this._labNumber;
+    return {
+      brix:         n(row.brix),
+      pH:           n(row.ph),
+      ta:           n(row.at),
+      ag:           n(row.ag),
+      am:           n(row.am),
+      av:           n(row.av),
+      polyphenols:  n(row.polifenoles),
+      catechins:    n(row.catequinas),
+      anthocyanins: n(row.antocianos),
+    };
+  },
+
   _medicionAppellation(row) {
     const abbr = row.supplier
       ? (CONFIG.originAbbr[String(row.supplier).trim().toUpperCase()] || row.supplier)
@@ -121,6 +164,9 @@ export const DataStore = {
 
   _rowToMedicion(row) {
     return {
+      // Lab chemistry first so an explicit field below always wins a name
+      // clash; today there is none, and this keeps it that way by construction.
+      ...this._medicionChemistry(row),
       id: row.id,
       code: row.medicion_code,
       date: row.medicion_date,
