@@ -1158,7 +1158,7 @@ export const Mediciones = {
     // often than right. The expand panel carries the full breakdown.
     const missing = (score.missing || []).map(f => MISSING_LABEL[f] || f);
     const star = score.partial
-      ? `<sup title="Clasificación parcial. ${missing.length ? 'Faltan ' + missing.join(', ') + '.' : ''} Abra la fila para el desglose.">*</sup>`
+      ? `<sup title="Clasificación parcial. ${missing.length ? escapeHtml('Faltan ' + missing.join(', ') + '.') : ''} Abra la fila para el desglose.">*</sup>`
       : '';
     return `<span class="pred-badge pred-badge-${cls}">${grade}${star}<small>${num}</small></span>`;
   },
