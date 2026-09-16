@@ -536,8 +536,17 @@ export const Events = {
     });
 
     // Row click → open edit modal (only on `.row-clickable` rows)
+    // The expand button sits inside such a row, so it is handled first and
+    // returns: otherwise opening the physicochemical panel would also open the
+    // edit modal on top of it for anyone with write access.
     const tbody = document.getElementById('med-table-body');
     if (tbody) tbody.addEventListener('click', (e) => {
+      const expand = e.target.closest('.med-expand-btn');
+      if (expand) {
+        e.stopPropagation();
+        Mediciones.toggleDetail(expand.dataset.medExpand);
+        return;
+      }
       const tr = e.target.closest('tr.row-clickable');
       if (!tr) return;
       const code = tr.dataset.code;

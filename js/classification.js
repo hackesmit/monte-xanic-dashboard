@@ -116,7 +116,12 @@ function parseCount(v) {
   return null;
 }
 
-function scoreSanitaryPct(medicion) {
+// The damage percentage the sanitary count axis buckets, or null when the
+// count is incomplete or poisoned. Exported because the Mediciones detail
+// panel shows the figure next to its bucket, and recomputing it there would
+// duplicate the five-field rule and the parseCount guards below, which is
+// exactly where a divergence would hide.
+export function sanitaryDamagePct(medicion) {
   if (!medicion) return null;
   // A medicion where staff filled only some counts (e.g. health_madura) used
   // to read the blanks as 0 and score the BEST bucket off a 100%-clean total
@@ -155,6 +160,12 @@ function scoreSanitaryPct(medicion) {
   if (!Number.isFinite(total) || total === 0) return null;
   const pct = unhealthy / total * 100;
   if (!Number.isFinite(pct)) return null;
+  return pct;
+}
+
+function scoreSanitaryPct(medicion) {
+  const pct = sanitaryDamagePct(medicion);
+  if (pct === null) return null;
   const { a, b } = CONFIG.sanitaryThresholds.pct;
   if (pct <= a) return 3;
   if (pct <= b) return 2;
@@ -354,7 +365,7 @@ export function aggregateSection(lots) {
 // @returns {object} same shape as scoreLot
 export function scoreFromMedicion(m, berryByLot) {
   if (!m) {
-    return { grade: null, score36: null, rubricId: null, missing: [], reason: 'Sin medición' };
+    return { grade: null, score36: null, rubricId: null, missing: [], chemistry: {}, reason: 'Sin medición' };
   }
   const berry = findBerryForMedicion(m, berryByLot) || {};
 
@@ -400,7 +411,11 @@ export function scoreFromMedicion(m, berryByLot) {
       evaluaciones:       m.evaluaciones
     }
   };
-  return scoreLot(lot);
+  // `chemistry` is the RESOLVED reading per axis, which is not always the
+  // medicion's own: the detail panel shows the value beside the bucket it
+  // earned, and reading the medicion directly would print "sin dato" next to
+  // an A whenever the berry filled that axis.
+  return { ...scoreLot(lot), chemistry: chem };
 }
 
 // Resolve the berry row backing a medicion, or null.
