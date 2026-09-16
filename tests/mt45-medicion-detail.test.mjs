@@ -240,3 +240,68 @@ test('MT.45 detail: catequinas is shown and never scored', () => {
   assert.equal(cat.state, 'info');
   assert.equal(cat.bucket, null);
 });
+
+// ---------------------------------------------------------------------------
+// Findings from the fresh-context adversarial review, 2026-09-15.
+// ---------------------------------------------------------------------------
+
+test('MT.45 B3: the sanitary visual axis never renders a fake A/B/C', () => {
+  // buckets.visual is the native 0-4 Grado Sanitario, so 3, 2 and 1 collide
+  // with the rubric buckets. Before the fix "Limpio" (3 pts, second-best)
+  // printed an A while "Muy limpio" (4 pts, the best) printed points, and
+  // "Contaminado" (0 pts, which the workbook itself calls C) printed points
+  // too. Every grade must use the same representation.
+  const GRADES = ['Muy limpio', 'Limpio', 'Parcialmente limpio', 'Sucio', 'Contaminado'];
+  for (const grade of GRADES) {
+    const m = mkMedicion({ healthGrade: grade, evaluaciones: [] });
+    const score = scoreFromMedicion(m, new Map());
+    const detail = medicionDetail(m, score, rubricById(score.rubricId), null, grade, null);
+    const visual = axisNamed(detail, 'Estado sanitario (visual)');
+    assert.equal(visual.bucket, null,
+      `"${grade}" must not render an A/B/C bucket; the 0-4 scale is not that scale`);
+    assert.ok(visual.points !== null,
+      `"${grade}" must carry its points instead`);
+  }
+});
+
+test('MT.45 N1: a white reads NA on the phenolic axes even with no rubric at all', () => {
+  // The NA rule keys on grape colour, not on a rubric lookup. Viognier is in
+  // grapeTypes.white and in no varietyRubricMap, so keying on rubric.params
+  // printed its raw polifenoles and antocianos numbers.
+  for (const [variety, appellation] of [
+    ['Viognier', 'Valle de Ojos Negros'],
+    ['Viognier', 'Valle de Guadalupe'],
+    ['Sauvignon Blanc', 'Valle de San Vicente'],
+    ['Chardonnay', 'Valle de San Vicente'],
+  ]) {
+    const m = mkMedicion({ variety, appellation, polyphenols: 900, anthocyanins: 1400 });
+    const score = scoreFromMedicion(m, new Map());
+    const detail = medicionDetail(m, score, rubricById(score.rubricId), null, null, null);
+    for (const label of ['Polifenoles', 'Antocianos totales']) {
+      assert.equal(axisNamed(detail, label).state, 'na',
+        `${variety} in ${appellation}: ${label} must read NA, never a number`);
+    }
+    assert.ok(!('anthocyanins' in (score.buckets || {})),
+      `${variety} in ${appellation} must not score antocianos either`);
+  }
+});
+
+test('MT.45 N1: a red with no rubric still shows its phenolics as plain readings', () => {
+  // The mirror. "No rubric yet" is not the same claim as "not applicable".
+  const m = mkMedicion({ variety: 'Nebbiolo', polyphenols: 1950, anthocyanins: 1100 });
+  const score = scoreFromMedicion(m, new Map());
+  const detail = medicionDetail(m, score, rubricById(score.rubricId), null, null, null);
+  assert.equal(axisNamed(detail, 'Polifenoles').state, 'info');
+  assert.equal(axisNamed(detail, 'Polifenoles').value, 1950);
+});
+
+test('MT.45 N6: madurez shows the label the engine actually scored', () => {
+  // averageEvaluations ignores the scalar when the panel carries madurez
+  // entries, so printing m.phenolicMaturity could show a label that did not
+  // produce the adjustment in the score.
+  const m = mkMedicion({ phenolicMaturity: 'Sobresaliente' });
+  const score = scoreFromMedicion(m, new Map());
+  const detail = medicionDetail(m, score, rubricById(score.rubricId), null, null, 'No sobresaliente');
+  assert.equal(axisNamed(detail, 'Madurez fenolica').value, 'No sobresaliente',
+    'the consensus the engine used wins over the row scalar');
+});
