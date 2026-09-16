@@ -127,8 +127,14 @@ test.describe('Mediciones physicochemical panel', () => {
     await expect(phenolic).toContainText('Polifenoles');
     await expect(phenolic).toContainText('NA');
     await expect(phenolic).toContainText('Antocianos totales');
-    // NA is not a gap: "sin dato" must not appear on those axes.
-    await expect(phenolic.locator(".med-axis-gap")).toHaveCount(0);
+    // NA is not a gap: "sin dato" must not appear on THOSE two axes. Other
+    // axes in the same group legitimately can (catequinas is measured, in no
+    // rubric, and blank on this row).
+    for (const label of ['Polifenoles', 'Antocianos totales']) {
+      const axis = phenolic.locator('.med-axis', { hasText: label });
+      await expect(axis.locator('.med-axis-na-mark')).toHaveCount(1);
+      await expect(axis.locator('.med-axis-gap')).toHaveCount(0);
+    }
 
     await shootPanel(page, panel, 'test-results/mediciones-detail-white.png');
   });

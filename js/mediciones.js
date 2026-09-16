@@ -10,7 +10,7 @@ import { Auth } from './auth.js';
 import { attachModalHygiene } from './modalHygiene.js';
 import {
   scoreFromMedicion,
-  resolveRubric,
+  rubricById,
   sanitaryDamagePct,
   averageEvaluations,
   canonicalSanitaryLabel,
@@ -233,6 +233,10 @@ const DETAIL_GROUPS = [
     { field: 'madurez',      prop: null,           label: 'Madurez fenolica',    unit: '',     decimals: null },
     { field: 'polyphenols',  prop: 'polyphenols',  label: 'Polifenoles',         unit: 'mg/L', decimals: 0 },
     { field: 'anthocyanins', prop: 'anthocyanins', label: 'Antocianos totales',  unit: 'ppm',  decimals: 0 },
+    // Measured on the sheet, in no rubric, same as acido malico. Carried
+    // because the panel claims the full physicochemical picture and the column
+    // exists on every row (lucy, 2026-09-15).
+    { field: null,           prop: 'catechins',    label: 'Catequinas',          unit: 'mg/L', decimals: 0 },
   ] },
 ];
 
@@ -1046,7 +1050,11 @@ export const Mediciones = {
 
   _renderDetail(d) {
     const score = d._score || scoreFromMedicion(d, this._berryByLot);
-    const rubric = resolveRubric(d.variety, d.appellation);
+    // The rubric the SCORE used, not one re-resolved from the medicion's own
+    // identity: when variety or appellation is blank the score falls back to
+    // the berry's, and re-resolving would show a grade in the badge with
+    // "Sin rubrica aplicable" in the panel right below it.
+    const rubric = rubricById(score.rubricId);
     const pct = sanitaryDamagePct({
       health_madura: d.healthMadura, health_inmadura: d.healthInmadura,
       health_sobremadura: d.healthSobremadura, health_picadura: d.healthPicadura,

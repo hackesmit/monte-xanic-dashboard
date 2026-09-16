@@ -18,6 +18,16 @@ export function resolveValley(appellation) {
 
 // ── Rubric resolution ────────────────────────────────────────────────
 
+// The rubric a score actually used, by the id it reported. The detail panel
+// must not re-resolve from the medicion's own variety and appellation: when
+// those are blank the score falls back to the berry's, so re-resolving gave a
+// row a grade in the badge and "Sin rubrica aplicable" in the panel below it.
+export function rubricById(rubricId) {
+  if (!rubricId) return null;
+  const rubric = CONFIG.rubrics[rubricId];
+  return rubric ? { id: rubricId, ...rubric } : null;
+}
+
 export function resolveRubric(variety, appellationOrValley) {
   if (!variety) return null;
   const valley = CONFIG.varietyRubricMap[appellationOrValley]
@@ -394,8 +404,11 @@ export function scoreFromMedicion(m, berryByLot) {
     // rubric. _medicionAppellation resolves the supplier abbreviation to the
     // ranch-first name resolveValley reads; falling back to the berry's keeps
     // a medicion with a blank origin gradeable when its berry knows better.
-    variety:     m.variety     ?? berry.variety,
-    appellation: m.appellation ?? berry.appellation,
+    // `??` alone would not do it: an empty or whitespace string is "present"
+    // to the nullish operator, so a blank appellation would defeat the very
+    // fallback this line exists for and report Sin rubrica (lucy, 2026-09-15).
+    variety:     firstNamed(m.variety,     berry.variety),
+    appellation: firstNamed(m.appellation, berry.appellation),
     vintage:     m.vintage     ?? berry.vintage,
     ...chem,
     medicion: {
@@ -427,6 +440,18 @@ export function scoreFromMedicion(m, berryByLot) {
 // get and reported 'Sin berry' for the very same lots (xd-5en.9). Expanding
 // here closes that asymmetry. The verbatim code is tried first, so an exact
 // match still wins over any expansion.
+// First of the candidates that is a non-blank name. Identity fields arrive as
+// '' or '   ' often enough (a blank spreadsheet cell, a cleared form field)
+// that treating them as present is what breaks the fallback.
+function firstNamed(...candidates) {
+  for (const c of candidates) {
+    if (c === null || c === undefined) continue;
+    if (typeof c === 'string' && c.trim() === '') continue;
+    return c;
+  }
+  return null;
+}
+
 function findBerryForMedicion(m, berryByLot) {
   if (!m.lotCode || m.vintage == null) return null;
   if (!berryByLot || typeof berryByLot.get !== 'function') return null;

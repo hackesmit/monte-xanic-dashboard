@@ -240,3 +240,24 @@ test('MT.31 scoreFromMedicion: no lotCode means no berry, not the wrong berry', 
   assert.ok(r.missing.includes('polyphenols'),
     'no lot code means the berry must not be consulted');
 });
+
+// Raised by the cross-vendor review, 2026-09-15.
+test('MT.31 scoreFromMedicion: a blank identity falls back to the berry, not to Sin rubrica', () => {
+  // `??` treats '' and '   ' as present, so the nullish operator alone would
+  // defeat the very fallback the identity lines exist for.
+  const berry = mkBerry({ variety: 'Cabernet Sauvignon', appellation: 'Valle de Ojos Negros' });
+  const byLot = new Map([[`${berry.lotCode}||${berry.vintage}`, berry]]);
+  for (const blank of ['', '   ']) {
+    const med = mkMedicion({ variety: blank, appellation: blank, ...mkChemistry() });
+    const r = scoreFromMedicion(med, byLot);
+    assert.equal(r.reason, null, `blank ${JSON.stringify(blank)} should fall back to the berry`);
+    assert.equal(r.rubricId, 'CS-SY-MAL-MRS-TEM-VON');
+  }
+});
+
+test('MT.31 scoreFromMedicion: a real identity is never displaced by the berry', () => {
+  const berry = mkBerry({ variety: 'Cabernet Sauvignon', appellation: 'Valle de Ojos Negros' });
+  const byLot = new Map([[`${berry.lotCode}||${berry.vintage}`, berry]]);
+  const med = mkMedicion({ variety: 'Chardonnay', appellation: 'Valle de Guadalupe', ...mkChemistry() });
+  assert.equal(scoreFromMedicion(med, byLot).rubricId, 'CH-CB-SBGR-VDG-VON');
+});
