@@ -13,7 +13,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { medicionDetail } from '../js/mediciones.js';
-import { scoreFromMedicion, resolveRubric, sanitaryDamagePct } from '../js/classification.js';
+import { scoreFromMedicion, resolveRubric, rubricById, sanitaryDamagePct } from '../js/classification.js';
 
 function mkMedicion(o = {}) {
   return {
@@ -209,4 +209,34 @@ test('MT.45 detail: acido malico is unaffected by the resolved chemistry', () =>
   const m = mkMedicion({ am: 3.1 });
   const { detail } = detailFor(m);
   assert.equal(axisNamed(detail, 'Acido malico').value, 3.1);
+});
+
+// Raised by the cross-vendor review, 2026-09-15.
+test('MT.45 detail: the panel uses the rubric the score used, not one re-resolved', () => {
+  // With a blank identity the score falls back to the berry's. Re-resolving
+  // from the medicion would show a grade in the badge and "Sin rubrica
+  // aplicable" in the panel right below it, with every axis demoted to info.
+  const berry = {
+    lotCode: 'KCS-S1', vintage: 2026,
+    variety: 'Cabernet Sauvignon', appellation: 'Valle de Ojos Negros',
+  };
+  const m = mkMedicion({ variety: '', appellation: '' });
+  const byLot = new Map([['KCS-S1||2026', berry]]);
+  const score = scoreFromMedicion(m, byLot);
+  assert.ok(score.grade, 'precondition: the score resolved a rubric via the berry');
+
+  const detail = medicionDetail(m, score, rubricById(score.rubricId), null, null);
+  assert.equal(detail.reason, null);
+  assert.equal(axisNamed(detail, 'Grado Brix').state, 'scored',
+    'the panel must agree with the badge');
+  assert.equal(axisNamed(detail, 'Antocianos totales').state, 'scored');
+});
+
+test('MT.45 detail: catequinas is shown and never scored', () => {
+  const { detail } = detailFor(mkMedicion({ catechins: 210 }));
+  const cat = axisNamed(detail, 'Catequinas');
+  assert.ok(cat, 'catequinas is stored on every row, so the panel must show it');
+  assert.equal(cat.value, 210);
+  assert.equal(cat.state, 'info');
+  assert.equal(cat.bucket, null);
 });
