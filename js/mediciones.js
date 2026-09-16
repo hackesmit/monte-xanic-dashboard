@@ -258,6 +258,11 @@ const MISSING_LABEL = {
 // "not in params" does not mean "not applicable" for these.
 const DERIVED_FIELDS = new Set(['sanitary_pct', 'visual', 'madurez']);
 
+// The two axes no white has. WineXRay is a phenolics instrument and the white
+// rubric sheets carry neither row, which is why the workbook prints NA for
+// whites in both PRERECEPCION and RECEPCION.
+const PHENOLIC_FIELDS = new Set(['polyphenols', 'anthocyanins']);
+
 /**
  * Build the detail-panel model for one medicion. Pure: no DOM, no lookups
  * beyond the rubric, so the NA rule and the missing rule are testable.
@@ -278,13 +283,15 @@ const DERIVED_FIELDS = new Set(['sanitary_pct', 'visual', 'madurez']);
  * @param {object|null} rubric result of resolveRubric, or null
  * @param {number|null} sanitaryPct damage percentage, or null
  * @param {string|null} visualLabel consensus sanitary label, or null
+ * @param {string|null} madurezLabel consensus madurez label the engine used, or null
  * @returns {{groups: Array, reason: string|null}}
  */
-export function medicionDetail(m, score, rubric, sanitaryPct, visualLabel) {
+export function medicionDetail(m, score, rubric, sanitaryPct, visualLabel, madurezLabel = null) {
   const buckets = (score && score.buckets) || {};
   const missing = new Set((score && score.missing) || []);
   const params = (rubric && rubric.params) || {};
   const chemistry = (score && score.chemistry) || null;
+  const isWhite = CONFIG.grapeTypes.white.includes(m.variety);
 
   const groups = DETAIL_GROUPS.map(g => ({
     criterio: g.criterio,
@@ -297,16 +304,27 @@ export function medicionDetail(m, score, rubric, sanitaryPct, visualLabel) {
         : (axis.prop ? m[axis.prop] : null);
       if (axis.field === 'sanitary_pct') value = sanitaryPct;
       if (axis.field === 'visual') value = visualLabel;
-      if (axis.field === 'madurez') value = m.phenolicMaturity ?? null;
+      // The madurez the ENGINE used. averageEvaluations ignores the scalar
+      // whenever the evaluator panel carries madurez entries and uses the panel
+      // mean instead, so showing m.phenolicMaturity could print a label that
+      // did not produce the adjustment in the score (reviewer N6, 2026-09-15).
+      if (axis.field === 'madurez') value = madurezLabel ?? m.phenolicMaturity ?? null;
 
       const scoredByRubric = axis.field !== null &&
         (DERIVED_FIELDS.has(axis.field) ? !!rubric : axis.field in params);
 
       let state;
       if (!scoredByRubric) {
-        // No rubric at all means nothing is applicable yet, not that the
-        // whites rule applies, so those axes read as plain readings.
-        state = (axis.field !== null && !rubric) ? 'info'
+        // A phenolic axis on a WHITE is NA whatever the rubric situation is.
+        // Keying this to rubric.params alone left a white with no rubric at all
+        // (Viognier anywhere, any white in San Vicente) printing a raw
+        // polifenoles or antocianos number, which is the one thing Daniel asked
+        // never to happen. Grape colour, not rubric lookup, is what decides it
+        // (reviewer N1, 2026-09-15).
+        state = (isWhite && PHENOLIC_FIELDS.has(axis.field)) ? 'na'
+        // Otherwise no rubric means nothing is applicable YET, which is not the
+        // same claim as NA, so those axes read as plain readings.
+              : (axis.field !== null && !rubric) ? 'info'
               : (axis.field === null) ? 'info'
               : 'na';
       } else if (axis.field in buckets) {
@@ -327,15 +345,50 @@ export function medicionDetail(m, score, rubric, sanitaryPct, visualLabel) {
         decimals: axis.decimals,
         value: value === undefined ? null : value,
         state,
-        bucket: state === 'scored' ? (BUCKET_LABEL[buckets[axis.field]] ?? null) : null,
         // The 0-4 sanitary visual axis does not speak the A/B/C scale; its own
-        // label already is the grade, so it carries points instead.
+        // label already IS the grade, so it carries points instead. It has to
+        // be excluded here and not merely handled later: 3, 2 and 1 points
+        // collide with the rubric buckets, so BUCKET_LABEL happily rendered
+        // "Limpio" (3 pts, the second-best grade) as an A while "Muy limpio"
+        // (4 pts, the best) fell through to points and "Contaminado" (0 pts,
+        // which the workbook itself calls C) printed "0 pts". Latent in the
+        // current data only because visual is missing on 269 of 270 graded
+        // rows; it fires the first time anyone fills the evaluator panel
+        // (reviewer B3, 2026-09-15).
+        bucket: state === 'scored' && axis.field !== 'visual'
+          ? (BUCKET_LABEL[buckets[axis.field]] ?? null)
+          : null,
         points: state === 'scored' && axis.field === 'visual' ? buckets.visual : null,
       };
     })
   }));
 
   return { groups, reason: (score && score.reason) || null };
+}
+
+// The medicion the live edit-modal badge scores: the saved row with the form's
+// edits laid over it.
+//
+// This used to re-list the fields to copy, which silently went stale the moment
+// the engine started reading a field the list did not mention. When the scoring
+// engine began reading the medicion's own chemistry, the modal badge kept
+// scoring off the berry alone: 269 of 287 production rows disagreed with the
+// table badge behind them, 203 of those showing a grade in the table and
+// "Datos insuficientes" in the modal, with nothing edited at all (reviewer B1,
+// 2026-09-15).
+//
+// Spreading the saved row carries every field the engine reads, including any
+// added later, and the form overlays only what it actually owns. A form field
+// left blank reads back as null, which is a real edit (the user cleared it),
+// so nullish-coalescing back to the snapshot would resurrect a deleted value;
+// only fields the form does not expose fall through to the snapshot.
+export function liveScoreMedicion(editing, form) {
+  const saved = editing || {};
+  const overlay = {};
+  for (const [k, v] of Object.entries(form || {})) {
+    if (v !== undefined) overlay[k] = v;
+  }
+  return { ...saved, ...overlay };
 }
 
 export const Mediciones = {
@@ -807,30 +860,8 @@ export const Mediciones = {
   _updateLiveScore() {
     const el = document.getElementById('med-edit-score');
     if (!el) return;
-    const editing = this._editing || {};
-    const form = this._readEditForm();
-    const synthetic = {
-      // Keep berry-lookup keys + rubric inputs from the saved snapshot if the
-      // form lacks them (e.g., lotCode lives on snapshot only — though the
-      // edit form does expose it as 'med-edit-lot', prefer form value when set).
-      lotCode:     form.lotCode     ?? editing.lotCode,
-      vintage:     form.vintage     ?? editing.vintage,
-      variety:     form.variety     ?? editing.variety,
-      appellation: form.appellation ?? editing.appellation,
-      tons:              form.tons              ?? editing.tons,
-      healthGrade:       form.healthGrade       ?? editing.healthGrade,
-      healthMadura:      form.healthMadura      ?? editing.healthMadura,
-      healthInmadura:    form.healthInmadura    ?? editing.healthInmadura,
-      healthSobremadura: form.healthSobremadura ?? editing.healthSobremadura,
-      healthPicadura:    form.healthPicadura    ?? editing.healthPicadura,
-      healthEnfermedad:  form.healthEnfermedad  ?? editing.healthEnfermedad,
-      healthQuemadura:   form.healthQuemadura   ?? editing.healthQuemadura,
-      phenolicMaturity:  form.phenolicMaturity  ?? editing.phenolicMaturity,
-      // The engine prefers the panel, so the live badge reacts to an evaluator
-      // being added, removed, or re-graded, not just to the consensus label.
-      evaluaciones:      JSON.parse(form.evaluacionesJson || '[]'),
-    };
-    const score = scoreFromMedicion(synthetic, this._berryByLot);
+    const score = scoreFromMedicion(
+      liveScoreMedicion(this._editing, this._readEditForm()), this._berryByLot);
     el.innerHTML = this._renderGradeBadge(score);
   },
 
@@ -969,12 +1000,16 @@ export const Mediciones = {
       return this._sortAsc ? String(va).localeCompare(String(vb)) : String(vb).localeCompare(String(va));
     });
 
-    const esc = (s) => {
-      if (s === null || s === undefined) return '—';
-      const div = document.createElement('div');
-      div.textContent = String(s);
-      return div.innerHTML;
-    };
+    // textContent into innerHTML escapes & < >, but NOT the quote characters,
+    // and this helper feeds double-quoted attributes (data-code, and now
+    // data-med-expand and aria-controls). CSP blocks any handler an injected
+    // quote could smuggle in, so this was never XSS, but escapeHtml handles
+    // all five significant characters and is already imported right here
+    // (reviewer N3, 2026-09-15).
+    // '\u2014' is the dash this table has always rendered for an empty cell,
+    // written as an escape because the repo guard rejects the literal glyph in
+    // source. The rendered output is unchanged.
+    const esc = (s) => (s === null || s === undefined) ? '\u2014' : escapeHtml(s);
 
     tbody.innerHTML = sorted.map(d => {
       const total = d.healthMadura + d.healthInmadura + d.healthSobremadura +
@@ -1060,9 +1095,18 @@ export const Mediciones = {
       health_sobremadura: d.healthSobremadura, health_picadura: d.healthPicadura,
       health_enfermedad: d.healthEnfermedad, health_quemadura: d.healthQuemadura,
     });
-    const panel = averageEvaluations({ health_grade: d.healthGrade, evaluaciones: d.evaluaciones });
+    // The same medicion shape scoreFromMedicion builds, so the labels shown
+    // come from the same averaging the score used. Omitting phenolic_maturity
+    // would have made the panel fall back to the scalar for exactly the rows
+    // where averageEvaluations uses it as the madurez source.
+    const panel = averageEvaluations({
+      health_grade: d.healthGrade,
+      phenolic_maturity: d.phenolicMaturity,
+      evaluaciones: d.evaluaciones,
+    });
     const visualLabel = consensusSanitaryLabel(panel.sanidad);
-    const detail = medicionDetail(d, score, rubric, pct, visualLabel);
+    const madurezLabel = consensusMadurezLabel(panel.madurez);
+    const detail = medicionDetail(d, score, rubric, pct, visualLabel, madurezLabel);
 
     const groups = detail.groups.map(g => `
       <div class="med-detail-group">
