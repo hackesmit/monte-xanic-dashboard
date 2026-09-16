@@ -366,6 +366,32 @@ export function medicionDetail(m, score, rubric, sanitaryPct, visualLabel, madur
   return { groups, reason: (score && score.reason) || null };
 }
 
+// Keys the edit form emits that are NOT medicion fields, and how to translate
+// each one. The form serialises the evaluator panel as a JSON STRING under
+// `evaluacionesJson`, so a plain key-name overlay sets an inert key and leaves
+// the saved `evaluaciones` array in place underneath: re-grading the panel in
+// the modal then moved nothing at all, and the badge showed a confidently
+// wrong grade rather than a stale-but-honest one (reviewer R2-B1, 2026-09-15).
+//
+// The whole point of the overlay is that a field the engine reads cannot be
+// forgotten. That only holds while every form key is spelled as the medicion
+// key it stands for, so the exceptions live here, named, instead of being an
+// unwritten contract that breaks silently on the next rename.
+const FORM_KEY_TRANSLATIONS = {
+  evaluacionesJson: {
+    to: 'evaluaciones',
+    parse: (v) => {
+      if (Array.isArray(v)) return v;
+      try {
+        const parsed = JSON.parse(v || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    },
+  },
+};
+
 // The medicion the live edit-modal badge scores: the saved row with the form's
 // edits laid over it.
 //
@@ -383,12 +409,20 @@ export function medicionDetail(m, score, rubric, sanitaryPct, visualLabel, madur
 // so nullish-coalescing back to the snapshot would resurrect a deleted value;
 // only fields the form does not expose fall through to the snapshot.
 export function liveScoreMedicion(editing, form) {
-  const saved = editing || {};
-  const overlay = {};
-  for (const [k, v] of Object.entries(form || {})) {
-    if (v !== undefined) overlay[k] = v;
+  const built = { ...(editing || {}) };
+  for (const [key, value] of Object.entries(form || {})) {
+    if (value === undefined) continue;
+    const translation = FORM_KEY_TRANSLATIONS[key];
+    if (translation) {
+      built[translation.to] = translation.parse(value);
+    } else {
+      built[key] = value;
+    }
   }
-  return { ...saved, ...overlay };
+  // A translated key must never survive onto the medicion: leaving it there is
+  // what made the original mismatch invisible.
+  for (const key of Object.keys(FORM_KEY_TRANSLATIONS)) delete built[key];
+  return built;
 }
 
 export const Mediciones = {
