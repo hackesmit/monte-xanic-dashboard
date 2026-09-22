@@ -2400,6 +2400,139 @@ canvas { max-width: 100%; }
 .hb-enfermedad { background: #9B59B6; }
 .hb-quemadura { background: #E67E22; }
 
+/* -- Mediciones: physicochemical detail panel --
+   The table carries eleven columns already and has to stay readable at 320px,
+   so the full chemistry lives in a per-row panel instead of more columns. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+.med-expand-col { width: 28px; }
+.med-expand-cell { width: 28px; padding-right: 0; }
+.med-expand-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0;
+  background: none; border: none; cursor: pointer;
+  color: var(--muted);
+}
+.med-expand-btn:hover { color: var(--gold); }
+.med-expand-btn:focus-visible { outline: 1px solid var(--gold); outline-offset: 1px; }
+/* Caret drawn from borders so no glyph font has to carry it. */
+.med-expand-caret {
+  display: block; width: 0; height: 0;
+  border-left: 4px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transition: transform var(--motion-fast) var(--ease-standard);
+}
+.med-expand-btn[aria-expanded="true"] .med-expand-caret { transform: rotate(90deg); }
+
+.med-detail-row > td { padding: 0; background: var(--card2); }
+/* The detail cell spans the whole table, which is far wider than the phone
+   viewport and scrolls horizontally inside .table-scroll. Left unconstrained
+   the panel inherits that width, so on a phone the labels are visible and
+   every value and bucket sits off-screen to the right. Sticky to the left edge
+   of the scroll window, sized to that window, keeps the whole panel readable
+   without horizontal scrolling and keeps it in place while the columns above
+   it scroll. --med-detail-w is set from toggleDetail; the 100% fallback is the
+   old full-table behaviour for any path that does not set it. */
+.med-detail-panel {
+  position: sticky;
+  left: 0;
+  width: var(--med-detail-w, 100%);
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 12px 16px 14px 16px;
+  border-left: 2px solid var(--border-gold);
+}
+.med-detail-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+  margin-bottom: 10px;
+}
+.med-detail-rubric {
+  font-family: var(--font-display); font-size: var(--text-sm);
+  color: var(--gold); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.med-detail-lot { font-size: var(--text-sm); color: var(--muted); }
+.med-detail-score { font-family: var(--font-mono); color: var(--text); }
+
+/* Both grades for the lot, side by side and labelled with the measurement each
+   one came from. The map scores the berry samples and this table scores the
+   reception analysis, so the same lot can carry two letters (xd-25o). */
+.med-detail-figures {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  margin-left: auto;
+}
+.med-detail-figure { display: flex; flex-direction: column; gap: 1px; }
+.med-detail-figure-label {
+  font-family: var(--font-display); font-size: var(--text-2xs);
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.med-detail-figure-value { font-size: var(--text-md); color: var(--text); }
+
+/* Says which measurement a screen is showing, so a lot reading A+ on one and C
+   on the other looks like two readings rather than a defect. */
+.source-note {
+  margin: 0 0 12px 0; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 2px solid var(--border-gold);
+  border-radius: var(--radius-base);
+  font-size: var(--text-sm); color: var(--muted); line-height: 1.5;
+}
+.source-note strong { color: var(--text); font-weight: 600; }
+
+.med-detail-groups {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+}
+.med-detail-group {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-base); padding: 8px 10px;
+}
+.med-detail-criterio {
+  font-family: var(--font-display); font-size: var(--text-xs);
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;
+  margin-bottom: 6px;
+}
+.med-detail-axes { display: flex; flex-direction: column; gap: 4px; }
+/* flex-wrap plus min-width:0 on the label: without both, a long label such as
+   "Estado sanitario (conteo)" next to a nowrap value and a chip gives the row a
+   min-content width wider than the group, and the value overflows the phone
+   scroll window even though the panel itself is sized to it. */
+.med-axis {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  font-size: var(--text-sm); color: var(--text);
+}
+.med-axis-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--muted); }
+.med-axis-value { font-family: var(--font-mono); white-space: nowrap; }
+/* An axis the rubric does not have reads NA, the way the workbook prints it
+   for whites, and must not look like a reading somebody failed to take.
+   Named -mark, not -na, so it does not collide with the .med-axis-na state
+   modifier on the row that wraps it. */
+.med-axis-na-mark { color: var(--muted); font-family: var(--font-display); font-size: var(--text-xs); }
+.med-axis-gap { color: var(--muted); font-style: italic; }
+.med-axis-chip { font-size: var(--text-xs); padding: 1px 6px; }
+.med-axis-chip-gap {
+  font-size: var(--text-xs); padding: 1px 6px;
+  border: 1px solid var(--border); border-radius: var(--radius-sharp);
+  color: var(--muted);
+}
+.med-axis-points { font-size: var(--text-xs); color: var(--muted); font-family: var(--font-mono); }
+.med-axis-na { opacity: 0.75; }
+
+.med-detail-note {
+  margin: 10px 0 0 0; font-size: var(--text-sm); color: var(--muted);
+  border-left: 2px solid var(--border); padding-left: 8px;
+}
+
+@media (max-width: 480px) {
+  .med-detail-panel { padding: 10px 10px 12px 10px; }
+  .med-detail-groups { grid-template-columns: 1fr; }
+  .med-detail-figures { margin-left: 0; width: 100%; }
+}
+
 @media (max-width: 768px) {
   .form-group { min-width: 100%; }
   .form-group-sm { min-width: 45%; flex: 0 1 45%; }

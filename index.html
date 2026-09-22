@@ -746,6 +746,14 @@
         </select>
       </div>
 
+      <p class="source-note" id="map-source-note" hidden>
+        Calidad <strong>segun baya</strong>: calculada con el analisis WineXRay de
+        las muestras de baya tomadas en campo durante la maduracion. La tabla de
+        Mediciones califica cada lote con su analisis de laboratorio del dia de
+        recepcion, asi que un mismo lote puede mostrar una letra distinta en
+        cada pantalla. Son dos mediciones de la misma uva en fechas distintas.
+      </p>
+
       <div class="map-kpis">
         <div class="kpi-card"><span class="kpi-label">Muestras</span><span id="map-kpi-samples" class="kpi-value">—</span></div>
         <div class="kpi-card"><span class="kpi-label">Secciones</span><span id="map-kpi-sections" class="kpi-value">—</span></div>
@@ -896,11 +904,20 @@
                aria-label="Buscar en mediciones">
         <span class="table-toolbar-count" id="med-table-count"></span>
       </div>
+      <p class="source-note">
+        Calidad <strong>segun analisis de recepcion</strong>: calculada con la
+        quimica propia de cada medicion, que es la que llena la columna
+        Resultado de las hojas de rubrica. El mapa de Calidad usa el analisis
+        WineXRay de las bayas tomadas en campo, asi que un mismo lote puede
+        mostrar una letra distinta alla. Abra una fila para ver ambas.
+      </p>
+
       <div class="table-wrap">
         <div class="table-scroll">
           <table class="data-table" id="mediciones-table">
             <thead>
               <tr>
+                <th class="med-expand-col"><span class="sr-only">Detalle</span></th>
                 <th data-sort="code">Codigo</th>
                 <th data-sort="date">Fecha</th>
                 <th data-sort="variety">Variedad</th>
