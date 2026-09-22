@@ -452,6 +452,12 @@ function firstNamed(...candidates) {
   return null;
 }
 
+// Public face of the berry lookup, so the Mediciones detail panel can show the
+// map's own grade for the same lot beside this one (xd-25o).
+export function berryForMedicion(m, berryByLot) {
+  return m ? findBerryForMedicion(m, berryByLot) : null;
+}
+
 function findBerryForMedicion(m, berryByLot) {
   if (!m.lotCode || m.vintage == null) return null;
   if (!berryByLot || typeof berryByLot.get !== 'function') return null;
