@@ -2456,10 +2456,32 @@ canvas { max-width: 100%; }
   color: var(--gold); text-transform: uppercase; letter-spacing: 0.5px;
 }
 .med-detail-lot { font-size: var(--text-sm); color: var(--muted); }
-.med-detail-score {
-  margin-left: auto; font-family: var(--font-mono);
-  font-size: var(--text-md); color: var(--text);
+.med-detail-score { font-family: var(--font-mono); color: var(--text); }
+
+/* Both grades for the lot, side by side and labelled with the measurement each
+   one came from. The map scores the berry samples and this table scores the
+   reception analysis, so the same lot can carry two letters (xd-25o). */
+.med-detail-figures {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  margin-left: auto;
 }
+.med-detail-figure { display: flex; flex-direction: column; gap: 1px; }
+.med-detail-figure-label {
+  font-family: var(--font-display); font-size: var(--text-2xs);
+  color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px;
+}
+.med-detail-figure-value { font-size: var(--text-md); color: var(--text); }
+
+/* Says which measurement a screen is showing, so a lot reading A+ on one and C
+   on the other looks like two readings rather than a defect. */
+.source-note {
+  margin: 0 0 12px 0; padding: 8px 10px;
+  background: var(--card); border: 1px solid var(--border);
+  border-left: 2px solid var(--border-gold);
+  border-radius: var(--radius-base);
+  font-size: var(--text-sm); color: var(--muted); line-height: 1.5;
+}
+.source-note strong { color: var(--text); font-weight: 600; }
 
 .med-detail-groups {
   display: grid; gap: 10px;
@@ -2508,7 +2530,7 @@ canvas { max-width: 100%; }
 @media (max-width: 480px) {
   .med-detail-panel { padding: 10px 10px 12px 10px; }
   .med-detail-groups { grid-template-columns: 1fr; }
-  .med-detail-score { margin-left: 0; }
+  .med-detail-figures { margin-left: 0; width: 100%; }
 }
 
 @media (max-width: 768px) {

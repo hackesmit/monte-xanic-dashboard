@@ -181,4 +181,83 @@ test.describe('Mediciones physicochemical panel', () => {
     const modal = page.locator('#med-edit-modal');
     if (await modal.count()) await expect(modal).not.toHaveAttribute('open', '');
   });
+
+  test('a lot graded on both surfaces shows both grades, each labelled', async ({ page, context }) => {
+    // The map grades berry samples and this table grades the reception
+    // analysis, so 29 of the 58 lots on both screens carry different letters.
+    // The panel has to show both, or the difference is only findable by
+    // flipping between screens and looks like a defect (xd-25o).
+    await seed(context, [RED]);
+    await page.goto('/');
+    await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+    await page.locator('.nav-tab[data-view="mediciones"]').click();
+    await page.evaluate(async (row) => {
+      const { DataStore } = await import('/js/dataLoader.js');
+      const { Mediciones } = await import('/js/mediciones.js');
+      DataStore.medicionesData = [row];
+      // A berry for the same lot whose chemistry is deliberately worse, so the
+      // two surfaces must disagree.
+      DataStore.berryData = [{
+        lotCode: row.lotCode, vintage: row.vintage,
+        variety: row.variety, appellation: row.appellation,
+        brix: 19.0, pH: 3.95, ta: 4.2, berryFW: 0.5,
+        av: 0.9, ag: 0.9, polyphenols: 100, anthocyanins: 100,
+        medicion: {
+          health_madura: row.healthMadura, health_inmadura: row.healthInmadura,
+          health_sobremadura: row.healthSobremadura, health_picadura: row.healthPicadura,
+          health_enfermedad: row.healthEnfermedad, health_quemadura: row.healthQuemadura,
+          phenolic_maturity: row.phenolicMaturity, evaluaciones: [],
+        },
+      }];
+      Mediciones.refresh();
+    }, RED);
+    await page.waitForSelector('#med-table-body tr', { timeout: 5_000 });
+    await page.locator(`.med-expand-btn[data-med-expand="${RED.code}"]`).click();
+
+    const panel = page.locator('.med-detail-panel');
+    await expect(panel).toBeVisible();
+    const figures = panel.locator('.med-detail-figure');
+    await expect(figures).toHaveCount(2);
+    await expect(figures.nth(0)).toContainText('Segun recepcion');
+    await expect(figures.nth(1)).toContainText('Segun baya (mapa)');
+
+    // The whole point: the two letters really are different here.
+    const letters = await figures.evaluateAll(
+      els => els.map(e => e.querySelector('.med-detail-figure-value').textContent.trim().split(' ')[0]));
+    expect(letters[0], `expected two different grades, got ${letters.join(' and ')}`)
+      .not.toEqual(letters[1]);
+
+    await shootPanel(page, panel, 'test-results/mediciones-detail-both-grades.png');
+  });
+
+  test('a lot the map cannot grade shows only the reception figure', async ({ page, context }) => {
+    // No berry means no map grade. A permanent "sin calificar" next to it would
+    // say nothing, so the second figure is omitted entirely.
+    await seed(context, [RED]);
+    await openMediciones(page, [RED]);
+    await page.locator(`.med-expand-btn[data-med-expand="${RED.code}"]`).click();
+    const panel = page.locator('.med-detail-panel');
+    await expect(panel).toBeVisible();
+    await expect(panel.locator('.med-detail-figure')).toHaveCount(1);
+    await expect(panel).toContainText('Segun recepcion');
+    await expect(panel).not.toContainText('Segun baya');
+  });
+
+  test('each screen says which measurement it shows', async ({ page, context }) => {
+    await seed(context, [RED]);
+    await openMediciones(page, [RED]);
+    await expect(page.locator('#view-mediciones .source-note')).toContainText(
+      'segun analisis de recepcion', { ignoreCase: true });
+
+    await page.locator('.nav-tab[data-view="map"]').click();
+    const mapNote = page.locator('#map-source-note');
+    await expect(mapNote).toBeVisible();
+    await expect(mapNote).toContainText('segun baya', { ignoreCase: true });
+
+    // The note is about the calidad rubric, so it goes away on the raw metrics.
+    await page.selectOption('#map-metric-select', 'brix');
+    await expect(mapNote).toBeHidden();
+    await page.selectOption('#map-metric-select', 'calidad');
+    await expect(mapNote).toBeVisible();
+  });
 });

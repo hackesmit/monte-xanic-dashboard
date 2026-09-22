@@ -10,6 +10,8 @@ import { Auth } from './auth.js';
 import { attachModalHygiene } from './modalHygiene.js';
 import {
   scoreFromMedicion,
+  scoreLot,
+  berryForMedicion,
   rubricById,
   sanitaryDamagePct,
   averageEvaluations,
@@ -1141,6 +1143,13 @@ export const Mediciones = {
     const visualLabel = consensusSanitaryLabel(panel.sanidad);
     const madurezLabel = consensusMadurezLabel(panel.madurez);
     const detail = medicionDetail(d, score, rubric, pct, visualLabel, madurezLabel);
+    // The same lot's grade on the calidad map, which scores the berry's own
+    // chemistry rather than this medicion's. The two disagree on 29 of the 58
+    // lots that appear on both screens, by design and by Daniel's decision, so
+    // the panel shows both side by side rather than leaving someone to find the
+    // difference by flipping between screens (xd-25o).
+    const berry = berryForMedicion(d, this._berryByLot);
+    const berryScore = berry ? scoreLot(berry) : null;
 
     const groups = detail.groups.map(g => `
       <div class="med-detail-group">
@@ -1151,7 +1160,7 @@ export const Mediciones = {
       </div>`).join('');
 
     return `<div class="med-detail-panel">
-      ${this._renderDetailHead(score, rubric, d)}
+      ${this._renderDetailHead(score, rubric, d, berryScore)}
       <div class="med-detail-groups">${groups}</div>
       ${this._renderDetailNote(detail, score, rubric, d)}
     </div>`;
@@ -1187,16 +1196,35 @@ export const Mediciones = {
     </div>`;
   },
 
-  _renderDetailHead(score, rubric, d) {
+  _renderDetailHead(score, rubric, d, berryScore) {
     const esc = escapeHtml;
     const rubricName = rubric ? rubric.name : 'Sin rubrica aplicable';
-    const total = score && score.score36 != null
-      ? `<span class="med-detail-score">${esc(score.score36.toFixed(2))} / 36</span>`
-      : '<span class="med-detail-score med-axis-gap">sin calificar</span>';
     const lot = d.lotCode ? ` <span class="med-detail-lot">Lote ${esc(d.lotCode)}</span>` : '';
+
+    const figure = (label, s, hint) => {
+      const value = s && s.score36 != null
+        ? `${esc(s.grade)} <span class="med-detail-score">${esc(s.score36.toFixed(2))} / 36</span>`
+        : '<span class="med-axis-gap">sin calificar</span>';
+      return `<div class="med-detail-figure" title="${esc(hint)}">
+        <span class="med-detail-figure-label">${esc(label)}</span>
+        <span class="med-detail-figure-value">${value}</span>
+      </div>`;
+    };
+
+    // Only shown when the map actually has a grade for this lot; otherwise the
+    // row would carry a permanent "sin calificar" that says nothing.
+    const berryFigure = berryScore && berryScore.score36 != null
+      ? figure('Segun baya (mapa)', berryScore,
+               'Analisis WineXRay de las muestras de baya tomadas en campo durante la maduracion. Es lo que colorea el mapa de Calidad.')
+      : '';
+
     return `<div class="med-detail-head">
       <span class="med-detail-rubric">${esc(rubricName)}</span>${lot}
-      ${total}
+      <div class="med-detail-figures">
+        ${figure('Segun recepcion', score,
+                 'Analisis de laboratorio del dia de recepcion, la quimica propia de esta medicion. Es la que llena la columna Resultado de las hojas de rubrica.')}
+        ${berryFigure}
+      </div>
     </div>`;
   },
 
