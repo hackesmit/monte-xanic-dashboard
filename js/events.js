@@ -446,6 +446,16 @@ export const Events = {
         if (chart && !isNaN(dsIdx)) {
           const meta = chart.getDatasetMeta(dsIdx);
           meta.hidden = !meta.hidden;
+          const ds = chart.data.datasets[dsIdx];
+          if (ds && ds._fit) {
+            ds._userHidden = meta.hidden;
+          } else if (ds) {
+            // Hide or show this group's own trend line with it.
+            chart.data.datasets.forEach((t, i) => {
+              if (t._fit && t._trendFor === ds.label) chart.getDatasetMeta(i).hidden = meta.hidden;
+            });
+            Charts.refreshExplorerGeneralTrend(chart);
+          }
           chart.update();
           legendItem.classList.toggle('dimmed', meta.hidden);
         }
@@ -473,6 +483,7 @@ export const Events = {
       if (e.target.closest('.explorer-source-select')) Explorer.onSourceChange(sid);
       else if (e.target.closest('.explorer-type-select')) Explorer.onChartTypeChange(sid);
       else if (e.target.closest('.explorer-group-select')) Explorer.onGroupByChange(sid);
+      else if (e.target.closest('.explorer-trend-select')) Explorer.onTrendChange(sid);
       else if (e.target.closest('.lot-checkbox')) {
         Explorer._toggleLotItem(sid, e.target.dataset.lot, e.target.checked);
       }
