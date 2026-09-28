@@ -1069,6 +1069,13 @@ export const CONFIG = {
     { value: 'line',     label: 'Líneas' }
   ],
 
+  // Explorador trend line (least-squares fit) choices.
+  explorerTrendModes: [
+    { value: 'none',  label: 'Ninguna' },
+    { value: 'all',   label: 'General' },
+    { value: 'group', label: 'Por grupo' }
+  ],
+
   explorerGroupBy: {
     berry: [
       { value: 'variety',     label: 'Varietal' },

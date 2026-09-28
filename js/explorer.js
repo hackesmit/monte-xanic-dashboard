@@ -29,7 +29,7 @@ export const Explorer = {
   addChart() {
     if (this.slots.length >= this.maxSlots) return;
     const id = this._nextId++;
-    const slot = { id, source: 'berry', xField: 'daysPostCrush', yField: 'brix', chartType: 'scatter', groupBy: 'variety', showLines: false, expanded: false, selectedLots: [] };
+    const slot = { id, source: 'berry', xField: 'daysPostCrush', yField: 'brix', chartType: 'scatter', groupBy: 'variety', showLines: false, trend: 'none', expanded: false, selectedLots: [] };
     this.slots.push(slot);
     this._injectSlotDOM(slot);
     this.renderSlot(slot.id);
@@ -64,6 +64,7 @@ export const Explorer = {
     if (chart) {
       const show = slot.chartType === 'line' || slot.showLines;
       chart.data.datasets.forEach(ds => {
+        if (ds._fit) return;  // trend lines always draw as lines
         ds.showLine = show;
         ds.borderWidth = show ? (CONFIG.chartDefaults.borderWidth || 2) : 0;
       });
@@ -116,6 +117,16 @@ export const Explorer = {
     // Disable X dropdown for bar charts
     const xEl = document.getElementById('explorer-x-' + id);
     if (xEl) xEl.disabled = (slot.chartType === 'bar');
+    const trendEl = document.getElementById('explorer-trend-' + id);
+    if (trendEl) trendEl.disabled = (slot.chartType === 'bar');
+  },
+
+  onTrendChange(id) {
+    const slot = this._slotById(id);
+    if (!slot) return;
+    const trendEl = document.getElementById('explorer-trend-' + id);
+    if (trendEl) slot.trend = trendEl.value;
+    this.renderSlot(id);
   },
 
   onGroupByChange(id) {
@@ -145,6 +156,8 @@ export const Explorer = {
     if (yEl) slot.yField = yEl.value;
     if (typeEl) slot.chartType = typeEl.value;
     if (groupEl) slot.groupBy = groupEl.value;
+    const trendEl = document.getElementById('explorer-trend-' + id);
+    if (trendEl) slot.trend = trendEl.value;
 
     const canvasId = 'explorerChart_' + id;
     const data = this._getData(slot);
@@ -171,7 +184,7 @@ export const Explorer = {
     if (slot.chartType === 'bar') {
       Charts.createExplorerBar(canvasId, enriched, slot.yField, yMeta.label, slot.groupBy, colorResolver);
     } else {
-      const opts = { showLine: slot.chartType === 'line' || slot.showLines };
+      const opts = { showLine: slot.chartType === 'line' || slot.showLines, trend: slot.trend };
       Charts.createExplorerChart(canvasId, enriched, slot.xField, slot.yField, xLabel, yLabel, slot.groupBy, colorResolver, opts);
     }
 
@@ -343,6 +356,8 @@ export const Explorer = {
     const chart = Charts.instances[canvasId];
     if (!chart || !chart.data || !chart.data.datasets) { el.innerHTML = ''; return; }
     el.innerHTML = chart.data.datasets.map((ds, i) => {
+      // A group's own trend line follows its group's legend item.
+      if (ds._fit && ds._trendFor !== null) return '';
       const color = ds.borderColor || ds.backgroundColor || '#888';
       const dimmed = chart.getDatasetMeta(i).hidden ? ' dimmed' : '';
       return `<span class="legend-item${dimmed}" data-slot="${slot.id}" data-ds-index="${i}" role="button" tabindex="0">` +
@@ -398,6 +413,11 @@ export const Explorer = {
           <label class="explorer-config-label">Agrupar por
             <select id="explorer-group-${sid}" class="explorer-select explorer-group-select" data-slot="${sid}">
               ${groups.map(g => `<option value="${g.value}" ${g.value === slot.groupBy ? 'selected' : ''}>${g.label}</option>`).join('')}
+            </select>
+          </label>
+          <label class="explorer-config-label">Tendencia
+            <select id="explorer-trend-${sid}" class="explorer-select explorer-trend-select" data-slot="${sid}" ${slot.chartType === 'bar' ? 'disabled' : ''}>
+              ${CONFIG.explorerTrendModes.map(t => `<option value="${t.value}" ${t.value === slot.trend ? 'selected' : ''}>${t.label}</option>`).join('')}
             </select>
           </label>
           <button class="explorer-render-btn" data-slot="${sid}">Actualizar</button>
