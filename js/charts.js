@@ -1870,6 +1870,8 @@ export const Charts = {
     if (!chart || !chart.data || !chart.data.datasets) return [];
     return chart.data.datasets
       .filter((ds, i) => !chart.getDatasetMeta(i).hidden)
+      // A group's own Explorador trend line is represented by its group.
+      .filter(ds => !(ds._fit && ds._trendFor !== null))
       .map(ds => ({
         color: ds.borderColor || ds.backgroundColor || '#888',
         label: ds.label || ''

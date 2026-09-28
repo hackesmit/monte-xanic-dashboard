@@ -454,10 +454,14 @@ export const Events = {
             chart.data.datasets.forEach((t, i) => {
               if (t._fit && t._trendFor === ds.label) chart.getDatasetMeta(i).hidden = meta.hidden;
             });
-            Charts.refreshExplorerGeneralTrend(chart);
           }
+          // Refit (or hide, with no visible points) the general trend line.
+          Charts.refreshExplorerGeneralTrend(chart);
           chart.update();
-          legendItem.classList.toggle('dimmed', meta.hidden);
+          // Redraw the legend: the general trend item can change state too.
+          const slotObj = Explorer._slotById(slotId);
+          if (slotObj) Explorer._renderSlotLegend(slotObj, cId);
+          else legendItem.classList.toggle('dimmed', meta.hidden);
         }
         return;
       }
