@@ -139,7 +139,22 @@ Weather data cache. Auto-populated from Open-Meteo API.
 
 ## mediciones_tecnicas
 
-Physical berry field measurements. Populated via manual form entry.
+The quality-classification record for one grape lot at reception. Carries the
+physical field measurements, the sanitary berry count, the evaluator panel AND
+the lab chemistry, which together are every axis of the rubric sheets in
+`Clasificación Calidad Uva Revisión SL.xlsx`.
+
+Written by two paths: the Mediciones form (`source='form'`) and the
+Pre-recepción XLSX parser (`source='upload'`), unified by
+`sql/migration_unify_mediciones.sql` (Round 35), which absorbed the deprecated
+`pre_receptions` table. The chemistry columns come from that merge, so any row
+predating it has them NULL.
+
+`js/classification.js` scores a medicion from these columns first and only
+falls back to a matching WineXRay berry row per axis, so a lot with no berry
+sample is still gradeable. That matters most for whites: WineXRay is a
+phenolics instrument, the workbook prints NA for polifenoles and antocianinas
+on whites, and whites are largely not sampled at all.
 
 | Column | Type | Nullable | Purpose |
 |--------|------|----------|---------|
@@ -161,9 +176,44 @@ Physical berry field measurements. Populated via manual form entry.
 | health_picadura | int | yes (default 0) | Count: insect-damaged berries |
 | health_enfermedad | int | yes (default 0) | Count: diseased berries |
 | health_quemadura | int | yes (default 0) | Count: sunburned berries |
+| health_pasificada | int | yes | Count: raisined berries |
+| health_aceptable | int | yes | Count: acceptable berries |
+| health_no_aceptable | int | yes | Count: unacceptable berries |
+| phenolic_maturity | text | yes | Madurez fenólica, the winemaker overlay |
+| evaluaciones | jsonb | yes | Evaluator panel `[{evaluador, sanidad, madurez}]` (Vendimia 2026) |
 | measured_by | text | yes | Person who measured |
 | notes | text | yes | Free text |
+| source | text | no | `'form'` or `'upload'` |
 | uploaded_at | timestamptz | no | Upload timestamp |
+| last_edited_at | timestamptz | yes | Audit; server is the only writer |
+| last_edited_by | text | yes | Audit; server is the only writer |
+
+Absorbed from `pre_receptions` (Round 35). The lab columns are the rubric's
+chemistry axes; `js/config.js` `preReceptionsToSupabase` maps the workbook
+headers onto them and `DataStore._medicionChemistry` maps them to JS.
+
+| Column | Type | Nullable | Purpose | JS name |
+|--------|------|----------|---------|---------|
+| vintrace | text | yes | Vintrace sync marker | (unmapped) |
+| reception_date | date | yes | Grape reception date | (unmapped) |
+| supplier | text | yes | Ranch abbreviation (KMP, VDG, 7L) resolved to `appellation` | (via `_medicionAppellation`) |
+| total_bins | int | yes | Bin/jaba count | (unmapped) |
+| bin_unit | text | yes | 'BINS' or 'JABAS' | (unmapped) |
+| bin_temp_c | numeric | yes | Bin temperature (C) | (unmapped) |
+| truck_temp_c | numeric | yes | Truck temperature (C) | (unmapped) |
+| bunch_avg_weight_g | numeric | yes | Average bunch weight (g) | (unmapped) |
+| berry_length_avg_cm | numeric | yes | Average berry length (cm); converted to `berryDiameter` in mm when no diameter column | `berryDiameter` |
+| berries_200_weight_g | numeric | yes | Weight of the 200-berry sample (g) | (unmapped) |
+| lab_date | date | yes | Lab analysis date | (unmapped) |
+| brix | numeric | yes | Grado Brix (Bx). Rubric axis. | `brix` |
+| ph | numeric | yes | pH. Rubric axis. | `pH` |
+| at | numeric | yes | Acidez total (g/L). Rubric axis `ta`. | `ta` |
+| ag | numeric | yes | Ácido glucónico (g/L). Rubric axis. Reads 0.00 on most rows, which is the BEST bucket, so never treat 0 as absent. | `ag` |
+| am | numeric | yes | Ácido málico (g/L). Measured, in no rubric. | `am` |
+| av | numeric | yes | Acidez volátil (g/L). Rubric axis. Added to the sheet for Vendimia 2026. | `av` |
+| polifenoles | numeric | yes | Polifenoles (mg/L). Rubric axis for REDS only; NA for whites. | `polyphenols` |
+| catequinas | numeric | yes | Catequinas (mg/L). Measured, in no rubric. | `catechins` |
+| antocianos | numeric | yes | Antocianos totales (ppm ME). Rubric axis for REDS only; NA for whites. | `anthocyanins` |
 
 **Key constraints:**
 - Unique: `medicion_code`

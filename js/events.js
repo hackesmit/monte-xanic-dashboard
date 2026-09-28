@@ -446,8 +446,22 @@ export const Events = {
         if (chart && !isNaN(dsIdx)) {
           const meta = chart.getDatasetMeta(dsIdx);
           meta.hidden = !meta.hidden;
+          const ds = chart.data.datasets[dsIdx];
+          if (ds && ds._fit) {
+            ds._userHidden = meta.hidden;
+          } else if (ds) {
+            // Hide or show this group's own trend line with it.
+            chart.data.datasets.forEach((t, i) => {
+              if (t._fit && t._trendFor === ds.label) chart.getDatasetMeta(i).hidden = meta.hidden;
+            });
+          }
+          // Refit (or hide, with no visible points) the general trend line.
+          Charts.refreshExplorerGeneralTrend(chart);
           chart.update();
-          legendItem.classList.toggle('dimmed', meta.hidden);
+          // Redraw the legend: the general trend item can change state too.
+          const slotObj = Explorer._slotById(slotId);
+          if (slotObj) Explorer._renderSlotLegend(slotObj, cId);
+          else legendItem.classList.toggle('dimmed', meta.hidden);
         }
         return;
       }
@@ -473,6 +487,7 @@ export const Events = {
       if (e.target.closest('.explorer-source-select')) Explorer.onSourceChange(sid);
       else if (e.target.closest('.explorer-type-select')) Explorer.onChartTypeChange(sid);
       else if (e.target.closest('.explorer-group-select')) Explorer.onGroupByChange(sid);
+      else if (e.target.closest('.explorer-trend-select')) Explorer.onTrendChange(sid);
       else if (e.target.closest('.lot-checkbox')) {
         Explorer._toggleLotItem(sid, e.target.dataset.lot, e.target.checked);
       }
@@ -536,8 +551,17 @@ export const Events = {
     });
 
     // Row click → open edit modal (only on `.row-clickable` rows)
+    // The expand button sits inside such a row, so it is handled first and
+    // returns: otherwise opening the physicochemical panel would also open the
+    // edit modal on top of it for anyone with write access.
     const tbody = document.getElementById('med-table-body');
     if (tbody) tbody.addEventListener('click', (e) => {
+      const expand = e.target.closest('.med-expand-btn');
+      if (expand) {
+        e.stopPropagation();
+        Mediciones.toggleDetail(expand.dataset.medExpand);
+        return;
+      }
       const tr = e.target.closest('tr.row-clickable');
       if (!tr) return;
       const code = tr.dataset.code;

@@ -7,6 +7,7 @@ import { DataStore } from './dataLoader.js';
 import { Filters } from './filters.js';
 import { WeatherStore } from './weather.js';
 import { App } from './app.js';
+import { linearFit, trendEndpoints, formatFit } from './trend.js';
 
 // Motion-token-aligned global Chart.js defaults. Mirrors CSS --motion-slow
 // (320ms) + an easing close to --ease-entrance. Set once at module load so
@@ -1869,6 +1870,8 @@ export const Charts = {
     if (!chart || !chart.data || !chart.data.datasets) return [];
     return chart.data.datasets
       .filter((ds, i) => !chart.getDatasetMeta(i).hidden)
+      // A group's own Explorador trend line is represented by its group.
+      .filter(ds => !(ds._fit && ds._trendFor !== null))
       .map(ds => ({
         color: ds.borderColor || ds.backgroundColor || '#888',
         label: ds.label || ''
@@ -2290,6 +2293,30 @@ export const Charts = {
       };
     });
 
+    // Trend lines: 'group' adds one per group in its color, 'all' adds one
+    // over every visible point. They carry _trendFor so the legend, the
+    // Conectar Lineas toggle and legend clicks can tell them apart.
+    const trend = opts && opts.trend;
+    if (trend === 'group') {
+      datasets.slice().forEach(ds => {
+        const t = this._explorerTrendDataset(ds.data, ds.label, ds.borderColor);
+        if (t) datasets.push(t);
+      });
+    } else if (trend === 'all') {
+      const t = this._explorerTrendDataset(datasets.flatMap(ds => ds.data), null, this._getThemeColor('--gold-lt') || '#DDB96E');
+      if (t) datasets.push(t);
+    }
+
+    const tooltip = this.tooltipConfig();
+    const pointLabel = tooltip.callbacks.label;
+    const pointTitle = tooltip.callbacks.title;
+    tooltip.callbacks.title = (items) => {
+      const ds = items[0] && items[0].dataset;
+      if (ds && ds._fit) return ds.label;
+      return pointTitle(items);
+    };
+    tooltip.callbacks.label = (ctx) => ctx.dataset._fit ? formatFit(ctx.dataset._fit) : pointLabel(ctx);
+
     this._createChart(canvasId, canvas, {
       type: 'scatter',
       data: { datasets },
@@ -2298,11 +2325,53 @@ export const Charts = {
         maintainAspectRatio: false,
         plugins: {
           legend: { display: false },
-          tooltip: this.tooltipConfig()
+          tooltip
         },
         scales: this.axisOpts(xLabel, yLabel),
       }
     });
+  },
+
+  // A dashed least-squares line over pts, or null when pts cannot be fitted
+  // (fewer than 2 points, or all at the same x). group is the group label it
+  // belongs to, or null for the general line.
+  _explorerTrendDataset(pts, group, color) {
+    const fit = linearFit(pts);
+    if (!fit) return null;
+    return {
+      label: group === null ? 'Tendencia general' : `Tendencia ${group}`,
+      data: trendEndpoints(fit),
+      _trendFor: group,
+      _fit: fit,
+      borderColor: color,
+      backgroundColor: color,
+      borderWidth: 2,
+      borderDash: [6, 4],
+      pointRadius: 0,
+      pointHoverRadius: 4,
+      pointHitRadius: 8,
+      showLine: true,
+      tension: 0,
+      fill: false,
+      order: -1
+    };
+  },
+
+  // Recomputes the general trend line of an Explorador chart from the groups
+  // currently visible, after a legend click hides or shows one.
+  refreshExplorerGeneralTrend(chart) {
+    const datasets = chart.data.datasets;
+    const idx = datasets.findIndex(ds => ds._fit && ds._trendFor === null);
+    if (idx === -1) return;
+    const pts = datasets.flatMap((ds, i) =>
+      ds._fit || chart.getDatasetMeta(i).hidden ? [] : ds.data);
+    const fit = linearFit(pts);
+    const meta = chart.getDatasetMeta(idx);
+    if (!fit) { meta.hidden = true; return; }
+    datasets[idx]._fit = fit;
+    datasets[idx].data = trendEndpoints(fit);
+    // The line hides with no visible points, but a user-hidden line stays hidden.
+    if (!datasets[idx]._userHidden) meta.hidden = false;
   },
 
   createExplorerBar(canvasId, data, valueField, label, groupField, colorResolver) {
