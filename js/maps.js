@@ -495,6 +495,18 @@ export const MapStore = {
     this.generateSVG(this.currentRanch, 'map-svg-container');
     this.renderLegend('map-color-scale');
     this._updateKPIs();
+    this._updateSourceNote();
+  },
+
+  // The calidad metric is the only one graded against a rubric, and it is
+  // graded HERE from berry chemistry while the Mediciones table grades the
+  // same lot from its reception analysis. On real data 29 of the 58 lots that
+  // appear on both screens carry different letters, up to 15 points apart, so
+  // the map says which measurement it is showing rather than leaving the
+  // difference looking like a defect (xd-25o).
+  _updateSourceNote() {
+    const note = document.getElementById('map-source-note');
+    if (note) note.hidden = this.currentMetric !== 'calidad';
   },
 
   _updateKPIs() {

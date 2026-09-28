@@ -45,6 +45,31 @@
 | Berry Count | berry_count_sample | (computed) | count | Total berries in health sort sample. Default 200 but varies. |
 | Health Grade | health_grade | Grado Sanitario | (category) | Excelente, Bueno, Regular, Malo. Manually selected by operator (not auto-derived from sort counts). |
 
+## Mediciones Tecnicas Lab Chemistry
+
+The rubric's own chemistry axes, measured at reception and stored on the
+medicion. `js/classification.js` scores from these first and falls back to a
+matching WineXRay berry row only per missing axis. See
+[Database.md](Database.md#mediciones_tecnicas) for the full column list.
+
+| Field | DB Column | UI Label (Spanish) | Unit | Rubric axis? |
+|-------|-----------|-------------------|------|--------------|
+| Brix | brix | Grado Brix | Bx | Yes |
+| pH | ph | pH | (unitless) | Yes |
+| Titratable Acidity | at | Acidez total | g/L | Yes (`ta`) |
+| Gluconic Acid | ag | Ácido glucónico | g/L | Yes |
+| Volatile Acidity | av | Acidez volátil | g/L | Yes |
+| Malic Acid | am | Ácido málico | g/L | No, measured only |
+| Polyphenols | polifenoles | Polifenoles | mg/L | Reds only. NA for whites. |
+| Total Anthocyanins | antocianos | Antocianos totales | ppm ME | Reds only. NA for whites. |
+| Catechins | catequinas | Catequinas | mg/L | No, measured only |
+
+**Whites and the phenolic axes.** The `SB` and `CH-CB-SBGR` rubric sheets have
+no Polifenoles and no Antocianos row, so the workbook prints `NA` in those
+cells and the scoring engine has no such parameter for a white. The Mediciones
+detail panel renders that as `NA`, distinct from a missing reading: there is
+nothing to measure, not something nobody measured yet.
+
 ## Health Sort Categories (200-berry sort)
 
 | Field | DB Column | UI Label | Meaning |
