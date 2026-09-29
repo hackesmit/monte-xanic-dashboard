@@ -1065,7 +1065,7 @@ export const Mediciones = {
       return `<tr class="${Auth.canWrite() && !DemoMode.isActive() ? 'row-clickable' : ''}" data-code="${esc(d.code)}">
         <td class="med-expand-cell"><button type="button" class="med-expand-btn"
             data-med-expand="${esc(d.code)}" aria-expanded="false" aria-controls="${esc(detailId)}"
-            title="Ver fisicoquimicos"><span class="med-expand-caret" aria-hidden="true"></span><span class="sr-only">Ver fisicoquimicos de ${esc(d.code)}</span></button></td>
+            aria-label="Ver fisicoquimicos de ${esc(d.code)}" title="Ver fisicoquimicos y su calificacion"><span class="med-expand-caret" aria-hidden="true"></span><span class="med-expand-label" aria-hidden="true">Fisicoquimicos</span></button></td>
         <td>${esc(d.code)}</td>
         <td>${esc(d.date)}</td>
         <td>${esc(d.variety)}</td>
@@ -1082,24 +1082,65 @@ export const Mediciones = {
         <td colspan="12"></td>
       </tr>`;
     }).join('');
+
+    // The table was rebuilt closed; re-open every panel while "Abrir todos"
+    // is on so the toggle's label never disagrees with what is on screen.
+    if (this._allDetailsOpen) this._openAllDetails();
+  },
+
+  // "Abrir todos los fisicoquimicos": opens (or closes) every row's panel.
+  _allDetailsOpen: false,
+
+  toggleAllDetails() {
+    this._allDetailsOpen = !this._allDetailsOpen;
+    const btn = document.getElementById('med-toggle-all');
+    if (btn) {
+      btn.setAttribute('aria-pressed', String(this._allDetailsOpen));
+      btn.textContent = this._allDetailsOpen ? 'Cerrar todos los fisicoquimicos' : 'Abrir todos los fisicoquimicos';
+    }
+    // With every panel open the 400px scroll box would hide all but one, so
+    // the table grows to its full height and the page scrolls instead.
+    const scroller = document.getElementById('mediciones-table')?.closest('.table-scroll');
+    if (scroller) scroller.classList.toggle('med-all-open', this._allDetailsOpen);
+    if (this._allDetailsOpen) {
+      this._openAllDetails();
+    } else {
+      document.querySelectorAll('#med-table-body .med-expand-btn[aria-expanded="true"]')
+        .forEach(b => this._closeDetail(b));
+    }
+  },
+
+  _openAllDetails() {
+    const byCode = new Map((DataStore.medicionesData || []).map(r => [String(r.code), r]));
+    document.querySelectorAll('#med-table-body .med-expand-btn').forEach(b => {
+      const d = byCode.get(String(b.dataset.medExpand));
+      if (d && b.getAttribute('aria-expanded') !== 'true') this._openDetail(b, d, false);
+    });
+  },
+
+  _closeDetail(btn) {
+    const row = document.getElementById(btn.getAttribute('aria-controls'));
+    btn.setAttribute('aria-expanded', 'false');
+    if (row) row.hidden = true;
   },
 
   // Expand or collapse one row's physicochemical panel. Built on demand: the
-  // table runs to a few hundred rows and only one or two are ever open.
+  // table runs to a few hundred rows and usually only one or two are open.
   toggleDetail(code) {
     const btn = document.querySelector(`.med-expand-btn[data-med-expand="${CSS.escape(String(code))}"]`);
     if (!btn) return;
-    const row = document.getElementById(btn.getAttribute('aria-controls'));
-    if (!row) return;
-
-    const open = btn.getAttribute('aria-expanded') === 'true';
-    if (open) {
-      btn.setAttribute('aria-expanded', 'false');
-      row.hidden = true;
+    if (btn.getAttribute('aria-expanded') === 'true') {
+      this._closeDetail(btn);
       return;
     }
     const d = (DataStore.medicionesData || []).find(r => String(r.code) === String(code));
     if (!d) return;
+    this._openDetail(btn, d, true);
+  },
+
+  _openDetail(btn, d, scroll) {
+    const row = document.getElementById(btn.getAttribute('aria-controls'));
+    if (!row) return;
     const cell = row.querySelector('td');
     if (cell) cell.innerHTML = this._renderDetail(d);
     // Size the panel to the horizontal scroll window rather than to the table,
@@ -1116,7 +1157,7 @@ export const Mediciones = {
     // panel opened on a row near the bottom would render below the fold of
     // that box with no hint it is there. 'nearest' scrolls the minimum needed
     // and leaves the page alone when the panel already fits.
-    row.scrollIntoView({ block: 'nearest' });
+    if (scroll) row.scrollIntoView({ block: 'nearest' });
   },
 
   _renderDetail(d) {
