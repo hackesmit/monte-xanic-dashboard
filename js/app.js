@@ -20,6 +20,7 @@ import { Mediciones } from './mediciones.js';
 import { DemoMode } from './demoMode.js';
 import { Mona } from './mona/index.js';
 import { escapeHtml } from './utils.js';
+import { tonnageByVintage } from './aggregations.js';
 
 export const App = {
   currentView: 'berry',
@@ -381,11 +382,16 @@ export const App = {
 
       case 'vintage': {
         this._updateVintageUI(cleanBerry);
+        // Tonnage comes from the mediciones (tons_received, via pre-recepcion),
+        // filtered exactly as the Mediciones view filters them.
+        const vintageTons = tonnageByVintage(
+          Mediciones._applyGlobalFilters(DataStore.medicionesData || []));
+        Charts.createVintageTonnage('chartVintageTons', vintageTons);
         Charts.createVintageComparison('chartVintageBrix', cleanBerry, 'brix', 'Brix (°Bx)');
         Charts.createVintageComparison('chartVintageAnt', cleanBerry, 'tANT', 'tANT (ppm ME)');
         Charts.createVintageComparison('chartVintagePH', cleanBerry, 'pH', 'pH');
         Charts.createVintageComparison('chartVintageTA', cleanBerry, 'ta', 'AT (g/L)');
-        this.updateVintageSummary(cleanBerry);
+        this.updateVintageSummary(cleanBerry, vintageTons);
         this.updateVintageVarietalTable(cleanBerry);
         const activeVintages = [...Filters.state.vintages];
         const calVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : null);
@@ -504,7 +510,7 @@ export const App = {
 
   // ── Vintage Summary Tables ──
 
-  updateVintageSummary(data) {
+  updateVintageSummary(data, tons) {
     const body = document.getElementById('vintage-summary-body');
     const thead = document.getElementById('vintage-summary-head');
     if (!body) return;
@@ -545,7 +551,8 @@ export const App = {
       { name: 'tANT Promedio', field: 'tANT', dec: 0, unit: 'ppm' },
       { name: 'Peso Baya', field: 'berryFW', dec: 2, unit: 'g' },
       { name: 'Muestras', field: '_count', dec: 0, unit: '' },
-      { name: 'Lotes Únicos', field: '_lots', dec: 0, unit: '' }
+      { name: 'Lotes Únicos', field: '_lots', dec: 0, unit: '' },
+      { name: 'Toneladas Recibidas', field: '_tons', dec: 1, unit: 't' }
     ];
 
     const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
@@ -559,6 +566,8 @@ export const App = {
           vals[y] = yd.length;
         } else if (m.field === '_lots') {
           vals[y] = new Set(yd.map(d => d.sampleId)).size;
+        } else if (m.field === '_tons') {
+          vals[y] = tons?.byYear[y] ? tons.byYear[y].total : null;
         } else {
           vals[y] = avg(yd.map(d => d[m.field]));
         }
