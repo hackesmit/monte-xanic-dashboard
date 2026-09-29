@@ -317,6 +317,19 @@ export const CONFIG = {
   _excludeRe: /EXP|EXPERIMENTO|^NORMAL$/i,
   _labTestRe: /\b(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)\b/i,
 
+  // Appellations outside Monte Xanic's Baja California supply (reference or
+  // benchmark samples in the WineXRay account): California, Napa, Chile, in
+  // any spelling such as 'Napa Valley' or 'Valle Central, Chile'. Matched
+  // accent- and case-insensitively on whole words, and 'Baja California'
+  // is never foreign. These rows stay in the database; every view skips them.
+  _foreignAppellationRe: /\b(california|napa|chile)\b/i,
+  isForeignAppellation(name) {
+    if (!name) return false;
+    const s = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!this._foreignAppellationRe.test(s)) return false;
+    return !/\bbaja\s+california\b/i.test(s);
+  },
+
   isSampleExcluded(sampleId) {
     if (!sampleId) return false;
     return this._excludedSamples.has(sampleId) || this._excludeRe.test(sampleId) || this._labTestRe.test(sampleId);
