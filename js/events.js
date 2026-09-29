@@ -554,6 +554,8 @@ export const Events = {
     // The expand button sits inside such a row, so it is handled first and
     // returns: otherwise opening the physicochemical panel would also open the
     // edit modal on top of it for anyone with write access.
+    document.getElementById('med-toggle-all')?.addEventListener('click',
+      () => Mediciones.toggleAllDetails());
     const tbody = document.getElementById('med-table-body');
     if (tbody) tbody.addEventListener('click', (e) => {
       const expand = e.target.closest('.med-expand-btn');
