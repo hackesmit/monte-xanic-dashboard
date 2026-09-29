@@ -213,8 +213,9 @@ export const winexrayParser = {
       const obj = shapeRow(headers, row, columnMap);
       applyNormalization(obj);
 
-      // California late-filter
-      if (obj.appellation === 'California') {
+      // Late filter: appellations outside Baja California (California, Napa,
+      // Chile). Counted under the historical 'california' key.
+      if (CONFIG.isForeignAppellation(obj.appellation)) {
         excluded.california++;
         continue;
       }
