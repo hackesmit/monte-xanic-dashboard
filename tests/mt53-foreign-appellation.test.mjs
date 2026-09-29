@@ -13,7 +13,7 @@ describe('isForeignAppellation', () => {
   });
 
   it('keeps Baja California and every Monte Xanic origin', () => {
-    const keep = ['Baja California', 'Valle de Guadalupe, Baja California', ...Object.keys(CONFIG.originColors)];
+    const keep = ['Baja California', 'Baja-California', 'Valle de Guadalupe, Baja California', ...Object.keys(CONFIG.originColors)];
     for (const a of keep) assert.equal(CONFIG.isForeignAppellation(a), false, a);
   });
 
