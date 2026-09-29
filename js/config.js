@@ -327,7 +327,7 @@ export const CONFIG = {
     if (!name) return false;
     const s = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
     if (!this._foreignAppellationRe.test(s)) return false;
-    return !/\bbaja\s+california\b/i.test(s);
+    return !/\bbaja[\s-]+california\b/i.test(s);
   },
 
   isSampleExcluded(sampleId) {
