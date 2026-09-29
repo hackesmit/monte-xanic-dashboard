@@ -146,7 +146,12 @@
 
 <div class="layout">
   <!-- ── SIDEBAR ── -->
-  <aside class="sidebar">
+  <aside class="sidebar" id="sidebar">
+    <button type="button" class="sidebar-collapse" id="sidebar-collapse"
+            aria-controls="sidebar" aria-expanded="true" title="Ocultar panel">
+      <span class="sidebar-collapse-chevron" aria-hidden="true"></span>
+      <span class="sidebar-collapse-label">Ocultar panel</span>
+    </button>
     <div class="sheet-handle-bar"></div>
     <div class="sheet-header">
       <span class="sheet-title">Filtros</span>
@@ -1075,6 +1080,9 @@
           <input type="text" id="med-edit-notes">
         </div>
       </div>
+
+      <div class="section-label med-edit-fq-label">Fisicoquimicos y calificacion</div>
+      <div id="med-edit-fq" class="med-edit-fq" aria-live="polite"></div>
 
       <footer class="modal-footer">
         <button type="button" class="btn-danger" id="med-edit-delete">Eliminar</button>
