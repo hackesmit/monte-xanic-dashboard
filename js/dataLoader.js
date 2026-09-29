@@ -67,8 +67,8 @@ export const DataStore = {
     if (CONFIG.isSampleExcluded(obj.sampleId)) return null;
     obj.variety      = CONFIG.normalizeVariety(obj.variety);
     obj.appellation  = CONFIG.normalizeAppellation(obj.appellation, obj.sampleId);
-    // Filter California
-    if (obj.appellation === 'California') return null;
+    // Filter appellations outside Baja California (California, Napa, Chile)
+    if (CONFIG.isForeignAppellation(obj.appellation)) return null;
     obj.lotCode      = Identity.extractLotCode(obj.sampleId);
     obj.grapeType    = this.getGrapeType(obj.variety);
     return obj;
@@ -85,7 +85,7 @@ export const DataStore = {
     if (CONFIG.isSampleExcluded(obj.codigoBodega)) return null;
     obj.variedad  = CONFIG.normalizeVariety(obj.variedad);
     obj.proveedor = CONFIG.normalizeAppellation(obj.proveedor, obj.codigoBodega);
-    if (obj.proveedor === 'California') return null;
+    if (CONFIG.isForeignAppellation(obj.proveedor)) return null;
     obj.grapeType = this.getGrapeType(obj.variedad);
     return obj;
   },
@@ -293,7 +293,8 @@ export const DataStore = {
     try {
       const rows = await this._fetchAll('mediciones_tecnicas', 'medicion_date');
       if (this._demoActive) return;  // demo enabled mid-fetch — keep overlay
-      this.medicionesData = (rows || []).map(r => this._rowToMedicion(r));
+      this.medicionesData = (rows || []).map(r => this._rowToMedicion(r))
+        .filter(m => !CONFIG.isForeignAppellation(m.appellation));
       // Re-run join so existing berryData picks up the new medicion rows.
       this.joinBerryWithMediciones();
       // Re-tag tonnage weights too: loadMediciones races loadFromSupabase at
@@ -680,6 +681,12 @@ export const DataStore = {
       if (d.variedad) d.variedad = CONFIG.normalizeVariety(d.variedad);
       if (d.proveedor) d.proveedor = CONFIG.normalizeAppellation(d.proveedor, d.codigoBodega);
     });
+    // Also drop foreign-appellation rows here, not only in _rowTo*: a
+    // localStorage cache written before a region joined the list still
+    // carries its rows, and this runs on cache loads too.
+    this.berryData      = this.berryData.filter(d => !CONFIG.isForeignAppellation(d.appellation));
+    this.wineRecepcion  = this.wineRecepcion.filter(d => !CONFIG.isForeignAppellation(d.proveedor));
+    this.winePreferment = this.winePreferment.filter(d => !CONFIG.isForeignAppellation(d.proveedor));
     // Enrich berry rows with their matching medicion (if loaded).
     // Idempotent — safe to call before or after loadMediciones().
     this.joinBerryWithMediciones();
