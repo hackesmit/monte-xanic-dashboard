@@ -322,6 +322,39 @@ body.demo-mode-active .demo-banner { display: block; }
   gap: 6px;
   margin-bottom: 28px;
 }
+
+/* ── Sidebar collapse (desktop) ── */
+.sidebar-collapse {
+  display: flex; align-items: center; gap: 8px;
+  margin: -14px 0 14px auto;
+  padding: 4px 8px; min-height: 28px;
+  background: none; border: 1px solid var(--border); border-radius: var(--radius-sharp);
+  color: var(--muted); cursor: pointer;
+  font-family: var(--font-display); font-size: var(--text-xs); letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.sidebar-collapse:hover { color: var(--gold); border-color: var(--gold); }
+.sidebar-collapse:focus-visible { outline: 1px solid var(--gold); outline-offset: 2px; }
+/* Chevron drawn from borders: points left to close, right to reopen. */
+.sidebar-collapse-chevron {
+  display: block; width: 6px; height: 6px;
+  border-left: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+@media (min-width: 769px) {
+  .layout { transition: grid-template-columns var(--motion-base) var(--ease-standard); }
+  .layout.sidebar-collapsed { grid-template-columns: 44px 1fr; }
+  .layout.sidebar-collapsed .sidebar { padding: 14px 6px; overflow: hidden; }
+  .layout.sidebar-collapsed .sidebar > :not(.sidebar-collapse) { display: none; }
+  .layout.sidebar-collapsed .sidebar-collapse {
+    margin: 0 auto; padding: 0; width: 30px; height: 30px; justify-content: center;
+  }
+  .layout.sidebar-collapsed .sidebar-collapse-label { display: none; }
+  .layout.sidebar-collapsed .sidebar-collapse-chevron { transform: rotate(-135deg); margin-left: -3px; }
+}
+@media (max-width: 768px) {
+  .sidebar-collapse { display: none; }
+}
 .nav-tab {
   flex: 1 1 calc(50% - 3px);
   padding: 9px 4px;
@@ -2434,6 +2467,10 @@ canvas { max-width: 100%; }
 .med-expand-btn[aria-expanded="true"] .med-expand-caret { transform: rotate(90deg); }
 
 .med-detail-row > td { padding: 0; background: var(--card2); }
+
+/* The scorecard inside the Editar medicion ficha. */
+.med-edit-fq-label { margin-top: 18px; }
+.med-edit-fq .med-detail-panel { position: static; width: 100%; background: var(--card2); }
 
 .med-toggle-all {
   padding: 4px 12px; min-height: 28px;
