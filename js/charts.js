@@ -587,6 +587,73 @@ export const Charts = {
   },
 
   // Vintage comparison chart: overlay N vintages for same plots
+  // Harvested tonnage per vintage: one bar per year, stacked by variety.
+  // agg is the result of tonnageByVintage (aggregations.js).
+  createVintageTonnage(canvasId, agg) {
+    this.destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    if (!agg || !agg.years.length) {
+      this._drawNoData(canvas, 'Sin toneladas registradas para los filtros actuales');
+      return;
+    }
+    const labels = agg.years.map(String);
+    const datasets = agg.varieties.map(v => {
+      const color = CONFIG.varietyColors[v] || '#888888';
+      return {
+        label: v,
+        data: agg.years.map(y => agg.byYear[y].byVariety[v] || 0),
+        backgroundColor: color + 'CC',
+        borderColor: color,
+        borderWidth: 1,
+        stack: 'tons'
+      };
+    });
+    const fmt = (t) => t.toLocaleString('es-MX', { maximumFractionDigits: 1 });
+    const tooltip = this.tooltipConfig();
+    tooltip.mode = 'index';
+    tooltip.intersect = false;
+    tooltip.filter = (item) => item.parsed.y > 0;
+    tooltip.callbacks = {
+      title: (items) => items.length ? `Vendimia ${items[0].label}` : '',
+      label: (ctx) => `${ctx.dataset.label}: ${fmt(ctx.parsed.y)} t`,
+      footer: (items) => {
+        if (!items.length) return '';
+        const y = agg.byYear[agg.years[items[0].dataIndex]];
+        return `Total: ${fmt(y.total)} t (${y.lots} lotes)`;
+      }
+    };
+    this._createChart(canvasId, canvas, {
+      type: 'bar',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true, position: 'bottom',
+            labels: { color: CONFIG.chartDefaults.tickColor, boxWidth: 10, font: { size: 9, family: 'Sackers Gothic Medium' } }
+          },
+          tooltip
+        },
+        scales: {
+          x: {
+            stacked: true,
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 10, family: 'Sackers Gothic Medium' } },
+            grid: { display: false }
+          },
+          y: {
+            stacked: true,
+            beginAtZero: true,
+            title: { display: true, text: 'Toneladas', color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9 } },
+            grid: { color: CONFIG.chartDefaults.gridColor }
+          }
+        }
+      }
+    });
+  },
+
   createVintageComparison(canvasId, data, yField, yLabel) {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
