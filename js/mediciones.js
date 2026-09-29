@@ -896,9 +896,14 @@ export const Mediciones = {
   _updateLiveScore() {
     const el = document.getElementById('med-edit-score');
     if (!el) return;
-    const score = scoreFromMedicion(
-      liveScoreMedicion(this._editing, this._readEditForm()), this._berryByLot);
+    const live = liveScoreMedicion(this._editing, this._readEditForm());
+    const score = scoreFromMedicion(live, this._berryByLot);
     el.innerHTML = this._renderGradeBadge(score);
+    // The same scorecard the table row opens, built from the same live
+    // medicion and score, so it follows unsaved edits and never disagrees
+    // with the badge above it.
+    const fq = document.getElementById('med-edit-fq');
+    if (fq) fq.innerHTML = this._renderDetail({ ...live, _score: score });
   },
 
   async submitEdit() {

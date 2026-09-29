@@ -257,6 +257,9 @@ export const Events = {
     const themeBtn = document.getElementById('theme-toggle-btn');
     if (themeBtn) themeBtn.addEventListener('click', () => App.toggleTheme());
 
+    const sidebarBtn = document.getElementById('sidebar-collapse');
+    if (sidebarBtn) sidebarBtn.addEventListener('click', () => App.toggleSidebar());
+
     const demoBtn = document.getElementById('demo-toggle-btn');
     if (demoBtn) demoBtn.addEventListener('click', () => App.toggleDemoMode());
 

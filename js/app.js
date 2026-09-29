@@ -31,6 +31,7 @@ export const App = {
   async init() {
     if (this.initialized) return;
     this.restoreTheme();
+    this.restoreSidebar();
 
     // Always show dashboard first — never show data loader as first screen
     this.hideDataLoader();
@@ -884,6 +885,39 @@ export const App = {
     document.documentElement.setAttribute('data-theme', this.theme);
     this.updateChartTheme();
     this._syncThemeIcons();
+  },
+
+  // Desktop only: collapse the sidebar to a thin rail so charts and tables
+  // take the full width. Remembered per browser; the mobile bottom sheet
+  // ignores it because the toggle and the collapsed rules are desktop-only.
+  toggleSidebar() {
+    this._setSidebarCollapsed(!document.querySelector('.layout')?.classList.contains('sidebar-collapsed'));
+    try { localStorage.setItem('xanic_sidebar_collapsed', this._sidebarCollapsed ? '1' : '0'); } catch (_) { /* storage blocked */ }
+  },
+
+  restoreSidebar() {
+    let saved = null;
+    try { saved = localStorage.getItem('xanic_sidebar_collapsed'); } catch (_) { /* storage blocked */ }
+    this._setSidebarCollapsed(saved === '1');
+  },
+
+  _setSidebarCollapsed(collapsed) {
+    this._sidebarCollapsed = collapsed;
+    const layout = document.querySelector('.layout');
+    if (layout) layout.classList.toggle('sidebar-collapsed', collapsed);
+    const btn = document.getElementById('sidebar-collapse');
+    if (btn) {
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      const text = collapsed ? 'Mostrar panel' : 'Ocultar panel';
+      btn.title = text;
+      const label = btn.querySelector('.sidebar-collapse-label');
+      if (label) label.textContent = text;
+    }
+    // Chart.js watches its container, but a grid column change can land
+    // between its resize checks; nudge every chart once the width settles.
+    requestAnimationFrame(() => {
+      Object.values(Charts.instances || {}).forEach(c => { try { c.resize(); } catch (_) { /* detached */ } });
+    });
   },
 
   updateChartTheme() {
