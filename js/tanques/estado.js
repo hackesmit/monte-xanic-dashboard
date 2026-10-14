@@ -1,4 +1,4 @@
-// js/tanques/estado.js — pure tank-state module (no DOM, no I/O, no imports).
+// js/tanques/estado.js - pure tank-state module (no DOM, no I/O, no imports).
 // Tank contents are DERIVED from the append-only movement log (SPEC: Mapa de Tanques).
 // Shared by the API (server-side validation) and the UI, so it stays Node-importable
 // like js/mona/dataAccess.js: plain row arrays in, plain objects out.
@@ -230,10 +230,10 @@ function ordenar(movimientos) {
 /**
  * Replay the movement log over the tank catalog.
  * @returns {{estado: Object, aplicados: Array, avisos: Array, balance: Object}}
- *   estado    — per tank {codigo, capacidad_l, partes:[{lot_code, litros}], litros, libres, etapa, desde, ultima_entrada}
- *   aplicados — one entry per applied row, with the per-lote shares that actually moved
- *   avisos    — log inconsistencies (unknown tank, overdraw, overflow, junk row)
- *   balance   — {recibido_l, merma_l, salido_l, en_tanques_l, descuadre_l}; descuadre_l must be 0
+ *   estado    - per tank {codigo, capacidad_l, partes:[{lot_code, litros}], litros, libres, etapa, desde, ultima_entrada}
+ *   aplicados - one entry per applied row, with the per-lote shares that actually moved
+ *   avisos    - log inconsistencies (unknown tank, overdraw, overflow, junk row)
+ *   balance   - {recibido_l, merma_l, salido_l, en_tanques_l, descuadre_l}; descuadre_l must be 0
  */
 export function replayMovimientos(tanques, movimientos, opciones = {}) {
   const sinonimos = indiceSinonimos(opciones);
