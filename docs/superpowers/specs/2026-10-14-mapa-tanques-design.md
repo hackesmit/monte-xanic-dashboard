@@ -77,6 +77,27 @@ catalog vessels.
 `volumen_l = 100, merma_l = 500` hands the destination minus 400 derived litres) and
 requires it to be 0 when there is no `destino` to subtract it from.
 
+Two sharper traps, both found by the cross-vendor review and both closed:
+
+- **`NUMERIC` accepts `NaN` and `Infinity`**, and Postgres orders `NaN` *above* every finite
+  number, so `volumen_l > 0` alone admitted both and a single row turned the tank's derived
+  balance into `NaN` for good. Every litre column now carries `< 'Infinity'::numeric` as
+  well, which rejects `NaN` too (`NaN < Infinity` is false); `> 0` and `>= 0` reject
+  `-Infinity`.
+- **A CHECK that evaluates to NULL is satisfied.** With `fila` NULL the fermentation
+  branch's `fila IN (...)` is NULL, so `UPDATE dim_tanque SET fila = NULL` was accepted and
+  left a vessel neither on the grid nor in the tray. The whole disjunction is now wrapped in
+  `IS TRUE`.
+
+Every CHECK and the UNIQUE live in `ALTER TABLE DROP CONSTRAINT IF EXISTS / ADD CONSTRAINT`
+pairs rather than inline in the `CREATE TABLE`, because `CREATE TABLE IF NOT EXISTS` skips a
+table that already exists: a CHECK written inline never reaches an existing install, and a
+re-run could not restore one somebody dropped. Verified against production by dropping two
+constraints, re-running the file, and watching them come back and bite. A re-run reconciles
+the seed, every CHECK, the UNIQUE, the indexes, both triggers, RLS and the REVOKEs. It does
+**not** reconcile column-level NOT NULL and DEFAULT, or a missing column: a pre-existing
+table of a different shape is a case for a new migration.
+
 ### What the schema cannot enforce, and the API must (xd-qrn.3)
 
 Two rules need cross-row state, so no CHECK constraint can hold them:

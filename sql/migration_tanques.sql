@@ -45,6 +45,13 @@
 -- numeracion corre al contrario, o llega la ubicacion de los tibores, eso va en
 -- una migracion NUEVA, no en un UPDATE a mano sobre produccion: re-correr esta
 -- lo revertiria en silencio.
+-- Que SI reconcilia una re-corrida: los datos sembrados, todos los CHECK, el
+-- UNIQUE de casilla, los indices, los dos triggers, el RLS y los REVOKE (los
+-- CHECK viven en ALTER justamente para eso, porque CREATE TABLE IF NOT EXISTS
+-- se salta una tabla existente y nunca llevaria un CHECK nuevo a una
+-- instalacion previa). Que NO reconcilia: el NOT NULL y el DEFAULT de las
+-- columnas, ni una columna que falte. Una tabla preexistente con otra forma es
+-- caso de migracion nueva, no de re-corrida.
 -- ==================================================================
 
 BEGIN;
@@ -67,23 +74,7 @@ CREATE TABLE IF NOT EXISTS public.dim_tanque (
   area        TEXT    NOT NULL,
   activo      BOOLEAN NOT NULL DEFAULT true,
   orden       INT     NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  CONSTRAINT dim_tanque_tipo_chk      CHECK (tipo IN ('TQ', 'TIBOR', 'DOMECQ', 'KEG')),
-  CONSTRAINT dim_tanque_area_chk      CHECK (area IN ('fermentacion', 'recepcion', 'otras')),
-  CONSTRAINT dim_tanque_capacidad_chk CHECK (capacidad_l > 0),
-  CONSTRAINT dim_tanque_fila_chk      CHECK (fila IS NULL OR fila IN ('A','B','C','D','E','F','G','H','R','P')),
-  CONSTRAINT dim_tanque_posicion_chk  CHECK (posicion IS NULL OR posicion > 0),
-  -- Una vasija ubicada tiene fila Y posicion, y su fila pertenece a su area:
-  -- A..H es la sala de fermentacion, R y P son las dos filas de recepcion, y la
-  -- bandeja 'otras' no tiene casilla. Un plano distinto es una migracion nueva.
-  CONSTRAINT dim_tanque_layout_chk    CHECK (
-    (area = 'fermentacion' AND fila IN ('A','B','C','D','E','F','G','H') AND posicion IS NOT NULL)
-    OR
-    (area = 'recepcion'    AND fila IN ('R','P')                         AND posicion IS NOT NULL)
-    OR
-    (area = 'otras'        AND fila IS NULL                              AND posicion IS NULL)
-  )
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 COMMENT ON TABLE  public.dim_tanque IS
@@ -95,6 +86,53 @@ COMMENT ON COLUMN public.dim_tanque.orden IS
   'Orden original del inventario; da un orden estable a la bandeja "Otras areas".';
 COMMENT ON COLUMN public.dim_tanque.activo IS
   'false retira la vasija del mapa sin borrar su historia. Re-correr la migracion NO lo reactiva.';
+
+-- Reglas de dim_tanque. Van en ALTER y no dentro del CREATE TABLE a proposito:
+-- CREATE TABLE IF NOT EXISTS se SALTA una tabla que ya existe, asi que un CHECK
+-- escrito ahi adentro nunca llega a una instalacion previa, y re-correr la
+-- migracion no repondria un constraint que alguien borro. En esta forma, cada
+-- re-corrida reconcilia la regla, y si la tabla ya tiene filas que la violan el
+-- ADD falla y la transaccion entera se revierte, que es el ruido correcto.
+ALTER TABLE public.dim_tanque DROP CONSTRAINT IF EXISTS dim_tanque_tipo_chk;
+ALTER TABLE public.dim_tanque ADD  CONSTRAINT dim_tanque_tipo_chk
+  CHECK (tipo IN ('TQ', 'TIBOR', 'DOMECQ', 'KEG'));
+
+ALTER TABLE public.dim_tanque DROP CONSTRAINT IF EXISTS dim_tanque_area_chk;
+ALTER TABLE public.dim_tanque ADD  CONSTRAINT dim_tanque_area_chk
+  CHECK (area IN ('fermentacion', 'recepcion', 'otras'));
+
+-- NUMERIC acepta 'NaN' e 'Infinity', y en el orden de Postgres NaN queda por
+-- ENCIMA de todo numero finito, asi que un simple > 0 los deja pasar a los dos.
+-- < 'Infinity' los rechaza (NaN < Infinity es falso) y > 0 rechaza -Infinity.
+-- Sin esto, una capacidad NaN envenena cualquier suma de litros instalados.
+ALTER TABLE public.dim_tanque DROP CONSTRAINT IF EXISTS dim_tanque_capacidad_chk;
+ALTER TABLE public.dim_tanque ADD  CONSTRAINT dim_tanque_capacidad_chk
+  CHECK (capacidad_l > 0 AND capacidad_l < 'Infinity'::numeric);
+
+ALTER TABLE public.dim_tanque DROP CONSTRAINT IF EXISTS dim_tanque_fila_chk;
+ALTER TABLE public.dim_tanque ADD  CONSTRAINT dim_tanque_fila_chk
+  CHECK (fila IS NULL OR fila IN ('A','B','C','D','E','F','G','H','R','P'));
+
+ALTER TABLE public.dim_tanque DROP CONSTRAINT IF EXISTS dim_tanque_posicion_chk;
+ALTER TABLE public.dim_tanque ADD  CONSTRAINT dim_tanque_posicion_chk
+  CHECK (posicion IS NULL OR posicion > 0);
+
+-- Una vasija ubicada tiene fila Y posicion, y su fila pertenece a su area:
+-- A..H es la sala de fermentacion, R y P son las dos filas de recepcion, y la
+-- bandeja 'otras' no tiene casilla. Un plano distinto es una migracion nueva.
+-- El IS TRUE de afuera NO es decoracion: un CHECK que evalua a NULL se CUMPLE,
+-- y con fila NULL el 'fila IN (...)' de la rama de fermentacion da NULL, asi
+-- que sin el IS TRUE un UPDATE ... SET fila = NULL dejaba la vasija ni en la
+-- rejilla ni en la bandeja.
+ALTER TABLE public.dim_tanque DROP CONSTRAINT IF EXISTS dim_tanque_layout_chk;
+ALTER TABLE public.dim_tanque ADD  CONSTRAINT dim_tanque_layout_chk
+  CHECK ((
+    (area = 'fermentacion' AND fila IN ('A','B','C','D','E','F','G','H') AND posicion IS NOT NULL)
+    OR
+    (area = 'recepcion'    AND fila IN ('R','P')                         AND posicion IS NOT NULL)
+    OR
+    (area = 'otras'        AND fila IS NULL                              AND posicion IS NULL)
+  ) IS TRUE);
 
 -- Dos vasijas no pueden ocupar la misma casilla. DEFERRABLE para que un futuro
 -- re-acomodo de una fila pueda moverlas dentro de una transaccion. No sirve de
@@ -372,25 +410,67 @@ CREATE TABLE IF NOT EXISTS public.movimientos_tanque (
   fuente       TEXT    NOT NULL,
   creado_por   TEXT,
   anulado      BOOLEAN NOT NULL DEFAULT false,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-  CONSTRAINT movimientos_tanque_tipo_chk CHECK (tipo IN (
-    'recepcion', 'trasiego', 'descube', 'sangrado', 'prensa', 'ensamble', 'salida')),
-  CONSTRAINT movimientos_tanque_fuente_chk  CHECK (fuente IN ('manual', 'lab')),
-  CONSTRAINT movimientos_tanque_volumen_chk CHECK (volumen_l > 0),
-  CONSTRAINT movimientos_tanque_merma_chk   CHECK (merma_l >= 0),
-  -- La merma sale del volumen movido, asi que no puede excederlo: sin este
-  -- tope, (volumen_l 100, merma_l 500) le daria al destino -400 litros
-  -- derivados. Y sin destino no hay de donde restarla, asi que ahi va en cero.
-  CONSTRAINT movimientos_tanque_merma_tope_chk    CHECK (merma_l <= volumen_l),
-  CONSTRAINT movimientos_tanque_merma_destino_chk CHECK (destino IS NOT NULL OR merma_l = 0),
-  CONSTRAINT movimientos_tanque_vintage_chk CHECK (vintage_year BETWEEN 1988 AND 2100),
-  CONSTRAINT movimientos_tanque_lote_chk    CHECK (btrim(lot_code) <> ''),
-  CONSTRAINT movimientos_tanque_extremos_chk CHECK (origen IS NOT NULL OR destino IS NOT NULL),
-  CONSTRAINT movimientos_tanque_circular_chk CHECK (origen IS DISTINCT FROM destino),
-  CONSTRAINT movimientos_tanque_recepcion_chk CHECK (tipo <> 'recepcion' OR destino IS NOT NULL),
-  CONSTRAINT movimientos_tanque_salida_chk    CHECK (tipo <> 'salida'    OR origen  IS NOT NULL)
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Reglas de movimientos_tanque, en ALTER por la misma razon que las de
+-- dim_tanque: asi una re-corrida las reconcilia en una instalacion que ya tiene
+-- la tabla, en lugar de saltarselas con el CREATE TABLE IF NOT EXISTS.
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_tipo_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_tipo_chk
+  CHECK (tipo IN ('recepcion', 'trasiego', 'descube', 'sangrado', 'prensa', 'ensamble', 'salida'));
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_fuente_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_fuente_chk
+  CHECK (fuente IN ('manual', 'lab'));
+
+-- Los litros son NUMERIC, que acepta 'NaN' e 'Infinity'. En el orden de
+-- Postgres NaN queda por ENCIMA de todo numero finito, asi que volumen_l > 0 y
+-- merma_l <= volumen_l pasan los dos con NaN y el saldo derivado del tanque se
+-- vuelve NaN para siempre. < 'Infinity' los rechaza (NaN < Infinity es falso),
+-- y > 0 / >= 0 rechazan -Infinity.
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_volumen_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_volumen_chk
+  CHECK (volumen_l > 0 AND volumen_l < 'Infinity'::numeric);
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_merma_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_merma_chk
+  CHECK (merma_l >= 0 AND merma_l < 'Infinity'::numeric);
+
+-- La merma sale del volumen movido, asi que no puede excederlo: sin este tope,
+-- (volumen_l 100, merma_l 500) le daria al destino -400 litros derivados. Y sin
+-- destino no hay de donde restarla, asi que ahi va en cero.
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_merma_tope_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_merma_tope_chk
+  CHECK (merma_l <= volumen_l);
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_merma_destino_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_merma_destino_chk
+  CHECK (destino IS NOT NULL OR merma_l = 0);
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_vintage_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_vintage_chk
+  CHECK (vintage_year BETWEEN 1988 AND 2100);
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_lote_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_lote_chk
+  CHECK (btrim(lot_code) <> '');
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_extremos_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_extremos_chk
+  CHECK (origen IS NOT NULL OR destino IS NOT NULL);
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_circular_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_circular_chk
+  CHECK (origen IS DISTINCT FROM destino);
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_recepcion_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_recepcion_chk
+  CHECK (tipo <> 'recepcion' OR destino IS NOT NULL);
+
+ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_salida_chk;
+ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_salida_chk
+  CHECK (tipo <> 'salida' OR origen IS NOT NULL);
 
 COMMENT ON TABLE public.movimientos_tanque IS
   'Bitacora append-only de movimientos de vino. Deshacer = anulado true, nunca DELETE.';
