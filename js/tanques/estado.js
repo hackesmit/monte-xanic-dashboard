@@ -14,8 +14,16 @@
 //    and the split follows the tank composition. Writing one row per lote of a blend
 //    yields the same composition as one blended row, because proportional removal
 //    commutes.
+//  - a row with no destination (a salida) carries no merma of its own: the loss
+//    is already inside the volume that left, so counting it again would double
+//    count it.
 //  - a row that cannot be applied (unknown tank, no tanks at all, junk volume) is
 //    skipped and reported in `avisos`; nothing is invented.
+//
+// `fecha` is a BUSINESS date, so a row written today can be applied in the middle
+// of the replay. A write gate must therefore use validarMovimientoEnLog, which
+// judges the candidate at its place in the log and reports the later rows it
+// breaks; validarMovimiento alone only judges it against the state you hand it.
 
 export const TIPOS = ['recepcion', 'trasiego', 'descube', 'sangrado', 'prensa', 'ensamble', 'salida'];
 
@@ -63,9 +71,42 @@ function fmtL(n) {
   return String(Object.is(r, -0) ? 0 : r);
 }
 
+// A date must be a real calendar date: '2025-02-30' and '2025-09-01garbage' are
+// refused rather than carried into the log and into the replay order.
 function fechaValida(v) {
   const t = texto(v);
-  return /^\d{4}-\d{2}-\d{2}/.test(t) ? t : '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(t);
+  if (!m) return '';
+  const [y, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const d = new Date(Date.UTC(y, mes - 1, dia));
+  if (d.getUTCFullYear() !== y || d.getUTCMonth() !== mes - 1 || d.getUTCDate() !== dia) return '';
+  return t;
+}
+
+// The day a movement belongs to, for `desde` and `ultima_entrada`.
+function fechaDia(v) {
+  return fechaValida(v).slice(0, 10);
+}
+
+// Ordering key. A timestamp is compared as an instant, not as text: lexical
+// order puts '2025-09-01T09:00:00Z' before '2025-09-01T10:00:00+02:00' even
+// though the second one happened two hours earlier.
+function clave(v) {
+  const t = texto(v);
+  return { n: t ? Date.parse(t) : NaN, t };
+}
+
+function compararClaves(a, b) {
+  if (!Number.isNaN(a.n) && !Number.isNaN(b.n)) return a.n === b.n ? 0 : (a.n < b.n ? -1 : 1);
+  if (a.t !== b.t) return a.t < b.t ? -1 : 1;
+  return 0;
+}
+
+// True when `a` belongs before `b` in the log (same rule as ordenar).
+function antes(a, b) {
+  const porFecha = compararClaves(clave(a && a.fecha), clave(b && b.fecha));
+  if (porFecha !== 0) return porFecha < 0;
+  return compararClaves(clave(a && a.created_at), clave(b && b.created_at)) < 0;
 }
 
 // Resolve a tank reference against the catalog, then dim_tanque_sinonimo
@@ -119,10 +160,10 @@ function ordenar(movimientos) {
     .map((mov, i) => ({ mov, i }))
     .sort((a, b) => {
       const ma = a.mov || {}, mb = b.mov || {};
-      const fa = texto(ma.fecha), fb = texto(mb.fecha);
-      if (fa !== fb) return fa < fb ? -1 : 1;
-      const ca = texto(ma.created_at), cb = texto(mb.created_at);
-      if (ca !== cb) return ca < cb ? -1 : 1;
+      const porFecha = compararClaves(clave(ma.fecha), clave(mb.fecha));
+      if (porFecha !== 0) return porFecha;
+      const porAlta = compararClaves(clave(ma.created_at), clave(mb.created_at));
+      if (porAlta !== 0) return porAlta;
       return a.i - b.i;
     });
 }
@@ -195,6 +236,7 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
     // what leaves the origin, split proportionally over its lotes
     let movido = volumen;
     const salida = [];
+    const etapaOrigen = origen ? origen.etapa : null; // recalcular() clears it when the tank empties
     if (origen) {
       const disponible = origen.litros;
       if (disponible <= EPS) {
@@ -247,7 +289,7 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
         else destino.partes.push({ lot_code: p.lot_code, litros: add });
       }
       recalcular(destino);
-      const fecha = fechaValida(mov.fecha) || null;
+      const fecha = fechaDia(mov.fecha) || null;
       if (llegada.length) {
         destino.ultima_entrada = fecha;
         if (antesVacio) destino.desde = fecha;
@@ -257,13 +299,18 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
         // wine already there back to recepcion. An empty one takes the stage the
         // movement type names, or the one that travels with the wine.
         if (explicita) destino.etapa = explicita;
-        else if (antesVacio) destino.etapa = porTipo || (origen ? origen.etapa : null) || null;
+        else if (antesVacio) destino.etapa = porTipo || etapaOrigen || null;
         else destino.etapa = etapaPrevia || porTipo || null;
       }
       if (destino.libres < -EPS) {
         avisar('desbordado', `El tanque ${codDestino} queda con ${fmtL(destino.litros)} L sobre una capacidad de ${fmtL(destino.capacidad_l)} L.`, mov, i);
       }
       mermaTotal += merma;
+    } else if (merma > 0) {
+      // Nothing arrives anywhere, so the merma is already inside the volume that
+      // left: counting it again would double count the loss.
+      avisar('merma_en_salida', `La merma (${fmtL(merma)} L) ya esta incluida en los ${fmtL(movido)} L que salen del tanque ${codOrigen}.`, mov, i);
+      merma = 0;
     }
 
     if (!origen) recibido += movido;
@@ -273,7 +320,7 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
       orden: i,
       movimiento: mov,
       tipo,
-      fecha: fechaValida(mov.fecha) || null,
+      fecha: fechaDia(mov.fecha) || null,
       origen: codOrigen || null,
       destino: codDestino || null,
       movido_l: redondear(movido),
@@ -342,6 +389,7 @@ export function validarMovimiento(estado, mov, opciones = {}) {
     } else if (SIN_DESTINO.has(tipo)) {
       if (refDestino) errores.push(`Una ${tipo} no lleva tanque destino.`);
       if (!refOrigen) errores.push(`Una ${tipo} necesita un tanque origen.`);
+      if (numero(m.merma_l) > 0) errores.push(`Una ${tipo} no lleva merma: el volumen que sale ya la incluye.`);
     } else {
       if (!refOrigen) errores.push(`Un movimiento de tipo ${tipo} necesita un tanque origen.`);
       if (!refDestino) errores.push(`Un movimiento de tipo ${tipo} necesita un tanque destino.`);
@@ -381,6 +429,34 @@ export function validarMovimiento(estado, mov, opciones = {}) {
     }
   }
 
+  return errores;
+}
+
+/**
+ * Validate a candidate movement AT ITS PLACE IN THE LOG, which is what the API
+ * must use: `fecha` is a business date, so a backdated row is appended to the
+ * table but applied in the middle of the replay. Checking it against the
+ * current state would miss both its own effect at that moment and the rows
+ * after it that it breaks.
+ * @returns {string[]} Spanish error strings; empty means the row can be appended.
+ */
+export function validarMovimientoEnLog(tanques, movimientos, mov, opciones = {}) {
+  const filas = (Array.isArray(movimientos) ? movimientos : [])
+    .filter(m => m && typeof m === 'object' && !m.anulado);
+  const previas = filas.filter(m => antes(m, mov));
+  const errores = validarMovimiento(deriveEstado(tanques, previas, opciones), mov, opciones);
+
+  // anything the candidate breaks downstream: compare the avisos of the log
+  // without it against the avisos of the log with it appended
+  const base = replayMovimientos(tanques, filas, opciones);
+  const con = replayMovimientos(tanques, [...filas, mov], opciones);
+  const previos = new Set(base.avisos.map(a => `${a.orden}|${a.codigo}`));
+  for (const a of con.avisos) {
+    if (a.movimiento === mov) continue; // already reported against the point-in-time state
+    if (previos.has(`${a.orden}|${a.codigo}`)) continue; // already inconsistent without this row
+    const mensaje = `Este movimiento deja inconsistente un movimiento posterior: ${a.mensaje}`;
+    if (!errores.includes(mensaje)) errores.push(mensaje);
+  }
   return errores;
 }
 
@@ -445,7 +521,8 @@ export function recorridoLote(tanques, movimientos, lot_code, opciones = {}) {
       destino: a.destino,
       litros: parte.litros,
       llegado_l: redondear(llegado),
-      merma_l: redondear(parte.litros - llegado),
+      merma_l: a.destino ? redondear(parte.litros - llegado) : 0,
+      salido_l: a.destino ? 0 : parte.litros,
       fuente: a.movimiento.fuente ?? null,
       nota: a.movimiento.nota ?? null,
     });
