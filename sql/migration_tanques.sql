@@ -39,7 +39,12 @@
 --                                  trasiegos (xd-qrn.4), que debe mostrarlas
 --                                  en lugar de silenciarlas. Nota P2 en el bead.
 --
--- Idempotente y transaccional: seguro de re-correr.
+-- Idempotente y transaccional: seguro de re-correr. Con una advertencia: el
+-- upsert del catalogo reescribe fila, posicion, capacidad_l, tipo, area y orden
+-- desde este archivo (solo `activo` se respeta). Si Daniel confirma que la
+-- numeracion corre al contrario, o llega la ubicacion de los tibores, eso va en
+-- una migracion NUEVA, no en un UPDATE a mano sobre produccion: re-correr esta
+-- lo revertiria en silencio.
 -- ==================================================================
 
 BEGIN;
@@ -69,11 +74,15 @@ CREATE TABLE IF NOT EXISTS public.dim_tanque (
   CONSTRAINT dim_tanque_capacidad_chk CHECK (capacidad_l > 0),
   CONSTRAINT dim_tanque_fila_chk      CHECK (fila IS NULL OR fila IN ('A','B','C','D','E','F','G','H','R','P')),
   CONSTRAINT dim_tanque_posicion_chk  CHECK (posicion IS NULL OR posicion > 0),
-  -- una vasija ubicada tiene fila Y posicion; una de 'otras areas' no tiene ninguna
+  -- Una vasija ubicada tiene fila Y posicion, y su fila pertenece a su area:
+  -- A..H es la sala de fermentacion, R y P son las dos filas de recepcion, y la
+  -- bandeja 'otras' no tiene casilla. Un plano distinto es una migracion nueva.
   CONSTRAINT dim_tanque_layout_chk    CHECK (
-    (area = 'otras'  AND fila IS NULL     AND posicion IS NULL)
+    (area = 'fermentacion' AND fila IN ('A','B','C','D','E','F','G','H') AND posicion IS NOT NULL)
     OR
-    (area <> 'otras' AND fila IS NOT NULL AND posicion IS NOT NULL)
+    (area = 'recepcion'    AND fila IN ('R','P')                         AND posicion IS NOT NULL)
+    OR
+    (area = 'otras'        AND fila IS NULL                              AND posicion IS NULL)
   )
 );
 
@@ -370,6 +379,11 @@ CREATE TABLE IF NOT EXISTS public.movimientos_tanque (
   CONSTRAINT movimientos_tanque_fuente_chk  CHECK (fuente IN ('manual', 'lab')),
   CONSTRAINT movimientos_tanque_volumen_chk CHECK (volumen_l > 0),
   CONSTRAINT movimientos_tanque_merma_chk   CHECK (merma_l >= 0),
+  -- La merma sale del volumen movido, asi que no puede excederlo: sin este
+  -- tope, (volumen_l 100, merma_l 500) le daria al destino -400 litros
+  -- derivados. Y sin destino no hay de donde restarla, asi que ahi va en cero.
+  CONSTRAINT movimientos_tanque_merma_tope_chk    CHECK (merma_l <= volumen_l),
+  CONSTRAINT movimientos_tanque_merma_destino_chk CHECK (destino IS NOT NULL OR merma_l = 0),
   CONSTRAINT movimientos_tanque_vintage_chk CHECK (vintage_year BETWEEN 1988 AND 2100),
   CONSTRAINT movimientos_tanque_lote_chk    CHECK (btrim(lot_code) <> ''),
   CONSTRAINT movimientos_tanque_extremos_chk CHECK (origen IS NOT NULL OR destino IS NOT NULL),
