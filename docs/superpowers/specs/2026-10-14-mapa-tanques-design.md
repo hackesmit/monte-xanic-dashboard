@@ -73,6 +73,27 @@ it leaves (bottling or bulk sale). CHECK constraints require at least one endpoi
 needs an `origen`. The other types may have one NULL endpoint: a press and a barrel are not
 catalog vessels.
 
+`merma_l` comes out of `volumen_l`, so a CHECK caps it at `volumen_l` (otherwise
+`volumen_l = 100, merma_l = 500` hands the destination minus 400 derived litres) and
+requires it to be 0 when there is no `destino` to subtract it from.
+
+### What the schema cannot enforce, and the API must (xd-qrn.3)
+
+Two rules need cross-row state, so no CHECK constraint can hold them:
+
+- **No tank goes negative.** Before appending a movement that takes wine out of a tank,
+  the API must derive that tank's current contents and refuse a `volumen_l` larger than
+  what the lote actually holds there.
+- **Date sanity.** `fecha` is a plain DATE, so a typo in the year is accepted and would
+  park the lote in that tank. The API validates the range; `fecha <= current_date` cannot
+  be a CHECK because it is not immutable.
+
+The migration also warns in its header that the catalog upsert rewrites `fila`, `posicion`,
+`capacidad_l`, `tipo`, `area` and `orden` from the file on every run (`activo` is the one
+field it preserves). So confirming the numbering direction, or placing the tibores, is a
+**new migration**, never a hand UPDATE against production: re-running this one would
+silently revert it.
+
 ## 5. Code normalization
 
 The canonical codigo has its whitespace collapsed and trimmed, so the inventory's

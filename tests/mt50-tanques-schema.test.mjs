@@ -239,6 +239,7 @@ describe('MT.50 - schema guards', () => {
   it('constrains movimientos_tanque by name', () => {
     for (const c of ['movimientos_tanque_tipo_chk', 'movimientos_tanque_fuente_chk',
       'movimientos_tanque_volumen_chk', 'movimientos_tanque_merma_chk',
+      'movimientos_tanque_merma_tope_chk', 'movimientos_tanque_merma_destino_chk',
       'movimientos_tanque_extremos_chk', 'movimientos_tanque_circular_chk',
       'movimientos_tanque_recepcion_chk', 'movimientos_tanque_salida_chk']) {
       assert.ok(hasConstraint(c), `missing constraint ${c}`);
@@ -252,6 +253,22 @@ describe('MT.50 - schema guards', () => {
     assert.deepEqual(list.sort(), ['descube', 'ensamble', 'prensa', 'recepcion',
       'salida', 'sangrado', 'trasiego']);
     assert.match(SQL, /movimientos_tanque_fuente_chk\s+CHECK \(fuente IN \('manual', 'lab'\)\)/);
+  });
+
+  it('cannot derive a negative volume from a single movement', () => {
+    // merma_l comes out of volumen_l, so a merma larger than the volume would
+    // hand the destination negative litres; with no destino there is nothing to
+    // subtract it from.
+    assert.match(SQL, /movimientos_tanque_merma_tope_chk\s+CHECK \(merma_l <= volumen_l\)/);
+    assert.match(SQL, /movimientos_tanque_merma_destino_chk CHECK \(destino IS NOT NULL OR merma_l = 0\)/);
+  });
+
+  it('binds each grid row to its own area', () => {
+    const layout = SQL.match(/dim_tanque_layout_chk\s+CHECK \(([\s\S]*?)\n  \)/);
+    assert.ok(layout, 'layout CHECK not found');
+    assert.match(layout[1], /area = 'fermentacion' AND fila IN \('A','B','C','D','E','F','G','H'\)/);
+    assert.match(layout[1], /area = 'recepcion'\s+AND fila IN \('R','P'\)/);
+    assert.match(layout[1], /area = 'otras'\s+AND fila IS NULL/);
   });
 
   it('defaults merma_l to 0 and anulado to false', () => {
