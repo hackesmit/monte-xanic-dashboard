@@ -89,6 +89,11 @@ Two sharper traps, both found by the cross-vendor review and both closed:
   left a vessel neither on the grid nor in the tray. The whole disjunction is now wrapped in
   `IS TRUE`.
 
+Round 2 of the same review added one more: **`btrim()` with no second argument strips
+spaces but not tabs or newlines**, so `CHECK (btrim(lot_code) <> '')` accepted a `lot_code`
+of `E'\t\n'` and assigned wine to a visually blank lote. It is now
+`CHECK (lot_code ~ '[^[:space:]]')`.
+
 Every CHECK and the UNIQUE live in `ALTER TABLE DROP CONSTRAINT IF EXISTS / ADD CONSTRAINT`
 pairs rather than inline in the `CREATE TABLE`, because `CREATE TABLE IF NOT EXISTS` skips a
 table that already exists: a CHECK written inline never reaches an existing install, and a
@@ -157,6 +162,28 @@ deliberately **not** seeded:
 Seeding any of them would mean inventing a capacity and an area. The trasiego inference
 (xd-qrn.4) must therefore **show** an unresolved vessel rather than silently drop the
 sample, which is the failure mode `groupScatterData` already taught this project.
+
+## 5b. How the guard test is structured
+
+`tests/mt50-tanques-schema.test.mjs` parses the seed out of the SQL text, because the test
+suite has no database. Text assertions can go vacuous, so the parts that matter lean on
+structure rather than on matching a string:
+
+- The seed parser has its own four tests, after an earlier version trimmed quoted literals
+  and made the whitespace-normalization assertion meaningless.
+- A fermentation code must spell its own cell (`codigo === fila + posicion`). Renaming `A2`
+  to `X2` leaves every count, capacity total and grid run intact; only this notices.
+- The tray's 49 codes are spelled out, because a tray code encodes no cell and has no
+  structural rule to lean on.
+- The append-only trigger's immutability comparison is checked against the column list
+  parsed from the `CREATE TABLE`: every column except `anulado` must appear on both sides of
+  the `IS DISTINCT FROM`. That catches a trigger that quietly stops comparing `volumen_l`,
+  and the likelier future version of it, which is adding a column and forgetting the
+  trigger.
+
+Execution-level verification (every CHECK, FK and trigger refusing its negative case) was
+run by hand against the deployed tables in rolled-back transactions and is recorded on bead
+xd-qrn.1. The unit suite cannot reach a database, so it does not repeat it.
 
 ## 6. Lab inference (xd-qrn.4)
 

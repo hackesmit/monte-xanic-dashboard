@@ -452,9 +452,13 @@ ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanq
 ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_vintage_chk
   CHECK (vintage_year BETWEEN 1988 AND 2100);
 
+-- btrim() sin segundo argumento quita ESPACIOS, no tabuladores ni saltos de
+-- linea, asi que un lot_code de E'\t\n' pasaba y le asignaba vino de la bodega
+-- a un lote visualmente vacio. La clase de caracter pide un caracter que no sea
+-- espacio en blanco de ningun tipo.
 ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_lote_chk;
 ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_lote_chk
-  CHECK (btrim(lot_code) <> '');
+  CHECK (lot_code ~ '[^[:space:]]');
 
 ALTER TABLE public.movimientos_tanque DROP CONSTRAINT IF EXISTS movimientos_tanque_extremos_chk;
 ALTER TABLE public.movimientos_tanque ADD  CONSTRAINT movimientos_tanque_extremos_chk

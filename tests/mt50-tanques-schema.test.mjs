@@ -193,6 +193,33 @@ describe('MT.50 - the grid is drawable', () => {
     assert.deepEqual(strip, ['PD-1=P1', 'PD-2=P2', 'R1=R1', 'R2=R2']);
   });
 
+  it('a fermentation code always spells its own cell', () => {
+    // This is the independent check on the canonical codes: renaming A2 to X2
+    // in the seed leaves every count, capacity total and grid run intact, and
+    // only this invariant notices.
+    for (const t of tanques.filter((v) => v.area === 'fermentacion')) {
+      assert.equal(t.codigo, `${t.fila}${t.posicion}`,
+        `${t.codigo} sits at ${t.fila}${t.posicion}`);
+    }
+  });
+
+  it('the tray holds exactly the 49 vessels the inventory has no place for', () => {
+    // The tray has no structural rule to lean on (a code there encodes no
+    // cell), so the expected set is spelled out. Edit the seed and this fails.
+    const tray = tanques.filter((t) => t.area === 'otras').map((t) => t.codigo).sort();
+    assert.deepEqual(tray, [
+      'F026', 'F028', 'F029', 'F030', 'F031', 'F038', 'F039',
+      'I-1 CAVA', 'I-2 CAVA', 'I-3 CAVA', 'I-4 CAVA', 'I-5 CAVA', 'I-6 CAVA',
+      'KEG 1', 'KEG 11', 'KEG 14', 'KEG 16', 'KEG 17', 'KEG 2', 'KEG 3',
+      'KEG 4', 'KEG 5', 'KEG 6', 'KEG 7',
+      'TIBOR 1', 'TIBOR 10', 'TIBOR 11', 'TIBOR 12', 'TIBOR 13', 'TIBOR 14',
+      'TIBOR 15', 'TIBOR 16', 'TIBOR 18', 'TIBOR 2', 'TIBOR 21', 'TIBOR 22',
+      'TIBOR 28', 'TIBOR 3', 'TIBOR 4', 'TIBOR 5', 'TIBOR 6', 'TIBOR 7',
+      'TIBOR 8', 'TIBOR 9', 'TIBOR S/N',
+      'VAR 1 CESAR', 'VAR 2 CESAR', 'VAR A', 'VAR B'
+    ]);
+  });
+
   it('every located vessel has both fila and posicion, and the tray has neither', () => {
     for (const t of tanques) {
       if (t.area === 'otras') {
@@ -334,6 +361,14 @@ describe('MT.50 - schema guards', () => {
       'every ADD CONSTRAINT needs its DROP CONSTRAINT IF EXISTS to stay re-runnable');
   });
 
+  it('refuses a lot code made only of whitespace, tabs included', () => {
+    // btrim() with no second argument strips spaces but not tabs or newlines,
+    // so CHECK (btrim(lot_code) <> '') accepted E'\t\n' and assigned wine to a
+    // visually blank lote.
+    assert.match(SQL, /movimientos_tanque_lote_chk\s+CHECK \(lot_code ~ '\[\^\[:space:\]\]'\)/);
+    assert.ok(!/btrim\(lot_code\)/.test(SQL), 'btrim does not see a tab');
+  });
+
   it('cannot derive a negative volume from a single movement', () => {
     // merma_l comes out of volumen_l, so a merma larger than the volume would
     // hand the destination negative litres; with no destino there is nothing to
@@ -371,6 +406,36 @@ describe('MT.50 - schema guards', () => {
     assert.match(SQL, /append-only: usa anulado = true en lugar de DELETE/);
     assert.match(SQL, /no se puede reactivar/);
     assert.match(SQL, /SET search_path = pg_catalog, public/);
+  });
+
+  it('the trigger compares EVERY movement column except anulado', () => {
+    // The text assertions above cannot catch a trigger body that quietly stops
+    // comparing volumen_l, so this one is structural: pull the column list out
+    // of the CREATE TABLE and require each column other than anulado on both
+    // sides of the IS DISTINCT FROM. That also catches the real future risk,
+    // which is adding a column and forgetting the trigger.
+    const create = SQL.match(
+      /CREATE TABLE IF NOT EXISTS public\.movimientos_tanque \(\n([\s\S]*?)\n\);/
+    );
+    assert.ok(create, 'movimientos_tanque CREATE TABLE not found');
+    const columns = create[1]
+      .split('\n')
+      .map((l) => l.match(/^ {2}(\w+)\s{2,}/)?.[1])
+      .filter(Boolean);
+    assert.ok(columns.length >= 13, `only parsed ${columns.length} columns`);
+    assert.ok(columns.includes('anulado') && columns.includes('volumen_l'));
+
+    const body = SQL.match(/(\(NEW\.id,[\s\S]*?)\n  THEN/);
+    assert.ok(body, 'the immutability comparison was not found');
+    for (const col of columns) {
+      if (col === 'anulado') {
+        assert.ok(!body[1].includes(`NEW.${col}`),
+          'anulado is the one field an annul may change, so it must stay out of the comparison');
+        continue;
+      }
+      assert.ok(body[1].includes(`NEW.${col}`), `trigger does not compare NEW.${col}`);
+      assert.ok(body[1].includes(`OLD.${col}`), `trigger does not compare OLD.${col}`);
+    }
   });
 });
 
