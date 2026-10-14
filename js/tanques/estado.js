@@ -38,7 +38,11 @@ export const ETAPA_POR_TIPO = { recepcion: 'rec', descube: 'des' };
 
 export const LOTE_SIN_CODIGO = '(sin lote)';
 
-const EPS = 1e-6;
+// Everything is quantized to whole microlitres (see repartir), so the threshold
+// for "this is nothing" has to sit BELOW one unit: at one unit a legitimate
+// one-microlitre share of a blend was deducted from the origin and then dropped
+// on arrival, which loses litres with no merma to account for them.
+const EPS = 5e-7; // half a microlitre: float dust only
 const SIN_ORIGEN = new Set(['recepcion']);
 const SIN_DESTINO = new Set(['salida']);
 
@@ -113,7 +117,7 @@ function fmtL(n) {
 // instant on a UTC server than in a Tijuana browser, and this module is the one
 // the API and the UI share, so the same log has to derive the same contents in
 // both. A plain business date is read as UTC midnight.
-const RE_FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-](?:0\d|1[0-4])(?::?[0-5]\d)?))?$/;
+const RE_FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(\.\d+)?)?(Z|[+-](?:0\d|1[0-4])(?::?[0-5]\d)?))?$/;
 
 function fechaValida(v) {
   const t = texto(v);
@@ -141,12 +145,22 @@ function fechaDia(v) {
 function clave(v) {
   const t = fechaValida(v);
   const n = t ? Date.parse(t) : NaN;
-  return Number.isNaN(n) ? { bucket: 1, n: 0, t: texto(v) } : { bucket: 0, n, t };
+  if (Number.isNaN(n)) return { bucket: 1, n: 0, sub: 0, t: texto(v) };
+  // Date.parse keeps milliseconds and throws the rest away, so two Postgres
+  // microsecond timestamps inside the same millisecond would tie and fall back
+  // to input order. Compare what it dropped.
+  const m = RE_FECHA.exec(t);
+  const frac = m && m[7] ? m[7].slice(1) : '';
+  const sub = frac.length > 3 ? Number(`${frac.slice(3)}000000`.slice(0, 6)) : 0;
+  return { bucket: 0, n, sub, t };
 }
 
 function compararClaves(a, b) {
   if (a.bucket !== b.bucket) return a.bucket < b.bucket ? -1 : 1;
-  if (a.bucket === 0) return a.n === b.n ? 0 : (a.n < b.n ? -1 : 1);
+  if (a.bucket === 0) {
+    if (a.n !== b.n) return a.n < b.n ? -1 : 1;
+    return a.sub === b.sub ? 0 : (a.sub < b.sub ? -1 : 1);
+  }
   if (a.t !== b.t) return a.t < b.t ? -1 : 1;
   return 0;
 }

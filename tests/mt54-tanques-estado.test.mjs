@@ -688,6 +688,45 @@ test('historialTanque reports the litres the tank really moved, not the ones ask
   assert.equal(deriveEstado(TANQUES, movs).B1.litros, 900);
 });
 
+// --- cross-vendor review round 4 (gpt-6.1-sol, 2026-10-14) ------------------
+
+test('a one-microlitre share of a blend is moved, not dropped', () => {
+  const movs = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 9999.99, fecha: '2025-09-01' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L2', volumen_l: 0.01, fecha: '2025-09-02' }),
+  ];
+  for (let i = 0; i < 1000; i++) {
+    movs.push(mv({ tipo: 'trasiego', origen: 'A1', destino: 'A2', volumen_l: 1, fecha: '2025-09-10', created_at: `2025-09-10T00:00:00.${String(i).padStart(4, '0')}Z` }));
+  }
+  const { estado, balance, avisos } = replayMovimientos(TANQUES, movs);
+  assert.deepEqual(avisos, []);
+  assert.equal(balance.descuadre_l, 0, 'litres cannot disappear without a merma');
+  assert.equal(balance.merma_l, 0);
+  cerca(estado.A2.litros, 1000, 1e-6);
+  cerca(estado.A1.litros, 9000, 1e-6);
+  cerca(estado.A1.litros + estado.A2.litros, 10000, 1e-6);
+  // the small lote travelled with the big one instead of evaporating
+  const l2 = recorridoLote(TANQUES, movs, 'L2');
+  assert.ok(l2.tanques_actuales.some(t => t.codigo === 'A2'), 'L2 must appear in A2');
+  cerca(l2.litros_actuales, 0.01, 1e-6);
+  assert.equal(l2.litros_merma, 0);
+});
+
+test('two timestamps inside the same millisecond keep their order', () => {
+  const tanques = [{ codigo: 'A', capacidad_l: 100 }, { codigo: 'B', capacidad_l: 100 }];
+  const movs = [
+    { tipo: 'trasiego', origen: 'A', destino: 'B', volumen_l: 100, merma_l: 0, fecha: '2025-09-01', created_at: '2025-09-01T12:00:00.000200Z' },
+    { tipo: 'recepcion', destino: 'A', lot_code: 'L1', volumen_l: 100, merma_l: 0, fecha: '2025-09-01', created_at: '2025-09-01T12:00:00.000100Z' },
+  ];
+  const { estado, avisos } = replayMovimientos(tanques, movs);
+  assert.deepEqual(avisos, []);
+  assert.equal(estado.A.litros, 0);
+  assert.equal(estado.B.litros, 100);
+  // and the same two rows in the other array order derive the same state
+  const otro = replayMovimientos(tanques, [movs[1], movs[0]]).estado;
+  assert.equal(otro.B.litros, 100);
+});
+
 test('the module stays pure: no imports, no DOM, no network', () => {
   const src = readFileSync(new URL('../js/tanques/estado.js', import.meta.url), 'utf8');
   for (const bad of [/^\s*import\s/m, /\brequire\s*\(/, /\bdocument\./, /\bwindow\./, /\bfetch\s*\(/, /\blocalStorage\b/, /\bprocess\./]) {
