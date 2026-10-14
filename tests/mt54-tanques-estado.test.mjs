@@ -420,15 +420,15 @@ test('historialTanque returns the rows that touch a tank, in order, with directi
     mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 2000, merma_l: 20, fecha: '2025-09-10' }),
     mv({ tipo: 'salida', origen: 'A1', volumen_l: 1000, fecha: '2025-09-20', anulado: true }),
   ];
-  const h = historialTanque(movs, 'A1');
+  const h = historialTanque(TANQUES, movs, 'A1');
   assert.deepEqual(h.map(r => [r.fecha, r.tipo, r.direccion]), [
     ['2025-09-01', 'recepcion', 'entrada'],
     ['2025-09-10', 'trasiego', 'salida'],
   ]);
   assert.equal(h[0].delta_l, 5000);
   assert.equal(h[1].delta_l, -2000);
-  assert.equal(historialTanque(movs, 'A1', { incluirAnulados: true }).length, 3);
-  assert.equal(historialTanque(movs, 'TIBOR 1').length, 0);
+  assert.equal(historialTanque(TANQUES, movs, 'A1', { incluirAnulados: true }).length, 3);
+  assert.equal(historialTanque(TANQUES, movs, 'TIBOR 1').length, 0);
 });
 
 test('recorridoLote follows one lote across tanks, including its blended share', () => {
@@ -624,6 +624,68 @@ test('an unorderable fecha is refused by the gate and replayed last', () => {
   const { estado: e2, avisos } = replayMovimientos(TANQUES, movs);
   assert.equal(e2.B1.litros, 1000, 'the dateless trasiego must run after the recepcion');
   assert.deepEqual(avisos.map(a => a.codigo), ['sin_fecha']);
+});
+
+// --- cross-vendor review round 3 (gpt-6.1-sol, 2026-10-14) ------------------
+
+test('a timestamp without a zone is refused, because it means two different instants', () => {
+  const estado = deriveEstado(TANQUES, [mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000 })]);
+  const errs = (f) => validarMovimiento(estado, mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 100, fecha: f }));
+  for (const f of ['2025-08-31T23:30:00', '2025-09-01T10:00:00+99:99', '2025-09-01T10:00:00+1500']) {
+    assert.ok(errs(f).some(e => /fecha valida/.test(e)), `${f}: ${errs(f).join(' | ')}`);
+  }
+  for (const f of ['2025-09-01', '2025-09-01T10:00:00Z', '2025-09-01T10:00:00.123+00:00', '2025-09-01 10:00:00-07:00']) {
+    assert.deepEqual(errs(f), [], f);
+  }
+  // the same log derives the same contents whatever the machine timezone says
+  const movs = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-01' }),
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 1000, fecha: '2025-09-01T06:30:00Z' }),
+  ];
+  const e = deriveEstado(TANQUES, movs);
+  assert.equal(e.A1.litros, 0, 'UTC midnight on the 1st comes before 06:30Z, so the trasiego finds the wine');
+  assert.equal(e.B1.litros, 1000);
+});
+
+test('a lote never arrives with more litres than it sent', () => {
+  const movs = [mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L0', volumen_l: 2, fecha: '2025-09-01' })];
+  for (let i = 1; i <= 10; i++) {
+    movs.push(mv({ tipo: 'recepcion', destino: 'A1', lot_code: `L${i}`, volumen_l: 1, fecha: '2025-09-02' }));
+  }
+  movs.push(mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 12, merma_l: 0.000007, fecha: '2025-09-10' }));
+  const { estado, aplicados } = replayMovimientos(TANQUES, movs);
+  const t = aplicados[aplicados.length - 1];
+  for (const p of t.llegada_partes) {
+    const enviado = t.salida_partes.find(x => x.lot_code === p.lot_code);
+    assert.ok(p.litros <= enviado.litros, `${p.lot_code}: llego ${p.litros} y salio ${enviado.litros}`);
+  }
+  assert.equal(t.salida_partes.reduce((a, p) => a + p.litros, 0), 12);
+  cerca(t.llegada_partes.reduce((a, p) => a + p.litros, 0), 11.999993, 1e-9);
+  assert.equal(estado.A1.litros, 0);
+  for (const lote of ['L0', 'L5']) {
+    const r = recorridoLote(TANQUES, movs, lote);
+    assert.ok(r.litros_merma >= 0, `${lote}: merma ${r.litros_merma}`);
+    for (const paso of r.pasos) assert.ok(paso.merma_l >= 0, `${lote}: paso con merma ${paso.merma_l}`);
+  }
+});
+
+test('historialTanque reports the litres the tank really moved, not the ones asked for', () => {
+  const movs = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-01' }),
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 4000, merma_l: 100, fecha: '2025-09-05' }),
+    mv({ tipo: 'salida', origen: 'A1', volumen_l: 50, fecha: '2025-09-06', anulado: true }),
+    mv({ tipo: 'trasiego', origen: 'ZZ9', destino: 'A1', volumen_l: 500, fecha: '2025-09-07' }),
+  ];
+  const h = historialTanque(TANQUES, movs, 'A1', { incluirAnulados: true });
+  assert.deepEqual(h.map(r => [r.tipo, r.direccion, r.volumen_l, r.delta_l, r.aplicado]), [
+    ['recepcion', 'entrada', 1000, 1000, true],
+    ['trasiego', 'salida', 4000, -1000, true],   // clamped to what A1 held
+    ['salida', 'salida', 50, 0, false],          // anulado
+    ['trasiego', 'entrada', 500, 0, false],      // origin outside the catalog
+  ]);
+  const b1 = historialTanque(TANQUES, movs, 'B1');
+  assert.equal(b1[0].delta_l, 900, 'B1 received the clamped 1000 L less the 100 L merma');
+  assert.equal(deriveEstado(TANQUES, movs).B1.litros, 900);
 });
 
 test('the module stays pure: no imports, no DOM, no network', () => {
