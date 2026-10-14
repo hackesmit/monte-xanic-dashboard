@@ -7,8 +7,12 @@ import {
   collectDirty, ariaSortFor, shouldShowSourceBanner,
   normalizeEvaluadorPanel, compactEvaluadorPanel, evaluadorPanelSummary,
   evaluadorPanelOptions, seedEvaluadorPanel, projectSnapshot,
-  countInputValue, readCountInput,
+  countInputValue, readCountInput, liveScoreMedicion,
 } from '../js/mediciones.js';
+import {
+  scoreFromMedicion, averageEvaluations,
+  consensusSanitaryLabel, consensusMadurezLabel,
+} from '../js/classification.js';
 import { DataStore } from '../js/dataLoader.js';
 import { todayInVineyard } from '../js/utils.js';
 
@@ -348,4 +352,139 @@ describe('MT.19 — the default medicion date is a vineyard date', () => {
     const utc = new Date().toISOString().split('T')[0];
     assert.ok(local <= utc, `local ${local} must never be ahead of UTC ${utc}`);
   });
+});
+
+// ---------------------------------------------------------------------------
+// B1 from the fresh-context adversarial review, 2026-09-15.
+// Round 2 found the round-1 fixtures encoded a form shape that does not exist:
+// they omitted healthGrade, phenolicMaturity, evaluacionesJson, measuredBy and
+// notes, and that is exactly why they missed the panel regression. This helper
+// mirrors the real _readEditForm return, all 19 keys, so a rename breaks a test
+// instead of the badge.
+// ---------------------------------------------------------------------------
+
+function editFormShape(row, overrides = {}) {
+  const evaluaciones = overrides.evaluaciones ?? row.evaluaciones ?? [];
+  const avg = averageEvaluations({ evaluaciones });
+  return {
+    date: row.date, vintage: row.vintage, variety: row.variety,
+    appellation: row.appellation, lotCode: row.lotCode, tons: row.tons,
+    berryWeight: row.berryWeight, berryDiameter: row.berryDiameter,
+    healthMadura: row.healthMadura, healthInmadura: row.healthInmadura,
+    healthSobremadura: row.healthSobremadura, healthPicadura: row.healthPicadura,
+    healthEnfermedad: row.healthEnfermedad, healthQuemadura: row.healthQuemadura,
+    // Derived from the panel, not from their own inputs.
+    healthGrade: consensusSanitaryLabel(avg.sanidad),
+    phenolicMaturity: consensusMadurezLabel(avg.madurez),
+    evaluacionesJson: JSON.stringify(evaluaciones),
+    measuredBy: row.measuredBy ?? null,
+    notes: row.notes ?? null,
+    ...(overrides.raw || {}),
+  };
+}
+
+function editableRow(o = {}) {
+  return {
+    code: 'MT-26-001', date: '2026-09-01', vintage: 2026,
+    variety: 'Cabernet Sauvignon', appellation: 'Valle de Ojos Negros',
+    lotCode: 'KCS-S1', tons: 8, berryWeight: 1.0, berryDiameter: 13.1,
+    brix: 24.0, pH: 3.6, ta: 6.0, av: 0.01, ag: 0, am: 2.4,
+    polyphenols: 1950, catechins: 210, anthocyanins: 1100,
+    healthGrade: 'Muy limpio', healthMadura: 190, healthInmadura: 4,
+    healthSobremadura: 3, healthPicadura: 2, healthEnfermedad: 1, healthQuemadura: 0,
+    phenolicMaturity: 'Sobresaliente',
+    evaluaciones: [
+      { evaluador: 'A', sanidad: 'Muy limpio', madurez: 'Sobresaliente' },
+      { evaluador: 'B', sanidad: 'Muy limpio', madurez: 'Sobresaliente' },
+    ],
+    measuredBy: 'Lab', notes: null,
+    ...o
+  };
+}
+
+it('MT.19 liveScoreMedicion: an untouched form scores identically to the row', () => {
+  // The modal badge and the table badge behind it must agree when nothing has
+  // been edited. The old builder re-listed the fields to copy and went stale
+  // the moment the engine started reading the medicion's own chemistry: 269 of
+  // 287 production rows disagreed, 203 of them showing a grade in the table and
+  // "Datos insuficientes" in the modal.
+  const row = editableRow();
+  const table = scoreFromMedicion(row, new Map());
+  const modal = scoreFromMedicion(liveScoreMedicion(row, editFormShape(row)), new Map());
+  assert.ok(table.grade, 'precondition: the row grades at all');
+  assert.equal(modal.grade, table.grade);
+  assert.equal(modal.score36, table.score36);
+});
+
+it('MT.19 liveScoreMedicion: re-grading the evaluator panel moves the live badge', () => {
+  // The form serialises the panel as a JSON STRING under evaluacionesJson, so a
+  // plain key-name overlay set an inert key and left the saved array in place.
+  // The badge then ignored the edit entirely and showed a confidently wrong
+  // grade: A+ 31.80 where the table would show B 24.36 once saved.
+  const row = editableRow();
+  const regraded = [{ evaluador: 'A', sanidad: 'Contaminado', madurez: 'No sobresaliente' }];
+  const built = liveScoreMedicion(row, editFormShape(row, { evaluaciones: regraded }));
+
+  assert.deepEqual(built.evaluaciones, regraded, 'the panel edit must reach the engine');
+  const before = scoreFromMedicion(row, new Map());
+  const after = scoreFromMedicion(built, new Map());
+  assert.notEqual(after.score36, before.score36,
+    'downgrading every evaluator must move the score');
+  assert.ok(after.score36 < before.score36,
+    `expected a lower score after downgrading the panel, got ${after.score36} vs ${before.score36}`);
+});
+
+it('MT.19 liveScoreMedicion: a form-only key never survives onto the medicion', () => {
+  // Leaving evaluacionesJson on the object is what made the mismatch invisible:
+  // the engine ignored it and read the stale sibling instead.
+  const row = editableRow();
+  const built = liveScoreMedicion(row, editFormShape(row));
+  assert.ok(!('evaluacionesJson' in built), 'evaluacionesJson must be translated away');
+  for (const key of Object.keys(built)) {
+    assert.ok(!/Json$/.test(key), `${key} looks like a form-only key that leaked through`);
+  }
+});
+
+it('MT.19 liveScoreMedicion: a malformed panel string degrades to empty, never throws', () => {
+  const row = editableRow();
+  for (const bad of ['', 'not json', '{"not":"an array"}', null]) {
+    const built = liveScoreMedicion(row, { evaluacionesJson: bad });
+    assert.ok(Array.isArray(built.evaluaciones), `${JSON.stringify(bad)} should yield an array`);
+    assert.equal(built.evaluaciones.length, 0);
+  }
+});
+
+it('MT.19 liveScoreMedicion: chemistry the form cannot touch still reaches the engine', () => {
+  // The edit form has no chemistry inputs, so those fields must fall through
+  // from the saved row rather than vanishing.
+  const row = editableRow();
+  const built = liveScoreMedicion(row, editFormShape(row, { raw: { tons: 9 } }));
+  for (const f of ['brix', 'pH', 'ta', 'av', 'ag', 'am', 'polyphenols', 'catechins', 'anthocyanins']) {
+    assert.equal(built[f], row[f], `${f} must survive an edit that did not touch it`);
+  }
+  assert.equal(built.tons, 9, 'the form still wins where it owns the field');
+});
+
+it('MT.19 liveScoreMedicion: clearing a form field is an edit, not a fallback', () => {
+  // A blank input reads back as null. Nullish-coalescing to the snapshot would
+  // resurrect the value the user just deleted and score a reading that is no
+  // longer on the form.
+  const row = editableRow();
+  const built = liveScoreMedicion(row, editFormShape(row, { raw: { tons: null, berryWeight: null } }));
+  assert.equal(built.tons, null);
+  assert.equal(built.berryWeight, null);
+  assert.equal(built.brix, 24.0, 'a field the form does not expose is untouched');
+});
+
+it('MT.19 liveScoreMedicion: a zero from the form is kept, not read as blank', () => {
+  const row = editableRow();
+  const built = liveScoreMedicion(row, editFormShape(row, { raw: { healthPicadura: 0 } }));
+  assert.equal(built.healthPicadura, 0);
+});
+
+it('MT.19 liveScoreMedicion: never mutates the snapshot it was handed', () => {
+  const row = editableRow();
+  const snapshot = JSON.parse(JSON.stringify(row));
+  liveScoreMedicion(row, editFormShape(row, { raw: { tons: 99 } }));
+  assert.deepEqual(row, snapshot, '_editing must survive a live re-score untouched');
 });

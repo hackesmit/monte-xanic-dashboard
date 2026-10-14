@@ -58,7 +58,10 @@ describe('MT.50 - design system tokens', () => {
       [...allCss.matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1])
     );
     // Set from JS at runtime rather than in CSS.
-    const RUNTIME = new Set(['--chip-color', '--chip-bg', '--modal-scroll-y', '--tile-hue']);
+    // --med-detail-w is the .table-scroll window's pixel width, which only the
+    // browser knows; Mediciones.toggleDetail sets it when it opens a panel.
+    const RUNTIME = new Set(['--chip-color', '--chip-bg', '--modal-scroll-y', '--tile-hue',
+                             '--med-detail-w']);
     const used = new Set([...allCss.matchAll(/var\(\s*(--[a-z0-9-]+)/g)].map((m) => m[1]));
 
     const missing = [...used].filter((t) => !defined.has(t) && !RUNTIME.has(t));

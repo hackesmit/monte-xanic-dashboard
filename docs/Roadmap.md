@@ -27,11 +27,9 @@
 
 ### Data Quality
 - Server-side row validation (type checking, range constraints)
-- Upload preview/confirmation step
 - Data export functionality (CSV download from dashboard)
 
 ### Testing
-- Upload parsing unit tests (extract from DOM dependencies)
 - Filter combination tests
 - API integration tests
 

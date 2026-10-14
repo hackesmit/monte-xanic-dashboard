@@ -18,3 +18,24 @@ export const VINEYARD_TZ = 'America/Tijuana';
 export function todayInVineyard() {
   return new Date().toLocaleDateString('en-CA', { timeZone: VINEYARD_TZ });
 }
+
+// Expand a multi-lot code ('SBVDG-2A/2B', 'GREVA-3A,4A') into the per-lot codes
+// that share its head: ['SBVDG-2A/2B', 'SBVDG-2A', 'SBVDG-2B']. The verbatim
+// code stays first so an exact match always wins over an expansion.
+//
+// One medicion routinely covers several field lots that were pressed together,
+// while berry samples are taken per lot. Whichever side does the lookup has to
+// expand, or the two never meet. This lived as a private method on DataStore
+// and classification.js could not reach it without importing the data layer,
+// so scoreFromMedicion did an exact get and reported "Sin berry" for lots the
+// calidad map joined fine (xd-5en.9). One definition, both callers.
+export function expandLotCode(code) {
+  if (!code) return [];
+  const c = String(code);
+  if (!/[/,]/.test(c)) return [c];
+  const dash = c.indexOf('-');
+  if (dash < 0) return [c];
+  const head = c.slice(0, dash);
+  const parts = c.slice(dash + 1).split(/[/,]/).map(x => x.trim()).filter(Boolean);
+  return [c, ...parts.map(x => `${head}-${x}`)];
+}

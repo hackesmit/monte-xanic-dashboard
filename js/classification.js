@@ -3,6 +3,7 @@
 // See docs/superpowers/specs/2026-04-21-quality-classification-design.md
 
 import { CONFIG } from './config.js';
+import { expandLotCode } from './utils.js';
 
 // ── Valley resolution ────────────────────────────────────────────────
 
@@ -16,6 +17,16 @@ export function resolveValley(appellation) {
 }
 
 // ── Rubric resolution ────────────────────────────────────────────────
+
+// The rubric a score actually used, by the id it reported. The detail panel
+// must not re-resolve from the medicion's own variety and appellation: when
+// those are blank the score falls back to the berry's, so re-resolving gave a
+// row a grade in the badge and "Sin rubrica aplicable" in the panel below it.
+export function rubricById(rubricId) {
+  if (!rubricId) return null;
+  const rubric = CONFIG.rubrics[rubricId];
+  return rubric ? { id: rubricId, ...rubric } : null;
+}
 
 export function resolveRubric(variety, appellationOrValley) {
   if (!variety) return null;
@@ -115,7 +126,12 @@ function parseCount(v) {
   return null;
 }
 
-function scoreSanitaryPct(medicion) {
+// The damage percentage the sanitary count axis buckets, or null when the
+// count is incomplete or poisoned. Exported because the Mediciones detail
+// panel shows the figure next to its bucket, and recomputing it there would
+// duplicate the five-field rule and the parseCount guards below, which is
+// exactly where a divergence would hide.
+export function sanitaryDamagePct(medicion) {
   if (!medicion) return null;
   // A medicion where staff filled only some counts (e.g. health_madura) used
   // to read the blanks as 0 and score the BEST bucket off a 100%-clean total
@@ -154,6 +170,12 @@ function scoreSanitaryPct(medicion) {
   if (!Number.isFinite(total) || total === 0) return null;
   const pct = unhealthy / total * 100;
   if (!Number.isFinite(pct)) return null;
+  return pct;
+}
+
+function scoreSanitaryPct(medicion) {
+  const pct = sanitaryDamagePct(medicion);
+  if (pct === null) return null;
   const { a, b } = CONFIG.sanitaryThresholds.pct;
   if (pct <= a) return 3;
   if (pct <= b) return 2;
@@ -327,30 +349,68 @@ export function aggregateSection(lots) {
 }
 
 // ── scoreFromMedicion: lift a medicion row into the lot shape scoreLot expects ──
-// Mediciones rows lack berry chemistry (brix, pH, tANT, …). To grade a medicion,
-// we look up its matching berry by (lotCode, vintage), graft the medicion's
-// snake-cased health fields onto a clone, and delegate to scoreLot.
+// A medicion IS the quality-classification record. mediciones_tecnicas carries
+// every one of the rubric's eight chemistry axes in its own right (brix, ph,
+// at, ag, av, polifenoles, antocianos, berry_avg_weight_g) alongside the
+// sanitary count and the evaluator panel, which is exactly the "Resultado"
+// column of the rubric sheets in Clasificacion Calidad Uva.
 //
-// Mirrors what joinBerryWithMediciones in dataLoader.js does for the map view,
-// but starts from the medicion side so the Mediciones Técnicas table can show
-// a per-row badge without requiring the user to navigate to the berry view.
+// It used to be graded only by borrowing a WineXRay berry row's chemistry, and
+// returned 'Sin berry' when that lookup missed. It misses constantly. WineXRay
+// is a phenolics instrument, so whites come back NA for polifenoles and
+// antocianinas and are largely not sampled at all, and no berry sample is taken
+// for every lot in any case. On a production snapshot (2026-09-15) only 51 of
+// 287 mediciones were graded, 223 of the 236 failures were 'Sin berry', and all
+// 287 carried their own brix, pH and AT. Hence: the medicion's own chemistry is
+// the primary source and the berry only fills what it lacks (Daniel 2026-09-15).
 //
-// @param {object} m — mediciones_tecnicas row (camelCase from _rowToMedicion)
-// @param {Map<string, object>|null} berryByLot — keyed `${lotCode}||${vintage}`
-// @returns {object} same shape as scoreLot, or { grade: null, reason: 'Sin berry' }
+// The berry is still worth joining. It carries polifenoles averaged in from
+// tank_receptions (joinBerryWithReceptions), which the medicion rarely has.
+//
+// Only the Mediciones Tecnicas table calls this. The calidad map grades berry
+// rows through scoreLot directly, so nothing here can move a section's note.
+//
+// @param {object} m - mediciones_tecnicas row (camelCase from _rowToMedicion)
+// @param {Map<string, object>|null} berryByLot - keyed `${lotCode}||${vintage}`
+// @returns {object} same shape as scoreLot
 export function scoreFromMedicion(m, berryByLot) {
-  if (!m || !m.lotCode || m.vintage == null) {
-    return { grade: null, score36: null, rubricId: null, missing: [], reason: 'Sin berry' };
+  if (!m) {
+    return { grade: null, score36: null, rubricId: null, missing: [], chemistry: {}, reason: 'Sin medición' };
   }
-  if (!berryByLot || typeof berryByLot.get !== 'function') {
-    return { grade: null, score36: null, rubricId: null, missing: [], reason: 'Sin berry' };
+  const berry = findBerryForMedicion(m, berryByLot) || {};
+
+  // Chemistry resolution, per axis: the medicion's own reading wins, the berry
+  // fills only what the medicion does not have. Absence has to stay absent, so
+  // this tests null/undefined rather than truthiness: a real 0.00 g/L volatile
+  // acidity is the best bucket in every rubric and must not be mistaken for a
+  // gap and overwritten by the berry's value.
+  const chem = {};
+  for (const [param, medValue] of Object.entries({
+    brix:         m.brix,
+    pH:           m.pH,
+    ta:           m.ta,
+    av:           m.av,
+    ag:           m.ag,
+    berryFW:      m.berryWeight,      // 'Peso promedio por baya (g)' on the sheet
+    polyphenols:  m.polyphenols,
+    anthocyanins: m.anthocyanins,
+  })) {
+    chem[param] = medValue !== null && medValue !== undefined ? medValue : berry[param];
   }
-  const berry = berryByLot.get(`${m.lotCode}||${m.vintage}`);
-  if (!berry) {
-    return { grade: null, score36: null, rubricId: null, missing: [], reason: 'Sin berry' };
-  }
+
   const lot = {
     ...berry,
+    // The row being graded is the medicion, so its own identity picks the
+    // rubric. _medicionAppellation resolves the supplier abbreviation to the
+    // ranch-first name resolveValley reads; falling back to the berry's keeps
+    // a medicion with a blank origin gradeable when its berry knows better.
+    // `??` alone would not do it: an empty or whitespace string is "present"
+    // to the nullish operator, so a blank appellation would defeat the very
+    // fallback this line exists for and report Sin rubrica (lucy, 2026-09-15).
+    variety:     firstNamed(m.variety,     berry.variety),
+    appellation: firstNamed(m.appellation, berry.appellation),
+    vintage:     m.vintage     ?? berry.vintage,
+    ...chem,
     medicion: {
       health_grade:       m.healthGrade,
       health_madura:      m.healthMadura,
@@ -364,5 +424,46 @@ export function scoreFromMedicion(m, berryByLot) {
       evaluaciones:       m.evaluaciones
     }
   };
-  return scoreLot(lot);
+  // `chemistry` is the RESOLVED reading per axis, which is not always the
+  // medicion's own: the detail panel shows the value beside the bucket it
+  // earned, and reading the medicion directly would print "sin dato" next to
+  // an A whenever the berry filled that axis.
+  return { ...scoreLot(lot), chemistry: chem };
+}
+
+// Resolve the berry row backing a medicion, or null.
+//
+// Multi-lot mediciones ('SBVDG-2A/2B', 'GREVA-3A,4A') cover several field lots
+// pressed together; berries are sampled per lot, so the medicion's code never
+// matches one verbatim. joinBerryWithMediciones expands from the index side and
+// the calidad map therefore joined these fine, while this function did a bare
+// get and reported 'Sin berry' for the very same lots (xd-5en.9). Expanding
+// here closes that asymmetry. The verbatim code is tried first, so an exact
+// match still wins over any expansion.
+// First of the candidates that is a non-blank name. Identity fields arrive as
+// '' or '   ' often enough (a blank spreadsheet cell, a cleared form field)
+// that treating them as present is what breaks the fallback.
+function firstNamed(...candidates) {
+  for (const c of candidates) {
+    if (c === null || c === undefined) continue;
+    if (typeof c === 'string' && c.trim() === '') continue;
+    return c;
+  }
+  return null;
+}
+
+// Public face of the berry lookup, so the Mediciones detail panel can show the
+// map's own grade for the same lot beside this one (xd-25o).
+export function berryForMedicion(m, berryByLot) {
+  return m ? findBerryForMedicion(m, berryByLot) : null;
+}
+
+function findBerryForMedicion(m, berryByLot) {
+  if (!m.lotCode || m.vintage == null) return null;
+  if (!berryByLot || typeof berryByLot.get !== 'function') return null;
+  for (const code of expandLotCode(m.lotCode)) {
+    const berry = berryByLot.get(`${code}||${m.vintage}`);
+    if (berry) return berry;
+  }
+  return null;
 }

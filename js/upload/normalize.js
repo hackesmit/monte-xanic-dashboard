@@ -125,7 +125,22 @@ function pad4(n) { return String(n).padStart(4, '0'); }
  *
  * First-offender-wins so the rejection message is deterministic across runs.
  */
-export function validateColumnTypes(obj, { intCols, numericCols } = {}) {
+// A date column must be an ISO calendar date (YYYY-MM-DD) that actually exists.
+// Anything else — a Date object, an Excel serial, a DD/MM/YYYY string, a typo
+// like '30/6/269' — is refused rather than coerced, because a coerced date on a
+// maturity series lands a reading on a day nobody recorded. A UTC round-trip
+// rejects impossible calendar dates (2026-02-30, 2026-13-01) that the regex
+// alone would pass.
+function isIsoDate(v) {
+  if (typeof v !== 'string') return false;
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return false;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const probe = new Date(Date.UTC(y, mo - 1, d));
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() + 1 === mo && probe.getUTCDate() === d;
+}
+
+export function validateColumnTypes(obj, { intCols, numericCols, dateCols } = {}) {
   if (intCols) {
     for (const col of intCols) {
       const v = obj[col];
@@ -141,6 +156,15 @@ export function validateColumnTypes(obj, { intCols, numericCols } = {}) {
       if (v === null || v === undefined) continue;
       if (typeof v !== 'number' || !Number.isFinite(v)) {
         return `${col}=${v}: debe ser numérico`;
+      }
+    }
+  }
+  if (dateCols) {
+    for (const col of dateCols) {
+      const v = obj[col];
+      if (v === null || v === undefined) continue;
+      if (!isIsoDate(v)) {
+        return `${col}=${v}: debe ser una fecha AAAA-MM-DD válida`;
       }
     }
   }

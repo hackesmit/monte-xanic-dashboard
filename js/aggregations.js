@@ -41,3 +41,39 @@ export function peakBy(rows, key) {
   }
   return best;
 }
+
+/**
+ * Harvested tonnage per vintage year, from mediciones_tecnicas rows
+ * (tons_received, the authoritative figure that arrives via pre-recepcion).
+ * Rows with no positive, finite tons are skipped. A row without a vintage
+ * falls back to the year of its date (YYYY-MM-DD).
+ * @param {Array<object>} rows - mediciones in DataStore shape ({ tons, vintage, date, variety, lotCode })
+ * @returns {{ years: number[], varieties: string[], byYear: Object<number, { total: number, lots: number, byVariety: Object<string, number> }> }}
+ *   years ascending; varieties by total tonnage, largest first.
+ */
+export function tonnageByVintage(rows) {
+  const byYear = {};
+  const varietyTotals = {};
+  for (const r of rows || []) {
+    const tons = typeof r?.tons === 'string' ? parseFloat(r.tons) : r?.tons;
+    if (typeof tons !== 'number' || !Number.isFinite(tons) || tons <= 0) continue;
+    let year = Number(r.vintage);
+    if (!Number.isInteger(year) || year <= 0) {
+      const m = /^(\d{4})-/.exec(String(r.date || ''));
+      if (!m) continue;
+      year = Number(m[1]);
+    }
+    const variety = r.variety || 'Sin variedad';
+    const y = byYear[year] || (byYear[year] = { total: 0, lots: 0, byVariety: {}, _lots: new Set() });
+    y.total += tons;
+    y.byVariety[variety] = (y.byVariety[variety] || 0) + tons;
+    y._lots.add(r.lotCode || r.code || `${variety}-${y._lots.size}`);
+    varietyTotals[variety] = (varietyTotals[variety] || 0) + tons;
+  }
+  for (const y of Object.values(byYear)) { y.lots = y._lots.size; delete y._lots; }
+  return {
+    years: Object.keys(byYear).map(Number).sort((a, b) => a - b),
+    varieties: Object.keys(varietyTotals).sort((a, b) => varietyTotals[b] - varietyTotals[a]),
+    byYear
+  };
+}
