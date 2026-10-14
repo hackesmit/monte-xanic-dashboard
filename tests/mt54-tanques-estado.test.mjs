@@ -558,6 +558,74 @@ test('validarMovimientoEnLog ignores anulado rows and does not blame rows alread
   assert.deepEqual(errs, []);
 });
 
+// --- cross-vendor review round 2 (gpt-6.1-sol, 2026-10-14) ------------------
+
+test('validarMovimientoEnLog counts a row with the same timestamps as already applied', () => {
+  const log = [mv({ tipo: 'recepcion', destino: 'B2', lot_code: 'L1', volumen_l: 5000, fecha: '2025-09-01', created_at: '2025-09-01T12:00:00Z' })];
+  const gemelo = mv({ tipo: 'recepcion', destino: 'B2', lot_code: 'L2', volumen_l: 5000, fecha: '2025-09-01', created_at: '2025-09-01T12:00:00Z' });
+  const errs = validarMovimientoEnLog(TANQUES, log, gemelo);
+  assert.ok(errs.length, 'the second 5000 L into a 5000 L tank must not pass the gate');
+  assert.ok(errs.some(e => /espacio libre|sobre una capacidad/.test(e)), errs.join(' | '));
+  // and the replay agrees that it would overflow
+  assert.equal(replayMovimientos(TANQUES, [...log, gemelo]).avisos[0].codigo, 'desbordado');
+});
+
+test('proportional splits conserve litres exactly over 2000 small withdrawals', () => {
+  const movs = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-01' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L2', volumen_l: 1000, fecha: '2025-09-02' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L3', volumen_l: 1000, fecha: '2025-09-03' }),
+  ];
+  for (let i = 0; i < 2000; i++) {
+    movs.push(mv({ tipo: 'salida', origen: 'A1', volumen_l: 1, fecha: '2025-10-01', created_at: `2025-10-01T00:00:00.${String(i).padStart(4, '0')}Z` }));
+  }
+  const { estado, balance, avisos } = replayMovimientos(TANQUES, movs);
+  assert.deepEqual(avisos, []);
+  assert.equal(balance.recibido_l, 3000);
+  assert.equal(balance.salido_l, 2000);
+  assert.equal(balance.en_tanques_l, 1000);
+  assert.equal(balance.descuadre_l, 0);
+  cerca(estado.A1.litros, 1000, 1e-6);
+  cerca(estado.A1.partes.reduce((a, p) => a + p.litros, 0), 1000, 1e-6);
+});
+
+test('a movement split across lotes arrives with the litres that left, to the microlitre', () => {
+  const movs = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-01' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L2', volumen_l: 1000, fecha: '2025-09-02' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L3', volumen_l: 1000, fecha: '2025-09-03' }),
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 1000, merma_l: 1, fecha: '2025-09-10' }),
+  ];
+  const { estado, aplicados } = replayMovimientos(TANQUES, movs);
+  const t = aplicados[3];
+  assert.equal(t.salida_partes.reduce((a, p) => a + p.litros, 0), 1000);
+  assert.equal(t.llegada_partes.reduce((a, p) => a + p.litros, 0), 999);
+  assert.equal(estado.A1.litros, 2000);
+  assert.equal(estado.B1.litros, 999);
+});
+
+test('an unorderable fecha is refused by the gate and replayed last', () => {
+  const estado = deriveEstado(TANQUES, [mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000 })]);
+  for (const f of ['2025-09-01T09:30garbage', '2025-09-01 ayer', '2025-09-01T25:00:00Z', '2025-09-01T10:61:00Z']) {
+    assert.ok(
+      validarMovimiento(estado, mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 100, fecha: f })).some(e => /fecha valida/.test(e)),
+      f,
+    );
+  }
+  // a full ISO timestamp is a valid business date and keeps the day in `desde`
+  const conHora = deriveEstado(TANQUES, [mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-04T07:30:00Z' })]);
+  assert.equal(conHora.A1.desde, '2025-09-04');
+
+  // a row we cannot place in time is applied after the datable ones, not before
+  const movs = [
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 1000, fecha: 'cuando se pueda' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-01' }),
+  ];
+  const { estado: e2, avisos } = replayMovimientos(TANQUES, movs);
+  assert.equal(e2.B1.litros, 1000, 'the dateless trasiego must run after the recepcion');
+  assert.deepEqual(avisos.map(a => a.codigo), ['sin_fecha']);
+});
+
 test('the module stays pure: no imports, no DOM, no network', () => {
   const src = readFileSync(new URL('../js/tanques/estado.js', import.meta.url), 'utf8');
   for (const bad of [/^\s*import\s/m, /\brequire\s*\(/, /\bdocument\./, /\bwindow\./, /\bfetch\s*\(/, /\blocalStorage\b/, /\bprocess\./]) {

@@ -56,6 +56,28 @@ function redondearTotal(n) {
   return Object.is(r, -0) ? 0 : r;
 }
 
+// Split `total` across `pesos` so the shares sum to `total` EXACTLY at the
+// rounding quantum: rounding each share on its own loses up to half a quantum
+// per lote per movement, which accumulates into a real conservation gap over
+// thousands of small withdrawals. The remainder goes to the largest share,
+// deterministically (first one wins a tie).
+function repartir(pesos, total) {
+  if (!pesos.length) return [];
+  let suma = 0;
+  for (const p of pesos) suma += p;
+  if (suma <= 0) return pesos.map(() => 0);
+  const partes = pesos.map(p => redondear((p * total) / suma));
+  let acumulado = 0;
+  for (const x of partes) acumulado += x;
+  const resto = redondear(total - acumulado);
+  if (resto !== 0) {
+    let k = 0;
+    for (let j = 1; j < partes.length; j++) if (partes[j] > partes[k]) k = j;
+    partes[k] = redondear(partes[k] + resto);
+  }
+  return partes;
+}
+
 function texto(v) {
   if (v == null) return '';
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : v.toISOString();
@@ -71,12 +93,17 @@ function fmtL(n) {
   return String(Object.is(r, -0) ? 0 : r);
 }
 
-// A date must be a real calendar date: '2025-02-30' and '2025-09-01garbage' are
-// refused rather than carried into the log and into the replay order.
+// A date must be a real calendar date in a format we can order: a plain
+// YYYY-MM-DD business date, or a full ISO timestamp. '2025-02-30',
+// '2025-09-01garbage' and '2025-09-01T09:30garbage' are all refused rather than
+// carried into the log and into the replay order.
+const RE_FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+
 function fechaValida(v) {
   const t = texto(v);
-  const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ].*)?$/.exec(t);
+  const m = RE_FECHA.exec(t);
   if (!m) return '';
+  if (m[4] != null && (Number(m[4]) > 23 || Number(m[5]) > 59 || (m[6] != null && Number(m[6]) > 59))) return '';
   const [y, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const d = new Date(Date.UTC(y, mes - 1, dia));
   if (d.getUTCFullYear() !== y || d.getUTCMonth() !== mes - 1 || d.getUTCDate() !== dia) return '';
@@ -88,26 +115,25 @@ function fechaDia(v) {
   return fechaValida(v).slice(0, 10);
 }
 
-// Ordering key. A timestamp is compared as an instant, not as text: lexical
+// Ordering key. A timestamp is compared as an INSTANT, not as text: lexical
 // order puts '2025-09-01T09:00:00Z' before '2025-09-01T10:00:00+02:00' even
-// though the second one happened two hours earlier.
+// though the second one happened two hours earlier. Keys we cannot place in
+// time (missing, or a format we refuse) go in a second bucket that always sorts
+// after the datable ones and is compared as text, so the comparator stays a
+// total order instead of switching rule per pair and losing transitivity.
 function clave(v) {
-  const t = texto(v);
-  return { n: t ? Date.parse(t) : NaN, t };
+  const t = fechaValida(v);
+  const n = t ? Date.parse(t) : NaN;
+  return Number.isNaN(n) ? { bucket: 1, n: 0, t: texto(v) } : { bucket: 0, n, t };
 }
 
 function compararClaves(a, b) {
-  if (!Number.isNaN(a.n) && !Number.isNaN(b.n)) return a.n === b.n ? 0 : (a.n < b.n ? -1 : 1);
+  if (a.bucket !== b.bucket) return a.bucket < b.bucket ? -1 : 1;
+  if (a.bucket === 0) return a.n === b.n ? 0 : (a.n < b.n ? -1 : 1);
   if (a.t !== b.t) return a.t < b.t ? -1 : 1;
   return 0;
 }
 
-// True when `a` belongs before `b` in the log (same rule as ordenar).
-function antes(a, b) {
-  const porFecha = compararClaves(clave(a && a.fecha), clave(b && b.fecha));
-  if (porFecha !== 0) return porFecha < 0;
-  return compararClaves(clave(a && a.created_at), clave(b && b.created_at)) < 0;
-}
 
 // Resolve a tank reference against the catalog, then dim_tanque_sinonimo
 // (production data writes PD1 for PD-1, TIB 13 for TIBOR 13, I4 for I-4 CAVA).
@@ -252,14 +278,14 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
         for (const p of origen.partes) salida.push({ lot_code: p.lot_code, litros: p.litros });
         origen.partes = [];
       } else {
-        const ratio = movido / disponible;
+        const cuotas = repartir(origen.partes.map(p => p.litros), movido);
         const quedan = [];
-        for (const p of origen.partes) {
-          const amt = redondear(p.litros * ratio);
+        origen.partes.forEach((p, k) => {
+          const amt = cuotas[k];
           salida.push({ lot_code: p.lot_code, litros: amt });
           const resto = redondear(p.litros - amt);
           if (resto > EPS) quedan.push({ lot_code: p.lot_code, litros: resto });
-        }
+        });
         origen.partes = quedan;
       }
       recalcular(origen);
@@ -277,11 +303,12 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
     }
     const llegada = [];
     if (destino) {
-      const factor = movido > 0 ? (movido - merma) / movido : 0;
       const antesVacio = destino.litros <= EPS;
       const etapaPrevia = destino.etapa;
-      for (const p of salida) {
-        const add = redondear(p.litros * factor);
+      const cuotas = repartir(salida.map(p => p.litros), Math.max(0, redondear(movido - merma)));
+      for (let k = 0; k < salida.length; k++) {
+        const p = salida[k];
+        const add = cuotas[k];
         if (add <= EPS) continue;
         llegada.push({ lot_code: p.lot_code, litros: add });
         const ex = destino.partes.find(x => x.lot_code === p.lot_code);
@@ -443,7 +470,13 @@ export function validarMovimiento(estado, mov, opciones = {}) {
 export function validarMovimientoEnLog(tanques, movimientos, mov, opciones = {}) {
   const filas = (Array.isArray(movimientos) ? movimientos : [])
     .filter(m => m && typeof m === 'object' && !m.anulado);
-  const previas = filas.filter(m => antes(m, mov));
+  // the prefix is taken from the REPLAY order with the candidate in place, so a
+  // row with the same fecha and created_at counts as before it exactly as the
+  // replay will apply it. Filtering on a strict "happens before" test would drop
+  // that row and judge the candidate against a tank that still looks empty.
+  const orden = ordenar([...filas, mov]);
+  const posicion = orden.findIndex(e => e.i === filas.length);
+  const previas = orden.slice(0, posicion).map(e => e.mov);
   const errores = validarMovimiento(deriveEstado(tanques, previas, opciones), mov, opciones);
 
   // anything the candidate breaks downstream: compare the avisos of the log
@@ -452,7 +485,12 @@ export function validarMovimientoEnLog(tanques, movimientos, mov, opciones = {})
   const con = replayMovimientos(tanques, [...filas, mov], opciones);
   const previos = new Set(base.avisos.map(a => `${a.orden}|${a.codigo}`));
   for (const a of con.avisos) {
-    if (a.movimiento === mov) continue; // already reported against the point-in-time state
+    if (a.movimiento === mov) {
+      // the point-in-time check above is the authoritative report for the
+      // candidate itself; this is the net that catches anything it misses
+      if ((a.codigo === 'sobregiro' || a.codigo === 'desbordado') && !errores.length) errores.push(a.mensaje);
+      continue;
+    }
     if (previos.has(`${a.orden}|${a.codigo}`)) continue; // already inconsistent without this row
     const mensaje = `Este movimiento deja inconsistente un movimiento posterior: ${a.mensaje}`;
     if (!errores.includes(mensaje)) errores.push(mensaje);
