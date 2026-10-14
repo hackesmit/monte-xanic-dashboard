@@ -47,8 +47,9 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `mona/index.js` | Mona facade: init, tool-effect wiring, view-change hook. |
 | `api/mona.js` | Session-gated SSE proxy to Claude (`claude-sonnet-4-6`). Server-side key + system prompt. No business logic. |
 | `api/mona-data.js` | Token-gated CRUD for `mona_*` tables (service key). Username/role from token, never body. |
+| `tanques/estado.js` | Pure tank state: derive contents from the movement log, validate a movement. No DOM, no imports. |
 
-Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js. Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`. Do not add any business logic, table reads, or session-token checks to `api/ping.js`. Do not add DOM access to `mona/tools.js` or `mona/dataAccess.js` (keep them Node-importable). Do not put the Anthropic key or any business logic in the client; `api/mona.js` stays a thin stateless proxy. All `mona_*` table access goes through `api/mona-data.js` — never the anon key.
+Do not add chart rendering to dataLoader.js. Do not add data queries to charts.js. Respect boundaries. Do not add scoring logic to maps.js or dataLoader.js. Do not query Supabase from classification.js. Do not call `DataStore.cacheData()` or Supabase from `demoMode.js`. Do not add any business logic, table reads, or session-token checks to `api/ping.js`. Do not add DOM access to `mona/tools.js`, `mona/dataAccess.js` or `tanques/estado.js` (keep them Node-importable). Tank contents are DERIVED from `movimientos_tanque` by `tanques/estado.js`: never store a tank's current litres or lote as state, and never duplicate the derivation in the API or the UI. Do not put the Anthropic key or any business logic in the client; `api/mona.js` stays a thin stateless proxy. All `mona_*` table access goes through `api/mona-data.js` — never the anon key.
 
 ## Upload Pipeline Rules
 
