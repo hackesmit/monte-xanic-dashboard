@@ -20,6 +20,7 @@ import { Mediciones } from './mediciones.js';
 import { DemoMode } from './demoMode.js';
 import { Mona } from './mona/index.js';
 import { escapeHtml } from './utils.js';
+import { tonnageByVintage } from './aggregations.js';
 
 export const App = {
   currentView: 'berry',
@@ -31,6 +32,7 @@ export const App = {
   async init() {
     if (this.initialized) return;
     this.restoreTheme();
+    this.restoreSidebar();
 
     // Always show dashboard first — never show data loader as first screen
     this.hideDataLoader();
@@ -380,11 +382,16 @@ export const App = {
 
       case 'vintage': {
         this._updateVintageUI(cleanBerry);
+        // Tonnage comes from the mediciones (tons_received, via pre-recepcion),
+        // filtered exactly as the Mediciones view filters them.
+        const vintageTons = tonnageByVintage(
+          Mediciones._applyGlobalFilters(DataStore.medicionesData || []));
+        Charts.createVintageTonnage('chartVintageTons', vintageTons);
         Charts.createVintageComparison('chartVintageBrix', cleanBerry, 'brix', 'Brix (°Bx)');
         Charts.createVintageComparison('chartVintageAnt', cleanBerry, 'tANT', 'tANT (ppm ME)');
         Charts.createVintageComparison('chartVintagePH', cleanBerry, 'pH', 'pH');
         Charts.createVintageComparison('chartVintageTA', cleanBerry, 'ta', 'AT (g/L)');
-        this.updateVintageSummary(cleanBerry);
+        this.updateVintageSummary(cleanBerry, vintageTons);
         this.updateVintageVarietalTable(cleanBerry);
         const activeVintages = [...Filters.state.vintages];
         const calVintage = activeVintages.length === 1 ? activeVintages[0] : (activeVintages.length ? Math.max(...activeVintages) : null);
@@ -503,7 +510,7 @@ export const App = {
 
   // ── Vintage Summary Tables ──
 
-  updateVintageSummary(data) {
+  updateVintageSummary(data, tons) {
     const body = document.getElementById('vintage-summary-body');
     const thead = document.getElementById('vintage-summary-head');
     if (!body) return;
@@ -544,7 +551,8 @@ export const App = {
       { name: 'tANT Promedio', field: 'tANT', dec: 0, unit: 'ppm' },
       { name: 'Peso Baya', field: 'berryFW', dec: 2, unit: 'g' },
       { name: 'Muestras', field: '_count', dec: 0, unit: '' },
-      { name: 'Lotes Únicos', field: '_lots', dec: 0, unit: '' }
+      { name: 'Lotes Únicos', field: '_lots', dec: 0, unit: '' },
+      { name: 'Toneladas Recibidas', field: '_tons', dec: 1, unit: 't' }
     ];
 
     const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
@@ -558,6 +566,8 @@ export const App = {
           vals[y] = yd.length;
         } else if (m.field === '_lots') {
           vals[y] = new Set(yd.map(d => d.sampleId)).size;
+        } else if (m.field === '_tons') {
+          vals[y] = tons?.byYear[y] ? tons.byYear[y].total : null;
         } else {
           vals[y] = avg(yd.map(d => d[m.field]));
         }
@@ -884,6 +894,39 @@ export const App = {
     document.documentElement.setAttribute('data-theme', this.theme);
     this.updateChartTheme();
     this._syncThemeIcons();
+  },
+
+  // Desktop only: collapse the sidebar to a thin rail so charts and tables
+  // take the full width. Remembered per browser; the mobile bottom sheet
+  // ignores it because the toggle and the collapsed rules are desktop-only.
+  toggleSidebar() {
+    this._setSidebarCollapsed(!document.querySelector('.layout')?.classList.contains('sidebar-collapsed'));
+    try { localStorage.setItem('xanic_sidebar_collapsed', this._sidebarCollapsed ? '1' : '0'); } catch (_) { /* storage blocked */ }
+  },
+
+  restoreSidebar() {
+    let saved = null;
+    try { saved = localStorage.getItem('xanic_sidebar_collapsed'); } catch (_) { /* storage blocked */ }
+    this._setSidebarCollapsed(saved === '1');
+  },
+
+  _setSidebarCollapsed(collapsed) {
+    this._sidebarCollapsed = collapsed;
+    const layout = document.querySelector('.layout');
+    if (layout) layout.classList.toggle('sidebar-collapsed', collapsed);
+    const btn = document.getElementById('sidebar-collapse');
+    if (btn) {
+      btn.setAttribute('aria-expanded', String(!collapsed));
+      const text = collapsed ? 'Mostrar panel' : 'Ocultar panel';
+      btn.title = text;
+      const label = btn.querySelector('.sidebar-collapse-label');
+      if (label) label.textContent = text;
+    }
+    // Chart.js watches its container, but a grid column change can land
+    // between its resize checks; nudge every chart once the width settles.
+    requestAnimationFrame(() => {
+      Object.values(Charts.instances || {}).forEach(c => { try { c.resize(); } catch (_) { /* detached */ } });
+    });
   },
 
   updateChartTheme() {

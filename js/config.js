@@ -55,6 +55,10 @@ export const CONFIG = {
     'Valle de Guadalupe (Olé)':                      'Olé (VDG)',
     'Valle de Guadalupe (Ole)':                      'Olé (VDG)',
     'Valle de Guadalupe (Siete Leguas)':             'Siete Leguas (VDG)',
+    // The 2026 Seguimiento workbook names Rancho 14 by its supplier code and
+    // places it in Valle de Guadalupe; _codeToRanch already maps R14 the same way.
+    'Valle de Guadalupe (R14)':                      'Rancho 14 (VDG)',
+    'Valle de Guadalupe (Rancho 14)':                'Rancho 14 (VDG)',
     'Valle de Ojos Negros (Rancho 14)':              'Rancho 14 (VDG)',
     'Valle de Ojos Negros (Kompali)':                'Kompali (VON)',
     'Valle de Ojos Negros (Viña Alta)':              'Viña Alta (VON)',
@@ -143,8 +147,14 @@ export const CONFIG = {
 
   normalizeAppellation(name, sampleId) {
     if (!name) return name;
-    // Fix mojibake/replacement characters (U+FFFD from encoding errors in DB)
-    let fixed = name;
+    // Trim BEFORE any lookup. The 2026 Seguimiento workbook ships its Origen
+    // column with a trailing space ('Valle de Guadalupe (Monte Xanic) '), which
+    // missed appellationFixes entirely and fell through to the pass-through
+    // branch, splitting 21 lots from the historical 'Monte Xanic (VDG)' series
+    // in every origin chip, legend and origin-coloured chart. Trimming is
+    // idempotent, so the pass-through stays idempotent too.
+    let fixed = String(name).trim();
+    if (!fixed) return name;
     if (fixed.includes('\uFFFD')) {
       fixed = fixed
         .replace('Vi\uFFFDa', 'Viña').replace('Ol\uFFFD', 'Olé')
@@ -306,6 +316,19 @@ export const CONFIG = {
   _excludedSamples: new Set(['24ROSEMX-5', '24CABERNETMERLOT-1', '25ROSEMX-1']),
   _excludeRe: /EXP|EXPERIMENTO|^NORMAL$/i,
   _labTestRe: /\b(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)\b/i,
+
+  // Appellations outside Monte Xanic's Baja California supply (reference or
+  // benchmark samples in the WineXRay account): California, Napa, Chile, in
+  // any spelling such as 'Napa Valley' or 'Valle Central, Chile'. Matched
+  // accent- and case-insensitively on whole words, and 'Baja California'
+  // is never foreign. These rows stay in the database; every view skips them.
+  _foreignAppellationRe: /\b(california|napa|chile)\b/i,
+  isForeignAppellation(name) {
+    if (!name) return false;
+    const s = String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (!this._foreignAppellationRe.test(s)) return false;
+    return !/\bbaja[\s-]+california\b/i.test(s);
+  },
 
   isSampleExcluded(sampleId) {
     if (!sampleId) return false;
@@ -1059,6 +1082,13 @@ export const CONFIG = {
     { value: 'line',     label: 'Líneas' }
   ],
 
+  // Explorador trend line (least-squares fit) choices.
+  explorerTrendModes: [
+    { value: 'none',  label: 'Ninguna' },
+    { value: 'all',   label: 'General' },
+    { value: 'group', label: 'Por grupo' }
+  ],
+
   explorerGroupBy: {
     berry: [
       { value: 'variety',     label: 'Varietal' },
@@ -1266,7 +1296,18 @@ export const CONFIG = {
     },
     'Valle de San Vicente': {
       'Grenache': 'GRE-CALADOC-VDG-VSV',
-      'Caladoc':  'GRE-CALADOC-VDG-VSV'
+      'Caladoc':  'GRE-CALADOC-VDG-VSV',
+      // Daniel, 2026-09-15. MT-25-033 (Syrah, SYDUB-1) and MT-25-034 (Malbec,
+      // MADUB-1), both from Dubacano, were the only two mediciones in the 2025
+      // vintage with no rubric at all. San Vicente already shares its Grenache
+      // and Caladoc rubric with Valle de Guadalupe, so valley sharing with VDG
+      // is the established precedent, and VDG's thresholds sit closer to San
+      // Vicente's coastal conditions than the high-altitude Ojos Negros ones.
+      // Malbec is not named in CS-SY-VDG's title; it rides the same red
+      // thresholds by that valley-sharing rule. Reversible: this is a lookup
+      // entry, not a threshold change.
+      'Syrah':    'CS-SY-VDG',
+      'Malbec':   'CS-SY-VDG'
     }
   },
 

@@ -28,7 +28,7 @@ const TABLE_DISPLAY = {
 const EXCLUDED_LABEL = {
   control_wine:  'Control Wine',
   lab_test:      'Pruebas de laboratorio',
-  california:    'Appellation California',
+  california:    'Fuera de Baja California (California, Napa, Chile)',
   hard_excluded: 'Excluidos por política',
 };
 
