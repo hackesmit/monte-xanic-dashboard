@@ -34,23 +34,43 @@ function valuesBlock(table) {
   return m[1];
 }
 
-/** Split a `(a, b, c)` tuple line into trimmed fields, honouring quoted commas. */
-function tuple(line) {
+/**
+ * Split a `(a, b, c)` tuple line into fields, honouring quoted commas.
+ *
+ * A quoted field is returned EXACTLY as written between the quotes: trimming it
+ * would erase whitespace that Postgres stores, which is the one thing the
+ * whitespace-normalization assertion below exists to catch. Only unquoted
+ * fields (numbers, NULL) get their syntactic padding trimmed.
+ */
+export function tuple(line) {
   const body = line.trim().replace(/^\(/, '').replace(/\),?$/, '');
   const out = [];
-  let cur = '';
+  let lit = '';
+  let bare = '';
   let quoted = false;
+  let sawQuote = false;
+  const push = () => {
+    out.push(sawQuote ? lit : bare.trim());
+    lit = '';
+    bare = '';
+    sawQuote = false;
+  };
   for (let i = 0; i < body.length; i++) {
     const ch = body[i];
-    if (ch === "'") {
-      if (quoted && body[i + 1] === "'") { cur += "'"; i++; continue; }
-      quoted = !quoted;
+    if (quoted) {
+      if (ch === "'") {
+        if (body[i + 1] === "'") { lit += "'"; i++; continue; }
+        quoted = false;
+        continue;
+      }
+      lit += ch;
       continue;
     }
-    if (ch === ',' && !quoted) { out.push(cur.trim()); cur = ''; continue; }
-    cur += ch;
+    if (ch === "'") { quoted = true; sawQuote = true; continue; }
+    if (ch === ',') { push(); continue; }
+    bare += ch;
   }
-  out.push(cur.trim());
+  push();
   return out;
 }
 
@@ -73,6 +93,33 @@ const sinonimos = valuesBlock('dim_tanque_sinonimo').split('\n').filter(Boolean)
 });
 
 const codes = new Set(tanques.map((t) => t.codigo));
+
+describe('MT.50 - the seed parser itself', () => {
+  // These assertions guard the guard. An earlier version trimmed quoted
+  // literals, so a seed row written as 'KEG 17 ' parsed as 'KEG 17' and the
+  // whitespace assertion below passed while Postgres stored the trailing space.
+  it('keeps whitespace that lives inside a SQL literal', () => {
+    assert.deepEqual(
+      tuple("  ('KEG 17 ', NULL, NULL, 60, 'KEG', 'otras', 120),"),
+      ['KEG 17 ', 'NULL', 'NULL', '60', 'KEG', 'otras', '120']
+    );
+    assert.deepEqual(
+      tuple("  (' A1', 'A', 1, 7400, 'TQ', 'fermentacion', 5)"),
+      [' A1', 'A', '1', '7400', 'TQ', 'fermentacion', '5']
+    );
+  });
+
+  it('unescapes a doubled quote and splits on a comma inside a literal', () => {
+    assert.deepEqual(
+      tuple("  ('O''Hara, 2', 'A', 1, 10, 'TQ', 'fermentacion', 1)"),
+      ["O'Hara, 2", 'A', '1', '10', 'TQ', 'fermentacion', '1']
+    );
+  });
+
+  it('trims only the padding around an unquoted field', () => {
+    assert.deepEqual(tuple("  ('X',  NULL ,  7 )"), ['X', 'NULL', '7']);
+  });
+});
 
 describe('MT.50 - dim_tanque seed matches the inventory', () => {
   it('seeds all 121 vessels', () => {
@@ -247,7 +294,7 @@ describe('MT.50 - schema guards', () => {
   });
 
   it('allows exactly the seven movement types and two sources', () => {
-    const tipos = SQL.match(/movimientos_tanque_tipo_chk CHECK \(tipo IN \(([\s\S]*?)\)\)/);
+    const tipos = SQL.match(/movimientos_tanque_tipo_chk\s+CHECK \(tipo IN \(([\s\S]*?)\)\)/);
     assert.ok(tipos, 'tipo CHECK not found');
     const list = tipos[1].match(/'([a-z]+)'/g).map((s) => s.replace(/'/g, ''));
     assert.deepEqual(list.sort(), ['descube', 'ensamble', 'prensa', 'recepcion',
@@ -255,12 +302,44 @@ describe('MT.50 - schema guards', () => {
     assert.match(SQL, /movimientos_tanque_fuente_chk\s+CHECK \(fuente IN \('manual', 'lab'\)\)/);
   });
 
+  it('rejects NaN and Infinity litres, which a bare > 0 lets through', () => {
+    // NUMERIC accepts 'NaN' and 'Infinity', and Postgres orders NaN ABOVE every
+    // finite number, so volumen_l > 0 alone admits both and the tank's derived
+    // balance becomes NaN for good. < 'Infinity' rejects them (NaN < Infinity
+    // is false); > 0 and >= 0 reject -Infinity.
+    assert.match(SQL, /CHECK \(volumen_l > 0 AND volumen_l < 'Infinity'::numeric\)/);
+    assert.match(SQL, /CHECK \(merma_l >= 0 AND merma_l < 'Infinity'::numeric\)/);
+    assert.match(SQL, /CHECK \(capacidad_l > 0 AND capacidad_l < 'Infinity'::numeric\)/);
+  });
+
+  it('closes the layout CHECK against a NULL result', () => {
+    // A CHECK that evaluates to NULL is SATISFIED. With fila NULL the
+    // fermentacion branch's `fila IN (...)` is NULL, so without the outer
+    // IS TRUE an UPDATE ... SET fila = NULL left a vessel neither on the grid
+    // nor in the tray.
+    assert.match(SQL, /\n  \) IS TRUE\);/);
+  });
+
+  it('reconciles every CHECK through ALTER, not inside CREATE TABLE', () => {
+    // CREATE TABLE IF NOT EXISTS skips an existing table, so a CHECK written
+    // inline never reaches an install that already has the table and a re-run
+    // cannot restore one somebody dropped.
+    const inlineChecks = SQL.match(/^ {2}CONSTRAINT \w+\s+CHECK/gm) ?? [];
+    assert.deepEqual(inlineChecks, [],
+      'move this CHECK to an ALTER TABLE DROP IF EXISTS / ADD pair');
+    const adds = SQL.match(/ADD {2}CONSTRAINT (\w+)/g) ?? [];
+    const drops = SQL.match(/DROP CONSTRAINT IF EXISTS (\w+)/g) ?? [];
+    assert.equal(adds.length, 19, 'constraint count changed; confirm intentional');
+    assert.equal(adds.length, drops.length,
+      'every ADD CONSTRAINT needs its DROP CONSTRAINT IF EXISTS to stay re-runnable');
+  });
+
   it('cannot derive a negative volume from a single movement', () => {
     // merma_l comes out of volumen_l, so a merma larger than the volume would
     // hand the destination negative litres; with no destino there is nothing to
     // subtract it from.
     assert.match(SQL, /movimientos_tanque_merma_tope_chk\s+CHECK \(merma_l <= volumen_l\)/);
-    assert.match(SQL, /movimientos_tanque_merma_destino_chk CHECK \(destino IS NOT NULL OR merma_l = 0\)/);
+    assert.match(SQL, /movimientos_tanque_merma_destino_chk\s+CHECK \(destino IS NOT NULL OR merma_l = 0\)/);
   });
 
   it('binds each grid row to its own area', () => {
@@ -319,9 +398,10 @@ describe('MT.50 - security and idempotency', () => {
   });
 
   it('is re-runnable: no bare CREATE, every seed INSERT resolves its conflict', () => {
-    assert.deepEqual(SQL.match(/CREATE TABLE(?! IF NOT EXISTS)/g) ?? [], [],
+    // anchored to a statement: the comments legitimately name the bare clause
+    assert.deepEqual(SQL.match(/^CREATE TABLE(?! IF NOT EXISTS)/gm) ?? [], [],
       'every CREATE TABLE must be IF NOT EXISTS');
-    assert.deepEqual(SQL.match(/CREATE INDEX(?! IF NOT EXISTS)/g) ?? [], [],
+    assert.deepEqual(SQL.match(/^CREATE INDEX(?! IF NOT EXISTS)/gm) ?? [], [],
       'every CREATE INDEX must be IF NOT EXISTS');
     const inserts = SQL.match(/INSERT INTO public\.\w+/g) || [];
     const conflicts = SQL.match(/ON CONFLICT \([\w, ]+\) DO (UPDATE|NOTHING)/g) || [];
