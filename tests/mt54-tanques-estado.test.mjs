@@ -1,4 +1,4 @@
-// mt54 — pure tank-state module: derive contents from the movement log, validate a move.
+// mt54 - pure tank-state module: derive contents from the movement log, validate a move.
 // Bead xd-qrn.2. Spec: state/specs/xd-tanques/SPEC.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
