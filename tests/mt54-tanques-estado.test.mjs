@@ -1,4 +1,4 @@
-// mt51 — pure tank-state module: derive contents from the movement log, validate a move.
+// mt54 — pure tank-state module: derive contents from the movement log, validate a move.
 // Bead xd-qrn.2. Spec: state/specs/xd-tanques/SPEC.md.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -7,6 +7,7 @@ import {
   deriveEstado,
   replayMovimientos,
   validarMovimiento,
+  validarMovimientoEnLog,
   historialTanque,
   recorridoLote,
   TIPOS,
@@ -451,6 +452,110 @@ test('recorridoLote follows one lote across tanks, including its blended share',
   cerca(r.litros_actuales, 5400);
   cerca(r.litros_recibidos, 6000);
   assert.deepEqual(recorridoLote(TANQUES, movs, 'NOPE').pasos, []);
+});
+
+// --- cross-vendor review round 1 (gpt-6.1-sol, 2026-10-14) ------------------
+
+test('a full trasiego carries the origin stage over to an empty destination', () => {
+  const movs = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 10000, fecha: '2025-09-01', etapa: 'fml' }),
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 10000, fecha: '2025-10-01' }),
+  ];
+  const estado = deriveEstado(TANQUES, movs);
+  assert.equal(estado.A1.etapa, null);
+  assert.equal(estado.B1.etapa, 'fml', 'emptying the origin must not erase the stage before it is inherited');
+});
+
+test('created_at is ordered as an instant, not as text', () => {
+  const movs = [
+    // 09:00Z happens AFTER 10:00+02:00 (08:00Z), so the recepcion comes first
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 5000, fecha: '2025-09-01', created_at: '2025-09-01T09:00:00Z' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 5000, fecha: '2025-09-01', created_at: '2025-09-01T10:00:00+02:00' }),
+  ];
+  const { estado, avisos } = replayMovimientos(TANQUES, movs);
+  assert.deepEqual(avisos, []);
+  assert.equal(estado.A1.litros, 0);
+  assert.equal(estado.B1.litros, 5000);
+});
+
+test('a salida carries no merma of its own: it is inside the volume that leaves', () => {
+  const estado = deriveEstado(TANQUES, [mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000 })]);
+  const errs = validarMovimiento(estado, mv({ tipo: 'salida', origen: 'A1', volumen_l: 100, merma_l: 10 }));
+  assert.ok(errs.some(e => /salida no lleva merma/.test(e)), errs.join(' | '));
+
+  // a legacy row that carries one is folded into the exit volume, never counted twice
+  const { estado: e2, balance, avisos, aplicados } = replayMovimientos(TANQUES, [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-01' }),
+    mv({ tipo: 'salida', origen: 'A1', volumen_l: 1000, merma_l: 100, fecha: '2025-09-02' }),
+  ]);
+  assert.equal(e2.A1.litros, 0);
+  assert.equal(balance.merma_l, 0);
+  assert.equal(balance.salido_l, 1000);
+  assert.equal(balance.descuadre_l, 0);
+  assert.equal(aplicados[1].merma_l, 0);
+  assert.equal(avisos.length, 1);
+  assert.equal(avisos[0].codigo, 'merma_en_salida');
+});
+
+test('recorridoLote does not report an ordinary salida as merma', () => {
+  const movs = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000, fecha: '2025-09-01' }),
+    mv({ tipo: 'salida', origen: 'A1', volumen_l: 400, fecha: '2025-10-01' }),
+  ];
+  const r = recorridoLote(TANQUES, movs, 'L1');
+  const salida = r.pasos.find(p => p.tipo === 'salida');
+  assert.equal(salida.merma_l, 0);
+  assert.equal(salida.salido_l, 400);
+  assert.equal(r.litros_merma, 0);
+  assert.equal(r.litros_salidos, 400);
+  assert.equal(r.litros_actuales, 600);
+});
+
+test('an impossible calendar date is refused', () => {
+  const estado = deriveEstado(TANQUES, [mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 1000 })]);
+  for (const f of ['2025-02-30', '2025-13-01', '2025-09-01garbage', '2025-9-1', '20250901']) {
+    const errs = validarMovimiento(estado, mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 100, fecha: f }));
+    assert.ok(errs.some(e => /fecha valida/.test(e)), `${f}: ${errs.join(' | ')}`);
+  }
+  assert.deepEqual(validarMovimiento(estado, mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 100, fecha: '2024-02-29' })), []);
+});
+
+test('validarMovimientoEnLog judges a backdated row at its place in the log', () => {
+  const log = [
+    mv({ tipo: 'recepcion', destino: 'B2', lot_code: 'L1', volumen_l: 5000, fecha: '2025-09-01' }),
+    mv({ tipo: 'salida', origen: 'B2', volumen_l: 5000, fecha: '2025-09-03' }),
+  ];
+  const estado = deriveEstado(TANQUES, log);
+  assert.equal(estado.B2.litros, 0);
+  const atrasado = mv({ tipo: 'recepcion', destino: 'B2', lot_code: 'L2', volumen_l: 5000, fecha: '2025-09-02' });
+  // against today's state the tank looks empty, so the plain gate lets it through
+  assert.deepEqual(validarMovimiento(estado, atrasado), []);
+  const errs = validarMovimientoEnLog(TANQUES, log, atrasado);
+  assert.ok(errs.some(e => /espacio libre/.test(e)), errs.join(' | '));
+});
+
+test('validarMovimientoEnLog reports the later movement a backdated row breaks', () => {
+  const log = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 10000, fecha: '2025-09-01' }),
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'B1', volumen_l: 8000, fecha: '2025-09-10' }),
+  ];
+  // taking 5000 L out on the 5th leaves the 8000 L trasiego of the 10th short
+  const errs = validarMovimientoEnLog(TANQUES, log, mv({ tipo: 'salida', origen: 'A1', volumen_l: 5000, fecha: '2025-09-05' }));
+  assert.ok(errs.some(e => /movimiento posterior/.test(e) && /solo tiene/.test(e)), errs.join(' | '));
+  // the same row at the end of the log is fine
+  assert.deepEqual(validarMovimientoEnLog(TANQUES, log, mv({ tipo: 'salida', origen: 'A1', volumen_l: 2000, fecha: '2025-09-20' })), []);
+});
+
+test('validarMovimientoEnLog ignores anulado rows and does not blame rows already inconsistent', () => {
+  const log = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: 'L1', volumen_l: 10000, fecha: '2025-09-01' }),
+    mv({ tipo: 'salida', origen: 'A1', volumen_l: 9000, fecha: '2025-09-05', anulado: true }),
+    // already impossible without the candidate: only 10000 L ever arrived
+    mv({ tipo: 'trasiego', origen: 'A1', destino: 'A2', volumen_l: 10500, fecha: '2025-09-10' }),
+  ];
+  assert.equal(replayMovimientos(TANQUES, log).avisos[0].codigo, 'sobregiro');
+  const errs = validarMovimientoEnLog(TANQUES, log, mv({ tipo: 'salida', origen: 'A1', volumen_l: 400, fecha: '2025-09-05' }));
+  assert.deepEqual(errs, []);
 });
 
 test('the module stays pure: no imports, no DOM, no network', () => {
