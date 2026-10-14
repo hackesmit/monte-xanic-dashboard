@@ -56,26 +56,38 @@ function redondearTotal(n) {
   return Object.is(r, -0) ? 0 : r;
 }
 
-// Split `total` across `pesos` so the shares sum to `total` EXACTLY at the
-// rounding quantum: rounding each share on its own loses up to half a quantum
-// per lote per movement, which accumulates into a real conservation gap over
-// thousands of small withdrawals. The remainder goes to the largest share,
-// deterministically (first one wins a tie).
-function repartir(pesos, total) {
+// Split `total` across `pesos` in whole microlitres, so the shares sum to
+// `total` EXACTLY: rounding each share on its own loses up to half a unit per
+// lote per movement, which accumulates into a real conservation gap over
+// thousands of small withdrawals. Largest remainder first, ties by position, so
+// the split is deterministic; `topes` caps each share (a lote cannot send more
+// than it holds, and cannot arrive with more than it sent, which is what keeps
+// per-lote merma from going negative).
+const UNIDAD = 1e6; // microlitre
+
+function repartir(pesos, total, topes) {
   if (!pesos.length) return [];
+  const unidades = Math.round(total * UNIDAD);
   let suma = 0;
   for (const p of pesos) suma += p;
-  if (suma <= 0) return pesos.map(() => 0);
-  const partes = pesos.map(p => redondear((p * total) / suma));
-  let acumulado = 0;
-  for (const x of partes) acumulado += x;
-  const resto = redondear(total - acumulado);
-  if (resto !== 0) {
-    let k = 0;
-    for (let j = 1; j < partes.length; j++) if (partes[j] > partes[k]) k = j;
-    partes[k] = redondear(partes[k] + resto);
+  if (suma <= 0 || unidades <= 0) return pesos.map(() => 0);
+  const limites = pesos.map((p, i) => Math.round((topes ? topes[i] : p) * UNIDAD));
+  const exactas = pesos.map(p => (p * unidades) / suma);
+  const cuotas = exactas.map((x, i) => Math.max(0, Math.min(Math.floor(x), limites[i])));
+  let resto = unidades;
+  for (const c of cuotas) resto -= c;
+  const porResto = exactas
+    .map((x, i) => ({ i, frac: x - Math.floor(x) }))
+    .sort((a, b) => (b.frac - a.frac) || (a.i - b.i));
+  while (resto > 0) {
+    let repartido = false;
+    for (const { i } of porResto) {
+      if (resto <= 0) break;
+      if (cuotas[i] < limites[i]) { cuotas[i] += 1; resto -= 1; repartido = true; }
+    }
+    if (!repartido) break; // every share is at its cap: the caller asked for more than exists
   }
-  return partes;
+  return cuotas.map(u => u / UNIDAD);
 }
 
 function texto(v) {
@@ -97,7 +109,11 @@ function fmtL(n) {
 // YYYY-MM-DD business date, or a full ISO timestamp. '2025-02-30',
 // '2025-09-01garbage' and '2025-09-01T09:30garbage' are all refused rather than
 // carried into the log and into the replay order.
-const RE_FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/;
+// A timestamp must carry its zone: '2025-08-31T23:30:00' means a different
+// instant on a UTC server than in a Tijuana browser, and this module is the one
+// the API and the UI share, so the same log has to derive the same contents in
+// both. A plain business date is read as UTC midnight.
+const RE_FECHA = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-](?:0\d|1[0-4])(?::?[0-5]\d)?))?$/;
 
 function fechaValida(v) {
   const t = texto(v);
@@ -107,6 +123,7 @@ function fechaValida(v) {
   const [y, mes, dia] = [Number(m[1]), Number(m[2]), Number(m[3])];
   const d = new Date(Date.UTC(y, mes - 1, dia));
   if (d.getUTCFullYear() !== y || d.getUTCMonth() !== mes - 1 || d.getUTCDate() !== dia) return '';
+  if (!Number.isFinite(Date.parse(t))) return ''; // nothing we cannot place on a timeline
   return t;
 }
 
@@ -278,7 +295,8 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
         for (const p of origen.partes) salida.push({ lot_code: p.lot_code, litros: p.litros });
         origen.partes = [];
       } else {
-        const cuotas = repartir(origen.partes.map(p => p.litros), movido);
+        const pesos = origen.partes.map(p => p.litros);
+        const cuotas = repartir(pesos, movido, pesos);
         const quedan = [];
         origen.partes.forEach((p, k) => {
           const amt = cuotas[k];
@@ -305,7 +323,8 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
     if (destino) {
       const antesVacio = destino.litros <= EPS;
       const etapaPrevia = destino.etapa;
-      const cuotas = repartir(salida.map(p => p.litros), Math.max(0, redondear(movido - merma)));
+      const enviado = salida.map(p => p.litros);
+      const cuotas = repartir(enviado, Math.max(0, redondear(movido - merma)), enviado);
       for (let k = 0; k < salida.length; k++) {
         const p = salida[k];
         const add = cuotas[k];
@@ -502,34 +521,44 @@ export function validarMovimientoEnLog(tanques, movimientos, mov, opciones = {})
 
 /**
  * The movement rows that touch one tank, oldest first, each tagged with
- * direccion ('entrada' | 'salida') and delta_l (litres gained or lost).
+ * direccion ('entrada' | 'salida') and delta_l, the litres the tank actually
+ * gained or lost. delta_l comes from the REPLAY, not from volumen_l: a row that
+ * the log cannot honour (an overdraw clamped to what the tank held, a row with
+ * an unknown tank) would otherwise tell a history that contradicts the derived
+ * contents. `volumen_l` and `merma_l` stay as recorded, and `aplicado` says
+ * whether the row counted at all.
  * Anulado rows are excluded unless opciones.incluirAnulados is true.
  */
-export function historialTanque(movimientos, codigo, opciones = {}) {
-  const sinonimos = indiceSinonimos(opciones);
+export function historialTanque(tanques, movimientos, codigo, opciones = {}) {
   const objetivo = texto(codigo);
   if (!objetivo) return [];
-  const alias = sinonimos && Object.prototype.hasOwnProperty.call(sinonimos, objetivo) ? texto(sinonimos[objetivo]) : '';
-  const buscado = alias || objetivo;
-  const codigos = new Set([buscado]);
+  const sinonimos = indiceSinonimos(opciones);
+  const codigos = new Set();
+  for (const t of Array.isArray(tanques) ? tanques : []) {
+    const c = texto(t && t.codigo);
+    if (c) codigos.add(c);
+  }
+  const buscado = resolver(objetivo, codigos, sinonimos);
+  const { aplicados } = replayMovimientos(tanques, movimientos, opciones);
+  const porFila = new Map();
+  for (const a of aplicados) porFila.set(a.movimiento, a);
+
   const filas = [];
   for (const { mov } of ordenar(Array.isArray(movimientos) ? movimientos : [])) {
     if (!mov || typeof mov !== 'object') continue;
     if (mov.anulado && !opciones.incluirAnulados) continue;
-    const codOrigen = resolver(mov.origen, codigos, sinonimos);
-    const codDestino = resolver(mov.destino, codigos, sinonimos);
-    const esEntrada = codDestino === buscado;
-    const esSalida = codOrigen === buscado;
+    const esEntrada = texto(mov.destino) ? resolver(mov.destino, codigos, sinonimos) === buscado : false;
+    const esSalida = texto(mov.origen) ? resolver(mov.origen, codigos, sinonimos) === buscado : false;
     if (!esEntrada && !esSalida) continue;
-    const volumen = numero(mov.volumen_l);
-    const vol = Number.isNaN(volumen) ? 0 : volumen;
-    let merma = numero(mov.merma_l);
-    merma = Number.isNaN(merma) ? 0 : Math.max(0, merma);
+    const a = porFila.get(mov) || null;
     filas.push({
       ...mov,
       codigo: buscado,
       direccion: esEntrada ? 'entrada' : 'salida',
-      delta_l: esEntrada ? redondear(Math.max(0, vol - merma)) : redondear(-vol),
+      aplicado: !!a,
+      movido_l: a ? a.movido_l : 0,
+      llegado_l: a ? a.llegado_l : 0,
+      delta_l: a ? (esEntrada ? a.llegado_l : redondear(-a.movido_l)) : 0,
     });
   }
   return filas;
