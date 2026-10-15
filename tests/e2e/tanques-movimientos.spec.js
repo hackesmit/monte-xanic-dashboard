@@ -157,6 +157,10 @@ async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440,
     const cuerpo = JSON.parse(req.postData() || '{}');
     s.cuerpos.push(cuerpo);
     const guion = s.guion.shift();
+    if (guion === 'rechazar') {
+      return route.fulfill({ status: 403, contentType: 'application/json',
+        body: JSON.stringify({ ok: false, error: 'Sin permisos para registrar movimientos' }) });
+    }
     if (guion === 'retener') {
       await new Promise((resolve) => { s.soltar = resolve; });
     }
@@ -186,6 +190,8 @@ async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440,
         }),
       });
     }
+    // The write lands and the re-read that follows it does not.
+    if (guion === 'sin-relectura') s.romperGet += 1;
     const r = cuerpo.action === 'anular' ? s.anular(cuerpo.id) : s.crear(cuerpo.movimiento || {});
     return route.fulfill({
       status: r.status, contentType: 'application/json', body: JSON.stringify(r.body),
@@ -613,6 +619,59 @@ test.describe('Tanques: registrar movimientos', () => {
     expect(enviado).toMatchObject({ origen: 'A5', destino: 'TIBOR 3' });
     await expect(page.locator('#tanques-otras')).toContainText('TIBOR 3');
   });
+
+  test('a stale view refuses the next write and offers the read instead', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    s.guion.push('sin-relectura');
+
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page)).toBeHidden();
+    await expect(page.locator('#tanques-estado')).toContainText('no se pudo actualizar la vista',
+      { ignoreCase: true, timeout: 10_000 });
+
+    // The plan still shows the pre-write bodega, so recording against it would
+    // write the same movement again under a new key.
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await expect(page.locator('#tanques-dialogo')).toBeHidden();
+    await expect(toast(page)).toContainText('La vista está desactualizada');
+    expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(1);
+
+    await toast(page).locator('.tanques-toast-accion').click();
+    await expect(toast(page)).toContainText('Bitácora al día', { timeout: 10_000 });
+    // With the log current, the next movement goes through as itself.
+    await arrastrar(page, tanque('A5'), tanque('H1'));
+    await expect(dialogo(page)).toBeVisible();
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page)).toBeHidden();
+    expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(2);
+  });
+
+  test('a refused retry keeps the key, because it proves nothing about the first try',
+    async ({ page }) => {
+      const s = servidor();
+      await montar(page, s);
+      s.guion.push('abortar', 'rechazar');
+
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await dialogo(page).locator('button[type="submit"]').click();
+      const banner = page.locator('#tanques-pendiente .tanques-alert');
+      await expect(banner).toHaveCount(1, { timeout: 10_000 });
+
+      // The session expires between the write and the retry: a 403 to THIS
+      // request says nothing about whether the first one committed.
+      await banner.locator('[data-pendiente="reintentar"]').click();
+      await expect(toast(page)).toContainText('Sin permisos', { timeout: 10_000 });
+      await expect(banner).toHaveCount(1);
+      const claves = s.cuerpos.map((c) => c.movimiento.client_id);
+      expect(claves[0]).toBe(claves[1]);
+
+      // Only the user saying they checked, or the key turning up in the log,
+      // retires the entry.
+      await banner.locator('[data-pendiente="descartar"]').click();
+      await expect(page.locator('#tanques-pendiente')).toHaveCount(0);
+    });
 
   test('a viewer has no write controls at all', async ({ page }) => {
     const s = servidor();
