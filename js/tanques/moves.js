@@ -230,6 +230,11 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
     puedeRegistrar: false,
   };
 
+  // Where the log says this lote is, computed BEFORE any early return: the
+  // dialog reads an empty list as "sin tanque", so a model that gave up early
+  // would claim the lote is unplaced when the state says otherwise.
+  if (clase === 'recepcion') modelo.lote_en = tanquesConLote(estado, modelo.lot_code);
+
   // The gesture itself, before any volume: a reference that resolves to nothing
   // is reported by name rather than drawn as a movement.
   if (refOrigen && !origen) {
@@ -290,7 +295,6 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
     // against it is how one delivery becomes two rows - but a lote CAN arrive
     // in two loads, so this names what the log says and leaves the call to the
     // user instead of blocking a legitimate second delivery (lucy, 2026-10-15).
-    modelo.lote_en = tanquesConLote(estado, modelo.lot_code);
     const nombrado = movimientos.some(
       (m) => m && !m.anulado && texto(m.lot_code) === modelo.lot_code);
     if (nombrado) {
@@ -433,6 +437,20 @@ export function erroresDeFormulario(mov) {
   return errores;
 }
 
+// Enough of the log to tell "it moved" from "it is the same": the row count
+// plus the greatest id, which is what an append or an annulment changes.
+function firmaDeLog(movimientos) {
+  const filas = Array.isArray(movimientos) ? movimientos : [];
+  let mayor = 0;
+  let anulados = 0;
+  for (const m of filas) {
+    const id = Number(m && m.id);
+    if (Number.isFinite(id) && id > mayor) mayor = id;
+    if (m && m.anulado) anulados += 1;
+  }
+  return `${filas.length}|${mayor}|${anulados}`;
+}
+
 const esBerry = (fila) => {
   const t = texto(fila && fila.sampleType).toLowerCase();
   return t === 'berries' || t === 'berry';
@@ -529,6 +547,7 @@ export const TanquesMoves = {
   _fantasma: null,
   _pendiente: null,     // the open dialog's model
   _enviando: false,
+  _firmaLog: '',        // the log the open dialog was planned against
   // Writes with no definite outcome, keyed by client_id and kept until they
   // get one. Three things make this a persisted LIST and not a variable:
   // the toast times out, a second unconfirmed write would overwrite the
@@ -565,6 +584,7 @@ export const TanquesMoves = {
     const bodega = this._ctx.bodega();
     this._revisarPendientes();
     this._revisarArmado(bodega);
+    this._revisarDialogo(bodega);
     this._chrome();
     this._pintarBoton();
     this._pintarPendiente();
@@ -751,6 +771,34 @@ export const TanquesMoves = {
         + '</div></div>';
     }).join('');
     if (!previo) tarjeta.insertBefore(caja, tarjeta.firstChild);
+  },
+
+  // A dialog open while a read lands was planned against the PREVIOUS log, so
+  // its boxes and its warnings describe a bodega that no longer exists: it
+  // would still say "sin tanque" about a lote another session just received,
+  // and the user would record that delivery a second time without being told
+  // (lucy, 2026-10-15). Re-plan it in place, keep what the user typed, and say
+  // out loud that the bitacora moved.
+  _revisarDialogo(bodega) {
+    const dlg = document.getElementById(ID.dialogo);
+    if (!dlg || !dlg.open || !this._pendiente || this._enviando) return;
+    const firma = firmaDeLog(bodega.movimientos);
+    if (firma === this._firmaLog) return;
+    this._firmaLog = firma;
+    const form = dlg.querySelector('form');
+    const escrito = {};
+    for (const el of form.querySelectorAll('[name]')) escrito[el.name] = el.value;
+    const modelo = planearMovimiento(this._pendiente.gesto, bodega);
+    this._pendiente = modelo;
+    form.innerHTML = this._html(modelo);
+    for (const el of form.querySelectorAll('[name]')) {
+      if (escrito[el.name] !== undefined) el.value = escrito[el.name];
+    }
+    const nota = document.createElement('div');
+    nota.className = 'tanques-alert err';
+    nota.textContent = 'La bitácora cambió mientras este formulario estaba abierto. '
+      + 'Revise los datos antes de registrar.';
+    form.insertBefore(nota, form.querySelector('h2').nextSibling);
   },
 
   // The log is shared and the tray is a snapshot: a lote armed here can be
@@ -1138,8 +1186,10 @@ export const TanquesMoves = {
     }
     const dlg = this._dialogo();
     if (!dlg || dlg.open) return;    // never two dialogs over one gesture
-    const modelo = planearMovimiento(gesto, this._ctx.bodega());
+    const bodega = this._ctx.bodega();
+    const modelo = planearMovimiento(gesto, bodega);
     this._pendiente = modelo;
+    this._firmaLog = firmaDeLog(bodega.movimientos);
     dlg.querySelector('form').innerHTML = this._html(modelo);
     dlg.showModal();
     const foco = dlg.querySelector('[name="volumen_l"]:not([disabled])')

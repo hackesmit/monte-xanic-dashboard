@@ -760,6 +760,38 @@ test.describe('Tanques: registrar movimientos', () => {
       await expect(page.locator('#tanques-panel')).toContainText('25CSKMP-9');
     });
 
+  test('a dialog open while the log moves is re-planned, not left lying', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    // Open the reception of a tray lote and leave the form on screen.
+    await arrastrar(page, '#tanques-lotes [data-lote="25CSKMP-9"]', tanque('B2'));
+    await expect(dialogo(page).locator('h2')).toHaveText('Asignar lote a tanque');
+    await expect(dialogo(page).locator('.tanques-mv-caja').first()).toContainText('sin tanque');
+    await dialogo(page).locator('[name="volumen_l"]').fill('100');
+
+    // Another session records that same delivery into H1, and this tab reads
+    // it while the form is still open.
+    s.movimientos.push(mv({
+      fecha: '2026-02-01', tipo: 'recepcion', destino: 'H1',
+      lot_code: '25CSKMP-9', volumen_l: 9000,
+    }));
+    s.version += 1;
+    await page.evaluate(async () => {
+      const { DataStore } = await import('/js/dataLoader.js');
+      await DataStore.loadTanques();
+      const { TanquesView } = await import('/js/tanques/view.js');
+      TanquesView.render();
+    });
+
+    // The dialog now says where the lote is and warns before it is recorded
+    // a second time, and what the user typed is still there.
+    await expect(dialogo(page)).toBeVisible();
+    await expect(dialogo(page)).toContainText('La bitácora cambió mientras este formulario');
+    await expect(dialogo(page).locator('.tanques-mv-caja').first()).toContainText('hoy en H1');
+    await expect(dialogo(page)).toContainText('otra entrega del mismo lote');
+    await expect(dialogo(page).locator('[name="volumen_l"]')).toHaveValue('100');
+  });
+
   test('a viewer has no write controls at all', async ({ page }) => {
     const s = servidor();
     await montar(page, s, { rol: 'viewer' });
