@@ -159,24 +159,37 @@ export function clavePropuesta(p) {
 }
 
 // Does a live log row already record this proposal? Same lote out of the same
-// tank into the same tank, whatever the type and whatever the DATE.
+// tank into the same tank, on a date the SAMPLES could support.
 //
-// Neither of those two is laxness. The samples cannot tell a trasiego from a
-// descube or a prensa, so a recorded descube D5 to E1 is this movement by
-// another name. And the date on the row is the one the user corrected in the
-// dialog: the proposal's date is the first day the lote was SAMPLED in the new
-// tank, which is at best the day of the move and often the day after, so a
-// date-sensitive match would put the proposal straight back in the inbox and
-// invite a second row for the move that was just recorded. A lote that really
-// went D5 to E1 twice would be sampled in D5 again after E1, which makes the
-// windows overlap and proposes nothing at all (see traslapes).
+// The type is ignored: the samples cannot tell a trasiego from a descube or a
+// prensa, so a recorded descube D5 to E1 is this movement by another name.
+//
+// The date is not compared for equality, but it is not ignored either, and both
+// halves of that matter. The proposal's date is the first day the lote was
+// SAMPLED in the new tank, which is at best the day of the move and often the
+// day after, so the user corrects it in the dialog; an equality test would put
+// the proposal straight back in the inbox and invite a second row for the move
+// just recorded. But a row on ANY date was too lax: a lote that went D5 to E1
+// in September, came back, and went D5 to E1 again in November has a September
+// row that is a different physical movement, and matching it would silently
+// hide the November one (lucy, 2026-10-15).
+//
+// The window is the stretch the samples place the move in: at the earliest the
+// first day the lote was seen in the origin, at the latest the last day it was
+// seen in the destination. A date outside it is not this move.
+//
+// Erring toward RE-PROPOSING, not toward hiding: a user who files the movement
+// under a wildly wrong date sees the proposal again and can dismiss it, while
+// a hidden movement leaves the ledger quietly incomplete. The card also shows
+// what the origin holds, so a route already recorded reads as an empty origin.
 //
 // An annulled row records nothing: the undo is the user saying it did not
 // happen, so the proposal belongs back in the inbox.
 function yaRegistrada(p, filas) {
   for (const m of filas) {
     if (m.lot_code !== p.lot_code) continue;
-    if (m.origen === p.origen && m.destino === p.destino) return true;
+    if (m.origen !== p.origen || m.destino !== p.destino) continue;
+    if (m.fecha >= p.origen_desde && m.fecha <= p.destino_hasta) return true;
   }
   return false;
 }
