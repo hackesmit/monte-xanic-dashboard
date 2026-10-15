@@ -3290,6 +3290,14 @@ button.tanques-chip:focus-visible { outline: 2px solid var(--gold); outline-offs
 /* A vessel with no place on the plan is a drop target as its tray chip. */
 button.tanques-chip.drop { border-color: var(--gold-lt); border-style: dashed; }
 .tanques-pendiente { display: grid; gap: 6px; }
+.tanques-pendiente .tanques-alert { display: grid; gap: 6px; }
+/* The by-name destination picker, shown only while an origin is armed. */
+.tanques-destino {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: end;
+  padding: 10px; border: 1px solid var(--border-gold);
+  border-radius: var(--radius-base); background: var(--card2);
+}
+.tanques-destino .tanques-campo { min-width: 180px; }
 
 .tanques-ghost {
   position: fixed; z-index: 9100; pointer-events: none;

@@ -469,6 +469,8 @@ const ID = {
   mover: 'tanques-mover',
   bandeja: 'tanques-lotes-bandeja',
   pendiente: 'tanques-pendiente',
+  destino: 'tanques-destino',
+  destinoSel: 'tanques-destino-sel',
   ayuda: 'tanques-ayuda',
   chips: 'tanques-lotes',
   dialogo: 'tanques-dialogo',
@@ -479,6 +481,10 @@ const ID = {
 // How many chips the tray draws before it collapses into a count. The search
 // box filters the tray, so the rest stays reachable without a wall of chips.
 const CHIPS_MAX = 12;
+// Where the unconfirmed writes survive a reload. The payload is a movement,
+// never a credential.
+const CLAVE_PENDIENTES = 'xanic_tanques_pendientes';
+const PENDIENTES_MAX = 20;
 const TOAST_MS = 12_000;    // long enough to read it and press Deshacer
 const ARRASTRE_PX = 6;      // below this a pointer gesture is a tap, not a drag
 
@@ -491,11 +497,14 @@ export const TanquesMoves = {
   _fantasma: null,
   _pendiente: null,     // the open dialog's model
   _enviando: false,
-  // A write whose outcome is unknown, kept until it has a definite one. It
-  // cannot live in the toast's callback: the toast times out, and then the
-  // only way back is a fresh form with a fresh client_id, which is how one
-  // trasiego becomes two rows (lucy, 2026-10-15).
-  _sinConfirmar: null,
+  // Writes with no definite outcome, keyed by client_id and kept until they
+  // get one. Three things make this a persisted LIST and not a variable:
+  // the toast times out, a second unconfirmed write would overwrite the
+  // first, and a reload would drop the key altogether - and every one of
+  // those ends with the user retyping the movement under a NEW key, which
+  // the server accepts as a second row (lucy, 2026-10-15).
+  _pendientes: [],
+  _pendientesLeidos: false,
   _temporizador: null,
   _trasDrag: false,     // a click is pending behind a drop; it is not a tap
 
@@ -523,12 +532,81 @@ export const TanquesMoves = {
     // One replay for the whole repaint: _bodega() derives every tank from the
     // log, and render() has already paid for that once.
     const bodega = this._ctx.bodega();
+    this._cargarPendientes();
+    this._revisarPendientes();
     this._chrome();
     this._pintarBoton();
     this._pintarPendiente();
+    this._pintarDestino(bodega);
     this._pintarBandeja(bodega);
     this._pintarAcciones(bodega);
     this._pintarAnular();
+  },
+
+  // --- unconfirmed writes -----------------------------------------------------
+
+  _cargarPendientes() {
+    if (this._pendientesLeidos) return;
+    this._pendientesLeidos = true;
+    try {
+      const crudo = typeof localStorage !== 'undefined' && localStorage
+        ? localStorage.getItem(CLAVE_PENDIENTES) : '';
+      const lista = crudo ? JSON.parse(crudo) : [];
+      this._pendientes = Array.isArray(lista)
+        ? lista.filter((p) => p && p.intento && typeof p.intento.client_id === 'string')
+          .slice(-PENDIENTES_MAX)
+        : [];
+    } catch (_) {
+      this._pendientes = [];
+    }
+  },
+
+  _guardarPendientes() {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage) return;
+      if (this._pendientes.length) {
+        localStorage.setItem(CLAVE_PENDIENTES, JSON.stringify(this._pendientes.slice(-PENDIENTES_MAX)));
+      } else {
+        localStorage.removeItem(CLAVE_PENDIENTES);
+      }
+    } catch (_) { /* a full or blocked store must not stop the write */ }
+  },
+
+  // Recorded BEFORE the request leaves, so a browser that dies mid-flight
+  // still knows which key to retry with.
+  _anotarPendiente(intento, mensaje) {
+    const clave = String(intento.client_id).toLowerCase();
+    const i = this._pendientes.findIndex((p) => String(p.intento.client_id).toLowerCase() === clave);
+    if (i >= 0) this._pendientes[i] = { intento, mensaje };
+    else this._pendientes.push({ intento, mensaje });
+    this._guardarPendientes();
+  },
+
+  // Resolve ONE entry by its key: a retry's callback must never clear someone
+  // else's pending write.
+  _resolverPendiente(client_id) {
+    const clave = String(client_id || '').toLowerCase();
+    const quedan = this._pendientes.filter((p) => String(p.intento.client_id).toLowerCase() !== clave);
+    if (quedan.length === this._pendientes.length) return;
+    this._pendientes = quedan;
+    this._guardarPendientes();
+  },
+
+  // A key that is now in the log landed after all: the log is the answer, so
+  // the banner goes without anyone retrying anything.
+  _revisarPendientes() {
+    if (!this._pendientes.length) return;
+    const log = Array.isArray(DataStore.movimientosTanque) ? DataStore.movimientosTanque : [];
+    const vistos = new Set();
+    for (const m of log) {
+      if (m && typeof m.client_id === 'string') vistos.add(m.client_id.toLowerCase());
+    }
+    const quedan = this._pendientes.filter(
+      (p) => !vistos.has(String(p.intento.client_id).toLowerCase()));
+    if (quedan.length === this._pendientes.length) return;
+    this._pendientes = quedan;
+    this._guardarPendientes();
+    this._avisar('Un movimiento sin confirmar sí quedó registrado. La bitácora ya lo muestra.');
   },
 
   // --- permissions ----------------------------------------------------------
@@ -581,7 +659,7 @@ export const TanquesMoves = {
   },
 
   _quitarChrome() {
-    for (const id of [ID.mover, ID.bandeja, ID.ayuda, ID.pendiente]) {
+    for (const id of [ID.mover, ID.bandeja, ID.ayuda, ID.pendiente, ID.destino]) {
       const el = document.getElementById(id);
       if (el) el.remove();
     }
@@ -602,20 +680,57 @@ export const TanquesMoves = {
   _pintarPendiente() {
     const tarjeta = document.querySelector('#view-tanques .tanques-plan-card');
     const previo = document.getElementById(ID.pendiente);
-    if (!tarjeta || !this._sinConfirmar) { if (previo) previo.remove(); return; }
-    const { intento, mensaje } = this._sinConfirmar;
+    if (!tarjeta || !this._pendientes.length) { if (previo) previo.remove(); return; }
     const caja = previo || document.createElement('div');
     caja.id = ID.pendiente;
-    caja.className = 'tanques-alert err tanques-pendiente';
+    caja.className = 'tanques-pendiente';
     caja.setAttribute('role', 'status');
-    const donde = `${intento.origen || 'bandeja'} a ${intento.destino || 'fuera de bodega'}`;
-    caja.innerHTML = `<div>${escapeHtml(mensaje)}</div>`
-      + `<div class="tanques-p-sub">${escapeHtml(etiquetaMovimiento(intento.tipo))} `
-      + `${escapeHtml(intento.lot_code)}, ${fmtL(intento.volumen_l)} L, ${escapeHtml(donde)}, `
-      + `${escapeHtml(intento.fecha)}.</div>`
+    caja.innerHTML = this._pendientes.map(({ intento, mensaje }) => {
+      const clave = escapeHtml(intento.client_id);
+      const donde = `${intento.origen || 'bandeja'} a ${intento.destino || 'fuera de bodega'}`;
+      return '<div class="tanques-alert err">'
+        + `<div>${escapeHtml(mensaje)}</div>`
+        + `<div class="tanques-p-sub">${escapeHtml(etiquetaMovimiento(intento.tipo))} `
+        + `${escapeHtml(intento.lot_code)}, ${fmtL(intento.volumen_l)} L, ${escapeHtml(donde)}, `
+        + `${escapeHtml(intento.fecha)}.</div>`
+        + '<div class="tanques-acciones">'
+        + `<button type="button" class="tanques-btn" data-pendiente="reintentar" data-clave="${clave}">`
+        + 'Reintentar</button>'
+        + `<button type="button" class="tanques-btn" data-pendiente="descartar" data-clave="${clave}">`
+        + 'Ya la revisé</button>'
+        + '</div></div>';
+    }).join('');
+    if (!previo) tarjeta.insertBefore(caja, tarjeta.firstChild);
+  },
+
+  // Any vessel in the catalog as a destination, by name. The tray groups the
+  // empty tibores, Domecq tanks and kegs into one chip each (there are 39 of
+  // them and one chip per vessel would bury the plan), and a group chip names
+  // no single vessel, so without this they could be read and never filled
+  // (lucy, 2026-10-15). It doubles as the keyboard path to a far destination.
+  _pintarDestino(bodega) {
+    const tarjeta = document.querySelector('#view-tanques .tanques-plan-card');
+    const previo = document.getElementById(ID.destino);
+    const origen = this._armado;
+    if (!tarjeta || !origen) { if (previo) previo.remove(); return; }
+    const desde = origen.codigo || (origen.lote && origen.lote.lot_code) || '';
+    const caja = previo || document.createElement('div');
+    const mismo = previo && previo.dataset.desde === desde;
+    caja.id = ID.destino;
+    caja.className = 'tanques-destino';
+    caja.dataset.desde = desde;
+    if (mismo) return;   // keep what the user already picked in the select
+    const opciones = (bodega.catalogo || [])
+      .map((t) => (typeof t.codigo === 'string' ? t.codigo.trim() : ''))
+      .filter((c) => c && c !== origen.codigo)
+      .map((c) => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`)
+      .join('');
+    caja.innerHTML = `<label class="tanques-campo" for="${ID.destinoSel}">`
+      + `Destino de ${escapeHtml(desde)}`
+      + `<select id="${ID.destinoSel}">${opciones}</select></label>`
       + '<div class="tanques-acciones">'
-      + '<button type="button" class="tanques-btn" data-pendiente="reintentar">Reintentar</button>'
-      + '<button type="button" class="tanques-btn" data-pendiente="descartar">Ya la revisé</button>'
+      + '<button type="button" class="tanques-btn primary" data-destino="usar">Usar este destino</button>'
+      + '<button type="button" class="tanques-btn" data-destino="cancelar">Cancelar</button>'
       + '</div>';
     if (!previo) tarjeta.insertBefore(caja, tarjeta.firstChild);
   },
@@ -737,13 +852,22 @@ export const TanquesMoves = {
       if (chip) { if (!trasDrag) this._armarLote(chip.dataset.lote); return; }
       const pendiente = e.target.closest('[data-pendiente]');
       if (pendiente) {
-        const intento = this._sinConfirmar && this._sinConfirmar.intento;
+        const clave = String(pendiente.dataset.clave || '').toLowerCase();
+        const fila = this._pendientes.find(
+          (p) => String(p.intento.client_id).toLowerCase() === clave);
         if (pendiente.dataset.pendiente === 'descartar') {
-          this._sinConfirmar = null;
+          this._resolverPendiente(clave);
           this._ctx.render();
-        } else if (intento) {
-          this._reintentar(intento);
+        } else if (fila) {
+          this._reintentar(fila.intento);
         }
+        return;
+      }
+      const destino = e.target.closest('[data-destino]');
+      if (destino) {
+        if (destino.dataset.destino === 'cancelar') { this._desarmar(); this._ctx.render(); return; }
+        const sel = document.getElementById(ID.destinoSel);
+        if (sel && sel.value) this._tocar(sel.value);
         return;
       }
       const anular = e.target.closest('[data-anular]');
@@ -1076,6 +1200,14 @@ export const TanquesMoves = {
     const errores = erroresDeMovimiento(this._ctx.bodega(), mov);
     if (errores.length) { this._errores(errores); return; }
 
+    // The key is minted here, not inside DataStore, so the intent can be
+    // written down BEFORE the request leaves: a browser that dies mid-flight
+    // still knows which key to retry under, and the server answers a repeat
+    // of that key with the row it already has instead of a second one.
+    const intento = { ...mov, client_id: globalThis.crypto.randomUUID() };
+    this._cargarPendientes();
+    this._anotarPendiente(intento, 'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.');
+
     const boton = form.querySelector('button[type="submit"]');
     const cancelar = form.querySelector('[data-cerrar]');
     this._enviando = true;
@@ -1090,20 +1222,22 @@ export const TanquesMoves = {
     // carry a fresh client_id, which is a second row in an append-only ledger.
     let out;
     try {
-      out = await DataStore.postMovimiento(mov);
+      out = await DataStore.postMovimiento(intento);
     } catch (err) {
       if (err && err.indeterminado) {
         // The request left and no answer came back, so the INSERT may have
-        // committed: never call this refused. The retry reuses the same
-        // client_id (err.movimiento), which the server recognises.
-        this._sinConfirmar = { intento: err.movimiento || mov, mensaje: err.message };
+        // committed: never call this refused. The entry stays, with its key.
+        this._anotarPendiente(err.movimiento || intento, err.message);
         dlg.close();
         this._avisar(err.message, {
           etiqueta: 'Reintentar',
-          fn: () => this._reintentar(err.movimiento || mov),
+          fn: () => this._reintentar(err.movimiento || intento),
         });
         this._ctx.render();
       } else {
+        // A definite refusal: the API wrote nothing under this key, so there
+        // is nothing to reconcile and the form stays open to be corrected.
+        this._resolverPendiente(intento.client_id);
         this._errores([err && err.message ? err.message : 'No se pudo registrar el movimiento.']);
       }
       return;
@@ -1113,6 +1247,7 @@ export const TanquesMoves = {
       if (cancelar) cancelar.disabled = false;
     }
 
+    this._resolverPendiente(intento.client_id);
     dlg.close();
     this._ctx.seleccionar(mov.destino || mov.origen);
     const donde = `${mov.origen || 'bandeja'} a ${mov.destino || 'fuera de bodega'}`;
@@ -1136,13 +1271,13 @@ export const TanquesMoves = {
       out = await DataStore.postMovimiento(intento);
     } catch (err) {
       if (err && err.indeterminado) {
-        // Still unknown: KEEP the intent and its key. Dropping it here is what
+        // Still unknown: KEEP this entry and its key. Dropping it here is what
         // would force a fresh form and a fresh client_id later.
-        this._sinConfirmar = { intento: err.movimiento || intento, mensaje: err.message };
+        this._anotarPendiente(err.movimiento || intento, err.message);
       } else {
-        // A definite refusal: nothing was written under this key, so there is
-        // nothing left to reconcile.
-        this._sinConfirmar = null;
+        // A definite refusal under this key: nothing was written under it, so
+        // THIS entry is resolved. Another pending write is not.
+        this._resolverPendiente(intento.client_id);
       }
       this._avisar(err && err.message ? err.message : 'No se pudo registrar el movimiento.',
         err && err.indeterminado
@@ -1153,7 +1288,7 @@ export const TanquesMoves = {
     } finally {
       this._enviando = false;
     }
-    this._sinConfirmar = null;
+    this._resolverPendiente(intento.client_id);
     const id = out.movimiento && out.movimiento.id;
     this._avisar(`${etiquetaMovimiento(intento.tipo)} registrado.`,
       id ? { etiqueta: 'Deshacer', fn: () => this.anular(id) } : null);
