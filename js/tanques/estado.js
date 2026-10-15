@@ -108,7 +108,11 @@ function numero(v) {
 // so validation and replay agree on what a row moves. Anything that rounds to
 // zero is refused: it would be counted as moved while no wine moves.
 function litros(v) {
-  return redondear(numero(v));
+  const n = numero(v);
+  // the microlitre count must stay an exact integer: past that, MAX_VALUE
+  // rounds to Infinity and Infinity - Infinity slips through every comparison
+  if (!Number.isSafeInteger(Math.round(n * UNIDAD))) return NaN;
+  return redondear(n);
 }
 
 // Merma is optional: only an ABSENT value means zero. A supplied value that is
@@ -578,16 +582,16 @@ export function historialTanque(tanques, movimientos, codigo, opciones = {}) {
   const buscado = resolver(objetivo, codigos, sinonimos);
   const { aplicados } = replayMovimientos(tanques, movimientos, opciones);
   const porFila = new Map();
-  for (const a of aplicados) porFila.set(a.movimiento, a);
+  for (const a of aplicados) porFila.set(a.orden, a);
 
   const filas = [];
-  for (const { mov } of ordenar(Array.isArray(movimientos) ? movimientos : [])) {
+  for (const { mov, i } of ordenar(Array.isArray(movimientos) ? movimientos : [])) {
     if (!mov || typeof mov !== 'object') continue;
     if (mov.anulado && !opciones.incluirAnulados) continue;
     const esEntrada = texto(mov.destino) ? resolver(mov.destino, codigos, sinonimos) === buscado : false;
     const esSalida = texto(mov.origen) ? resolver(mov.origen, codigos, sinonimos) === buscado : false;
     if (!esEntrada && !esSalida) continue;
-    const a = porFila.get(mov) || null;
+    const a = porFila.get(i) || null;
     filas.push({
       ...mov,
       codigo: buscado,
