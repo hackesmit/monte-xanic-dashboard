@@ -3287,6 +3287,9 @@ button.tanques-chip:focus-visible { outline: 2px solid var(--gold); outline-offs
   stroke: var(--gold-lt); stroke-width: 3; stroke-dasharray: 4 3;
 }
 .tanque.origen .tanque-tapa { stroke: var(--gold-lt); stroke-width: 3; }
+/* A vessel with no place on the plan is a drop target as its tray chip. */
+button.tanques-chip.drop { border-color: var(--gold-lt); border-style: dashed; }
+.tanques-pendiente { display: grid; gap: 6px; }
 
 .tanques-ghost {
   position: fixed; z-index: 9100; pointer-events: none;

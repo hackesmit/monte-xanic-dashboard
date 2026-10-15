@@ -468,6 +468,7 @@ export function lotesSinTanque(muestras, movimientos) {
 const ID = {
   mover: 'tanques-mover',
   bandeja: 'tanques-lotes-bandeja',
+  pendiente: 'tanques-pendiente',
   ayuda: 'tanques-ayuda',
   chips: 'tanques-lotes',
   dialogo: 'tanques-dialogo',
@@ -490,6 +491,11 @@ export const TanquesMoves = {
   _fantasma: null,
   _pendiente: null,     // the open dialog's model
   _enviando: false,
+  // A write whose outcome is unknown, kept until it has a definite one. It
+  // cannot live in the toast's callback: the toast times out, and then the
+  // only way back is a fresh form with a fresh client_id, which is how one
+  // trasiego becomes two rows (lucy, 2026-10-15).
+  _sinConfirmar: null,
   _temporizador: null,
   _trasDrag: false,     // a click is pending behind a drop; it is not a tap
 
@@ -519,6 +525,7 @@ export const TanquesMoves = {
     const bodega = this._ctx.bodega();
     this._chrome();
     this._pintarBoton();
+    this._pintarPendiente();
     this._pintarBandeja(bodega);
     this._pintarAcciones(bodega);
     this._pintarAnular();
@@ -574,7 +581,7 @@ export const TanquesMoves = {
   },
 
   _quitarChrome() {
-    for (const id of [ID.mover, ID.bandeja, ID.ayuda]) {
+    for (const id of [ID.mover, ID.bandeja, ID.ayuda, ID.pendiente]) {
       const el = document.getElementById(id);
       if (el) el.remove();
     }
@@ -587,6 +594,30 @@ export const TanquesMoves = {
     if (!b) return;
     b.setAttribute('aria-pressed', String(this.modoMover));
     b.classList.toggle('on', this.modoMover);
+  },
+
+  // The unconfirmed write, as a banner that survives a re-render and a toast
+  // timeout. It is deliberately not blocking: another movement is a different
+  // intent and must still be recordable.
+  _pintarPendiente() {
+    const tarjeta = document.querySelector('#view-tanques .tanques-plan-card');
+    const previo = document.getElementById(ID.pendiente);
+    if (!tarjeta || !this._sinConfirmar) { if (previo) previo.remove(); return; }
+    const { intento, mensaje } = this._sinConfirmar;
+    const caja = previo || document.createElement('div');
+    caja.id = ID.pendiente;
+    caja.className = 'tanques-alert err tanques-pendiente';
+    caja.setAttribute('role', 'status');
+    const donde = `${intento.origen || 'bandeja'} a ${intento.destino || 'fuera de bodega'}`;
+    caja.innerHTML = `<div>${escapeHtml(mensaje)}</div>`
+      + `<div class="tanques-p-sub">${escapeHtml(etiquetaMovimiento(intento.tipo))} `
+      + `${escapeHtml(intento.lot_code)}, ${fmtL(intento.volumen_l)} L, ${escapeHtml(donde)}, `
+      + `${escapeHtml(intento.fecha)}.</div>`
+      + '<div class="tanques-acciones">'
+      + '<button type="button" class="tanques-btn" data-pendiente="reintentar">Reintentar</button>'
+      + '<button type="button" class="tanques-btn" data-pendiente="descartar">Ya la revisé</button>'
+      + '</div>';
+    if (!previo) tarjeta.insertBefore(caja, tarjeta.firstChild);
   },
 
   _pintarBandeja(bodega) {
@@ -695,16 +726,40 @@ export const TanquesMoves = {
     }, true);
 
     vista.addEventListener('click', (e) => {
+      // A drop outside the plan (onto a tray chip) is followed by a click on
+      // that chip, and that click is not a tap. The plan's own listener
+      // consumes the flag for a drop onto the floor.
+      const trasDrag = this._trasDrag;
+      this._trasDrag = false;
       if (!this._puedeEscribir()) return;
       if (e.target.closest(`#${ID.mover}`)) { this._alternarModo(); return; }
       const chip = e.target.closest('[data-lote]');
-      if (chip) { this._armarLote(chip.dataset.lote); return; }
+      if (chip) { if (!trasDrag) this._armarLote(chip.dataset.lote); return; }
+      const pendiente = e.target.closest('[data-pendiente]');
+      if (pendiente) {
+        const intento = this._sinConfirmar && this._sinConfirmar.intento;
+        if (pendiente.dataset.pendiente === 'descartar') {
+          this._sinConfirmar = null;
+          this._ctx.render();
+        } else if (intento) {
+          this._reintentar(intento);
+        }
+        return;
+      }
       const anular = e.target.closest('[data-anular]');
       if (anular) { this.anular(anular.dataset.anular); return; }
       const accion = e.target.closest('[data-accion]');
-      if (!accion) return;
-      if (accion.dataset.accion === 'mover') this._armarTanque(this._ctx.seleccion());
-      if (accion.dataset.accion === 'salida') this.abrir({ origen: this._ctx.seleccion(), tipo: 'salida' });
+      if (accion) {
+        if (accion.dataset.accion === 'mover') this._armarTanque(this._ctx.seleccion());
+        if (accion.dataset.accion === 'salida') this.abrir({ origen: this._ctx.seleccion(), tipo: 'salida' });
+        return;
+      }
+      // A vessel with no place on the plan (a CAVA tank, a tibor) is still a
+      // vessel: its tray chip is a destination for an armed origin, exactly
+      // like a tank on the floor. Without this, about forty of the catalog's
+      // vessels could be read but never filled (lucy, 2026-10-15).
+      const vasija = e.target.closest('[data-ir-tanque]');
+      if (vasija && !trasDrag && this._armado) this._tocar(vasija.dataset.irTanque);
     });
 
     plano.addEventListener('pointerdown', (e) => {
@@ -715,11 +770,14 @@ export const TanquesMoves = {
     vista.addEventListener('pointerdown', (e) => {
       if (!this._puedeEscribir()) return;
       const chip = e.target.closest('[data-lote]');
-      if (!chip) return;
+      const vasija = chip ? null : e.target.closest('#tanques-otras [data-ir-tanque]');
+      if (!chip && !vasija) return;
       // The chip is a button: without this the browser starts a text/drag
       // selection and the pointer stream stops arriving mid-gesture.
       e.preventDefault();
-      this._iniciarArrastre(e, { lote: chip.dataset.lote });
+      this._iniciarArrastre(e, chip
+        ? { lote: chip.dataset.lote }
+        : { codigo: vasija.dataset.irTanque });
     });
     window.addEventListener('pointermove', (e) => this._moverArrastre(e));
     window.addEventListener('pointerup', (e) => this._terminarArrastre(e));
@@ -833,19 +891,26 @@ export const TanquesMoves = {
 
   _tanqueBajo(e) {
     // The ghost follows the pointer, so it must not be what is under it: it
-    // carries pointer-events none in CSS for exactly this read.
+    // carries pointer-events none in CSS for exactly this read. A tray chip
+    // that names ONE vessel is a target too; a chip that groups several
+    // (tibores, kegs) carries no data-ir-tanque and so is not one.
     const el = document.elementFromPoint(e.clientX, e.clientY);
-    const g = el && el.closest ? el.closest('[data-tanque]') : null;
-    return g ? g.dataset.tanque : null;
+    if (!el || !el.closest) return null;
+    const g = el.closest('[data-tanque]');
+    if (g) return g.dataset.tanque;
+    const chip = el.closest('#tanques-otras [data-ir-tanque]');
+    return chip ? chip.dataset.irTanque : null;
   },
 
   _marcarDestino(codigo) {
-    const plano = document.getElementById('tanques-plano');
-    if (!plano) return;
-    for (const g of plano.querySelectorAll('.tanque.drop')) g.classList.remove('drop');
+    const vista = document.getElementById('view-tanques');
+    if (!vista) return;
+    for (const el of vista.querySelectorAll('.drop')) el.classList.remove('drop');
     if (!codigo) return;
-    const g = plano.querySelector(`[data-tanque="${CSS.escape(codigo)}"]`);
-    if (g) g.classList.add('drop');
+    const sel = CSS.escape(codigo);
+    const el = vista.querySelector(`#tanques-plano [data-tanque="${sel}"]`)
+      || vista.querySelector(`#tanques-otras [data-ir-tanque="${sel}"]`);
+    if (el) el.classList.add('drop');
   },
 
   // --- the dialog -----------------------------------------------------------
@@ -853,11 +918,19 @@ export const TanquesMoves = {
   /** Open the move dialog for a gesture. Public so view.js can too. */
   abrir(gesto) {
     if (!this._puedeEscribir()) return;
+    // The lock belongs to the WRITE, not to the dialog. Cancelling a dialog
+    // whose POST is still in flight and repeating the gesture would otherwise
+    // send the same movement again under a new client_id, and the server would
+    // accept both: two rows in an append-only ledger for one trasiego
+    // (lucy, 2026-10-15).
+    if (this._enviando) {
+      this._avisar('Hay un movimiento en curso. Espere a que el servidor conteste.');
+      return;
+    }
     const dlg = this._dialogo();
     if (!dlg || dlg.open) return;    // never two dialogs over one gesture
     const modelo = planearMovimiento(gesto, this._ctx.bodega());
     this._pendiente = modelo;
-    this._enviando = false;
     dlg.querySelector('form').innerHTML = this._html(modelo);
     dlg.showModal();
     const foco = dlg.querySelector('[name="volumen_l"]:not([disabled])')
@@ -882,8 +955,13 @@ export const TanquesMoves = {
     const form = dlg.querySelector('form');
     form.addEventListener('submit', (e) => { e.preventDefault(); this._enviar(); });
     form.addEventListener('click', (e) => {
-      if (e.target.closest('[data-cerrar]')) { e.preventDefault(); dlg.close(); }
+      if (!e.target.closest('[data-cerrar]')) return;
+      e.preventDefault();
+      if (this._enviando) return;    // the write is in flight; it owns the dialog
+      dlg.close();
     });
+    // Escape is the other way out of a modal, and it must not escape the lock.
+    dlg.addEventListener('cancel', (e) => { if (this._enviando) e.preventDefault(); });
     // Recompute the volume ceiling as merma is typed: merma comes off what
     // arrives, so it widens what may leave (see maximoVolumen).
     form.addEventListener('input', (e) => {
@@ -892,7 +970,7 @@ export const TanquesMoves = {
       if (!vol || !this._pendiente) return;
       vol.max = String(maximoVolumen(this._pendiente, numeroDeCampo(e.target.value)));
     });
-    dlg.addEventListener('close', () => { this._pendiente = null; this._enviando = false; });
+    dlg.addEventListener('close', () => { this._pendiente = null; });
     return dlg;
   },
 
@@ -999,57 +1077,87 @@ export const TanquesMoves = {
     if (errores.length) { this._errores(errores); return; }
 
     const boton = form.querySelector('button[type="submit"]');
+    const cancelar = form.querySelector('[data-cerrar]');
     this._enviando = true;
     if (boton) { boton.disabled = true; boton.textContent = 'Registrando…'; }
+    if (cancelar) cancelar.disabled = true;
     this._errores([]);
+
+    // ONLY the write is inside the try. Anything after it (closing the dialog,
+    // re-rendering, the toast) belongs to a movement that is already in the
+    // log, and a throw from one of those must never be reported as a failed
+    // write: the user would press Registrar again and the second attempt would
+    // carry a fresh client_id, which is a second row in an append-only ledger.
+    let out;
     try {
-      const out = await DataStore.postMovimiento(mov);
-      dlg.close();
-      this._ctx.seleccionar(mov.destino || mov.origen);
-      this._ctx.render();
-      const donde = `${mov.origen || 'bandeja'} a ${mov.destino || 'fuera de bodega'}`;
-      const cola = out.actualizado === false ? ' No se pudo actualizar la vista.' : '';
-      const id = out.movimiento && out.movimiento.id;
-      this._avisar(
-        `${etiquetaMovimiento(mov.tipo)} ${out.duplicado ? 'ya estaba registrado' : 'registrado'}: `
-        + `${donde}, ${fmtL(mov.volumen_l)} L.${cola}`,
-        id ? { etiqueta: 'Deshacer', fn: () => this.anular(id) } : null,
-      );
+      out = await DataStore.postMovimiento(mov);
     } catch (err) {
       if (err && err.indeterminado) {
         // The request left and no answer came back, so the INSERT may have
         // committed: never call this refused. The retry reuses the same
         // client_id (err.movimiento), which the server recognises.
+        this._sinConfirmar = { intento: err.movimiento || mov, mensaje: err.message };
         dlg.close();
-        this._ctx.render();
         this._avisar(err.message, {
           etiqueta: 'Reintentar',
-          fn: () => this._reintentar(err.movimiento),
+          fn: () => this._reintentar(err.movimiento || mov),
         });
+        this._ctx.render();
       } else {
         this._errores([err && err.message ? err.message : 'No se pudo registrar el movimiento.']);
       }
+      return;
     } finally {
       this._enviando = false;
       if (boton) { boton.disabled = false; boton.textContent = 'Registrar'; }
+      if (cancelar) cancelar.disabled = false;
     }
+
+    dlg.close();
+    this._ctx.seleccionar(mov.destino || mov.origen);
+    const donde = `${mov.origen || 'bandeja'} a ${mov.destino || 'fuera de bodega'}`;
+    const cola = out.actualizado === false ? ' No se pudo actualizar la vista.' : '';
+    const id = out.movimiento && out.movimiento.id;
+    this._avisar(
+      `${etiquetaMovimiento(mov.tipo)} ${out.duplicado ? 'ya estaba registrado' : 'registrado'}: `
+      + `${donde}, ${fmtL(mov.volumen_l)} L.${cola}`,
+      id ? { etiqueta: 'Deshacer', fn: () => this.anular(id) } : null,
+    );
+    this._ctx.render();
   },
 
   async _reintentar(intento) {
     if (this._enviando || !intento) return;
     this._enviando = true;
+    let out;
     try {
-      const out = await DataStore.postMovimiento(intento);
-      this._ctx.render();
-      const id = out.movimiento && out.movimiento.id;
-      this._avisar(`${etiquetaMovimiento(intento.tipo)} registrado.`,
-        id ? { etiqueta: 'Deshacer', fn: () => this.anular(id) } : null);
+      // The SAME intent, client_id included: if the first attempt did commit,
+      // the server answers with that row instead of writing a second one.
+      out = await DataStore.postMovimiento(intento);
     } catch (err) {
+      if (err && err.indeterminado) {
+        // Still unknown: KEEP the intent and its key. Dropping it here is what
+        // would force a fresh form and a fresh client_id later.
+        this._sinConfirmar = { intento: err.movimiento || intento, mensaje: err.message };
+      } else {
+        // A definite refusal: nothing was written under this key, so there is
+        // nothing left to reconcile.
+        this._sinConfirmar = null;
+      }
+      this._avisar(err && err.message ? err.message : 'No se pudo registrar el movimiento.',
+        err && err.indeterminado
+          ? { etiqueta: 'Reintentar', fn: () => this._reintentar(err.movimiento || intento) }
+          : null);
       this._ctx.render();
-      this._avisar(err && err.message ? err.message : 'No se pudo registrar el movimiento.');
+      return;
     } finally {
       this._enviando = false;
     }
+    this._sinConfirmar = null;
+    const id = out.movimiento && out.movimiento.id;
+    this._avisar(`${etiquetaMovimiento(intento.tipo)} registrado.`,
+      id ? { etiqueta: 'Deshacer', fn: () => this.anular(id) } : null);
+    this._ctx.render();
   },
 
   /**
@@ -1060,19 +1168,21 @@ export const TanquesMoves = {
   async anular(id) {
     if (this._enviando || !id) return;
     this._enviando = true;
+    let out;
     try {
-      const out = await DataStore.anularMovimiento(id);
-      this._ctx.render();
-      this._avisar(out.ya_anulado
-        ? 'Ese movimiento ya estaba anulado.'
-        : 'Movimiento anulado.'
-          + (out.actualizado === false ? ' No se pudo actualizar la vista.' : ''));
+      out = await DataStore.anularMovimiento(id);
     } catch (err) {
-      this._ctx.render();
       this._avisar(err && err.message ? err.message : 'No se pudo anular el movimiento.');
+      this._ctx.render();
+      return;
     } finally {
       this._enviando = false;
     }
+    this._avisar(out.ya_anulado
+      ? 'Ese movimiento ya estaba anulado.'
+      : 'Movimiento anulado.'
+        + (out.actualizado === false ? ' No se pudo actualizar la vista.' : ''));
+    this._ctx.render();
   },
 
   // --- toast ----------------------------------------------------------------
