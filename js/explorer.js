@@ -214,6 +214,36 @@ export const Explorer = {
     }
   },
 
+  // Open the Explorador focused on one bodega lote. Called from the Tanques tab
+  // (js/tanques/panelCharts.js) after the view has switched to this tab, so a
+  // slot and its DOM already exist. The lote's analyses are WINE samples, so the
+  // first slot is pointed at the wine source grouped by lote with just this one
+  // selected. This reuses the existing per-slot lot filter; it adds no filter
+  // state of its own, so filters.js is untouched.
+  focusLote(lotCode) {
+    if (!lotCode) return;
+    if (!this.slots.length) this.addChart();
+    const slot = this.slots[0];
+    slot.source = 'wine';
+    slot.selectedLots = [lotCode];
+    // A berry axis field (e.g. maturityIndex) is not a wine metric, so reset to
+    // the first wine metrics the way onSourceChange does before repopulating.
+    const metrics = Object.keys(CONFIG.explorerMetrics.wine || {});
+    slot.xField = metrics[0] || 'daysPostCrush';
+    slot.yField = metrics.length > 1 ? metrics[1] : slot.xField;
+    // Push source first so the metric/group dropdowns repopulate for wine,
+    // then set the lote grouping and re-render; renderSlot reads these selects.
+    const sourceEl = document.getElementById('explorer-source-' + slot.id);
+    if (sourceEl) sourceEl.value = 'wine';
+    this._populateDropdowns(slot);
+    slot.groupBy = 'codigoBodega';
+    const groupEl = document.getElementById('explorer-group-' + slot.id);
+    if (groupEl) groupEl.value = 'codigoBodega';
+    const panel = document.getElementById('explorer-config-panel-' + slot.id);
+    if (panel) panel.style.display = '';  // open the config so the filter is visible
+    this.renderSlot(slot.id);
+  },
+
   // ── Private ─────────────────────────────────────────────────────
 
   _getData(slot) {
