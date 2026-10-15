@@ -608,6 +608,9 @@ const CHIPS_MAX = 12;
 // _anotarPendiente). The payload is a movement, never a credential.
 const PREFIJO_PENDIENTE = 'xanic_tanques_pendiente:';
 const PENDIENTES_MAX = 20;
+// A request's in-flight marker older than this belongs to a tab that died
+// mid-request; it stops blocking a discard.
+const VUELO_MAX_MS = 120000;
 const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
 // What the user reads when the key cannot be written down: the first send and
 // every retry stop on it in the same words.
@@ -649,6 +652,7 @@ export const TanquesMoves = {
   _fantasma: null,
   _pendiente: null,     // the open dialog's model
   _enviando: false,
+  _claveEnVuelo: null,
   _firmaLog: '',        // the log the open dialog was planned against
   // Writes with no definite outcome, keyed by client_id and kept until they
   // get one. Three things make this a persisted LIST and not a variable:
@@ -735,7 +739,7 @@ export const TanquesMoves = {
   // still knows which key to retry with. Reports whether it is really stored:
   // a silent failure here would mean a movement sent under a key nothing
   // remembers, which is the duplicate this whole mechanism exists to prevent.
-  _anotarPendiente(intento, mensaje) {
+  _anotarPendiente(intento, mensaje, { enVuelo = false } = {}) {
     const clave = PREFIJO_PENDIENTE + String(intento.client_id).toLowerCase();
     try {
       if (typeof localStorage === 'undefined' || !localStorage) return false;
@@ -748,7 +752,10 @@ export const TanquesMoves = {
       if (previo) {
         try { guardado = JSON.parse(previo).guardado || guardado; } catch (_) { /* keep now */ }
       }
-      const texto_ = JSON.stringify({ intento, mensaje, guardado });
+      // `vuelo` marks a request under this key that is out right now, so no
+      // tab may discard the key before that request has an answer.
+      const texto_ = JSON.stringify(enVuelo ? { intento, mensaje, guardado, vuelo: Date.now() }
+        : { intento, mensaje, guardado });
       localStorage.setItem(clave, texto_);
       const ok = localStorage.getItem(clave) === texto_;
       this._cargarPendientes();
@@ -756,6 +763,28 @@ export const TanquesMoves = {
     } catch (_) {
       return false;
     }
+  },
+
+  // Is a request under this key out right now, in this tab or another? A
+  // marker older than VUELO_MAX_MS belongs to a tab that died mid-request and
+  // no longer blocks a discard.
+  _enVuelo(client_id) {
+    const clave = String(client_id || '').toLowerCase();
+    if (this._claveEnVuelo && String(this._claveEnVuelo).toLowerCase() === clave) return true;
+    const e = this._entradaGuardada(clave);
+    return !!(e && e.vuelo && Date.now() - e.vuelo < VUELO_MAX_MS);
+  },
+
+  // Check-the-pending-intents and write-down-a-new-key must be one step
+  // ACROSS TABS: two tabs submitting the same movement at once would each find
+  // no match and each mint a key (lucy, 2026-10-15). The Web Locks API makes
+  // it one step per origin; without it (old browsers) it runs as before.
+  async _enCandado(fn) {
+    const locks = typeof navigator !== 'undefined' && navigator.locks;
+    if (locks && typeof locks.request === 'function') {
+      return locks.request('xanic-tanques-pendientes', { mode: 'exclusive' }, fn);
+    }
+    return fn();
   },
 
   // The stored entry for one key, read from storage itself rather than from
@@ -1170,6 +1199,13 @@ export const TanquesMoves = {
         const fila = this._pendientes.find(
           (p) => String(p.intento.client_id).toLowerCase() === clave);
         if (pendiente.dataset.pendiente === 'descartar') {
+          // A request under this key is out (here or in another tab): its
+          // answer may be the only proof it landed, so the key stays until
+          // then (lucy, 2026-10-15).
+          if (this._enVuelo(clave)) {
+            this._avisar('Este movimiento se está enviando. Espere la respuesta antes de descartarlo.');
+            return;
+          }
           this._resolverPendiente(clave);
           // A toast still offering to retry this entry would retry nothing
           // now (see _reintentar), so it goes too rather than lie.
@@ -1663,28 +1699,38 @@ export const TanquesMoves = {
     const errores = erroresDeMovimiento(this._ctx.bodega(), mov);
     if (errores.length) { this._errores(errores); return; }
 
+    // From here until the request is answered this tab is busy, so a double
+    // tap waiting on the lock below cannot start a second send.
+    this._enviando = true;
     // Before a new key exists: is this the movement an unresolved intent
-    // already carries? Only an explicit "es distinto" for THIS payload skips it.
-    this._cargarPendientes();
+    // already carries? Only an explicit "es distinto" for THIS payload skips
+    // it. The check and the write-down run under one cross-tab lock.
     const sinonimos = DataStore.tanquesSinonimos || {};
-    const yaDicho = this._distintoDe && mismaIntencion(this._distintoDe, mov, sinonimos);
-    const igual = yaDicho ? null : pendienteIgual(this._pendientes, mov, sinonimos);
-    if (igual) { this._ofrecerPendiente(igual); return; }
-
-    // The key is minted here, not inside DataStore, so the intent can be
-    // written down BEFORE the request leaves: a browser that dies mid-flight
-    // still knows which key to retry under, and the server answers a repeat
-    // of that key with the row it already has instead of a second one.
-    const intento = { ...mov, client_id: globalThis.crypto.randomUUID() };
-    if (!this._anotarPendiente(intento,
-      'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.')) {
-      this._errores([SIN_CLAVE_GUARDADA]);
-      return;
+    let intento = null, igual = null, guardada = false;
+    try {
+      await this._enCandado(async () => {
+        this._cargarPendientes();
+        const yaDicho = this._distintoDe && mismaIntencion(this._distintoDe, mov, sinonimos);
+        igual = yaDicho ? null : pendienteIgual(this._pendientes, mov, sinonimos);
+        if (igual) return;
+        // The key is minted here, not inside DataStore, so the intent can be
+        // written down BEFORE the request leaves: a browser that dies mid-flight
+        // still knows which key to retry under, and the server answers a repeat
+        // of that key with the row it already has instead of a second one.
+        intento = { ...mov, client_id: globalThis.crypto.randomUUID() };
+        guardada = this._anotarPendiente(intento,
+          'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.',
+          { enVuelo: true });
+      });
+    } catch (_) {
+      guardada = false;
     }
+    if (igual) { this._enviando = false; this._ofrecerPendiente(igual); return; }
+    if (!intento || !guardada) { this._enviando = false; this._errores([SIN_CLAVE_GUARDADA]); return; }
+    this._claveEnVuelo = intento.client_id;
 
     const boton = form.querySelector('button[type="submit"]');
     const cancelar = form.querySelector('[data-cerrar]');
-    this._enviando = true;
     if (boton) { boton.disabled = true; boton.textContent = 'Registrando…'; }
     if (cancelar) cancelar.disabled = true;
     this._errores([]);
@@ -1718,6 +1764,7 @@ export const TanquesMoves = {
       return;
     } finally {
       this._enviando = false;
+      this._claveEnVuelo = null;
       if (boton) { boton.disabled = false; boton.textContent = 'Registrar'; }
       if (cancelar) cancelar.disabled = false;
     }
@@ -1772,12 +1819,14 @@ export const TanquesMoves = {
     // back, BEFORE the request leaves. Storage that is blocked or full means
     // nothing would remember this key, so nothing is sent.
     if (!this._anotarPendiente(intento, guardada.mensaje
-      || 'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.')) {
+      || 'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.',
+    { enVuelo: true })) {
       this._avisar(SIN_CLAVE_GUARDADA);
       this._ctx.render();
       return;
     }
     this._enviando = true;
+    this._claveEnVuelo = intento.client_id;
     let out;
     try {
       // The SAME intent, client_id included: if the first attempt did commit,
@@ -1802,6 +1851,7 @@ export const TanquesMoves = {
       return;
     } finally {
       this._enviando = false;
+      this._claveEnVuelo = null;
     }
     this._resolverPendiente(intento.client_id);
     const id = out.movimiento && out.movimiento.id;

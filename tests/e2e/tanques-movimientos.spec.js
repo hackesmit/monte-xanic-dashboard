@@ -538,6 +538,54 @@ test.describe('Tanques: registrar movimientos', () => {
     expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(1);
   });
 
+  // Coordinator round, 2026-10-15 (lucy round 3).
+  test('a second tab submitting the same movement is routed to the pending one, not given a new key', async ({ context }) => {
+    const s = servidor();
+    const p1 = await context.newPage();
+    const p2 = await context.newPage();
+    await montar(p1, s);
+    await montar(p2, s);
+    s.guion.push('retener');  // tab 1's request stays in flight
+
+    await arrastrar(p1, tanque('A5'), tanque('B2'));
+    await dialogo(p1).locator('button[type="submit"]').click();
+    await expect.poll(() => s.cuerpos.filter((c) => c.action === 'crear').length).toBe(1);
+
+    await arrastrar(p2, tanque('A5'), tanque('B2'));
+    await dialogo(p2).locator('button[type="submit"]').click();
+    await expect(dialogo(p2)).toContainText('pendiente');
+    expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(1);
+
+    s.soltar();
+    await expect(dialogo(p1)).toBeHidden({ timeout: 10_000 });
+    expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(1);
+  });
+
+  test('Ya la revisé cannot discard a key whose retry is still in flight', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    s.guion.push('abortar');
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    const banner = page.locator('#tanques-pendiente');
+    await expect(banner).toBeVisible({ timeout: 10_000 });
+
+    s.guion.push('retener');
+    await banner.locator('[data-pendiente="reintentar"]').click();
+    await expect.poll(() => s.cuerpos.filter((c) => c.action === 'crear').length).toBe(2);
+    await banner.locator('[data-pendiente="descartar"]').click();
+    await expect(toast(page)).toContainText('se está enviando');
+    const guardadas = await page.evaluate(() => Object.keys(localStorage)
+      .filter((k) => k.startsWith('xanic_tanques_pendiente:')).length);
+    expect(guardadas).toBe(1);
+
+    s.soltar();
+    await expect(banner).toBeHidden({ timeout: 10_000 });
+    const claves = s.cuerpos.filter((c) => c.action === 'crear').map((c) => c.movimiento.client_id);
+    expect(claves[0]).toBe(claves[1]);
+    expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(1);
+  });
+
   test('a vessel with no place on the plan can still receive wine', async ({ page }) => {
     const s = servidor();
     await montar(page, s);
