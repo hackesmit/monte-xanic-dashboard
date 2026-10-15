@@ -29,7 +29,7 @@
 import { DataStore, mismaIntencion } from '../dataLoader.js';
 import { DemoMode } from '../demoMode.js';
 import { escapeHtml, todayInVineyard } from '../utils.js';
-import { validarMovimientoEnLog } from './estado.js';
+import { validarMovimientoEnLog, estadoEnPosicion } from './estado.js';
 import { variedadDeLote, tokenVariedad, fechaCorta } from './plan.js';
 
 // --- labels ------------------------------------------------------------------
@@ -173,13 +173,24 @@ export function loteDeOrigen(tanque, movimientos = []) {
  *   - destino + lote    : a recepcion assigning a tray lote to a tank
  *   - origen + tipo salida: wine leaving the bodega (bottling)
  * @param {Object} bodega {catalogo, movimientos, sinonimos, estado} (view.js._bodega)
+ * @param {Object} [opciones] {fecha}: the business date the movement will
+ *   carry (today when omitted). The tanks are read AT THAT PLACE IN THE LOG,
+ *   through the same estadoEnPosicion the server gate uses, so a backdated
+ *   trasiego is labelled with the lote the origin held then, and its volume is
+ *   bounded by what the tanks held and had free then, not today.
  * @returns {Object} the dialog model; `puedeRegistrar` false means the gesture
  *   cannot become a movement at all and the dialog only explains why.
  */
-export function planearMovimiento(gesto = {}, bodega = {}) {
-  const estado = bodega && bodega.estado && typeof bodega.estado === 'object' ? bodega.estado : {};
+export function planearMovimiento(gesto = {}, bodega = {}, opciones = {}) {
+  const hoy = bodega && bodega.estado && typeof bodega.estado === 'object' ? bodega.estado : {};
   const movimientos = Array.isArray(bodega.movimientos) ? bodega.movimientos : [];
   const sinonimos = bodega.sinonimos || {};
+  const fecha = texto(opciones && opciones.fecha) || todayInVineyard();
+  // Without a catalog there is no log to replay (a caller that hands only the
+  // derived state), and today's state is all there is to read.
+  const estado = Array.isArray(bodega.catalogo) && bodega.catalogo.length
+    ? estadoEnPosicion(bodega.catalogo, movimientos, { fecha }, { sinonimos })
+    : hoy;
 
   const lote = gesto && gesto.lote ? gesto.lote : null;
   const refOrigen = texto(gesto && gesto.origen);
@@ -218,7 +229,7 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
     volumen_l: null,
     merma_l: 0,
     pideMerma: clase !== 'salida',
-    fecha: todayInVineyard(),
+    fecha,
     // A business date in the past is normal (recording yesterday's trasiego);
     // one in the future would be applied ahead of everything in the replay.
     fecha_maxima: todayInVineyard(),
@@ -229,7 +240,8 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
   // Where the log says this lote is, computed BEFORE any early return: the
   // dialog reads an empty list as "sin tanque", so a model that gave up early
   // would claim the lote is unplaced when the state says otherwise.
-  if (clase === 'recepcion') modelo.lote_en = tanquesConLote(estado, modelo.lot_code);
+  // "Hoy en": this one is about TODAY on purpose, whatever the fecha.
+  if (clase === 'recepcion') modelo.lote_en = tanquesConLote(hoy, modelo.lot_code);
 
   // The gesture itself, before any volume: a reference that resolves to nothing
   // is reported by name rather than drawn as a movement.
@@ -257,7 +269,8 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
 
   // What the origin can send and what the destination can take.
   if (clase !== 'recepcion' && modelo.disponible_l <= 0) {
-    avisar('vacio', 'error', `${origen.codigo} está vacío. No hay vino que mover.`);
+    avisar('vacio', 'error', `${origen.codigo} está vacío${fecha !== todayInVineyard() ? ` el ${fecha}` : ''}. `
+      + 'No hay vino que mover.');
   }
   if (clase !== 'salida' && modelo.libres_l <= 0) {
     avisar('sin_espacio', 'error',
@@ -266,6 +279,9 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
   }
   if (avisos.length) {
     modelo.maximo_l = 0;
+    // Empty or full AT THIS FECHA: another date may differ, so the dialog
+    // keeps the date field and lets the user move it.
+    modelo.cambiarFecha = true;
     return modelo;
   }
 
@@ -386,8 +402,11 @@ export function movimientoDesdeFormulario(modelo = {}, valores = {}) {
   } else if (texto(valores.vintage_year) === '') {
     vintage_year = null;
   } else {
-    const n = numeroDeCampo(valores.vintage_year);
-    vintage_year = Number.isFinite(n) ? n : texto(valores.vintage_year);
+    // Only four digits as typed are a year. Number() would also read '2e3',
+    // '0x7d0' and '2024.0' as one, and none of those is what anybody writes on
+    // a barrel; they stay as typed so the gate repeats them back.
+    const t = texto(valores.vintage_year);
+    vintage_year = /^\d{4}$/.test(t) ? Number(t) : t;
   }
   const nota = texto(valores.nota);
   const mermaCampo = texto(valores.merma_l);
@@ -444,7 +463,8 @@ export function erroresDeFormulario(mov) {
   if (crudo == null || texto(crudo) === '') {
     errores.push('Escriba la vendimia: el año de la cosecha.');
   } else {
-    const v = typeof crudo === 'number' ? crudo : Number(texto(crudo));
+    const t = texto(crudo);
+    const v = typeof crudo === 'number' ? crudo : (/^\d{4}$/.test(t) ? Number(t) : NaN);
     if (!Number.isInteger(v) || v < VENDIMIA_MIN || v > VENDIMIA_MAX) {
       errores.push(`La vendimia "${texto(crudo)}" no es válida. `
         + `La vendimia debe ser un año entre ${VENDIMIA_MIN} y ${VENDIMIA_MAX}.`);
@@ -588,6 +608,35 @@ const CHIPS_MAX = 12;
 // _anotarPendiente). The payload is a movement, never a credential.
 const PREFIJO_PENDIENTE = 'xanic_tanques_pendiente:';
 const PENDIENTES_MAX = 20;
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+// What the user reads when the key cannot be written down: the first send and
+// every retry stop on it in the same words.
+const SIN_CLAVE_GUARDADA = 'Este navegador no pudo guardar el identificador del movimiento, '
+  + 'así que no se envía: sin él, un reintento podría registrarlo dos veces. '
+  + 'Resuelva los avisos pendientes de esta pestaña y vuelva a intentarlo.';
+
+// What the dialog proposed for a field: the value it was drawn with.
+function valorPropuesto(el) {
+  if (!el) return null;
+  if (el.tagName === 'SELECT') {
+    const o = [...el.options].find((x) => x.defaultSelected) || el.options[0];
+    return o ? o.value : '';
+  }
+  return typeof el.defaultValue === 'string' ? el.defaultValue : null;
+}
+
+function igualAPropuesto(el) {
+  const a = texto(el.value);
+  const b = texto(valorPropuesto(el));
+  if (a === b) return true;
+  // '6400' and '6400.0' are the same volume; '' and '0' are not compared as
+  // numbers, because a blank volume is not zero litres.
+  if (el.type === 'number' && a !== '' && b !== '') {
+    const x = Number(a), y = Number(b);
+    return Number.isFinite(x) && Number.isFinite(y) && x === y;
+  }
+  return false;
+}
 const TOAST_MS = 12_000;    // long enough to read it and press Deshacer
 const ARRASTRE_PX = 6;      // below this a pointer gesture is a tap, not a drag
 
@@ -613,6 +662,7 @@ export const TanquesMoves = {
   _distintoDe: null,    // the payload the user said is NOT the pending one
   _tocados: null,       // form fields the user changed in the open dialog
   _confirmarAnular: null, // the history row whose Anular is waiting for a yes
+  _toastClave: null,    // the pending key the toast's action would retry
 
   /** Called by TanquesView.mount(). Idempotent. */
   mount(ctx) {
@@ -705,6 +755,19 @@ export const TanquesMoves = {
       return ok;
     } catch (_) {
       return false;
+    }
+  },
+
+  // The stored entry for one key, read from storage itself rather than from
+  // this tab's copy: another tab may have resolved or discarded it.
+  _entradaGuardada(client_id) {
+    try {
+      if (typeof localStorage === 'undefined' || !localStorage) return null;
+      const p = JSON.parse(localStorage.getItem(PREFIJO_PENDIENTE + String(client_id || '').toLowerCase())
+        || 'null');
+      return p && p.intento ? p : null;
+    } catch (_) {
+      return null;
     }
   },
 
@@ -866,17 +929,35 @@ export const TanquesMoves = {
     const firma = firmaDeLog(bodega.movimientos);
     if (firma === this._firmaLog) return;
     this._firmaLog = firma;
+    this._replanear(bodega);
     const form = dlg.querySelector('form');
-    // Only what the USER changed is carried over. A value the dialog proposed
-    // (the type, the volume) was a proposal about the old log, and the new
-    // log may propose something else: a trasiego into a tank that has since
-    // been filled is now an ensamble.
+    const nota = document.createElement('div');
+    nota.className = 'tanques-alert err';
+    nota.textContent = 'La bitácora cambió mientras este formulario estaba abierto. '
+      + 'Revise los datos antes de registrar.';
+    form.insertBefore(nota, form.querySelector('h2').nextSibling);
+  },
+
+  // Plan the open dialog again, at the fecha on the form, and keep only what
+  // the USER changed. A value the dialog proposed (the type, the volume, the
+  // lote, the vendimia) was a proposal about one log at one date: a new log
+  // or a new date may propose something else. A trasiego into a tank that has
+  // since been filled is now an ensamble, and a trasiego dated before the
+  // tank was refilled carries the lote it held then (lucy, 2026-10-15).
+  _replanear(bodega) {
+    const dlg = document.getElementById(ID.dialogo);
+    if (!dlg || !this._pendiente) return;
+    const form = dlg.querySelector('form');
     const tocados = this._tocados || new Set();
     const escrito = {};
     for (const el of form.querySelectorAll('[name]')) {
       if (tocados.has(el.name)) escrito[el.name] = el.value;
     }
-    const modelo = planearMovimiento(this._pendiente.gesto, bodega);
+    const campoFecha = form.querySelector('[name="fecha"]');
+    const fecha = campoFecha && FECHA_RE.test(campoFecha.value) ? campoFecha.value : this._pendiente.fecha;
+    const activo = document.activeElement && form.contains(document.activeElement)
+      ? document.activeElement.name : '';
+    const modelo = planearMovimiento(this._pendiente.gesto, bodega, { fecha });
     this._pendiente = modelo;
     form.innerHTML = this._html(modelo);
     for (const el of form.querySelectorAll('[name]')) {
@@ -885,11 +966,24 @@ export const TanquesMoves = {
       if (el.tagName === 'SELECT' && ![...el.options].some((o) => o.value === escrito[el.name])) continue;
       el.value = escrito[el.name];
     }
-    const nota = document.createElement('div');
-    nota.className = 'tanques-alert err';
-    nota.textContent = 'La bitácora cambió mientras este formulario estaba abierto. '
-      + 'Revise los datos antes de registrar.';
-    form.insertBefore(nota, form.querySelector('h2').nextSibling);
+    // The date is now the model's own, so it is no longer a change; anything
+    // restored equal to the new proposal is not one either.
+    this._tocados = new Set();
+    for (const el of form.querySelectorAll('[name]')) this._anotarTocado(el);
+    const merma = form.querySelector('[name="merma_l"]');
+    const vol = form.querySelector('[name="volumen_l"]');
+    if (merma && vol) vol.max = String(maximoVolumen(modelo, numeroDeCampo(merma.value)));
+    const foco = activo && form.querySelector(`[name="${activo}"]`);
+    if (foco) foco.focus();
+  },
+
+  // A field counts as changed only while it differs from what the dialog
+  // proposed: typing a value and then typing the proposal back is no change,
+  // and a re-plan must be free to propose anew for it.
+  _anotarTocado(el) {
+    if (!el || !el.name || !this._tocados) return;
+    if (valorPropuesto(el) === null || igualAPropuesto(el)) this._tocados.delete(el.name);
+    else this._tocados.add(el.name);
   },
 
   // The log is shared and the tray is a snapshot: a lote armed here can be
@@ -1077,6 +1171,10 @@ export const TanquesMoves = {
           (p) => String(p.intento.client_id).toLowerCase() === clave);
         if (pendiente.dataset.pendiente === 'descartar') {
           this._resolverPendiente(clave);
+          // A toast still offering to retry this entry would retry nothing
+          // now (see _reintentar), so it goes too rather than lie.
+          const t = document.getElementById(ID.toast);
+          if (t && this._toastClave === clave) { t.hidden = true; this._toastClave = null; }
           this._ctx.render();
         } else if (fila) {
           this._reintentar(fila.intento,
@@ -1144,6 +1242,15 @@ export const TanquesMoves = {
       this._iniciarArrastre(e, chip
         ? { lote: chip.dataset.lote }
         : { codigo: vasija.dataset.irTanque });
+    });
+    // Escape backs out of the inline Anular question exactly like "No". The
+    // move dialog owns Escape while it is open.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || this._confirmarAnular == null) return;
+      const dlg = document.getElementById(ID.dialogo);
+      if (dlg && dlg.open) return;
+      this._confirmarAnular = null;
+      this._ctx.render();
     });
     window.addEventListener('pointermove', (e) => this._moverArrastre(e));
     window.addEventListener('pointerup', (e) => this._terminarArrastre(e));
@@ -1377,11 +1484,16 @@ export const TanquesMoves = {
     });
     // What the user changed by hand, so a re-plan keeps it and recomputes the
     // rest (see _revisarDialogo).
-    const tocar = (e) => {
-      if (e.target && e.target.name && this._tocados) this._tocados.add(e.target.name);
-    };
+    const tocar = (e) => this._anotarTocado(e.target);
     form.addEventListener('input', tocar);
     form.addEventListener('change', tocar);
+    // A new fecha is a new place in the log: what the origin held, and so the
+    // lote, the vendimia and the volume it can send, are read there again.
+    form.addEventListener('change', (e) => {
+      if (!e.target || e.target.name !== 'fecha' || this._enviando || !this._pendiente) return;
+      if (!FECHA_RE.test(e.target.value) || e.target.value === this._pendiente.fecha) return;
+      this._replanear(this._ctx.bodega());
+    });
     // Escape is the other way out of a modal, and it must not escape the lock.
     dlg.addEventListener('cancel', (e) => { if (this._enviando) e.preventDefault(); });
     // Recompute the volume ceiling as merma is typed: merma comes off what
@@ -1432,8 +1544,13 @@ export const TanquesMoves = {
       s += `<div class="tanques-alert${a.nivel === 'error' ? ' err' : ''}">${escapeHtml(a.texto)}</div>`;
     }
 
+    const campoFecha = '<label class="tanques-campo">Fecha<input name="fecha" type="date" required'
+      + ` value="${escapeHtml(m.fecha)}" max="${escapeHtml(m.fecha_maxima)}"></label>`;
     if (!m.puedeRegistrar) {
-      return `${s}<div class="tanques-dialog-acciones">`
+      // Empty or full is a fact about ONE date: the field stays so the user
+      // can move the movement to the date it really happened.
+      return `${s}${m.cambiarFecha ? `<div class="tanques-row2">${campoFecha}</div>` : ''}`
+        + '<div class="tanques-dialog-acciones">'
         + '<button type="button" class="tanques-btn" data-cerrar>Cerrar</button></div>';
     }
 
@@ -1443,8 +1560,7 @@ export const TanquesMoves = {
     s += '<div class="tanques-row2">'
       + `<label class="tanques-campo">Tipo<select name="tipo"${m.tipos.length === 1 ? ' disabled' : ''}>`
       + `${opciones}</select></label>`
-      + '<label class="tanques-campo">Fecha<input name="fecha" type="date" required'
-      + ` value="${escapeHtml(m.fecha)}" max="${escapeHtml(m.fecha_maxima)}"></label>`
+      + campoFecha
       + '</div>';
     s += '<div class="tanques-row2">'
       + '<label class="tanques-campo">Volumen movido (L)<input name="volumen_l" type="number"'
@@ -1459,8 +1575,10 @@ export const TanquesMoves = {
       + `<p class="tanques-campo">Lote<b>${escapeHtml(m.lot_code || 'sin código')}</b>`
       + (m.mezcla_origen ? '<small>mayoritario de la mezcla</small>' : '<small>del origen</small>')
       + '</p>'
-      + '<label class="tanques-campo">Vendimia<input name="vintage_year" type="number" required'
-      + ` min="${VENDIMIA_MIN}" max="${VENDIMIA_MAX}" step="1" inputmode="numeric"`
+      // Text, not number: a number input hands back '2e3' as a value and
+      // turns '0x7d0' into '', so the gate could not repeat what was typed.
+      + '<label class="tanques-campo">Vendimia<input name="vintage_year" type="text" required'
+      + ' inputmode="numeric" autocomplete="off"'
       + ` value="${m.vintage_year == null ? '' : m.vintage_year}"></label>`
       + '</div>';
     s += '<label class="tanques-campo">Nota<input name="nota" type="text" maxlength="2000"'
@@ -1532,6 +1650,14 @@ export const TanquesMoves = {
     if (!dlg || !modelo || !modelo.puedeRegistrar) return;
     if (!this._puedeEscribir()) { dlg.close(); return; }
     const form = dlg.querySelector('form');
+    // A date typed and submitted before its change event: the proposal on
+    // screen belongs to another date, so plan again and let the user look.
+    const campoFecha = form.querySelector('[name="fecha"]');
+    if (campoFecha && FECHA_RE.test(campoFecha.value) && campoFecha.value !== modelo.fecha) {
+      this._replanear(this._ctx.bodega());
+      this._errores(['Se recalculó el movimiento para la fecha nueva. Revise los datos y registre.']);
+      return;
+    }
     const mov = this._movimientoDelFormulario();
 
     const errores = erroresDeMovimiento(this._ctx.bodega(), mov);
@@ -1552,9 +1678,7 @@ export const TanquesMoves = {
     const intento = { ...mov, client_id: globalThis.crypto.randomUUID() };
     if (!this._anotarPendiente(intento,
       'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.')) {
-      this._errores(['Este navegador no pudo guardar el identificador del movimiento, '
-        + 'así que no se envía: sin él, un reintento podría registrarlo dos veces. '
-        + 'Resuelva los avisos pendientes de esta pestaña y vuelva a intentarlo.']);
+      this._errores([SIN_CLAVE_GUARDADA]);
       return;
     }
 
@@ -1581,6 +1705,7 @@ export const TanquesMoves = {
         dlg.close();
         this._avisar(err.message, {
           etiqueta: 'Reintentar',
+          clave: (err.movimiento || intento).client_id,
           fn: () => this._reintentar(err.movimiento || intento),
         });
         this._ctx.render();
@@ -1614,6 +1739,11 @@ export const TanquesMoves = {
   async _reintentar(intento, { confirmado = false } = {}) {
     if (this._enviando || !intento) return;
     if (!this._puedeEscribir()) return;
+    // Its pending entry is the licence to retry. "Ya la revisé" took it away,
+    // and a button that captured the intent earlier (a toast still on screen)
+    // must not bring a discarded movement back to life.
+    const guardada = this._entradaGuardada(intento.client_id);
+    if (!guardada) return;
     // Reconcile against the log before anything leaves. Its own key in the
     // log is the answer (it landed). The same movement under ANOTHER key
     // (a repeat that landed, or a sibling entry's retry) means this retry
@@ -1633,7 +1763,17 @@ export const TanquesMoves = {
       this._avisar(`La bitácora ya tiene un movimiento igual (registro ${gemelo.id}). `
         + 'Si es el mismo, descarte el aviso pendiente con "Ya la revisé".',
       { etiqueta: 'Es un movimiento distinto, registrar de nuevo',
+        clave: intento.client_id,
         fn: () => this._reintentar(intento, { confirmado: true }) });
+      this._ctx.render();
+      return;
+    }
+    // The same gate the first send passes: the key is written down, and read
+    // back, BEFORE the request leaves. Storage that is blocked or full means
+    // nothing would remember this key, so nothing is sent.
+    if (!this._anotarPendiente(intento, guardada.mensaje
+      || 'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.')) {
+      this._avisar(SIN_CLAVE_GUARDADA);
       this._ctx.render();
       return;
     }
@@ -1654,7 +1794,9 @@ export const TanquesMoves = {
         err && err.message ? err.message : 'No se pudo confirmar el movimiento.');
       this._avisar(err && err.message ? err.message : 'No se pudo registrar el movimiento.',
         err && err.indeterminado
-          ? { etiqueta: 'Reintentar', fn: () => this._reintentar(err.movimiento || intento) }
+          ? { etiqueta: 'Reintentar',
+            clave: (err.movimiento || intento).client_id,
+            fn: () => this._reintentar(err.movimiento || intento) }
           : null);
       this._ctx.render();
       return;
@@ -1708,6 +1850,7 @@ export const TanquesMoves = {
       document.body.appendChild(t);
     }
     t.innerHTML = `<span>${escapeHtml(mensaje)}</span>`;
+    this._toastClave = accion && accion.clave ? String(accion.clave).toLowerCase() : null;
     // Every action a toast offers is a write (Deshacer, Reintentar), so a
     // session that may not write gets the message without the button.
     if (accion && this._puedeEscribir()) {

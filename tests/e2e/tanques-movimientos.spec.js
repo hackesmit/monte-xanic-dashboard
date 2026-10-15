@@ -1038,4 +1038,140 @@ test.describe('Tanques: registrar movimientos', () => {
       document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(desborde).toBeLessThanOrEqual(1);
   });
+
+  // --- round 3 ---------------------------------------------------------------
+
+  test('a backdated movement is re-planned at its date and stores the lote of that date',
+    async ({ page }) => {
+      const s = servidor();
+      // H1 takes 10 000 L of X, sends 8 000 L out, then takes 8 000 L of Y.
+      s.movimientos.push(
+        mv({ fecha: '2025-09-01', tipo: 'recepcion', destino: 'H1', lot_code: '24CSKMP-1',
+          vintage_year: 2024, volumen_l: 10000 }),
+        mv({ fecha: '2025-09-20', tipo: 'salida', origen: 'H1', lot_code: '24CSKMP-1',
+          vintage_year: 2024, volumen_l: 8000 }),
+        mv({ fecha: '2025-10-01', tipo: 'recepcion', destino: 'H1', lot_code: '25MEKMP-7',
+          vintage_year: 2025, volumen_l: 8000 }),
+      );
+      await montar(page, s);
+
+      await arrastrar(page, tanque('H1'), tanque('B2'));
+      const lote = dialogo(page).locator('p.tanques-campo b');
+      // Today H1 is mostly Y.
+      await expect(lote).toHaveText('25MEKMP-7');
+      await dialogo(page).locator('[name="fecha"]').fill('2025-09-10');
+      await expect(lote).toHaveText('24CSKMP-1');
+      await expect(dialogo(page).locator('[name="vintage_year"]')).toHaveValue('2024');
+      await expect(dialogo(page).locator('.tanques-mv-caja').first()).toContainText('10,000 L');
+      await dialogo(page).locator('[name="volumen_l"]').fill('1000');
+      await dialogo(page).locator('button[type="submit"]').click();
+      await expect(dialogo(page)).toBeHidden();
+
+      const crear = s.cuerpos.filter((c) => c.action === 'crear');
+      expect(crear).toHaveLength(1);
+      console.log('payload crear fechado:', JSON.stringify(crear[0].movimiento));
+      expect(crear[0].movimiento).toMatchObject({
+        fecha: '2025-09-10', tipo: 'trasiego', origen: 'H1', destino: 'B2',
+        lot_code: '24CSKMP-1', vintage_year: 2024, volumen_l: 1000,
+      });
+      const fila = s.movimientos[s.movimientos.length - 1];
+      expect(fila.lot_code).toBe('24CSKMP-1');
+    });
+
+  test('after "Ya la revisé" a retry captured earlier does nothing and its toast goes',
+    async ({ page }) => {
+      const s = servidor();
+      await montar(page, s);
+      s.guion.push('abortar');
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await dialogo(page).locator('button[type="submit"]').click();
+      const banner = page.locator('#tanques-pendiente');
+      await expect(banner).toBeVisible({ timeout: 10_000 });
+      await expect(toast(page).locator('.tanques-toast-accion')).toHaveText('Reintentar');
+      const intento = s.cuerpos[0].movimiento;
+
+      await banner.locator('[data-pendiente="descartar"]').click();
+      await expect(banner).toBeHidden();
+      await expect(toast(page)).toBeHidden();
+      // The toast's action, run anyway (a stale button), sends nothing.
+      await page.evaluate(async (i) => {
+        const { TanquesMoves } = await import('/js/tanques/moves.js');
+        await TanquesMoves._reintentar(i);
+        await TanquesMoves._reintentar(i, { confirmado: true });
+      }, intento);
+      await page.waitForTimeout(200);
+      expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(1);
+      expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(0);
+    });
+
+  test('a retry that cannot store its key first is not sent', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    s.guion.push('abortar');
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    const banner = page.locator('#tanques-pendiente');
+    await expect(banner).toBeVisible({ timeout: 10_000 });
+
+    // Storage becomes full: every write throws, reads still work.
+    await page.evaluate(() => {
+      Storage.prototype.setItem = function setItem() {
+        throw new DOMException('lleno', 'QuotaExceededError');
+      };
+    });
+    await banner.locator('[data-pendiente="reintentar"]').click();
+    await expect(toast(page)).toContainText('Este navegador no pudo guardar el identificador del movimiento');
+    expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(1);
+    await expect(banner).toBeVisible();
+  });
+
+  test('Escape dismisses the Anular question without sending', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    await arrastrar(page, tanque('A5'), tanque('H1'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page)).toBeHidden();
+    const id = s.movimientos[s.movimientos.length - 1].id;
+    await page.locator('#tanques-plano [data-tanque="H1"]').click();
+    await page.locator(`#tanques-panel li[data-mov="${id}"] [data-anular]`).click();
+    const confirma = page.locator(`#tanques-panel li[data-mov="${id}"] .tanques-anular-confirma`);
+    await expect(confirma).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(confirma).toHaveCount(0);
+    await expect(page.locator(`#tanques-panel li[data-mov="${id}"] [data-anular]`)).toBeVisible();
+    expect(s.cuerpos.filter((c) => c.action === 'anular')).toHaveLength(0);
+  });
+
+  test('a field changed back to its proposal is re-proposed on a re-plan', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    const vol = dialogo(page).locator('[name="volumen_l"]');
+    await expect(vol).toHaveValue('7400');
+    await vol.fill('5000');
+    await vol.fill('7400');
+    s.movimientos.push(mv({ fecha: '2026-02-01', tipo: 'recepcion', destino: 'B2',
+      lot_code: '25CSKMP-9', volumen_l: 1000 }));
+    s.version += 1;
+    await page.evaluate(async () => {
+      const { DataStore } = await import('/js/dataLoader.js');
+      await DataStore.loadTanques();
+      const { TanquesView } = await import('/js/tanques/view.js');
+      TanquesView.render();
+    });
+    await expect(dialogo(page)).toContainText('La bitácora cambió');
+    await expect(vol).toHaveValue('6400');
+  });
+
+  test('the vendimia field refuses an exponent as typed', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    const vendimia = dialogo(page).locator('[name="vintage_year"]');
+    await vendimia.fill('2e3');
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page).locator('.tanques-dialog-errores'))
+      .toContainText('La vendimia "2e3" no es válida');
+    expect(s.cuerpos).toEqual([]);
+  });
 });
