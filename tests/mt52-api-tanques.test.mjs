@@ -857,6 +857,68 @@ describe('MT.52 - DataStore.loadTanques / postMovimiento / anularMovimiento', ()
     DataStore.tanquesDesactualizado = false;
   });
 
+  it('a cleanly refused write leaves the view marked current', async () => {
+    globalThis.fetch = async () => ({
+      ok: false, status: 400, json: async () => ({ ok: false, error: 'El tanque origen A1 esta vacio.' }),
+    });
+    await assert.rejects(() => DataStore.postMovimiento(movimiento()), /A1 esta vacio/);
+    assert.equal(DataStore.tanquesDesactualizado, false);
+  });
+
+  it('reports an unconfirmed write as indeterminate, not as refused', async () => {
+    // The request left and no answer came back, so the INSERT may well have
+    // committed. Reporting it as refused is what makes someone press the
+    // button again and record the movement twice.
+    let gets = 0;
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') throw new TypeError('Failed to fetch');
+      gets++;
+      return { ok: true, status: 200, json: async () => cuerpo };
+    };
+    await assert.rejects(
+      () => DataStore.postMovimiento(movimiento()),
+      (e) => e.indeterminado === true && /Revise la bitacora/.test(e.message),
+    );
+    assert.equal(gets, 1, 'it re-reads what it can');
+    // The re-read worked, so the log on screen is the answer to reconcile
+    // against; it is the `indeterminado` flag, not a staleness badge, that says
+    // the write outcome is unknown.
+    assert.equal(DataStore.tanquesDesactualizado, false);
+  });
+
+  it('marks the view stale when the unconfirmed write cannot even be re-read', async () => {
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') throw new TypeError('Failed to fetch');
+      throw new TypeError('Failed to fetch');
+    };
+    await assert.rejects(() => DataStore.postMovimiento(movimiento()), (e) => e.indeterminado === true);
+    assert.equal(DataStore.tanquesDesactualizado, true);
+    DataStore.tanquesDesactualizado = false;
+  });
+
+  it('an older in-flight load never overwrites a newer one', async () => {
+    // A GET issued before a write resolves after that write's refresh. Letting
+    // it land would put the pre-write log back and call the view current.
+    const viejo = { ...cuerpo, movimientos: [] };
+    let suelta;
+    const esperando = new Promise(r => { suelta = r; });
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') {
+        return { ok: true, status: 200, json: async () => ({ ok: true, movimiento: { id: 9 } }) };
+      }
+      if (!suelta._usado) { suelta._usado = true; await esperando; return { ok: true, status: 200, json: async () => viejo }; }
+      return { ok: true, status: 200, json: async () => cuerpo };
+    };
+    const lento = DataStore.loadTanques();          // generation 1, still in flight
+    const out = await DataStore.postMovimiento(movimiento());  // generation 2 lands
+    assert.equal(out.actualizado, true);
+    assert.equal(DataStore.movimientosTanque.length, 1);
+    suelta();
+    assert.equal(await lento, false, 'the superseded load reports no success');
+    assert.equal(DataStore.movimientosTanque.length, 1, 'and it replaced nothing');
+    assert.equal(DataStore.tanquesDesactualizado, false);
+  });
+
   it('anularMovimiento posts the anular envelope', async () => {
     const calls = [];
     globalThis.fetch = async (url, opts = {}) => {
