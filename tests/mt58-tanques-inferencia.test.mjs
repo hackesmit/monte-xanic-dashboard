@@ -262,6 +262,37 @@ describe('mt58 - propuestas que la bitacora ya cubre', () => {
     assert.deepEqual(ruta(deLote(r, '25CSKMP-4')), ['D5>E1@2025-11-12', 'E1>H8@2025-12-01']);
   });
 
+  test('un viaje ANTERIOR por la misma ruta no tapa el de ahora', () => {
+    // El lote fue D5 a E1 en septiembre, volvio, y en noviembre lo hizo otra
+    // vez. Las dos filas de septiembre estan en la bitacora y ninguna muestra
+    // de septiembre existe, asi que las ventanas de muestreo no se traslapan:
+    // la propuesta de noviembre es un movimiento de verdad sin registrar, y
+    // comparar sin fecha lo escondia (lucy, 2026-10-15).
+    const r = con([
+      mov({ fecha: '2025-09-01' }),
+      mov({ fecha: '2025-09-02', origen: 'E1', destino: 'D5' }),
+    ]);
+    assert.deepEqual(ruta(deLote(r, '25CSKMP-4')), ['D5>E1@2025-11-12', 'E1>H8@2025-12-01']);
+  });
+
+  test('una fila posterior a toda la evidencia tampoco la cubre', () => {
+    // La ultima muestra en E1 es del 21 de noviembre; un trasiego registrado en
+    // 2026 es otro viaje, no este.
+    const r = con([mov({ fecha: '2026-03-01' })]);
+    assert.ok(deLote(r, '25CSKMP-4').some((p) => p.destino === 'E1'));
+  });
+
+  test('cualquier fecha DENTRO de la ventana de evidencia si la cubre', () => {
+    // Desde la primera muestra en el origen hasta la ultima en el destino.
+    for (const fecha of ['2025-10-30', '2025-11-11', '2025-11-12', '2025-11-21']) {
+      const r = con([mov({ fecha })]);
+      assert.deepEqual(ruta(deLote(r, '25CSKMP-4')), ['E1>H8@2025-12-01'], fecha);
+    }
+    // y un dia antes de la primera muestra en D5 ya no
+    const fuera = con([mov({ fecha: '2025-10-29' })]);
+    assert.equal(deLote(fuera, '25CSKMP-4').length, 2);
+  });
+
   test('un movimiento con los mismos tanques y OTRO lote no cubre la propuesta', () => {
     const r = con([mov({ lot_code: '25DUKMP-9' })]);
     assert.deepEqual(ruta(deLote(r, '25CSKMP-4')), ['D5>E1@2025-11-12', 'E1>H8@2025-12-01']);
@@ -284,7 +315,9 @@ describe('mt58 - propuestas que la bitacora ya cubre', () => {
     for (const destino of ['PD-1', 'PD1']) {
       const r = inferirMovimientos(muestras, {
         ...BODEGA,
-        movimientos: [mov({ origen: 'D5', destino, lot_code: '25CSVDG-1' })],
+        movimientos: [mov({
+          origen: 'D5', destino, lot_code: '25CSVDG-1', fecha: '2025-09-26',
+        })],
       });
       assert.equal(r.propuestas.length, 0, destino);
     }
