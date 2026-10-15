@@ -18,6 +18,7 @@ export const DataStore = {
   tanquesSinonimos: {},     // dim_tanque_sinonimo as {sinonimo: codigo}
   movimientosTanque: [],    // movimientos_tanque rows (annulled ones included)
   tanquesDesactualizado: false,  // true when a write landed but the re-read failed
+  _tanquesGen: 0,                // load generation; an older GET never wins
   loaded: { berry: false, wine: false },
   supabase: null,        // Supabase client instance (set by initSupabase)
   _supabaseReady: false, // true once credentials have been fetched
@@ -355,6 +356,11 @@ export const DataStore = {
   },
 
   async loadTanques() {
+    // Generation, not just a boolean: a GET issued before a write can resolve
+    // after that write's refresh, put the pre-write log back and then call the
+    // view current. A superseded load replaces nothing and reports no success
+    // (lucy, 2026-10-15).
+    const gen = ++this._tanquesGen;
     try {
       const res = await fetch('/api/tanques', {
         headers: { 'x-session-token': this._sessionToken() },
@@ -362,6 +368,7 @@ export const DataStore = {
       const data = await res.json();
       if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
       if (this._demoActive) return false;  // demo enabled mid-fetch, keep the overlay
+      if (gen !== this._tanquesGen) return false;  // a newer load already answered
       this.tanquesCatalogo  = data.tanques || [];
       this.tanquesSinonimos = data.sinonimos || {};
       this.movimientosTanque = data.movimientos || [];
@@ -380,12 +387,31 @@ export const DataStore = {
   // `actualizado: false` with `tanquesDesactualizado` set is the signal to show
   // "registrado, no se pudo actualizar la vista" and offer a plain reload.
   async _escribirMovimiento(cuerpo) {
-    const res = await fetch('/api/tanques', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
-      body: JSON.stringify(cuerpo),
-    });
-    const data = await res.json();
+    let res, data;
+    try {
+      res = await fetch('/api/tanques', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
+        body: JSON.stringify(cuerpo),
+      });
+      data = await res.json();
+    } catch (e) {
+      // The request left and no answer came back, so whether the INSERT
+      // committed is UNKNOWN, not refused. Calling it refused is exactly what
+      // makes someone press the button again and record the movement twice, so
+      // it is reported as indeterminate: mark the view stale, re-read what we
+      // can, and send the caller to the log before retrying.
+      console.error('[DataStore] movimiento sin confirmar:', e);
+      // The view is stale only if the re-read ALSO failed. When it succeeds the
+      // log on screen is the answer, and the caller reconciles against it; the
+      // `indeterminado` flag is what says the outcome is unknown, so marking a
+      // freshly read log stale would be its own lie.
+      if (!(await this.loadTanques())) this.tanquesDesactualizado = true;
+      const err = new Error('No se pudo confirmar el movimiento. Revise la bitacora antes de repetirlo.');
+      err.indeterminado = true;
+      throw err;
+    }
+    // An answer arrived and it says no: nothing was written, nothing is stale.
     if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
     const actualizado = await this.loadTanques();
     if (!actualizado) this.tanquesDesactualizado = true;

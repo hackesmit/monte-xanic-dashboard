@@ -371,10 +371,22 @@ filed as bead xd-qrn.8 instead of improvised here.
 returns a boolean; `postMovimiento(mov)` and `anularMovimiento(id)` write and
 then re-read the log.
 
-Both writers throw with the server's Spanish reason, so a caller shows it
-instead of inventing one. They throw **only when the write itself was refused**.
-A write that landed and a re-read that then failed are two different things, so
-they resolve with `{ movimiento, actualizado }`: `actualizado: false` (with
-`DataStore.tanquesDesactualizado` set) means the movement is in the log and the
-screen is stale. Report that as "registrado, no se pudo actualizar la vista"
-and offer a reload. Reporting it as a failed write invites a duplicate POST.
+Three outcomes, kept apart on purpose, because collapsing them is what makes
+someone press the button again and record a movement twice:
+
+- **Written.** Resolves with `{ movimiento, actualizado }`. `actualizado: false`
+  (with `DataStore.tanquesDesactualizado` set) means the movement is in the log
+  and the screen is stale: report "registrado, no se pudo actualizar la vista"
+  and offer a reload, not a retry.
+- **Refused.** Throws with the server's Spanish reason, so a caller shows it
+  instead of inventing one. Nothing was written and nothing is stale.
+- **Unknown.** The request left and no answer came back, so the INSERT may well
+  have committed. Throws an error carrying `indeterminado: true` and the message
+  "No se pudo confirmar el movimiento. Revise la bitacora antes de repetirlo."
+  The log is re-read first, so the view the user reconciles against is current;
+  `tanquesDesactualizado` is set only when that re-read failed too.
+
+`loadTanques()` carries a load generation, so a GET issued before a write that
+resolves after that write's refresh replaces nothing and reports no success.
+Without it the pre-write log would land on top of the fresh one and the view
+would call itself current.
