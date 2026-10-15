@@ -673,6 +673,61 @@ test.describe('Tanques: registrar movimientos', () => {
       await expect(page.locator('#tanques-pendiente')).toHaveCount(0);
     });
 
+  test('each unconfirmed write is its own stored key, so two tabs cannot erase each other',
+    async ({ page, context }) => {
+      const s = servidor();
+      await montar(page, s);
+      s.guion.push('abortar');
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await dialogo(page).locator('button[type="submit"]').click();
+      await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(1, { timeout: 10_000 });
+
+      // One key per intent: a read-modify-write over a single list is what
+      // lets a second tab drop the first tab's key.
+      const claves = await page.evaluate(() => Object.keys(localStorage)
+        .filter((k) => k.startsWith('xanic_tanques_pendiente:')));
+      expect(claves).toHaveLength(1);
+      expect(claves[0].slice('xanic_tanques_pendiente:'.length))
+        .toBe(s.cuerpos[0].movimiento.client_id.toLowerCase());
+
+      // A second tab, same origin and same storage, records its own.
+      const otra = await context.newPage();
+      // Its own window: a tank below the fold cannot be dragged onto.
+      await otra.setViewportSize({ width: 1440, height: 1000 });
+      await otra.route('**/api/tanques', (route) => {
+        if (route.request().method() === 'GET') {
+          return route.fulfill({ status: 200, contentType: 'application/json',
+            body: JSON.stringify({ ok: true, version: s.version, tanques: TANQUES, sinonimos: SINONIMOS, movimientos: s.movimientos }) });
+        }
+        return route.abort('failed');
+      });
+      await otra.goto('/');
+      await otra.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+      await otra.locator('.nav-tab[data-view="tanques"]').click();
+      await otra.waitForSelector('#tanques-plano .tanque', { timeout: 12_000 });
+      await otra.locator(tanque('H1')).scrollIntoViewIfNeeded();
+      await otra.locator(tanque('A1')).scrollIntoViewIfNeeded();
+      const a1 = await otra.locator(tanque('A1')).boundingBox();
+      const h1 = await otra.locator(tanque('H1')).boundingBox();
+      await otra.mouse.move(a1.x + a1.width / 2, a1.y + a1.height / 2);
+      await otra.mouse.down();
+      await otra.mouse.move(a1.x + 20, a1.y + 20, { steps: 3 });
+      await otra.mouse.move(h1.x + h1.width / 2, h1.y + h1.height / 2, { steps: 6 });
+      await otra.mouse.up();
+      await expect(otra.locator('#tanques-dialogo')).toBeVisible();
+      await otra.locator('#tanques-dialogo button[type="submit"]').click();
+      await expect(otra.locator('#tanques-pendiente .tanques-alert')).toHaveCount(2, { timeout: 10_000 });
+
+      // Back in the first tab: its own key is still there, beside the new one.
+      await page.reload();
+      await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+      await page.locator('.nav-tab[data-view="tanques"]').click();
+      await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(2, { timeout: 12_000 });
+      await expect(page.locator('#tanques-pendiente')).toContainText('A5 a B2');
+      await expect(page.locator('#tanques-pendiente')).toContainText('A1 a H1');
+      await otra.close();
+    });
+
   test('a viewer has no write controls at all', async ({ page }) => {
     const s = servidor();
     await montar(page, s, { rol: 'viewer' });
