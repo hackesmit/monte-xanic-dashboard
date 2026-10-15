@@ -126,7 +126,7 @@ function servidor() {
   return s;
 }
 
-async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440, alto = 1000 } = {}) {
+async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440, alto = 1200 } = {}) {
   await page.setViewportSize({ width: ancho, height: alto });
   await page.addInitScript((r) => {
     try {
@@ -215,12 +215,24 @@ const dialogo = (page) => page.locator('#tanques-dialogo');
 const toast = (page) => page.locator('#tanques-toast');
 
 async function arrastrar(page, desde, hasta) {
-  // A pointer gesture only lands where the pointer can actually go, so both
-  // ends have to be in the viewport before the first mouse event.
+  // A pointer gesture only lands where the pointer can actually go, so BOTH
+  // ends have to be in the viewport at the same time before the first mouse
+  // event. Scrolling one into view can push the other out (the tray sits
+  // under the plan), so this scrolls to the span of the two and then checks.
   await page.locator(hasta).scrollIntoViewIfNeeded();
   await page.locator(desde).scrollIntoViewIfNeeded();
-  const a = await page.locator(desde).boundingBox();
-  const b = await page.locator(hasta).boundingBox();
+  let a = await page.locator(desde).boundingBox();
+  let b = await page.locator(hasta).boundingBox();
+  const alto = page.viewportSize().height;
+  const dentro = (r) => r && r.y >= 0 && r.y + r.height <= alto;
+  if (!dentro(a) || !dentro(b)) {
+    await page.evaluate((dy) => window.scrollBy(0, dy), Math.min(a.y, b.y) - 40);
+    a = await page.locator(desde).boundingBox();
+    b = await page.locator(hasta).boundingBox();
+  }
+  if (!dentro(a) || !dentro(b)) {
+    throw new Error(`los dos extremos del arrastre no caben en la ventana: ${desde} / ${hasta}`);
+  }
   await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
   await page.mouse.down();
   await page.mouse.move(a.x + a.width / 2 + 20, a.y + a.height / 2 + 20, { steps: 4 });
@@ -308,8 +320,6 @@ test.describe('Tanques: registrar movimientos', () => {
 
   test('a tray lote is assigned by drag and posted as a recepcion', async ({ page }) => {
     const s = servidor();
-    // The tray sits below the plan, so the window has to be tall enough to
-    // hold both ends of the drag at once.
     await montar(page, s, { alto: 1400 });
 
     const chip = page.locator('#tanques-lotes [data-lote="25CSKMP-9"]');
