@@ -68,6 +68,7 @@ function redondearTotal(n) {
 // than it holds, and cannot arrive with more than it sent, which is what keeps
 // per-lote merma from going negative).
 const UNIDAD = 1e6; // microlitre
+const MAX_LITROS = 1e6; // largest amount one movement can carry
 
 function repartir(pesos, total, topes) {
   if (!pesos.length) return [];
@@ -109,9 +110,12 @@ function numero(v) {
 // zero is refused: it would be counted as moved while no wine moves.
 function litros(v) {
   const n = numero(v);
-  // the microlitre count must stay an exact integer: past that, MAX_VALUE
-  // rounds to Infinity and Infinity - Infinity slips through every comparison
-  if (!Number.isSafeInteger(Math.round(n * UNIDAD))) return NaN;
+  // Litres are doubles quantized to microlitres, which is exact only while a
+  // double can still resolve a microlitre: near 9e9 L the spacing is about
+  // 2 microlitres and small withdrawals vanish. No real vessel or movement
+  // comes near MAX_LITROS, and up to it (and well past it, for tank totals)
+  // the spacing stays below a thousandth of a microlitre.
+  if (Number.isNaN(n) || Math.abs(n) > MAX_LITROS) return NaN;
   return redondear(n);
 }
 
@@ -265,8 +269,10 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
   for (const t of Array.isArray(tanques) ? tanques : []) {
     const codigo = texto(t && t.codigo);
     if (!codigo) continue;
-    const cap = numero(t.capacidad_l);
-    estado[codigo] = tanqueVacio(codigo, Number.isNaN(cap) ? 0 : cap);
+    // a capacity past MAX_LITROS counts as unregistered, so validation refuses
+    // to fill it and no tank the validator accepts can outgrow exact microlitres
+    const cap = litros(t.capacidad_l);
+    estado[codigo] = tanqueVacio(codigo, Number.isNaN(cap) || cap < 0 ? 0 : cap);
   }
   const codigos = new Set(Object.keys(estado));
   const aplicados = [];
