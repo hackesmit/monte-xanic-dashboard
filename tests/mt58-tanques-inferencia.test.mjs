@@ -26,6 +26,7 @@ import {
   normalizarVasija,
   resolverVasija,
   vendimiaDeCodigo,
+  esCodigoDeLote,
 } from '../js/tanques/inferencia.js';
 
 // --- the bodega ---------------------------------------------------------------
@@ -156,6 +157,35 @@ describe('mt58 - propuestas sobre datos de produccion', () => {
     // A two-digit prefix outside the vendimia window is not a vendimia either.
     assert.equal(vendimiaDeCodigo('99XX-1'), null);
   });
+
+  test('un prefijo numerico no basta: "25 DELETE PLEASE" no es un lote', () => {
+    for (const id of ['25 DELETE PLEASE', '25', 'DELETE PLEASE', 'DELETE PLEASER', 'Control',
+      '25-1', '2', '', null, '25CS KMP-4', '99CS-1']) {
+      assert.equal(esCodigoDeLote(id), false, JSON.stringify(id));
+    }
+    const basura = [m('25 DELETE PLEASE', '2025-10-01', 'D5'), m('25 DELETE PLEASE', '2025-10-02', 'E1')];
+    const r = inferirMovimientos(basura, BODEGA);
+    assert.deepEqual(r.propuestas, []);
+    assert.equal(r.resumen.muestras, 0, 'ni siquiera cuenta para la cobertura');
+  });
+
+  test('los codigos reales de produccion siguen siendo lotes', () => {
+    // Los ids del fixture, el corpus de produccion de mt53 (incluidos los que
+    // variedadDeLote no puede colorear: los 2026 con el rancho primero) y las
+    // formas raras que la tabla de verdad trae.
+    const reales = [
+      '25CSKMP-4', '25DUKMP-3', '23CSLLC-15', '24CFVA-1',
+      '25CSKMP-5', '24CSVDG-1', '25SY7L-1', '25SYDA-13', '25MADUB-1', '23CSLLC-11',
+      '23CSMX-1B', '23CSOLE-1', '24CSON-1', '24CSCC-1', '24MEUVA-1',
+      '23MALBECMX-1', '23MERLOTMX-1', '26TEMPON5', '26GRENON6',
+      '26SBMX1A-C', '26CSOLE1', '26SYVA1B', '26CALMX1E', '26CB7L1', '26GRENVA3A', '26MERVA1A',
+      '22CSCORTE1', '22cscorte2', '24SYUCORG-1', '25CFKMPP-1',
+      '25KCS-S2B-ALIVIO', '26KCH-S5SALT', '25KMS-S5A+', '25KDU-S7',
+      '26R14CS', '26R14GRE', '26R14ME', '26R14SB', '26R14TE',
+      '24MEVA-1?', '25SYVA-1D,2C,3C,4C',
+    ];
+    for (const id of reales) assert.equal(esCodigoDeLote(id), true, id);
+  });
 });
 
 // --- what the samples refuse to name ------------------------------------------
@@ -197,19 +227,18 @@ describe('mt58 - lo que las muestras NO convierten en movimiento', () => {
       `${out.resumen.fraccion_sin_tanque} de las muestras no resuelve a un tanque`);
   });
 
-  test('una ventana que termina DESPUES de que empieza la siguiente es traslape, no movimiento', () => {
-    // A4 del 18 al 22, A2 solo el 20: el 20 esta dentro de la ventana de A4.
+  test('una vasija muestreada el MISMO dia que otra dentro de su estancia es traslape', () => {
+    // A4 del 18 al 22, A2 el 20 junto con A4: el lote estuvo en las dos ese dia.
     const muestras = [
       ...dias('25TEKMP-2', '2025-10', 10, 16, 'E1'),
       m('25TEKMP-2', '2025-10-18', 'A4'),
       m('25TEKMP-2', '2025-10-19', 'A4'),
+      m('25TEKMP-2', '2025-10-20', 'A4'),
       m('25TEKMP-2', '2025-10-20', 'A2'),
       m('25TEKMP-2', '2025-10-21', 'A4'),
       m('25TEKMP-2', '2025-10-22', 'A4'),
     ];
     const r = inferirMovimientos(muestras, BODEGA);
-    // E1 cierra el 18, que es el dia en que abre A4: ventanas que se tocan en un
-    // solo dia SON el movimiento de ese dia.
     assert.deepEqual(ruta(r.propuestas), ['E1>A4@2025-10-18']);
     assert.deepEqual(r.traslapes.map((t) => [t.a, t.b]), [['A4', 'A2']]);
   });
@@ -282,15 +311,53 @@ describe('mt58 - propuestas que la bitacora ya cubre', () => {
     assert.ok(deLote(r, '25CSKMP-4').some((p) => p.destino === 'E1'));
   });
 
-  test('cualquier fecha DENTRO de la ventana de evidencia si la cubre', () => {
-    // Desde la primera muestra en el origen hasta la ultima en el destino.
-    for (const fecha of ['2025-10-30', '2025-11-11', '2025-11-12', '2025-11-21']) {
+  test('solo una fecha DENTRO de la transicion la cubre', () => {
+    // La transicion va de la ultima muestra en el origen (11-11) a la primera
+    // en el destino (11-12), las dos incluidas.
+    for (const fecha of ['2025-11-11', '2025-11-12']) {
       const r = con([mov({ fecha })]);
       assert.deepEqual(ruta(deLote(r, '25CSKMP-4')), ['E1>H8@2025-12-01'], fecha);
     }
-    // y un dia antes de la primera muestra en D5 ya no
-    const fuera = con([mov({ fecha: '2025-10-29' })]);
-    assert.equal(deLote(fuera, '25CSKMP-4').length, 2);
+    // Antes, el lote seguia en D5; despues, ya estaba en E1: otro viaje.
+    for (const fecha of ['2025-10-29', '2025-10-30', '2025-11-10', '2025-11-13', '2025-11-21']) {
+      const r = con([mov({ fecha })]);
+      assert.equal(deLote(r, '25CSKMP-4').length, 2, fecha);
+    }
+  });
+
+  test('un viaje de ida y vuelta DENTRO de las estancias no tapa el trasiego sin registrar', () => {
+    // D5 de 10-30 a 11-11 y E1 de 11-12 a 11-21. La bitacora tiene D5 a E1 el
+    // 11-01 y E1 a D5 el 11-02: un viaje redondo que termina en D5, asi que el
+    // trasiego del 11-12 sigue sin registrar. Medir contra las estancias
+    // completas lo escondia (lucy, 2026-10-15).
+    const r = con([
+      mov({ fecha: '2025-11-01' }),
+      mov({ fecha: '2025-11-02', origen: 'E1', destino: 'D5' }),
+    ]);
+    assert.deepEqual(ruta(deLote(r, '25CSKMP-4')), ['D5>E1@2025-11-12', 'E1>H8@2025-12-01']);
+  });
+
+  test('un movimiento deshecho DENTRO de la transicion no la cubre', () => {
+    const deshecho = con([
+      mov({ fecha: '2025-11-11' }),
+      mov({ fecha: '2025-11-12', origen: 'E1', destino: 'D5' }),
+    ]);
+    assert.equal(deLote(deshecho, '25CSKMP-4').length, 2);
+    // El mismo dia cuenta el orden de la bitacora: ida y luego vuelta deshace,
+    assert.equal(deLote(con([
+      mov({ fecha: '2025-11-12' }),
+      mov({ fecha: '2025-11-12', origen: 'E1', destino: 'D5' }),
+    ]), '25CSKMP-4').length, 2);
+    // vuelta y luego ida no.
+    assert.equal(deLote(con([
+      mov({ fecha: '2025-11-12', origen: 'E1', destino: 'D5' }),
+      mov({ fecha: '2025-11-12' }),
+    ]), '25CSKMP-4').length, 1);
+    // y una vuelta FUERA de la transicion no deshace nada
+    assert.equal(deLote(con([
+      mov({ fecha: '2025-11-12' }),
+      mov({ fecha: '2025-11-20', origen: 'E1', destino: 'D5' }),
+    ]), '25CSKMP-4').length, 1);
   });
 
   test('un movimiento con los mismos tanques y OTRO lote no cubre la propuesta', () => {
@@ -346,11 +413,28 @@ describe('mt58 - descartes', () => {
   });
 
   test('la clave no deja que dos propuestas se confundan al unirse sus partes', () => {
-    // '|' no aparece en un codigo de tanque ni de lote, asi que las partes no
-    // pueden correrse de sitio y producir la clave de otra propuesta.
     const a = clavePropuesta({ lot_code: '25CS-1', origen: 'D5', destino: 'E1', fecha: '2025-11-12' });
     const b = clavePropuesta({ lot_code: '25CS-1|D5', origen: 'E1', destino: '2025-11-12', fecha: '' });
     assert.notEqual(a, b);
+  });
+
+  test('un | en el codigo de lote da una clave de cuatro partes que se puede descartar', () => {
+    // Un codigo escrito a mano puede traer '|'. Unido sin codificar daba cinco
+    // partes, el servidor la rechazaba y la propuesta no se podia descartar.
+    const p = { lot_code: '25CS|1', origen: 'TIBOR 13', destino: 'E1', fecha: '2025-11-12' };
+    const c = clavePropuesta(p);
+    const partes = c.split('|');
+    assert.equal(partes.length, 4);
+    assert.deepEqual(partes.map(decodeURIComponent), ['25CS|1', 'TIBOR 13', 'E1', '2025-11-12']);
+    // Cada parte es su propia forma canonica: la regla que aplica api/tanques.js.
+    for (const x of partes) assert.equal(encodeURIComponent(decodeURIComponent(x)), x);
+
+    const muestras = [...dias('25CS|1', '2025-11', 1, 3, 'D5'), ...dias('25CS|1', '2025-11', 4, 6, 'E1')];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.equal(r.propuestas.length, 1);
+    assert.equal(r.propuestas[0].clave.split('|').length, 4);
+    const otra = inferirMovimientos(muestras, BODEGA, { descartadas: [r.propuestas[0].clave] });
+    assert.equal(otra.propuestas.length, 0);
   });
 });
 
@@ -542,14 +626,13 @@ describe('mt58 - sql/migration_tanques_descartes.sql', () => {
 describe('mt58 - evidencia ambigua no se convierte en ruta', () => {
   const motivos = (r) => r.traslapes.map((t) => `${t.motivo}:${t.a}/${t.b}`).sort();
 
-  test('una ventana que abarca a otras dos bloquea TODO el tramo, no solo su par', () => {
-    // D5 del 1 al 10, E1 el 2, H8 el 3: el lote estuvo en los tres a la vez.
-    // Mirar solo pares vecinos descarta D5 y E1 y luego ve E1 y H8 como un par
-    // limpio, que propone un trasiego preciso entre dos tanques que el lote
-    // ocupaba al mismo tiempo.
+  test('una estancia que abarca a otras dos bloquea TODO el tramo, no solo su par', () => {
+    // D5 todos los dias del 1 al 10, E1 tambien el 2, H8 tambien el 3: el lote
+    // estuvo en los tres a la vez. Mirar solo pares vecinos descarta D5 y E1 y
+    // luego ve E1 y H8 como un par limpio, que propone un trasiego preciso
+    // entre dos tanques que el lote ocupaba al mismo tiempo.
     const muestras = [
-      m('25CSKMP-4', '2025-10-01', 'D5'),
-      m('25CSKMP-4', '2025-10-10', 'D5'),
+      ...dias('25CSKMP-4', '2025-10', 1, 10, 'D5'),
       m('25CSKMP-4', '2025-10-02', 'E1'),
       m('25CSKMP-4', '2025-10-03', 'H8'),
     ];
@@ -563,11 +646,12 @@ describe('mt58 - evidencia ambigua no se convierte en ruta', () => {
   });
 
   test('salir de un grupo de dos no nombra origen; entrar a uno si nombra destino', () => {
-    // E1 cierra el 18, A4 abre el 18 (el dia del trasiego) y A2 aparece el 20,
-    // dentro de la ventana de A4. La entrada a A4 sigue siendo clara.
+    // E1 cierra el 16, A4 abre el 18 y A2 aparece el 20 junto con A4. La
+    // entrada a A4 sigue siendo clara.
     const muestras = [
       ...dias('25TEKMP-2', '2025-10', 10, 16, 'E1'),
       m('25TEKMP-2', '2025-10-18', 'A4'),
+      m('25TEKMP-2', '2025-10-20', 'A4'),
       m('25TEKMP-2', '2025-10-20', 'A2'),
       m('25TEKMP-2', '2025-10-22', 'A4'),
       // y despues un grupo de dos del que no se puede salir
@@ -709,5 +793,84 @@ describe('mt58 - evidencia ambigua no se convierte en ruta', () => {
     assert.equal(r.resumen.por_vendimia[0].vendimia, 2025);
     // y el total sigue ahi, diluido, que es justo por lo que no se muestra solo
     assert.ok(r.resumen.fraccion_sin_tanque < v[2023].fraccion);
+  });
+});
+
+// --- visits: a lote can come back ---------------------------------------------
+//
+// lucy, 2026-10-15: one window per vessel merged D5 on 11-01 and D5 on 11-03
+// into one stay that swallowed E1 on 11-02, and both real moves vanished into
+// a traslape. The unit is now the visit: a run of consecutive sampling days in
+// one vessel.
+
+describe('mt58 - visitas de regreso', () => {
+  const motivos = (r) => r.traslapes.map((t) => `${t.motivo}:${t.a}/${t.b}`).sort();
+
+  test('A, B, A propone la ida y la vuelta', () => {
+    const muestras = [
+      m('25CSKMP-4', '2025-11-01', 'D5'),
+      m('25CSKMP-4', '2025-11-02', 'E1'),
+      m('25CSKMP-4', '2025-11-03', 'D5'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas), ['D5>E1@2025-11-02', 'E1>D5@2025-11-03']);
+    assert.deepEqual(r.traslapes, []);
+    // cada propuesta lleva la evidencia de SU visita, no de toda la estancia en D5
+    assert.equal(r.propuestas[0].origen_hasta, '2025-11-01');
+    assert.equal(r.propuestas[1].origen_desde, '2025-11-02');
+    assert.equal(r.propuestas[1].muestras_destino, 1);
+  });
+
+  test('A, B, A con dias de trasiego compartidos tambien', () => {
+    const muestras = [
+      ...dias('25CSKMP-4', '2025-10', 1, 6, 'D5'),
+      ...dias('25CSKMP-4', '2025-10', 6, 10, 'E1'),
+      ...dias('25CSKMP-4', '2025-10', 10, 14, 'D5'),
+    ];
+    assert.deepEqual(ruta(inferirMovimientos(muestras, BODEGA).propuestas),
+      ['D5>E1@2025-10-06', 'E1>D5@2025-10-10']);
+  });
+
+  test('A, B, C, A es una cadena, no un traslape', () => {
+    const muestras = [
+      m('25CSKMP-4', '2025-10-01', 'D5'),
+      m('25CSKMP-4', '2025-10-02', 'E1'),
+      m('25CSKMP-4', '2025-10-03', 'H8'),
+      m('25CSKMP-4', '2025-10-10', 'D5'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas),
+      ['D5>E1@2025-10-02', 'E1>H8@2025-10-03', 'H8>D5@2025-10-10']);
+  });
+
+  test('con visitas, las rutas de la DoD siguen saliendo exactas', () => {
+    const r = inferirMovimientos(MUESTRAS, BODEGA);
+    assert.deepEqual(ruta(deLote(r, '25CSKMP-4')), ['D5>E1@2025-11-12', 'E1>H8@2025-12-01']);
+    assert.deepEqual(ruta(deLote(r, '25DUKMP-3')),
+      ['D5>D1@2025-10-18', 'D1>E5@2025-10-21', 'E5>B4@2025-10-23']);
+  });
+
+  test('X, Y, X, Y alternando es muestreo en paralelo, no tres trasiegos', () => {
+    // Un lote en dos tanques que el laboratorio muestrea de uno en uno.
+    const muestras = [
+      ...dias('25CSKMP-4', '2025-10', 1, 4, 'B4'),
+      m('25CSKMP-4', '2025-10-10', 'E6'),
+      m('25CSKMP-4', '2025-10-11', 'F3'),
+      m('25CSKMP-4', '2025-10-12', 'E6'),
+      m('25CSKMP-4', '2025-10-13', 'F3'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    // Entrar al grupo si nombra destino: E6 fue la primera muestra.
+    assert.deepEqual(ruta(r.propuestas), ['B4>E6@2025-10-10']);
+    assert.deepEqual(motivos(r), ['simultaneo:E6/F3']);
+    for (const t of r.traslapes) assert.ok(t.desde <= t.hasta);
+  });
+
+  test('volver a una vasija que estaba en paralelo no es un trasiego', () => {
+    // 23CSLLC-15: E6 el 02-26, F3 el 02-27 y las dos desde el 04-04. E6 nunca
+    // salio; F3 se agrego. "E6 a F3 el 02-27" seria inventado.
+    const r = inferirMovimientos(CSLLC15, BODEGA);
+    assert.deepEqual(r.propuestas, []);
+    assert.deepEqual(motivos(r), ['simultaneo:E6/F3']);
   });
 });
