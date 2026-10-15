@@ -220,6 +220,51 @@ describe('mt53 - lot code to variety', () => {
     assert.equal(variedadDeLote('kcf-s1-pa'), 'Cabernet Franc');
   });
 
+  // Checked against every distinct wine_samples.sample_id in production on
+  // 2026-10-15: 312 codes, 304 resolved, 0 wrong. The eight that do not resolve
+  // are the five 2026 ranch-first codes and three junk rows, all below. This
+  // sample is the regression guard; tightening the rule to demand a KNOWN ranch
+  // segment, or a segment of at most three characters, would drop dozens of
+  // these real codes, which is why the rule stays a prefix match.
+  test('the production corpus resolves, including its awkward shapes', () => {
+    const casos = {
+      // The ordinary shape, every ranch segment that appears in production.
+      '25CSKMP-5': 'Cabernet Sauvignon', '24CFVA-1': 'Cabernet Franc',
+      '24CSVDG-1': 'Cabernet Sauvignon', '25SY7L-1': 'Syrah',
+      '25SYDA-13': 'Syrah', '25MADUB-1': 'Malbec', '23CSLLC-11': 'Cabernet Sauvignon',
+      '23CSMX-1B': 'Cabernet Sauvignon', '23CSOLE-1': 'Cabernet Sauvignon',
+      '24CSON-1': 'Cabernet Sauvignon', '24CSCC-1': 'Cabernet Sauvignon',
+      '24MEUVA-1': 'Merlot',
+      // Varietal spelled out rather than abbreviated.
+      '23MALBECMX-1': 'Malbec', '23MERLOTMX-1': 'Merlot',
+      '26TEMPON5': 'Tempranillo', '26GRENON6': 'Grenache',
+      // 2026 codes with no dash before the block id.
+      '26SBMX1A-C': 'Sauvignon Blanc', '26CSOLE1': 'Cabernet Sauvignon',
+      '26SYVA1B': 'Syrah', '26CALMX1E': 'Caladoc', '26CB7L1': 'Chenin Blanc',
+      '26GRENVA3A': 'Grenache', '26MERVA1A': 'Merlot',
+      // Blends and experiment suffixes.
+      '22CSCORTE1': 'Cabernet Sauvignon', '22cscorte2': 'Cabernet Sauvignon',
+      '24SYUCORG-1': 'Syrah', '25CFKMPP-1': 'Cabernet Franc',
+      // Berry dialect, with and without the vintage prefix.
+      '25KCS-S2B-ALIVIO': 'Cabernet Sauvignon', '26KCH-S5SALT': 'Chardonnay',
+      '25KMS-S5A+': 'Marselan', '25KDU-S7': 'Durif',
+    };
+    for (const [codigo, esperado] of Object.entries(casos)) {
+      assert.equal(variedadDeLote(codigo), esperado, codigo);
+    }
+  });
+
+  test('the 2026 ranch-first dialect is refused, not guessed at', () => {
+    // '26R14CS' puts the ranch before the varietal. Nothing in CONFIG reads
+    // that order, so the panel must say "Sin variedad" rather than invent one.
+    for (const c of ['26R14CS', '26R14GRE', '26R14ME', '26R14SB', '26R14TE']) {
+      assert.equal(variedadDeLote(c), null, c);
+    }
+    for (const c of ['Control', 'DELETE PLEASE', 'DELETE PLEASER']) {
+      assert.equal(variedadDeLote(c), null, c);
+    }
+  });
+
   test('a code that names no variety says so instead of guessing', () => {
     assert.equal(variedadDeLote(''), null);
     assert.equal(variedadDeLote(null), null);

@@ -147,6 +147,8 @@ test.describe('Tanques', () => {
     await expect(panel).toContainText('25MEKMP-1');
     await expect(panel).toContainText('Ensamble');
     await expect(panel).toContainText('Merlot');
+    // The varietal is read off the lot code, so the panel marks it as derived.
+    await expect(panel.locator('.tanques-kv dd', { hasText: 'Merlot' })).toContainText('del código');
     // 12 700 + (5 400 - 50) = 18 050 L of an 18 700 L tank.
     await expect(panel).toContainText('18,050 L');
     await expect(panel).toContainText('97%');
