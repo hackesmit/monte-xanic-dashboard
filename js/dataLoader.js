@@ -386,7 +386,11 @@ export const DataStore = {
   // treat it as a failed write and invite a duplicate POST (lucy, 2026-10-15).
   // `actualizado: false` with `tanquesDesactualizado` set is the signal to show
   // "registrado, no se pudo actualizar la vista" and offer a plain reload.
-  async _escribirMovimiento(cuerpo) {
+  //
+  // `confirma(movimientos)` finds, in a freshly read log, the row that proves
+  // this write landed (the crear's client_id, or the annulled id). It is how an
+  // indeterminate write gets reconciled instead of left to the user.
+  async _escribirMovimiento(cuerpo, confirma) {
     let res, data;
     try {
       res = await fetch('/api/tanques', {
@@ -396,39 +400,72 @@ export const DataStore = {
       });
       data = await res.json();
     } catch (e) {
-      // The request left and no answer came back, so whether the INSERT
-      // committed is UNKNOWN, not refused. Calling it refused is exactly what
-      // makes someone press the button again and record the movement twice, so
-      // it is reported as indeterminate: mark the view stale, re-read what we
-      // can, and send the caller to the log before retrying.
+      // The request left and no readable answer came back, so whether the
+      // write committed is UNKNOWN, not refused.
       console.error('[DataStore] movimiento sin confirmar:', e);
-      // The view is stale only if the re-read ALSO failed. When it succeeds the
-      // log on screen is the answer, and the caller reconciles against it; the
-      // `indeterminado` flag is what says the outcome is unknown, so marking a
-      // freshly read log stale would be its own lie.
-      if (!(await this.loadTanques())) this.tanquesDesactualizado = true;
-      const err = new Error('No se pudo confirmar el movimiento. Revise la bitacora antes de repetirlo.');
-      err.indeterminado = true;
-      throw err;
+      return await this._reconciliar(confirma);
     }
+    // The server itself could not tell whether its write committed (the RPC
+    // timed out, or Postgres answered 5xx). Same path as a lost answer.
+    if (data?.indeterminado === true) return await this._reconciliar(confirma, data.error);
     // An answer arrived and it says no: nothing was written, nothing is stale.
     if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
     const actualizado = await this.loadTanques();
     if (!actualizado) this.tanquesDesactualizado = true;
-    return { movimiento: data.movimiento, actualizado };
+    const out = { movimiento: data.movimiento, actualizado };
+    if (data.duplicado) out.duplicado = true;
+    if (data.ya_anulado) out.ya_anulado = true;
+    return out;
+  },
+
+  // An unknown outcome. Calling it refused is exactly what makes someone press
+  // the button again and record the movement twice, so: re-read the log, and
+  // if the write is visible there, it landed and that is the answer. Otherwise
+  // it is reported as indeterminate, and the caller repeats the SAME intent
+  // (postMovimiento(err.movimiento) keeps the client_id), which the server
+  // recognises instead of writing twice.
+  async _reconciliar(confirma, mensaje) {
+    const leido = await this.loadTanques();
+    // The view is stale only if the re-read ALSO failed. When it succeeds the
+    // log on screen is the answer; marking a freshly read log stale would be
+    // its own lie.
+    if (!leido) this.tanquesDesactualizado = true;
+    const fila = leido && confirma ? confirma(this.movimientosTanque) : null;
+    if (fila) return { movimiento: fila, actualizado: true, reconciliado: true };
+    const err = new Error(mensaje || 'No se pudo confirmar el movimiento. Revise la bitacora antes de repetirlo.');
+    err.indeterminado = true;
+    throw err;
   },
 
   // Append a movement. The server validates it against the log at its place in
   // time and answers 400 with the Spanish reason, so the caller shows that
-  // reason rather than guessing. Throws only when the write itself was refused.
+  // reason rather than guessing. Throws only when the write itself was refused,
+  // or (with err.indeterminado) when its outcome is still unknown after a
+  // re-read; then err.movimiento is the same intent, client_id included, to
+  // retry with.
+  //
+  // One client_id per user intent: generated here when the movement has none,
+  // and kept when it already carries one, which is what a retry passes back.
   async postMovimiento(movimiento) {
-    return await this._escribirMovimiento({ action: 'crear', movimiento });
+    const intento = movimiento && movimiento.client_id
+      ? movimiento
+      : { ...movimiento, client_id: globalThis.crypto.randomUUID() };
+    const id = String(intento.client_id).toLowerCase();
+    try {
+      return await this._escribirMovimiento({ action: 'crear', movimiento: intento },
+        (log) => log.find(m => typeof m.client_id === 'string' && m.client_id.toLowerCase() === id) || null);
+    } catch (e) {
+      if (e && e.indeterminado) e.movimiento = intento;
+      throw e;
+    }
   },
 
   // Undo marks a row anulado, never deletes it. Refused (400) when taking the
-  // row out would leave a later movement overdrawn.
+  // row out would leave a later movement overdrawn. Annulling is idempotent on
+  // the server, so a retry needs no key of its own.
   async anularMovimiento(id) {
-    return await this._escribirMovimiento({ action: 'anular', id });
+    return await this._escribirMovimiento({ action: 'anular', id },
+      (log) => log.find(m => String(m.id) === String(id) && m.anulado === true) || null);
   },
 
   parseValue(v) {

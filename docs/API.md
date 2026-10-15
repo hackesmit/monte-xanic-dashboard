@@ -283,10 +283,14 @@ Appends one movement. Allowed fields, and nothing else:
 | `destino` | per type | tank code or synonym; stored canonical |
 | `lot_code` | yes | the column is `NOT NULL` with a non-blank CHECK for every type |
 | `vintage_year` | yes | integer 1988..2100 |
-| `volumen_l` | yes | > 0; a numeric string is coerced |
-| `merma_l` | no | defaults to 0 |
+| `volumen_l` | yes | > 0; a JSON number, or a plain decimal string (`'5000.5'`; no hex, exponent, blanks or padding) |
+| `merma_l` | no | defaults to 0; same number rule as `volumen_l` |
 | `nota` | no | <= 2000 characters |
 | `fuente` | no | `manual` (default) or `lab` for a confirmed inference |
+| `client_id` | yes | UUID, one per user intent, reused when that intent is retried |
+
+Text fields must be JSON strings: an array or an object is a `400`, never
+`String()`-coerced into `'A1,A2'` or `'[object Object]'`.
 
 - **Strict whitelist.** Any other key is a `400` naming the field, not a silent
   drop: `creado_por` in a body is a client signing someone else's work (it is
@@ -300,6 +304,13 @@ Appends one movement. Allowed fields, and nothing else:
   state of its own day but leaves next week overdrawn is refused. The candidate
   is validated with no `created_at`, which sorts it last among rows sharing its
   `fecha`, exactly where `NOW()` will put it.
+- **Downstream severity gate, same as `anular`.** `validarMovimientoEnLog`
+  only asks whether a later aviso is present, so it lets a row through when the
+  later row was already inconsistent. The endpoint also replays the live log
+  without and with the candidate and refuses with `400` if the candidate
+  introduces or **deepens** a `sobregiro` or `desbordado` on another row: with
+  10000 L into A1 on 01 Sep and a 15000 L salida on 20 Sep, a 4000 L salida on
+  10 Sep takes the debt from 5000 L to 9000 L and is refused.
 - Tank references resolve through `dim_tanque_sinonimo` and the canonical
   `codigo` is stored, because `origen` and `destino` are foreign keys to
   `dim_tanque(codigo)`.
@@ -312,18 +323,22 @@ Appends one movement. Allowed fields, and nothing else:
   with one end NULL (a press or a barrel is not a catalog vessel), the module
   requires both ends, so such a row cannot be created through this endpoint.
 
-**Success (200):** `{ "ok": true, "movimiento": { /* inserted row */ } }`
+**Success (200):** `{ "ok": true, "movimiento": { /* inserted row */ } }`, plus
+`duplicado: true` when this `client_id` was already written (the row returned
+is the existing one, and nothing new was written).
 **Errors:** `400` whitelist, field or validation failure (`error` is the first
 Spanish reason, `errores` is all of them) · `401` no/invalid/revoked token ·
-`403` not role `lab` · `429` rate limited · `500` env vars missing ·
-`502` PostgREST refused the read or the insert.
+`403` not role `lab` · `409` the log kept changing for three attempts, nothing
+written · `429` rate limited · `500` env vars missing · `502` PostgREST refused
+the read or the write (definite: nothing written) · `503` with
+`indeterminado: true`, the write may or may not have committed (see below).
 
 ### POST /api/tanques - `{ "action": "anular", "id": 123 }`
 
 Marks one row `anulado = true`. Undo never deletes: the append-only trigger on
 `movimientos_tanque` rejects `DELETE`, `TRUNCATE`, re-activation, and any UPDATE
-that changes a column other than `anulado`, so the PATCH sends `{"anulado":true}`
-and nothing else.
+that changes a column other than `anulado`, so `tanques_escribir` sets
+`anulado = true` and nothing else.
 
 - `id` must be a positive integer (a digit string is accepted).
 - Already annulled is a `200` with `ya_anulado: true` and no write, so a double
@@ -346,23 +361,40 @@ and nothing else.
 **Success (200):** `{ "ok": true, "movimiento": { /* updated row */ } }`
 (plus `ya_anulado: true` when it was already annulled)
 **Errors:** `400` bad id, or the annulment breaks a later movement · `401` ·
-`403` not role `lab` · `404` no such movement · `502` PostgREST refused.
+`403` not role `lab` · `404` no such movement · `409` the log kept changing ·
+`502` PostgREST refused · `503` with `indeterminado: true`.
 
-### Known limitation: concurrent writes
+### Concurrent writes and lost acknowledgments
 
-Validation is read-then-insert with no lock, and no database constraint can see
-the derived state, so two writes in flight at once are each judged against the
-log as it was read. Two simultaneous 6000 L withdrawals from a tank holding
-10000 L both land. `tests/mt52-api-tanques.test.mjs` proves this deliberately
-rather than asserting it away, and contrasts it with the sequential case, where
-the second is refused.
+Decided on bead xd-qrn.8 (2026-10-15) and built by
+`sql/migration_tanques_escritura.sql`, which must be applied before this code
+reaches production:
 
-The failure mode is a visible warning, not silent corruption: the log stays
-append-only and truthful, and the replay clamps the impossible withdrawal and
-reports a `sobregiro` aviso for the UI to surface. The fix is to annul a row.
-Serialising writes properly (an advisory lock, or a serializable transaction
-around validate-and-insert) is a design decision, not an ad-hoc patch, so it is
-filed as bead xd-qrn.8 instead of improvised here.
+- **Optimistic version check.** `public.tanques_version` holds one counter `v`,
+  bumped by an `AFTER INSERT OR UPDATE` trigger on `movimientos_tanque` in the
+  same transaction as the write. The endpoint reads `v` **before** the log,
+  validates, and calls `POST /rest/v1/rpc/tanques_escribir` with that version
+  (service key, server-side only). The function locks the version row
+  `FOR UPDATE`, so two writes queue there; if `v` moved it returns `conflicto`
+  without writing, and the endpoint re-reads, re-validates and tries again, up
+  to three attempts in total, then answers `409`. Two simultaneous 6000 L
+  withdrawals from a tank holding 10000 L: one lands, the other is re-judged
+  against the log that now holds the first and is refused.
+- **Idempotency key.** Every `crear` carries a `client_id` UUID, stored in a
+  `UNIQUE` column that the append-only trigger freezes. A retry of a write that
+  already committed returns the existing row with `duplicado: true`, whether the
+  endpoint sees it in the log first or the function finds it.
+- **Unknown outcome is not a refusal.** When the RPC fetch rejects, times out
+  (8 s), answers 5xx or answers something unreadable, the write may have
+  committed. The endpoint answers `503` with `indeterminado: true` and a Spanish
+  message, never a plain error. A 4xx from the RPC is definite (the statement
+  raised and rolled back) and stays a `502`.
+- `tanques_escribir` is `SECURITY INVOKER` with `search_path = public`; EXECUTE
+  is revoked from `PUBLIC`, `anon` and `authenticated`, and `tanques_version`
+  has RLS on with no policies. It inserts only the whitelisted columns from its
+  `p_fila`; `id`, `anulado` and `created_at` never come from outside.
+- The derivation of tank contents stays in `js/tanques/estado.js`. The database
+  only says "the log changed since you read it"; it judges nothing.
 
 ### Client
 
@@ -380,11 +412,17 @@ someone press the button again and record a movement twice:
   and offer a reload, not a retry.
 - **Refused.** Throws with the server's Spanish reason, so a caller shows it
   instead of inventing one. Nothing was written and nothing is stale.
-- **Unknown.** The request left and no answer came back, so the INSERT may well
-  have committed. Throws an error carrying `indeterminado: true` and the message
-  "No se pudo confirmar el movimiento. Revise la bitacora antes de repetirlo."
-  The log is re-read first, so the view the user reconciles against is current;
-  `tanquesDesactualizado` is set only when that re-read failed too.
+- **Unknown.** The request left and no readable answer came back, or the
+  server answered `indeterminado: true`. The log is re-read first: if the write
+  is visible there (the crear's `client_id`, or the row now annulled), it
+  resolves as written with `reconciliado: true`. Otherwise it throws an error
+  carrying `indeterminado: true` and, for a crear, `err.movimiento`: the same
+  intent with its `client_id`. Retrying with `postMovimiento(err.movimiento)`
+  is safe, because the server recognises the key instead of writing twice.
+  `tanquesDesactualizado` is set only when the re-read failed too.
+
+`postMovimiento(mov)` generates the `client_id` with `crypto.randomUUID()` when
+`mov` has none, once per user intent, and keeps the one `mov` already carries.
 
 `loadTanques()` carries a load generation, so a GET issued before a write that
 resolves after that write's refresh replaces nothing and reports no success.
