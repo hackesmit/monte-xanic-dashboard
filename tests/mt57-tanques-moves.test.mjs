@@ -158,6 +158,36 @@ test('a tray lote proposes a recepcion with no volume of its own', () => {
   assert.equal(m.puedeRegistrar, true);
 });
 
+test('a recepcion of a lote the log already names says where it is', () => {
+  const b = bodega(LLENO);
+  // The chip said "sin tanque", but the log has had 25CSKMP-1 in A1 all along.
+  const m = planearMovimiento(
+    { destino: 'A2', lote: { lot_code: '25CSKMP-1', vintage_year: 2025 } }, b);
+  assert.deepEqual(m.lote_en, [{ codigo: 'A1', litros: 12000 }]);
+  const aviso = m.avisos.find((a) => a.clave === 'lote_en_bitacora');
+  assert.ok(aviso, 'el aviso de lote ya en la bitacora falta');
+  assert.match(aviso.texto, /A1 \(12,000 L\)/);
+  assert.match(aviso.texto, /otra entrega/);
+  // Named, not blocked: a lote can arrive in two loads.
+  assert.equal(m.puedeRegistrar, true);
+
+  // A lote that left the bodega is named too, and the message says so.
+  const salio = bodega([
+    ...LLENO,
+    mv({ tipo: 'salida', origen: 'A1', lot_code: '25CSKMP-1', volumen_l: 12000, fecha: '2026-01-10' }),
+  ]);
+  const s2 = planearMovimiento(
+    { destino: 'A2', lote: { lot_code: '25CSKMP-1', vintage_year: 2025 } }, salio);
+  assert.deepEqual(s2.lote_en, []);
+  assert.match(s2.avisos.find((a) => a.clave === 'lote_en_bitacora').texto, /no está en ningún tanque/);
+
+  // And a lote the log has never named carries no such warning.
+  const limpio = planearMovimiento(
+    { destino: 'A2', lote: { lot_code: '25SBVDG-1', vintage_year: 2025 } }, b);
+  assert.equal(limpio.avisos.find((a) => a.clave === 'lote_en_bitacora'), undefined);
+  assert.deepEqual(limpio.lote_en, []);
+});
+
 test('a salida takes the whole tank and carries no merma', () => {
   const m = planearMovimiento({ origen: 'A1', tipo: 'salida' }, bodega(LLENO));
   assert.equal(m.clase, 'salida');

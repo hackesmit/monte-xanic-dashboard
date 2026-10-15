@@ -212,6 +212,7 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
     origen_partes: origen ? origen.partes.map((p) => ({ ...p })) : [],
     destino_partes: destino ? destino.partes.map((p) => ({ ...p })) : [],
     capacidad_destino_l: destino ? destino.capacidad_l : null,
+    lote_en: [],
     lot_code: etiqueta.lot_code,
     vintage_year: etiqueta.vintage_year,
     mezcla_origen: etiqueta.mezcla,
@@ -282,6 +283,25 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
     avisar('mezcla', 'info', `${destino.codigo} ya tiene vino. Esto registra una mezcla `
       + 'y guarda la composición por volumen.');
   }
+  if (clase === 'recepcion') {
+    // The chip said this lote had no tank, and the log may have moved on since
+    // (another session placed it, or this tab held the gesture open). Saying
+    // "sin tanque" over a log that names it is a false claim, and recording
+    // against it is how one delivery becomes two rows - but a lote CAN arrive
+    // in two loads, so this names what the log says and leaves the call to the
+    // user instead of blocking a legitimate second delivery (lucy, 2026-10-15).
+    modelo.lote_en = tanquesConLote(estado, modelo.lot_code);
+    const nombrado = movimientos.some(
+      (m) => m && !m.anulado && texto(m.lot_code) === modelo.lot_code);
+    if (nombrado) {
+      avisar('lote_en_bitacora', 'aviso', modelo.lote_en.length
+        ? `La bitácora ya tiene ${modelo.lot_code} en `
+          + `${modelo.lote_en.map((d) => `${d.codigo} (${fmtL(d.litros)} L)`).join(', ')}. `
+          + 'Si esta es otra entrega del mismo lote, continúe; si no, cancele.'
+        : `La bitácora ya registra movimientos de ${modelo.lot_code} y hoy no está en ningún `
+          + 'tanque. Si esta es otra entrega del mismo lote, continúe; si no, cancele.');
+    }
+  }
   if (clase === 'recepcion' && modelo.destino_partes.length) {
     avisar('mezcla', 'info', `${destino.codigo} ya tiene vino. El lote se suma a lo que hay `
       + 'y la composición queda por volumen.');
@@ -297,6 +317,18 @@ export function planearMovimiento(gesto = {}, bodega = {}) {
       + `Se registra con el lote mayoritario, ${modelo.lot_code}.`);
   }
   return modelo;
+}
+
+/** The tanks that hold a lote right now, straight out of the derived state. */
+function tanquesConLote(estado, lot_code) {
+  const codigo = texto(lot_code);
+  const fuera = [];
+  if (!codigo) return fuera;
+  for (const t of Object.values(estado || {})) {
+    const parte = (t && Array.isArray(t.partes) ? t.partes : []).find((p) => p.lot_code === codigo);
+    if (parte && parte.litros > 0) fuera.push({ codigo: t.codigo, litros: parte.litros });
+  }
+  return fuera;
 }
 
 // A tray chip states its own lote and vendimia (it comes from the wine samples);
@@ -532,6 +564,7 @@ export const TanquesMoves = {
     // log, and render() has already paid for that once.
     const bodega = this._ctx.bodega();
     this._revisarPendientes();
+    this._revisarArmado(bodega);
     this._chrome();
     this._pintarBoton();
     this._pintarPendiente();
@@ -718,6 +751,19 @@ export const TanquesMoves = {
         + '</div></div>';
     }).join('');
     if (!previo) tarjeta.insertBefore(caja, tarjeta.firstChild);
+  },
+
+  // The log is shared and the tray is a snapshot: a lote armed here can be
+  // placed by another session before this tab lands it. Disarm it rather than
+  // carry a stale gesture into the dialog.
+  _revisarArmado(bodega) {
+    const lote = this._armado && this._armado.lote;
+    if (!lote) return;
+    const sigue = lotesSinTanque(DataStore.wineRecepcion, bodega.movimientos)
+      .some((l) => l.lot_code === lote.lot_code);
+    if (sigue) return;
+    this._desarmar();
+    this._avisar(`El lote ${lote.lot_code} ya aparece en la bitácora, así que se desarmó.`);
   },
 
   // Any vessel in the catalog as a destination, by name. The tray groups the
@@ -974,7 +1020,15 @@ export const TanquesMoves = {
     if (!armado) { this._armarTanque(codigo); return; }
     if (armado.lote) {
       this._desarmar();
-      this.abrir({ destino: codigo, lote: armado.lote });
+      const lote = lotesSinTanque(DataStore.wineRecepcion, this._ctx.bodega().movimientos)
+        .find((l) => l.lot_code === armado.lote.lot_code);
+      if (!lote) {
+        this._ctx.render();
+        this._avisar(`El lote ${armado.lote.lot_code} ya aparece en la bitácora. `
+          + 'Revísela antes de registrarlo otra vez.');
+        return;
+      }
+      this.abrir({ destino: codigo, lote });
       return;
     }
     if (armado.codigo === codigo) { this._desarmar(); this._ctx.render(); return; }
@@ -1150,7 +1204,12 @@ export const TanquesMoves = {
     let s = `<h2 id="${ID.titulo}">${escapeHtml(m.titulo)}</h2>`;
     s += '<div class="tanques-mv">';
     s += m.clase === 'recepcion'
-      ? caja(m.lot_code || 'Lote', ['sin tanque', m.vintage_year ? `vendimia ${m.vintage_year}` : 'sin vendimia'])
+      ? caja(m.lot_code || 'Lote', [
+        m.lote_en && m.lote_en.length
+          ? `hoy en ${escapeHtml(m.lote_en.map((d) => d.codigo).join(', '))}`
+          : 'sin tanque',
+        m.vintage_year ? `vendimia ${m.vintage_year}` : 'sin vendimia',
+      ])
       : caja(m.origen || '—', [partes(m.origen_partes), `${fmtL(m.disponible_l || 0)} L`]);
     s += '<span class="tanques-mv-chev"></span>';
     s += m.clase === 'salida'

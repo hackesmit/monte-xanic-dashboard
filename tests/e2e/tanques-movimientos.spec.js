@@ -728,6 +728,38 @@ test.describe('Tanques: registrar movimientos', () => {
       await otra.close();
     });
 
+  test('a lote armed here and placed elsewhere does not become a second reception',
+    async ({ page }) => {
+      const s = servidor();
+      await montar(page, s);
+      // Arm the tray lote and leave the gesture open.
+      await page.locator('#tanques-lotes [data-lote="25CSKMP-9"]').click();
+      await expect(page.locator('#tanques-lotes [data-lote="25CSKMP-9"]'))
+        .toHaveAttribute('aria-pressed', 'true');
+
+      // Another session records its reception into H1 and this tab re-reads.
+      s.movimientos.push(mv({
+        fecha: '2026-02-01', tipo: 'recepcion', destino: 'H1',
+        lot_code: '25CSKMP-9', volumen_l: 9000,
+      }));
+      s.version += 1;
+      await page.locator('.nav-tab[data-view="berry"]').click();
+      await page.waitForTimeout(15_400);
+      await page.locator('.nav-tab[data-view="tanques"]').click();
+      await expect(page.locator('#tanques-lotes [data-lote="25CSKMP-9"]')).toHaveCount(0, { timeout: 10_000 });
+
+      // The stale arm is gone, so a tap on a tank is a plain selection.
+      await expect(toast(page)).toContainText('ya aparece en la bitácora');
+      await page.locator(tanque('B2')).click();
+      await expect(page.locator('#tanques-dialogo')).toBeHidden();
+      expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(0);
+
+      // And if the lote is reached another way, the dialog says where it is
+      // instead of repeating "sin tanque".
+      await page.locator('#tanques-plano [data-tanque="H1"]').click();
+      await expect(page.locator('#tanques-panel')).toContainText('25CSKMP-9');
+    });
+
   test('a viewer has no write controls at all', async ({ page }) => {
     const s = servidor();
     await montar(page, s, { rol: 'viewer' });
