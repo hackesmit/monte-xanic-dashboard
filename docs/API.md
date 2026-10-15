@@ -328,12 +328,20 @@ and nothing else.
 - `id` must be a positive integer (a digit string is accepted).
 - Already annulled is a `200` with `ya_anulado: true` and no write, so a double
   click does not read as a failure.
-- **Gated.** `js/tanques/estado.js` validates an appended row; an annulment is a
-  removal, and taking out an early `recepcion` can leave every withdrawal after
-  it overdrawn. The endpoint replays the live log with and without the row and
-  refuses with `400` if removing it creates a new `sobregiro` or `desbordado`
-  warning. A warning the log already had with the row in place is not blamed on
-  the annulment.
+- **Gated, by severity and not by presence.** `js/tanques/estado.js` validates
+  an appended row; an annulment is a removal, and taking out an early
+  `recepcion` can leave every withdrawal after it overdrawn. The endpoint
+  replays the live log with and without the row and refuses with `400` if
+  removing it **introduces or deepens** a `sobregiro` or `desbordado` on a later
+  movement. A warning the log already had, unchanged or smaller, is not blamed
+  on the annulment: an inconsistency that exists is not permission to make it
+  worse, which a plain "was this warning already there" diff would allow.
+  Both severities come out of the replay's own numbers, so no tank rule is
+  restated here: a `sobregiro` is clamped, so the litres owed are
+  `volumen_l - movido_l`; a `desbordado` clamps nothing, so its severity is the
+  litres standing in the destination right after that row, accumulated from the
+  per-row deltas. Capacity is left out of that figure on purpose, because the
+  two replays share one catalog and it cancels.
 
 **Success (200):** `{ "ok": true, "movimiento": { /* updated row */ } }`
 (plus `ya_anulado: true` when it was already annulled)
@@ -359,7 +367,14 @@ filed as bead xd-qrn.8 instead of improvised here.
 ### Client
 
 `js/dataLoader.js` owns the three calls: `loadTanques()` fills
-`DataStore.tanquesCatalogo` / `tanquesSinonimos` / `movimientosTanque`,
-`postMovimiento(mov)` and `anularMovimiento(id)` write and then re-read the log.
+`DataStore.tanquesCatalogo` / `tanquesSinonimos` / `movimientosTanque` and
+returns a boolean; `postMovimiento(mov)` and `anularMovimiento(id)` write and
+then re-read the log.
+
 Both writers throw with the server's Spanish reason, so a caller shows it
-instead of inventing one.
+instead of inventing one. They throw **only when the write itself was refused**.
+A write that landed and a re-read that then failed are two different things, so
+they resolve with `{ movimiento, actualizado }`: `actualizado: false` (with
+`DataStore.tanquesDesactualizado` set) means the movement is in the log and the
+screen is stale. Report that as "registrado, no se pudo actualizar la vista"
+and offer a reload. Reporting it as a failed write invites a duplicate POST.
