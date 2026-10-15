@@ -562,16 +562,47 @@ describe('mt58 - evidencia ambigua no se convierte en ruta', () => {
     ];
     const r = inferirMovimientos(muestras, BODEGA);
     assert.deepEqual(ruta(r.propuestas), []);
+    // Un solo grupo de tres: el lote estuvo en los tres ese dia.
     assert.deepEqual(motivos(r), ['mismo_dia:D5/E1', 'mismo_dia:E1/H8']);
   });
 
-  test('pero un dia compartido con una ventana que sigue SI pone direccion', () => {
-    // D5 solo el 12; E1 el 12 y hasta el 21: el lote se quedo en E1.
+  test('un origen de un solo dia que comparte ese dia con el destino tampoco pone direccion', () => {
+    // D5 solo el 12; E1 el 12 y hasta el 21. El lote acabo en E1, pero todo lo
+    // que se sabe de D5 es "visto el 12", el mismo dia que E1: pudo ser un
+    // trasiego ese dia o una division con una sola muestra de la otra parte.
+    // En produccion (2026-10-15) ninguna propuesta depende de este caso, asi
+    // que la regla estricta no cuesta nada real.
     const muestras = [
       m('25CSKMP-4', '2025-11-12', 'D5'),
       ...dias('25CSKMP-4', '2025-11', 12, 21, 'E1'),
     ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas), []);
+    assert.deepEqual(r.traslapes.map((t) => t.motivo), ['simultaneo']);
+  });
+
+  test('un dia compartido SI pone direccion cuando el origen tiene mas que ese dia', () => {
+    // D5 del 1 al 12 y E1 del 12 al 21: el 12 es el dia del trasiego, muestreado
+    // en el tanque viejo y luego en el nuevo. Este es el caso real de 25TEKMP-2.
+    const muestras = [
+      ...dias('25CSKMP-4', '2025-11', 1, 12, 'D5'),
+      ...dias('25CSKMP-4', '2025-11', 12, 21, 'E1'),
+    ];
     assert.deepEqual(ruta(inferirMovimientos(muestras, BODEGA).propuestas), ['D5>E1@2025-11-12']);
+  });
+
+  test('dos vasijas de un solo dia entre otras dos no dejan que el alfabeto elija', () => {
+    // D5 el 1, E1 y H8 el 2, B4 el 3. Antes se proponia D5>E1 y H8>B4: dos
+    // elecciones entre E1 y H8 sin una sola muestra que las respalde.
+    const muestras = [
+      m('25CSKMP-4', '2025-11-01', 'D5'),
+      m('25CSKMP-4', '2025-11-02', 'E1'),
+      m('25CSKMP-4', '2025-11-02', 'H8'),
+      m('25CSKMP-4', '2025-11-03', 'B4'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas), []);
+    assert.deepEqual(r.traslapes.map((t) => `${t.motivo}:${t.a}/${t.b}`), ['mismo_dia:E1/H8']);
   });
 
   test('una vasija sin tanque EN EL HUECO bloquea el trasiego directo', () => {

@@ -281,7 +281,7 @@ export const TanquesInbox = {
         + 'uno. Revise el tanque de cada muestra en el Explorador si cree que falta un trasiego.</p>'
         + '<ul class="tanques-inbox-ul">'
         + tr.slice(0, DIAGNOSTICO_MAX).map((t) =>
-          `<li><b>${escapeHtml(t.lot_code)}</b>: ${escapeHtml(MOTIVO[t.motivo] || MOTIVO.simultaneo)(t)}`
+          `<li><b>${escapeHtml(t.lot_code)}</b>: ${escapeHtml((MOTIVO[t.motivo] || MOTIVO.simultaneo)(t))}`
           + `, del ${escapeHtml(dia(t.desde))} al ${escapeHtml(dia(t.hasta))}</li>`).join('')
         + '</ul>'
         + (tr.length > DIAGNOSTICO_MAX

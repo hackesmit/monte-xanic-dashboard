@@ -79,6 +79,22 @@ const MUESTRAS = [
   muestra('24CFVA-1', '2025-07-10', 'F9', { vintage: 2024, sampleType: 'Aging Wine' }),
 ];
 
+// The three shapes the inference refuses to turn into a movement. They have to
+// be in a fixture of their own: the inbox builds a diagnostic line for each,
+// and a plain fixture never reaches that code at all (lucy, 2026-10-15).
+const AMBIGUAS = [
+  // in two tanks for weeks: a split, a blend, or a mistyped tank
+  ...rango('25SYVA-9', '2025-09', 1, 20, 'E6'),
+  ...rango('25SYVA-9', '2025-09', 2, 20, 'F3'),
+  // in two tanks on one single day, with nothing saying which came first
+  muestra('25TEON-9', '2025-10-05', 'A2'),
+  muestra('25TEON-9', '2025-10-05', 'A4'),
+  // and a stretch whose only reading is a vessel the catalog does not have
+  muestra('25MEVA-9', '2025-10-01', 'D5'),
+  muestra('25MEVA-9', '2025-10-02', 'C9'),
+  muestra('25MEVA-9', '2025-10-03', 'E1'),
+];
+
 // --- the stand-in API --------------------------------------------------------
 
 function servidor() {
@@ -253,6 +269,26 @@ test.describe('bandeja de propuestas del laboratorio', () => {
       expect(c.alto).toBeGreaterThanOrEqual(28);
     }
     await page.screenshot({ path: 'test-results/tanques-inbox-movil.png', fullPage: true });
+  });
+
+  test('la evidencia ambigua se explica y no propone nada', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s, { muestras: [...MUESTRAS, ...AMBIGUAS] });
+    // the inbox still renders: building a diagnostic line must not throw
+    await expect(inbox(page)).toBeVisible();
+    await expect(tarjetas(page)).toHaveCount(5);
+    for (const lote of ['25SYVA-9', '25TEON-9', '25MEVA-9']) {
+      await expect(page.locator('#tanques-inbox .tanques-prop-cab b', { hasText: lote }))
+        .toHaveCount(0);
+    }
+    const detalle = inbox(page).locator('details', { hasText: 'no convierten en movimiento' });
+    await detalle.locator('summary').click();
+    await expect(detalle).toContainText('25SYVA-9');
+    await expect(detalle).toContainText('a la vez');
+    await expect(detalle).toContainText('25TEON-9');
+    await expect(detalle).toContainText('el mismo día');
+    await expect(detalle).toContainText('25MEVA-9');
+    await expect(detalle).toContainText('que el catálogo no tiene');
   });
 
   test('un visor no ve ningún control de la bandeja', async ({ page }) => {
