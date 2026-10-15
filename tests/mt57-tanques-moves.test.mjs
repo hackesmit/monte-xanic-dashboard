@@ -188,6 +188,19 @@ test('a recepcion of a lote the log already names says where it is', () => {
   assert.deepEqual(limpio.lote_en, []);
 });
 
+test('where a lote is survives a model that gives up early', () => {
+  // B2 is full, so the plan stops at sin_espacio. It must still know the lote
+  // is in A1: the dialog reads an empty list as "sin tanque".
+  const log = [
+    ...LLENO,
+    mv({ tipo: 'recepcion', destino: 'B2', lot_code: '25MEKMP-3', volumen_l: 5000, fecha: '2025-09-03' }),
+  ];
+  const m = planearMovimiento(
+    { destino: 'B2', lote: { lot_code: '25CSKMP-1', vintage_year: 2025 } }, bodega(log));
+  assert.equal(m.puedeRegistrar, false);
+  assert.deepEqual(m.lote_en, [{ codigo: 'A1', litros: 12000 }]);
+});
+
 test('a salida takes the whole tank and carries no merma', () => {
   const m = planearMovimiento({ origen: 'A1', tipo: 'salida' }, bodega(LLENO));
   assert.equal(m.clase, 'salida');
