@@ -12,6 +12,31 @@ import * as XLSX from 'xlsx';
 const TANQUES_RECHAZO = new Set([400, 403, 404, 409]);
 const esSobreRechazo = (d) => !!d && typeof d === 'object' && d.ok === false
   && typeof d.error === 'string' && d.error !== '' && d.indeterminado !== true;
+// Does a log row carry the same movement as an intent? Used when reconciling
+// an unknown write outcome: the row found by client_id must also match what
+// was sent. Tank references are compared after the synonym map, because the
+// API stores the canonical code; numbers and absent optionals are normalized
+// the way the column types store them.
+const _txt = (v) => (v == null ? '' : String(v).trim());
+const _num = (v) => (v == null || v === '' ? null : Number(v));
+const _tanque = (v, sinonimos) => {
+  const t = _txt(v);
+  return t && sinonimos && Object.prototype.hasOwnProperty.call(sinonimos, t) ? _txt(sinonimos[t]) : t;
+};
+export function mismaIntencion(fila, intento, sinonimos) {
+  if (!fila || !intento) return false;
+  for (const k of ['tipo', 'fecha', 'lot_code', 'nota', 'fuente']) {
+    if (_txt(fila[k]).slice(0, k === 'fecha' ? 10 : undefined) !== _txt(intento[k])) return false;
+  }
+  for (const k of ['origen', 'destino']) {
+    if (_tanque(fila[k], sinonimos) !== _tanque(intento[k], sinonimos)) return false;
+  }
+  if (_num(fila.volumen_l) !== _num(intento.volumen_l)) return false;
+  if ((_num(fila.merma_l) || 0) !== (_num(intento.merma_l) || 0)) return false;
+  if (_num(fila.vintage_year) !== _num(intento.vintage_year)) return false;
+  return true;
+}
+
 const esSobreExito = (d) => !!d && typeof d === 'object' && d.ok === true
   && !!d.movimiento && typeof d.movimiento === 'object' && !Array.isArray(d.movimiento);
 
@@ -365,10 +390,17 @@ export const DataStore = {
   },
 
   async loadTanques() {
-    // Generation, not just a boolean: a GET issued before a write can resolve
-    // after that write's refresh, put the pre-write log back and then call the
-    // view current. A superseded load replaces nothing and reports no success
-    // (lucy, 2026-10-15).
+    return (await this._cargarTanques()) === 'aplicado';
+  },
+
+  // Generation, not just a boolean: a GET issued before a write can resolve
+  // after that write's refresh, put the pre-write log back and then call the
+  // view current. A superseded load replaces nothing and reports no success
+  // (lucy, 2026-10-15). Three outcomes, because a superseded load is NOT a
+  // failed one: only the current generation may say the view is stale.
+  // Returns 'aplicado', 'fallo' (current generation failed) or 'reemplazado'
+  // (a newer load, or demo mode, owns the view).
+  async _cargarTanques() {
     const gen = ++this._tanquesGen;
     try {
       const res = await fetch('/api/tanques', {
@@ -376,16 +408,16 @@ export const DataStore = {
       });
       const data = await res.json();
       if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      if (this._demoActive) return false;  // demo enabled mid-fetch, keep the overlay
-      if (gen !== this._tanquesGen) return false;  // a newer load already answered
+      if (this._demoActive) return 'reemplazado';  // demo enabled mid-fetch, keep the overlay
+      if (gen !== this._tanquesGen) return 'reemplazado';  // a newer load owns the view
       this.tanquesCatalogo  = data.tanques || [];
       this.tanquesSinonimos = data.sinonimos || {};
       this.movimientosTanque = data.movimientos || [];
       this.tanquesDesactualizado = false;
-      return true;
+      return 'aplicado';
     } catch (e) {
       console.error('[DataStore] loadTanques failed:', e);
-      return false;
+      return gen === this._tanquesGen ? 'fallo' : 'reemplazado';
     }
   },
 
@@ -437,9 +469,9 @@ export const DataStore = {
       return await this._reconciliar(confirma, data && data.indeterminado === true && typeof data.error === 'string'
         ? data.error : undefined);
     }
-    const actualizado = await this.loadTanques();
-    if (!actualizado) this.tanquesDesactualizado = true;
-    const out = { movimiento: data.movimiento, actualizado };
+    const carga = await this._cargarTanques();
+    if (carga === 'fallo') this.tanquesDesactualizado = true;
+    const out = { movimiento: data.movimiento, actualizado: carga !== 'fallo' };
     if (data.duplicado) out.duplicado = true;
     if (data.ya_anulado) out.ya_anulado = true;
     return out;
@@ -452,12 +484,20 @@ export const DataStore = {
   // (postMovimiento(err.movimiento) keeps the client_id), which the server
   // recognises instead of writing twice.
   async _reconciliar(confirma, mensaje) {
-    const leido = await this.loadTanques();
+    const carga = await this._cargarTanques();
     // The view is stale only if the re-read ALSO failed. When it succeeds the
     // log on screen is the answer; marking a freshly read log stale would be
-    // its own lie.
-    if (!leido) this.tanquesDesactualizado = true;
-    const fila = leido && confirma ? confirma(this.movimientosTanque) : null;
+    // its own lie. A superseded read leaves that call to the newer one.
+    if (carga === 'fallo') this.tanquesDesactualizado = true;
+    const fila = carga !== 'fallo' && confirma ? confirma(this.movimientosTanque) : null;
+    if (fila && fila.distinto) {
+      // the key is in the log, but under a different movement: the server
+      // refuses that as client_id_distinto, so it is a refusal, not a success
+      const err = new Error('El identificador del movimiento ya se uso con datos distintos.');
+      err.status = 409;
+      err.rechazado = true;
+      throw err;
+    }
     if (fila) return { movimiento: fila, actualizado: true, reconciliado: true };
     const err = new Error(mensaje || 'No se pudo confirmar el movimiento. Revise la bitacora antes de repetirlo.');
     err.indeterminado = true;
@@ -480,8 +520,15 @@ export const DataStore = {
       : { ...movimiento, client_id: globalThis.crypto.randomUUID() };
     const id = String(intento.client_id).toLowerCase();
     try {
-      const out = await this._escribirMovimiento({ action: 'crear', movimiento: intento },
-        (log) => log.find(m => typeof m.client_id === 'string' && m.client_id.toLowerCase() === id) || null);
+      // A key match alone does not prove THIS intent landed: the row must also
+      // carry the same movement, or a lost 409 client_id_distinto would read
+      // as success (lucy, 2026-10-15).
+      const confirma = (log) => {
+        const fila = log.find(m => typeof m.client_id === 'string' && m.client_id.toLowerCase() === id);
+        if (!fila) return null;
+        return mismaIntencion(fila, intento, this.tanquesSinonimos) ? fila : { distinto: true };
+      };
+      const out = await this._escribirMovimiento({ action: 'crear', movimiento: intento }, confirma);
       out.intento = intento;
       return out;
     } catch (e) {
