@@ -72,28 +72,47 @@ function etiquetaMovimiento(tipo) {
 // attribute is allowed by the CSP (style-src 'unsafe-inline').
 const relleno = (token) => `style="fill:var(${token})"`;
 
+// A failed read is retried the next time the tab is mounted, but not on every
+// App.refresh(): several of those fire in a row while the dashboard boots.
+const REINTENTO_MS = 10_000;
+
 export const TanquesView = {
   modo: 'variedad',
   seleccion: null,
   busqueda: '',
-  _estado: 'inicial',   // inicial | cargando | listo | fallo | demo
+  _cargado: false,
+  _cargando: false,
+  _fallo: false,
+  _ultimoIntento: 0,
   _wired: false,
 
   /** Called by App.refresh() every time the tab is shown. Idempotent. */
   mount() {
     this._wire();
-    if (this._estado === 'inicial') this._cargar();
+    this._quizaCargar();
     this.render();
   },
 
-  _cargar() {
-    if (DemoMode.isActive()) { this._estado = 'demo'; return; }
-    this._estado = 'cargando';
+  // Every state except "we have the data" is recoverable, so the decision is
+  // taken on each mount rather than once: a read that failed while the network
+  // was down must load when the user comes back to the tab, and leaving demo
+  // mode must load the bodega that demo mode refused to fetch.
+  _quizaCargar() {
+    if (this._cargando || this._cargado) return;
+    // DataStore refuses the read while the demo overlay owns the data layer.
+    if (DemoMode.isActive()) return;
+    if (this._fallo && Date.now() - this._ultimoIntento < REINTENTO_MS) return;
+    this._cargando = true;
+    this._ultimoIntento = Date.now();
     DataStore.loadTanques().then((ok) => {
-      this._estado = ok ? 'listo' : (DemoMode.isActive() ? 'demo' : 'fallo');
+      this._cargando = false;
+      this._cargado = ok;
+      // A read superseded by demo mode turning on mid-flight is not a failure.
+      this._fallo = !ok && !DemoMode.isActive();
       this.render();
     }).catch(() => {
-      this._estado = 'fallo';
+      this._cargando = false;
+      this._fallo = !DemoMode.isActive();
       this.render();
     });
   },
@@ -134,15 +153,16 @@ export const TanquesView = {
         this.render();
       });
     }
+    const irAVasija = (e) => {
+      const ir = e.target.closest('[data-ir-tanque]');
+      if (!ir) return;
+      this.seleccion = ir.dataset.irTanque;
+      this.render();
+    };
     const panel = document.getElementById('tanques-panel');
-    if (panel) {
-      panel.addEventListener('click', (e) => {
-        const ir = e.target.closest('[data-ir-tanque]');
-        if (!ir) return;
-        this.seleccion = ir.dataset.irTanque;
-        this.render();
-      });
-    }
+    if (panel) panel.addEventListener('click', irAVasija);
+    const bandeja = document.getElementById('tanques-otras');
+    if (bandeja) bandeja.addEventListener('click', irAVasija);
     this._wired = true;
   },
 
@@ -168,7 +188,9 @@ export const TanquesView = {
   _saltarAlPrimerResultado() {
     if (!this.busqueda) return;
     const { estado, plan } = this._bodega();
-    const hit = plan.ubicados.find((t) => this._coincide(t, estado[t.codigo]));
+    // The tray counts too: a lote can be in a vessel the plan cannot draw.
+    const hit = [...plan.ubicados, ...plan.otras]
+      .find((t) => this._coincide(t, estado[t.codigo]));
     if (hit) this.seleccion = hit.codigo;
   },
 
@@ -188,7 +210,7 @@ export const TanquesView = {
 
     if (estadoEl) estadoEl.innerHTML = this._avisoCarga(catalogo, movimientos);
 
-    if (!plan.ubicados.length) {
+    if (!plan.ubicados.length && !plan.otras.length) {
       planoEl.innerHTML = '';
       planoEl.setAttribute('viewBox', '0 0 1 1');
       panelEl.innerHTML = '<p class="tanques-hint">Sin catálogo de tanques que mostrar.</p>';
@@ -198,35 +220,69 @@ export const TanquesView = {
       return;
     }
 
-    if (!this.seleccion || !plan.ubicados.some((t) => t.codigo === this.seleccion)) {
-      const conVino = plan.ubicados.find((t) => (estado[t.codigo]?.litros || 0) > 0);
-      this.seleccion = (conVino || plan.ubicados[0]).codigo;
+    // A lote can sit in a vessel the plan cannot draw (a CAVA tank, a tibor),
+    // and its route then names that vessel. The SELECTION is therefore over the
+    // whole catalog; only the highlight on the floor is limited to the plan.
+    if (!this.seleccion || !this._vasija(plan, this.seleccion)) {
+      const todas = [...plan.ubicados, ...plan.otras];
+      const conVino = todas.find((t) => (estado[t.codigo]?.litros || 0) > 0);
+      this.seleccion = (conVino || todas[0]).codigo;
     }
 
+    const foco = this._claveFoco();
     planoEl.setAttribute('viewBox', `0 0 ${plan.ancho} ${plan.alto}`);
     planoEl.innerHTML = this._svgPlano(plan, estado);
     panelEl.innerHTML = this._htmlPanel(plan, estado, catalogo, movimientos, sinonimos);
     this._pintarLeyenda(estado, plan);
     this._pintarBandeja(plan, estado);
     this._pintarAvisos(avisos);
+    this._restaurarFoco(foco);
+  },
+
+  _vasija(plan, codigo) {
+    return plan.ubicados.find((t) => t.codigo === codigo)
+      || plan.otras.find((t) => t.codigo === codigo)
+      || null;
+  },
+
+  // render() replaces the plan and the panel through innerHTML, which throws
+  // away the focused node. Without this a keyboard user who presses Enter on a
+  // tank loses their place and has to Tab in from the top of the document
+  // again. preventScroll because the focused element is already where the user
+  // put it; re-focusing must not yank the plan's horizontal scroll.
+  _claveFoco() {
+    const el = document.activeElement;
+    const d = el && el.dataset;
+    if (!d) return null;
+    if (d.tanque) return { attr: 'data-tanque', valor: d.tanque };
+    if (d.irTanque) return { attr: 'data-ir-tanque', valor: d.irTanque };
+    return null;
+  },
+
+  _restaurarFoco(foco) {
+    if (!foco) return;
+    const sel = `[${foco.attr}="${CSS.escape(foco.valor)}"]`;
+    const el = document.querySelector(`#tanques-panel ${sel}, #tanques-otras ${sel}, #tanques-plano ${sel}`)
+      || document.querySelector(`#tanques-plano [data-tanque="${CSS.escape(foco.valor)}"]`);
+    if (el && typeof el.focus === 'function') el.focus({ preventScroll: true });
   },
 
   _avisoCarga(catalogo, movimientos) {
-    if (this._estado === 'cargando' && !catalogo.length) {
-      return '<p class="tanques-hint">Cargando el catálogo y la bitácora de tanques…</p>';
-    }
-    if (this._estado === 'demo') {
+    if (DemoMode.isActive()) {
       return '<div class="tanques-alert">El modo demostración no incluye movimientos de tanque. '
         + 'Desactívelo para ver la bodega real.</div>';
     }
-    if (this._estado === 'fallo') {
+    if (this._cargando && !catalogo.length) {
+      return '<p class="tanques-hint">Cargando el catálogo y la bitácora de tanques…</p>';
+    }
+    if (this._fallo) {
       return '<div class="tanques-alert err">No se pudo leer la bodega. '
-        + 'Revise su sesión y vuelva a abrir la pestaña.</div>';
+        + 'Revise su sesión; se reintenta al volver a abrir la pestaña.</div>';
     }
     if (DataStore.tanquesDesactualizado) {
       return '<div class="tanques-alert">Se registró el movimiento, pero no se pudo actualizar la vista.</div>';
     }
-    if (this._estado === 'listo' && catalogo.length && !movimientos.length) {
+    if (this._cargado && catalogo.length && !movimientos.length) {
       return '<p class="tanques-hint">La bitácora de movimientos está vacía, '
         + 'así que todos los tanques se muestran vacíos.</p>';
     }
@@ -387,16 +443,21 @@ export const TanquesView = {
       grupos.set(clave, g);
     }
     const chips = [];
+    const boton = (codigo, interior) =>
+      `<button type="button" class="tanques-chip${codigo === this.seleccion ? ' cur' : ''}"`
+      + ` data-ir-tanque="${escapeHtml(codigo)}">${interior}</button>`;
     for (const [t, v] of conVino) {
       const nombre = variedadDeLote(estado[t.codigo].partes[0]?.lot_code);
-      chips.push(`<span class="tanques-chip"><i style="width:8px;height:8px;`
+      chips.push(boton(t.codigo, `<i style="width:8px;height:8px;`
         + `border-radius:var(--radius-round);background:var(${tokenVariedad(nombre)})"></i>`
-        + `${escapeHtml(t.codigo)} <small>${litros(v)} de ${litros(t.capacidad_l)} L</small></span>`);
+        + `${escapeHtml(t.codigo)} <small>${litros(v)} de ${litros(t.capacidad_l)} L</small>`));
     }
     for (const [clave, g] of grupos) {
-      const texto = g.individual ? clave : `${clave} (${g.n})`;
-      chips.push(`<span class="tanques-chip">${escapeHtml(texto)}`
-        + ` <small>${litros(g.cap)} L</small></span>`);
+      const cuerpo = `${escapeHtml(g.individual ? clave : `${clave} (${g.n})`)}`
+        + ` <small>${litros(g.cap)} L</small>`;
+      // A group chip names several vessels, so it opens nothing; only a chip
+      // that IS one vessel is a control.
+      chips.push(g.individual ? boton(clave, cuerpo) : `<span class="tanques-chip">${cuerpo}</span>`);
     }
     if (plan.sinUbicar.length) {
       chips.push(`<span class="tanques-chip">Sin ubicar en el plano`
@@ -422,7 +483,7 @@ export const TanquesView = {
   // --- panel -----------------------------------------------------------------
 
   _htmlPanel(plan, estado, catalogo, movimientos, sinonimos) {
-    const t = plan.ubicados.find((x) => x.codigo === this.seleccion);
+    const t = this._vasija(plan, this.seleccion);
     if (!t) return '<p class="tanques-hint">Seleccione un tanque en el plano.</p>';
     const est = estado[t.codigo];
     const v = est?.litros || 0;

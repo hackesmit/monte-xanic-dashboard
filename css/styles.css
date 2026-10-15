@@ -3187,8 +3187,15 @@ body.demo-mode-active .row-clickable        { display: none; }
   display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border);
   background: var(--card2); border-radius: var(--radius-sharp); padding: 3px 8px;
   font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text);
+  text-align: left;
 }
 .tanques-chip small { color: var(--muted); font-size: var(--text-xs); }
+/* A chip that names ONE vessel is a button that opens its panel; a chip that
+   groups several (tibores, kegs) stays a plain span. */
+button.tanques-chip { cursor: pointer; border-color: var(--border-gold); }
+button.tanques-chip.cur { background: var(--gold); color: var(--on-gold); border-color: var(--gold); }
+button.tanques-chip.cur small { color: var(--on-gold); }
+button.tanques-chip:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
 .tanques-eyebrow {
   font-family: var(--font-display); font-size: var(--text-2xs); letter-spacing: 0.18em;
@@ -3278,6 +3285,7 @@ body.demo-mode-active .row-clickable        { display: none; }
   .tanques-seg button { min-height: 44px; padding-inline: 14px; }
   .tanques-search { min-height: 44px; font-size: var(--text-lg); width: 100%; }
   .tanques-route-stop { min-height: 44px; display: inline-flex; align-items: center; }
+  button.tanques-chip { min-height: 44px; }
   .tanques-timeline li { grid-template-columns: 1fr; gap: 2px; }
 }
 
