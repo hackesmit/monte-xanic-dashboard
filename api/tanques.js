@@ -53,7 +53,8 @@ const FUENTES = new Set(['manual', 'lab']);
 const ACCIONES = new Set(['crear', 'anular', 'descartar']);
 const MAX_NOTA = 2000;
 // The identity of an inferred trasiego proposal (js/tanques/inferencia.js
-// clavePropuesta): lot_code|origen|destino|fecha. Same ceiling as the
+// clavePropuesta): lot_code|origen|destino|fecha, each part percent-encoded
+// (see claveValida). Same ceiling as the
 // tanques_descartes_clave_chk CHECK, so the column answers what this answers.
 const MAX_CLAVE = 200;
 const VINTAGE_MIN = 1988;   // same range as the movimientos_tanque CHECK
@@ -725,6 +726,24 @@ async function anular(req, res) {
 //
 // Because a repeat is free, this write has no client_id and no indeterminate
 // outcome to reconcile: pressing the button again is always safe.
+// The shape js/tanques/inferencia.js clavePropuesta builds: four non-empty
+// parts joined by '|', each percent-encoded with encodeURIComponent. A part
+// must be its own canonical encoding, so a raw '|' or space in a lot or tank
+// code, or a '%' that does not decode, is not a clave the client could have
+// built, and the same dismissal cannot be stored under two spellings.
+function claveValida(clave) {
+  const partes = clave.split('|');
+  if (partes.length !== 4) return false;
+  return partes.every((x) => {
+    if (!x) return false;
+    try {
+      return encodeURIComponent(decodeURIComponent(x)) === x;
+    } catch {
+      return false;
+    }
+  });
+}
+
 async function descartar(req, res, usuario) {
   const clave = texto((req.body || {}).clave);
   if (!clave) {
@@ -737,7 +756,7 @@ async function descartar(req, res, usuario) {
   // store for whatever a client feels like keying. The parts themselves are not
   // judged here: a proposal names tanks the catalog has, but a tank dropped
   // from the catalog later must not make an old dismissal unwritable.
-  if (clave.split('|').length !== 4) {
+  if (!claveValida(clave)) {
     return res.status(400).json({ ok: false, error: 'La clave de la propuesta no es válida.' });
   }
 

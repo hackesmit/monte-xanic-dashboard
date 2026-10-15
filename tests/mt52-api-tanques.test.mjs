@@ -10,6 +10,7 @@
 import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
+import { clavePropuesta } from '../js/tanques/inferencia.js';
 
 const TEST_SECRET = 'test-session-secret-for-unit-tests';
 process.env.SESSION_SECRET = TEST_SECRET;
@@ -1692,7 +1693,11 @@ describe('MT.52 - POST /api/tanques action descartar', () => {
 
   it('refuses a clave that is missing, blank, over-long or not four parts', async () => {
     for (const clave of [undefined, '', '   ', 'x'.repeat(201),
-      '25CSKMP-4|D5|E1', '25CSKMP-4|D5|E1|2025-11-12|extra', 'cualquier cosa']) {
+      '25CSKMP-4|D5|E1', '25CSKMP-4|D5|E1|2025-11-12|extra', 'cualquier cosa',
+      // not the canonical encoding clavePropuesta builds: an empty part, a raw
+      // space, a '%' that does not decode, a lower-case escape
+      '|D5|E1|2025-11-12', '25CSKMP-4|TIBOR 13|E1|2025-11-12', '25CS%ZZ|D5|E1|2025-11-12',
+      '25CS%7c1|D5|E1|2025-11-12']) {
       const descartes = [];
       mockSupabase({ descartes });
       const res = makeRes();
@@ -1700,6 +1705,19 @@ describe('MT.52 - POST /api/tanques action descartar', () => {
       assert.equal(res.statusCode, 400, JSON.stringify(clave));
       assert.equal(descartes.length, 0, JSON.stringify(clave));
     }
+  });
+
+  it('accepts the clave the client builds for a lot code holding a |', async () => {
+    // xd-qrn.6 round 2: a raw '|' gave five parts and an undismissable proposal.
+    const clave = clavePropuesta({ lot_code: '25CS|1', origen: 'TIBOR 13', destino: 'E1', fecha: '2025-11-12' });
+    assert.equal(clave, '25CS%7C1|TIBOR%2013|E1|2025-11-12');
+    const descartes = [];
+    mockSupabase({ descartes });
+    const res = makeRes();
+    await handler(descartar(clave), res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(descartes.length, 1);
+    assert.equal(descartes[0].clave, clave);
   });
 
   it('does not touch the movement log, the version counter or the RPC', async () => {
