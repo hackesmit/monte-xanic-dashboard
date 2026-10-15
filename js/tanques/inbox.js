@@ -52,6 +52,15 @@ const fmtL = (n) => {
 
 const dia = (f) => fechaCorta(f) || texto(f);
 
+// Why a stretch of a lote's route got no proposal. The inference decides this
+// (js/tanques/inferencia.js); the inbox only says it in Spanish.
+const MOTIVO = {
+  simultaneo: (t) => `${t.a} y ${t.b} a la vez (una división, una mezcla, o un tanque mal escrito)`,
+  mismo_dia: (t) => `${t.a} y ${t.b} el mismo día, sin nada que diga cuál fue primero`,
+  sin_tanque_en_medio: (t) => `entre ${t.a} y ${t.b} solo hay muestras de una vasija `
+    + 'que el catálogo no tiene',
+};
+
 export const TanquesInbox = {
   _ctx: null,
   _todas: false,           // the user asked to see past the cap
@@ -238,10 +247,17 @@ export const TanquesInbox = {
     let s = '';
     const sin = out.sinResolver;
     if (sin.length) {
-      const pct = Math.round(out.resumen.fraccion_sin_tanque * 1000) / 10;
+      // The coverage figure is the NEWEST vendimia's, not the whole table's: a
+      // 2023 lote that moved to barrels years ago is mostly BCA, and averaging
+      // it in hides how well the vintage being worked is covered (lucy,
+      // 2026-10-15).
+      const v = out.resumen.por_vendimia[0];
+      const pct = Math.round((v ? v.fraccion : out.resumen.fraccion_sin_tanque) * 1000) / 10;
       s += '<details class="tanques-inbox-mas"><summary>'
         + `${sin.length} ${sin.length === 1 ? 'vasija' : 'vasijas'} que el catálogo no tiene `
-        + `(${out.resumen.muestras_sin_tanque} de ${out.resumen.muestras} muestras, ${pct}%)`
+        + (v
+          ? `(vendimia ${v.vendimia}: ${v.sin_tanque} de ${v.muestras} muestras, ${pct}%)`
+          : `(${out.resumen.muestras_sin_tanque} de ${out.resumen.muestras} muestras, ${pct}%)`)
         + '</summary>'
         + '<p class="tanques-hint">BIN y BCA son áreas (bins, barricas), no vasijas; el resto son '
         + 'códigos que el inventario no incluye. No se adivina ninguno, así que los lotes que pasan '
@@ -259,15 +275,14 @@ export const TanquesInbox = {
     const tr = out.traslapes;
     if (tr.length) {
       s += '<details class="tanques-inbox-mas"><summary>'
-        + `${tr.length} ${tr.length === 1 ? 'lote muestreado' : 'lotes muestreados'} `
-        + 'en dos tanques a la vez</summary>'
-        + '<p class="tanques-hint">Las ventanas de muestreo de los dos tanques se traslapan, así que '
-        + 'el lote estuvo en ambos (una división o una mezcla) o alguien escribió mal un tanque. '
-        + 'Las muestras no nombran un solo movimiento, y no se inventa uno.</p>'
+        + `${tr.length} ${tr.length === 1 ? 'tramo que las muestras no' : 'tramos que las muestras no'} `
+        + 'convierten en movimiento</summary>'
+        + '<p class="tanques-hint">Aquí las muestras no nombran un solo movimiento, y no se inventa '
+        + 'uno. Revise el tanque de cada muestra en el Explorador si cree que falta un trasiego.</p>'
         + '<ul class="tanques-inbox-ul">'
         + tr.slice(0, DIAGNOSTICO_MAX).map((t) =>
-          `<li><b>${escapeHtml(t.lot_code)}</b>: ${escapeHtml(t.a)} y ${escapeHtml(t.b)}, `
-          + `del ${escapeHtml(dia(t.desde))} al ${escapeHtml(dia(t.hasta))}</li>`).join('')
+          `<li><b>${escapeHtml(t.lot_code)}</b>: ${escapeHtml(MOTIVO[t.motivo] || MOTIVO.simultaneo)(t)}`
+          + `, del ${escapeHtml(dia(t.desde))} al ${escapeHtml(dia(t.hasta))}</li>`).join('')
         + '</ul>'
         + (tr.length > DIAGNOSTICO_MAX
           ? `<p class="tanques-hint">y ${tr.length - DIAGNOSTICO_MAX} más.</p>` : '')
