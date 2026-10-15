@@ -165,6 +165,7 @@
       <button class="nav-tab" data-view="map">Mapa</button>
       <button class="nav-tab" data-view="explorer">Explorador</button>
       <button class="nav-tab" data-view="mediciones">Mediciones</button>
+      <button class="nav-tab" data-view="tanques">Tanques</button>
       <button class="nav-tab" data-view="prediccion">Predicción</button>
       <button class="nav-tab" data-view="mona">Mona</button>
       <button class="nav-tab" data-view="guardados">Guardados</button>
@@ -1386,6 +1387,40 @@
       <p class="pred-detail-reason-body"></p>
     </section>
   </dialog>
+
+    <!-- Tanques: bodega plan + tank panel (built by js/tanques/view.js) -->
+    <div id="view-tanques" class="view-panel">
+      <div class="view-export-row">
+        <div class="section-label">Mapa de tanques</div>
+      </div>
+      <div class="tanques-toolbar">
+        <div class="tanques-seg" id="tanques-modos" role="group" aria-label="Colorear por">
+          <button type="button" data-modo="variedad" aria-pressed="true">Variedad</button>
+          <button type="button" data-modo="etapa" aria-pressed="false">Etapa</button>
+          <button type="button" data-modo="ocupacion" aria-pressed="false">Ocupaci&oacute;n</button>
+        </div>
+        <input id="tanques-buscar" class="tanques-search" type="search"
+               placeholder="Buscar lote o tanque" aria-label="Buscar lote o tanque">
+      </div>
+      <div id="tanques-estado" aria-live="polite"></div>
+      <div class="tanques-layout">
+        <section class="tanques-plan-card" aria-label="Plano de la bodega">
+          <div class="tanques-plan-scroll">
+            <svg class="tanques-plan" id="tanques-plano" role="img"
+                 aria-label="Plano de tanques, filas A a H, norte arriba"></svg>
+          </div>
+          <div class="tanques-legend" id="tanques-leyenda"></div>
+          <p class="tanques-hint">La altura de cada tanque es proporcional a su capacidad;
+            la banda de color es el volumen actual. Toque un tanque para ver su contenido.</p>
+          <div id="tanques-avisos"></div>
+          <div class="tanques-tray">
+            <h3>Otras &aacute;reas (ubicaci&oacute;n por definir)</h3>
+            <div class="tanques-chips" id="tanques-otras"></div>
+          </div>
+        </section>
+        <aside class="tanques-panel" id="tanques-panel" aria-live="polite"></aside>
+      </div>
+    </div>
 
     <!-- Mona chat assistant (built by js/mona) -->
     <div id="view-mona" class="view-panel"></div>
