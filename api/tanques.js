@@ -33,9 +33,14 @@ const MAX_NOTA = 2000;
 const VINTAGE_MIN = 1988;   // same range as the movimientos_tanque CHECK
 const VINTAGE_MAX = 2100;
 const PAGINA = 1000;        // PostgREST caps a response at 1000 rows
-// Half a microlitre, the same "this is nothing" threshold js/tanques/estado.js
-// quantizes to, so a float-dust difference is not read as a deeper overdraw.
-const TOLERANCIA_L = 5e-7;
+// One millilitre: the threshold below which a difference between two replays is
+// not a real worsening. js/tanques/estado.js reports its balance totals to the
+// same precision for the same reason, and the running destination level below
+// accumulates up to half a microlitre of drift each time the module zeroes a
+// tank it considers empty. Erring toward allowing, by a millilitre, beats
+// refusing a legitimate annulment over float dust; a worsening anyone cares
+// about is litres.
+const TOLERANCIA_L = 1e-3;
 
 // --- PostgREST to JS ----------------------------------------------------------
 
