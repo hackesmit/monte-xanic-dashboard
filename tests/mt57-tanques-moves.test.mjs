@@ -525,3 +525,58 @@ test('the dialog scrim is a design token defined in both themes, not a literal',
   assert.match(bloque(':root'), /--scrim:/);
   assert.match(bloque('[data-theme="light"]'), /--scrim:/);
 });
+
+// --- round 3 -----------------------------------------------------------------
+
+test('a backdated movement is planned with the lote the origin held at that date', () => {
+  // A1 takes 10 000 L of X, sends 8 000 L out, then takes 8 000 L of Y: today
+  // Y is the majority. A trasiego dated before the refill moves X.
+  const log = [
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: '24CSKMP-1', vintage_year: 2024,
+      volumen_l: 10000, fecha: '2025-09-01' }),
+    mv({ tipo: 'salida', origen: 'A1', lot_code: '24CSKMP-1', vintage_year: 2024,
+      volumen_l: 8000, fecha: '2025-09-20' }),
+    mv({ tipo: 'recepcion', destino: 'A1', lot_code: '25MEVDG-2', vintage_year: 2025,
+      volumen_l: 8000, fecha: '2025-10-01' }),
+  ];
+  const b = bodega(log);
+  const hoy = planearMovimiento({ origen: 'A1', destino: 'B1' }, b);
+  assert.equal(hoy.lot_code, '25MEVDG-2');
+
+  const m = planearMovimiento({ origen: 'A1', destino: 'B1' }, b, { fecha: '2025-09-10' });
+  assert.equal(m.fecha, '2025-09-10');
+  assert.equal(m.lot_code, '24CSKMP-1');
+  assert.equal(m.vintage_year, 2024);
+  assert.equal(m.mezcla_origen, false);
+  assert.equal(m.disponible_l, 10000);
+  assert.equal(m.puedeRegistrar, true);
+
+  const mov = movimientoDesdeFormulario(m, { tipo: 'trasiego', fecha: '2025-09-10', volumen_l: '1000' });
+  assert.equal(mov.lot_code, '24CSKMP-1');
+  assert.equal(mov.vintage_year, 2024);
+  assert.deepEqual(erroresDeMovimiento(b, mov), []);
+  // The stored row, replayed, is X leaving A1 on the 10th.
+  const { estado } = replayMovimientos(TANQUES, [...log, { ...mov, id: 999 }], { sinonimos: SINONIMOS });
+  assert.deepEqual(estado.B1.partes.map((p) => p.lot_code), ['24CSKMP-1']);
+
+  // A date on which the origin was empty is refused for that date, and the
+  // model says the date may be moved.
+  const antes = planearMovimiento({ origen: 'A1', destino: 'B1' }, b, { fecha: '2025-08-01' });
+  assert.equal(antes.puedeRegistrar, false);
+  assert.equal(antes.cambiarFecha, true);
+  assert.ok(antes.avisos.some((a) => a.clave === 'vacio' && a.texto.includes('2025-08-01')));
+});
+
+test('the vendimia is four digits as typed, never an exponent or hex', () => {
+  const b = bodega(LLENO);
+  const m = planearMovimiento({ origen: 'A1', destino: 'A2' }, b);
+  const base = { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 100 };
+  for (const v of ['2e3', '0x7D0', '2024.0', '02024', '+2024', '20 24']) {
+    const mov = movimientoDesdeFormulario(m, { ...base, vintage_year: v });
+    assert.equal(mov.vintage_year, v, `vendimia ${v} se queda como se escribio`);
+    const errores = erroresDeMovimiento(b, mov);
+    assert.ok(errores.some((e) => e.includes(`La vendimia "${v}" no es válida`)), `${v}: ${errores.join(' | ')}`);
+  }
+  assert.equal(movimientoDesdeFormulario(m, { ...base, vintage_year: ' 2024 ' }).vintage_year, 2024);
+  assert.deepEqual(erroresDeFormulario({ lot_code: 'x', vintage_year: '2e3' }).length, 1);
+});
