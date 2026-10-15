@@ -98,7 +98,11 @@ export function vendimiaDeCodigo(lot_code) {
 // rule refuses exactly 'Control', 'DELETE PLEASE', 'DELETE PLEASER' and
 // '24MEKMP-2 PD1' / '24MEKMP-3 PD2' (a lote with its tank typed into the id,
 // each sampled in one vessel only, so neither ever had a proposal to lose).
-const RE_LOTE = /^\d{2}[A-Za-z]\S*$/;
+// Printable ASCII only and at most 36 characters (the longest production id
+// is 18): with the tank codes and the date that keeps every encoded clave
+// under the API's MAX_CLAVE of 200, so every proposal shown can be dismissed
+// (lucy, 2026-10-15).
+const RE_LOTE = /^\d{2}[A-Za-z][\x21-\x7E]{0,33}$/;
 
 export function esCodigoDeLote(lot_code) {
   const t = texto(lot_code);
