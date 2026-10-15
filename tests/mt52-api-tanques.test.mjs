@@ -1570,4 +1570,48 @@ describe('MT.52 - client: only an API refusal is definite', () => {
     };
     await assert.rejects(() => DataStore.anularMovimiento(1), (e) => e.indeterminado === true);
   });
+
+  // Coordinator round, 2026-10-15 (lucy round 3).
+  it('reconciliation needs the same movement, not just the same key: a lost 409 is never read as success', async () => {
+    const intento = movimiento();
+    const ajena = { id: 7, ...intento, volumen_l: Number(intento.volumen_l) + 1000, anulado: false };
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') throw new TypeError('network down');  // the 409 never arrives
+      return json(200, { ...vacio, movimientos: [ajena] });
+    };
+    await assert.rejects(() => DataStore.postMovimiento(intento),
+      (e) => e.rechazado === true && e.status === 409 && e.indeterminado !== true);
+  });
+
+  it('reconciliation still confirms the same movement under a synonym and stored numeric types', async () => {
+    const intento = { ...movimiento(), origen: 'TIB13' };
+    const guardada = { id: 8, ...intento, origen: 'TIBOR 13', volumen_l: String(intento.volumen_l), anulado: false };
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') throw new TypeError('network down');
+      return json(200, { ...vacio, sinonimos: { TIB13: 'TIBOR 13' }, movimientos: [guardada] });
+    };
+    const out = await DataStore.postMovimiento(intento);
+    assert.equal(out.reconciliado, true);
+    assert.equal(out.movimiento.id, 8);
+  });
+
+  it('a superseded refresh does not mark a fresh view stale', async () => {
+    const fila = { id: 1, ...movimiento(), anulado: false };
+    let gets = 0;
+    let liberar;
+    const lento = new Promise(r => { liberar = r; });
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') return json(200, { ok: true, movimiento: fila });
+      if (++gets === 1) { await lento; return json(200, { ...vacio, movimientos: [] }); }  // G1, old and slow
+      return json(200, { ...vacio, movimientos: [fila] });                                 // G2, current
+    };
+    const primera = DataStore.postMovimiento(movimiento());  // its refresh G1 hangs
+    await new Promise(r => setImmediate(r));
+    assert.equal(await DataStore.loadTanques(), true);         // G2 lands first
+    liberar();
+    const out = await primera;
+    assert.equal(DataStore.tanquesDesactualizado, false, 'the view on screen is current');
+    assert.equal(out.actualizado, true);
+    assert.equal(DataStore.movimientosTanque.length, 1, 'the superseded load did not put the old log back');
+  });
 });
