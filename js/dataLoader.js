@@ -14,6 +14,9 @@ export const DataStore = {
   harvestTargetOverrides: [],
   receptionData: [],        // tank_receptions rows (snake_case, internal use)
   receptionLotsData: [],    // reception_lots rows (snake_case, internal use)
+  tanquesCatalogo: [],      // dim_tanque rows
+  tanquesSinonimos: {},     // dim_tanque_sinonimo as {sinonimo: codigo}
+  movimientosTanque: [],    // movimientos_tanque rows (annulled ones included)
   loaded: { berry: false, wine: false },
   supabase: null,        // Supabase client instance (set by initSupabase)
   _supabaseReady: false, // true once credentials have been fetched
@@ -336,6 +339,65 @@ export const DataStore = {
     // Refresh local cache
     await this.loadHarvestTargetOverrides();
     return data.row;
+  },
+
+  // ── Tanques ──
+  // dim_tanque, dim_tanque_sinonimo and movimientos_tanque are server-only
+  // (grants revoked from anon), so these three go through /api/tanques with the
+  // session token instead of this.supabase. Tank contents are DERIVED from
+  // movimientosTanque by js/tanques/estado.js; nothing here caches litres.
+
+  _sessionToken() {
+    return (typeof localStorage !== 'undefined' && localStorage)
+      ? (localStorage.getItem('xanic_session_token') || '')
+      : '';
+  },
+
+  async loadTanques() {
+    try {
+      const res = await fetch('/api/tanques', {
+        headers: { 'x-session-token': this._sessionToken() },
+      });
+      const data = await res.json();
+      if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (this._demoActive) return false;  // demo enabled mid-fetch — keep overlay
+      this.tanquesCatalogo  = data.tanques || [];
+      this.tanquesSinonimos = data.sinonimos || {};
+      this.movimientosTanque = data.movimientos || [];
+      return true;
+    } catch (e) {
+      console.error('[DataStore] loadTanques failed:', e);
+      return false;
+    }
+  },
+
+  // Append a movement. The server validates it against the log at its place in
+  // time and answers 400 with the Spanish reason, so the caller shows data.error
+  // rather than guessing. Throws on refusal; refreshes the log on success.
+  async postMovimiento(movimiento) {
+    const res = await fetch('/api/tanques', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
+      body: JSON.stringify({ action: 'crear', movimiento }),
+    });
+    const data = await res.json();
+    if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    await this.loadTanques();
+    return data.movimiento;
+  },
+
+  // Undo marks a row anulado, never deletes it. Refused (400) when taking the
+  // row out would leave a later movement overdrawn.
+  async anularMovimiento(id) {
+    const res = await fetch('/api/tanques', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
+      body: JSON.stringify({ action: 'anular', id }),
+    });
+    const data = await res.json();
+    if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    await this.loadTanques();
+    return data.movimiento;
   },
 
   parseValue(v) {
