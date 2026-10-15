@@ -1406,7 +1406,9 @@
       <div class="tanques-layout">
         <section class="tanques-plan-card" aria-label="Plano de la bodega">
           <div class="tanques-plan-scroll">
-            <svg class="tanques-plan" id="tanques-plano" role="img"
+            <!-- role="group", not "img": an img's descendants are presentational,
+                 which would hide every tank button from the accessibility tree. -->
+            <svg class="tanques-plan" id="tanques-plano" role="group"
                  aria-label="Plano de tanques, filas A a H, norte arriba"></svg>
           </div>
           <div class="tanques-legend" id="tanques-leyenda"></div>

@@ -3253,6 +3253,7 @@ button.tanques-chip:focus-visible { outline: 2px solid var(--gold); outline-offs
 }
 .tanques-tag.lab { color: var(--flag-info); border-color: var(--flag-info); }
 .tanques-route { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tanques-route + .tanques-route { margin-top: 4px; }
 .tanques-route-stop {
   font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--border-gold);
   border-radius: var(--radius-sharp); padding: 3px 7px; cursor: pointer;

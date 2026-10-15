@@ -170,6 +170,41 @@ export function construirPlano(tanques, opciones = {}) {
   };
 }
 
+// --- lote route --------------------------------------------------------------
+
+/**
+ * A lote's route as a list of CHAINS, not one line.
+ *
+ * A lote does not always move along a single path: receive 6 000 L into A1,
+ * send 2 000 to B1 and another 2 000 to C1, and the steps are A1 to B1 and A1
+ * to C1. Stringing every endpoint together with only adjacent de-duplication
+ * draws A1 > B1 > A1 > C1, which claims a B1 to C1 journey that never happened.
+ * So a new chain starts whenever a step does not leave where the last one
+ * arrived, and each chain is a true sequence of moves.
+ *
+ * @param {Array} pasos recorridoLote(...).pasos, oldest first
+ * @returns {Array<{entrada: boolean, salida: boolean, codigos: string[]}>}
+ *   entrada - the chain opens with a reception (the lote arrived from outside)
+ *   salida  - the chain ends with the lote leaving the bodega
+ */
+export function cadenasRecorrido(pasos) {
+  const cadenas = [];
+  let actual = null;
+  for (const paso of Array.isArray(pasos) ? pasos : []) {
+    const desde = paso?.origen || null;
+    const hasta = paso?.destino || null;
+    const cola = actual && actual.codigos.length ? actual.codigos[actual.codigos.length - 1] : null;
+    if (!actual || actual.salida || cola !== desde) {
+      actual = { entrada: !desde, salida: false, codigos: [] };
+      cadenas.push(actual);
+      if (desde) actual.codigos.push(desde);
+    }
+    if (hasta) actual.codigos.push(hasta);
+    else actual.salida = true;
+  }
+  return cadenas.filter((c) => c.codigos.length || c.salida);
+}
+
 // --- dates -------------------------------------------------------------------
 
 const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
