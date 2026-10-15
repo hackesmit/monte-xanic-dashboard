@@ -42,4 +42,5 @@ export const MIGRATIONS = [
   'migration_seguimiento_lotes',
   'migration_dim_catalogs',
   'migration_seguimiento_origen_envero',
+  'migration_tanques',
 ];

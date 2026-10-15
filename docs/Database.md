@@ -287,6 +287,85 @@ Winery facts Mona reads on every chat. Only `approved` facts are injected into h
 | approved_by | text | yes | Lab/admin who approved |
 | created_at | timestamptz | no | Timestamp |
 
+## Tanques tables (mapa de tanques)
+
+Added by `migration_tanques.sql`. **All three are server-only:** RLS enabled with **no
+policies** and the `anon`/`authenticated` grants revoked (including on the `BIGSERIAL`
+sequence), so every read and write goes through `/api/tanques` with the service key, which
+checks the role server-side. Design: [`superpowers/specs/2026-10-14-mapa-tanques-design.md`](superpowers/specs/2026-10-14-mapa-tanques-design.md).
+
+### dim_tanque
+
+Vessel catalog, seeded from `inventario-tanques.xlsx` (121 vessels: 68 fermentation, 4
+recepcion, 49 in the "Otras areas" tray). The `.sql` file is the source of truth (the
+workbook lives outside the repo) and `tests/mt50-tanques-schema.test.mjs` guards it.
+
+| Column | Type | Nullable | Purpose |
+|--------|------|----------|---------|
+| codigo | text | no | Primary key. Canonical code, whitespace collapsed (`TIBOR  1` seeds as `TIBOR 1`) |
+| fila | text | yes | Grid row: `A` (north) to `H` (south) for fermentation, `R`/`P` for the recepcion strip. NULL for `area = 'otras'` |
+| posicion | int | yes | Position in the row, 1 = west end (spec assumption, invertible). NULL for `area = 'otras'` |
+| capacidad_l | numeric | no | Nominal capacity in litres (`> 0`) |
+| tipo | text | no | `TQ` / `TIBOR` / `DOMECQ` / `KEG` |
+| area | text | no | `fermentacion` / `recepcion` / `otras` |
+| activo | boolean | no | `false` hides the vessel from the map without deleting its history. Re-running the migration does **not** reset it |
+| orden | int | no | Inventory order 1..121; gives the "Otras areas" tray a stable order |
+| created_at | timestamptz | no | Timestamp |
+
+Constraints: `dim_tanque_layout_chk` ties `area` to the grid (a located vessel has both
+`fila` and `posicion`; a tray vessel has neither), and `dim_tanque_casilla_uniq` (DEFERRABLE)
+stops two vessels sharing a cell.
+
+### dim_tanque_sinonimo
+
+Capture alias to canonical codigo, same pattern as `dim_rancho_sinonimo`. Resolve a
+`wine_samples.vessel_id` by collapsing whitespace and uppercasing, then matching
+`dim_tanque.codigo` and only then `dim_tanque_sinonimo.sinonimo`. 87 rows covering the
+`TIBOR n`, `I-n CAVA`, `PD-n` and `Rn` families.
+
+| Column | Type | Nullable | Purpose |
+|--------|------|----------|---------|
+| sinonimo | text | no | Primary key. Alias as captured |
+| codigo | text | no | FK -> `dim_tanque(codigo)` (ON UPDATE CASCADE) |
+
+`BIN` and `BCA` are areas (bins, barricas) and `C9`, `FI`, `200`, `TIBOR 17`, `TIBOR 24` and
+`F036` are unresolved, so none of them is seeded. The design doc lists them with sample
+counts; the trasiego inference must surface an unresolved vessel, not drop the sample.
+
+### movimientos_tanque
+
+Append-only movement log. **A tank's contents are never stored, they are derived from this
+table:** litres in with `destino = codigo`, minus litres out with `origen = codigo`, minus
+`merma_l`, over rows with `anulado = false`.
+
+| Column | Type | Nullable | Purpose |
+|--------|------|----------|---------|
+| id | bigserial | no | Primary key |
+| fecha | date | no | Movement date |
+| tipo | text | no | `recepcion` / `trasiego` / `descube` / `sangrado` / `prensa` / `ensamble` / `salida` |
+| origen | text | yes | FK -> `dim_tanque(codigo)`. NULL = wine enters the bodega |
+| destino | text | yes | FK -> `dim_tanque(codigo)`. NULL = wine leaves (bottling or bulk) |
+| lot_code | text | no | Lot moved (non-blank) |
+| vintage_year | int | no | Vintage (1988..2100) |
+| volumen_l | numeric | no | Litres moved (`> 0`) |
+| merma_l | numeric | no | Litres lost, default 0 (`>= 0`). Subtracted from the destination |
+| nota | text | yes | Free note |
+| fuente | text | no | `manual` (a person captured it) / `lab` (a confirmed `vessel_id` proposal) |
+| creado_por | text | yes | Username from the session token |
+| anulado | boolean | no | Default `false`. Undo sets it `true`; rows are never deleted |
+| created_at | timestamptz | no | Timestamp |
+
+CHECK constraints require at least one endpoint, forbid `origen = destino`, and require a
+`destino` for `recepcion` and an `origen` for `salida`. The other types may have one NULL
+endpoint because a press and a barrel are not catalog vessels.
+
+Two triggers make append-only real rather than a convention: a row-level
+`BEFORE UPDATE OR DELETE` trigger that permits exactly one change (`anulado` false to true)
+and refuses every DELETE, and a statement-level `BEFORE TRUNCATE` trigger, since a row-level
+trigger never sees a TRUNCATE. Both bind the service key and the SQL editor, which RLS does
+not. A deliberate correction means
+`ALTER TABLE public.movimientos_tanque DISABLE TRIGGER USER`.
+
 ## Recommended Future Improvements
 
 - Add foreign key constraint: `reception_lots.reception_id` -> `tank_receptions.id`

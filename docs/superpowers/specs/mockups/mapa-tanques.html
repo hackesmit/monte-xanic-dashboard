@@ -1,0 +1,493 @@
+<title>Mapa de Tanques</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syncopate:wght@400;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: plano de bodega a la izquierda (SVG oblicuo), panel de tanque a la derecha; debajo, bandeja de movimientos detectados. Tokens tomados del dashboard Monte Xanic (oscuro por defecto, oro como acento). */
+:root {
+  --bg: #F5F2ED; --surface: #EDE8E0; --card: #FAFAF7; --card2: #F0EDE6;
+  --border: rgba(0,0,0,0.10); --border-gold: rgba(160,130,60,0.35);
+  --gold: #9B7D3A; --gold-lt: #7A6230; --text: #3A3528; --strong: #1A1A1A; --muted: #5C5C5C;
+  --floor: #E4DED3; --path: #D6CFC2; --path-text: #9A9080;
+  --steel-top: #D9DCDF; --steel-side: #B9BEC4; --steel-edge: #8D949B; --steel-shade: #A3A9B0;
+  --warn: #C07020; --err: #C03030; --ok: #3E7D4E; --info: #407898;
+  --v-cs: #7A1E2E; --v-cf: #A0344A; --v-me: #8E3B5E; --v-sy: #5A2A6E; --v-du: #3E1F4F;
+  --v-te: #B04A3A; --v-pv: #4A2340; --v-ma: #6E2338; --v-sb: #CDB64E; --v-ch: #D9A441; --v-ro: #D97A7A;
+  --s-rec: #8AA1B1; --s-mac: #B07A9A; --s-fa: #C0503A; --s-des: #C88A3A; --s-fml: #9B7D3A; --s-cri: #4E6E5A; --s-emb: #3E5A7A;
+  --font-display: 'Syncopate', 'Arial Black', sans-serif;
+  --font-body: 'IBM Plex Sans', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --r-sharp: 2px; --r-base: 4px; --r-panel: 8px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0A0A0A; --surface: #111111; --card: #161616; --card2: #1C1C1C;
+  --border: rgba(255,255,255,0.08); --border-gold: rgba(196,160,96,0.35);
+  --gold: #C4A060; --gold-lt: #DDB96E; --text: #D8D0C4; --strong: #F5EFE4; --muted: #8A8A8A;
+  --floor: #141312; --path: #1D1B18; --path-text: #5E574C;
+  --steel-top: #6E757C; --steel-side: #4A5057; --steel-edge: #2C3035; --steel-shade: #3B4046;
+  --warn: #E09030; --err: #E05050; --ok: #6DBB7E; --info: #60A8C0; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0A0A0A; --surface: #111111; --card: #161616; --card2: #1C1C1C;
+  --border: rgba(255,255,255,0.08); --border-gold: rgba(196,160,96,0.35);
+  --gold: #C4A060; --gold-lt: #DDB96E; --text: #D8D0C4; --strong: #F5EFE4; --muted: #8A8A8A;
+  --floor: #141312; --path: #1D1B18; --path-text: #5E574C;
+  --steel-top: #6E757C; --steel-side: #4A5057; --steel-edge: #2C3035; --steel-shade: #3B4046;
+  --warn: #E09030; --err: #E05050; --ok: #6DBB7E; --info: #60A8C0; color-scheme: dark }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; line-height: 1.5; }
+.wrap { max-width: 1280px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
+h1, h2, h3 { color: var(--strong); text-wrap: balance; margin: 0; }
+.eyebrow { font-family: var(--font-display); font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); }
+header.top { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--border-gold); padding-bottom: 12px; }
+header.top h1 { font-family: var(--font-display); font-weight: 700; font-size: 22px; letter-spacing: 0.06em; }
+.mock { font-size: 12px; color: var(--muted); }
+.mock b { color: var(--warn); font-weight: 600; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--border-gold); border-radius: var(--r-base); overflow: hidden; }
+.seg button { background: transparent; color: var(--muted); border: 0; padding: 6px 10px; font: 500 12px var(--font-body); cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--gold); color: var(--bg); }
+.btn { background: var(--card2); color: var(--text); border: 1px solid var(--border-gold); border-radius: var(--r-base); padding: 6px 12px; font: 500 12px var(--font-body); cursor: pointer; }
+.btn.primary { background: var(--gold); color: var(--bg); border-color: var(--gold); }
+.btn:focus-visible, .seg button:focus-visible, .tank:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.search { background: var(--card); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-base); padding: 6px 10px; font: 13px var(--font-body); min-width: 0; width: 180px; }
+
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start; }
+@media (max-width: 960px) { .main { grid-template-columns: minmax(0, 1fr); } }
+
+.plan-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-panel); padding: 12px; display: grid; gap: 10px; min-width: 0; }
+.plan-scroll { overflow-x: auto; }
+svg.plan { display: block; width: 100%; min-width: 680px; height: auto; touch-action: none; user-select: none; }
+.tank { cursor: grab; }
+.tank.dim { opacity: 0.22; }
+.tank.sel .lid { stroke: var(--gold); stroke-width: 2.5; }
+.tank.drop .lid { stroke: var(--gold-lt); stroke-width: 3; stroke-dasharray: 4 3; }
+.tank text { font-family: var(--font-mono); pointer-events: none; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.hint { font-size: 12px; color: var(--muted); }
+
+.tray { display: grid; gap: 8px; }
+.tray h3 { font-size: 12px; font-weight: 600; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border); background: var(--card2); border-radius: var(--r-sharp); padding: 3px 8px; font: 12px var(--font-mono); cursor: grab; touch-action: none; }
+.chip small { color: var(--muted); font-size: 10px; }
+.chip.lote { border-color: var(--border-gold); }
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+aside.panel { background: var(--card); border: 1px solid var(--border-gold); border-radius: var(--r-panel); padding: 16px; display: grid; gap: 14px; min-width: 0; }
+.p-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.p-head h2 { font-family: var(--font-display); font-size: 26px; letter-spacing: 0.04em; }
+.p-sub { font-size: 12px; color: var(--muted); }
+.fillbar { height: 8px; background: var(--surface); border-radius: var(--r-sharp); overflow: hidden; display: flex; }
+.fillbar div { height: 100%; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--strong); }
+.stages { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.stages div { height: 6px; border-radius: 1px; background: var(--surface); }
+.stages div.on { background: var(--gold); }
+.stages div.now { background: var(--gold-lt); box-shadow: 0 0 0 2px var(--border-gold); }
+.stage-labels { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; font-size: 8.5px; color: var(--muted); text-align: center; line-height: 1.2; }
+.sec h3 { font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); font-weight: 600; margin-bottom: 6px; }
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: 12.5px; }
+.timeline li { display: grid; grid-template-columns: 62px 1fr; gap: 8px; }
+.timeline time { color: var(--muted); font-family: var(--font-mono); font-size: 11px; }
+.tag { font-size: 10px; border: 1px solid var(--border); border-radius: var(--r-sharp); padding: 0 4px; color: var(--muted); margin-left: 4px; white-space: nowrap; }
+.tag.lab { color: var(--info); border-color: var(--info); }
+.route { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.route .stop { font: 500 12px var(--font-mono); border: 1px solid var(--border-gold); border-radius: var(--r-sharp); padding: 2px 6px; cursor: pointer; background: var(--card2); color: var(--text); }
+.route .stop.cur { background: var(--gold); color: var(--bg); }
+.route .chev { width: 6px; height: 6px; border-top: 1.5px solid var(--muted); border-right: 1.5px solid var(--muted); transform: rotate(45deg); margin-inline: 2px; }
+.comp { display: flex; height: 18px; border-radius: var(--r-sharp); overflow: hidden; font: 10px var(--font-mono); color: var(--strong); }
+.comp div { display: flex; align-items: center; padding-inline: 4px; color: #fff; white-space: nowrap; overflow: hidden; }
+.spark { width: 100%; height: 90px; display: block; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.inbox { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-panel); padding: 16px; display: grid; gap: 12px; }
+.inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding-block: 8px; border-top: 1px solid var(--border); font-size: 13px; }
+.inbox-row .why { font-size: 11.5px; color: var(--muted); }
+.notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.note { background: var(--card); border: 1px solid var(--border); border-radius: var(--r-panel); padding: 14px; font-size: 13px; display: grid; gap: 6px; align-content: start; }
+.note h3 { font-size: 13px; font-weight: 600; }
+.note code { font-family: var(--font-mono); font-size: 12px; color: var(--gold-lt); }
+
+dialog { background: var(--card); color: var(--text); border: 1px solid var(--border-gold); border-radius: var(--r-panel); padding: 0; width: min(440px, calc(100vw - 32px)); }
+dialog::backdrop { background: rgba(0,0,0,0.55); }
+dialog form { padding: 18px; display: grid; gap: 12px; }
+dialog h2 { font-size: 16px; }
+.mv { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; text-align: center; }
+.mv .box { border: 1px solid var(--border); border-radius: var(--r-base); padding: 8px; background: var(--card2); }
+.mv .box b { font-family: var(--font-display); font-size: 16px; color: var(--strong); display: block; }
+.mv .box small { color: var(--muted); font-size: 11px; display: block; }
+.mv .chev { width: 10px; height: 10px; border-top: 2px solid var(--gold); border-right: 2px solid var(--gold); transform: rotate(45deg); }
+.field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.field input, .field select { background: var(--bg); color: var(--strong); border: 1px solid var(--border); border-radius: var(--r-base); padding: 7px 8px; font: 13px var(--font-body); }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.alert { font-size: 12px; border-left: 3px solid var(--warn); padding: 6px 10px; background: var(--card2); }
+.alert.err { border-color: var(--err); }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--strong); color: var(--bg); padding: 10px 14px; border-radius: var(--r-base); font-size: 13px; display: flex; gap: 12px; align-items: center; z-index: 10; }
+.toast button { background: transparent; border: 0; color: var(--gold); font-weight: 600; cursor: pointer; }
+@media (prefers-reduced-motion: no-preference) { .tank { transition: opacity .2s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">Bodega / Vinificaci&oacute;n</div>
+      <h1>Mapa de Tanques</h1>
+    </div>
+    <div class="mock">Maqueta interactiva. <b>Lotes, vol&uacute;menes y etapas son de ejemplo.</b> Capacidades reales del Inventario Tanques; recorridos marcados &laquo;lab&raquo; vienen de WineXRay 2025.</div>
+  </header>
+
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="Colorear por">
+      <button type="button" data-mode="variedad" aria-pressed="true">Variedad</button>
+      <button type="button" data-mode="etapa" aria-pressed="false">Etapa</button>
+      <button type="button" data-mode="ocupacion" aria-pressed="false">Ocupaci&oacute;n</button>
+    </div>
+    <input id="q" class="search" type="search" placeholder="Buscar lote o tanque" aria-label="Buscar lote o tanque">
+    <button type="button" class="btn" id="tapmode" aria-pressed="false">Modo mover (tocar origen y destino)</button>
+  </div>
+
+  <div class="main">
+    <section class="plan-card" aria-label="Plano de la bodega">
+      <div class="plan-scroll"><svg class="plan" id="plan" role="img" aria-label="Plano de tanques, filas A a H"></svg></div>
+      <div class="legend" id="legend"></div>
+      <p class="hint">Arrastra un tanque sobre otro para registrar un trasiego. Arrastra un lote de la bandeja a un tanque vac&iacute;o para asignarlo. La altura de cada tanque es proporcional a su capacidad; el nivel de color es el volumen actual.</p>
+      <div class="tray">
+        <h3>Lotes sin tanque</h3>
+        <div class="chips" id="lotTray"></div>
+        <h3>Otras &aacute;reas (ubicaci&oacute;n por definir)</h3>
+        <div class="chips" id="otherTray"></div>
+      </div>
+    </section>
+    <aside class="panel" id="panel" aria-live="polite"></aside>
+  </div>
+
+  <section class="inbox" aria-label="Movimientos detectados">
+    <div>
+      <div class="eyebrow">Bandeja</div>
+      <h2 style="font-size:18px">Movimientos detectados por el laboratorio</h2>
+      <p class="hint">En la vendimia 2025, 52 de 65 lotes analizados en WineXRay aparecen en m&aacute;s de un tanque. Cuando el <code>vessel_id</code> de un lote cambia entre dos an&aacute;lisis, el sistema propone el trasiego y bodega solo lo confirma.</p>
+    </div>
+    <div id="inbox"></div>
+  </section>
+
+  <section class="notes" aria-label="Notas de dise&ntilde;o">
+    <div class="note"><div class="eyebrow">Dato real</div><h3>Nombres de tanque que no cuadran</h3>
+      <p>En producci&oacute;n hay <code>PD1</code> (inventario dice <code>PD-1</code>), <code>TIB 13</code> / <code>TIBOR 17</code>, <code>I4</code> (<code>I-4 CAVA</code>), <code>C9</code> (no existe), <code>FI</code>, <code>BIN</code> y <code>BCA</code>. Un cat&aacute;logo <code>dim_tanque</code> con sin&oacute;nimos, igual que <code>dim_rancho_sinonimo</code>, resuelve esto.</p></div>
+    <div class="note"><div class="eyebrow">Decisi&oacute;n abierta</div><h3>Ensambles</h3>
+      <p>Mover un lote a un tanque ocupado crea una mezcla. La maqueta guarda la composici&oacute;n por volumen (ver C5). Falta decidir si la mezcla recibe un c&oacute;digo nuevo o conserva el del lote mayoritario.</p></div>
+    <div class="note"><div class="eyebrow">M&oacute;vil</div><h3>Tocar en lugar de arrastrar</h3>
+      <p>En el tel&eacute;fono, arrastrar en un plano con scroll falla. &laquo;Modo mover&raquo; usa dos toques: origen, luego destino. El mismo formulario confirma el volumen.</p></div>
+  </section>
+</div>
+
+<dialog id="dlg"><form method="dialog" id="mvForm"></form></dialog>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(function () {
+  const CAP = {A1:7400,A2:7410,A3:2150,A4:7400,A5:15000,A6:15000,A7:14900,A8:15150,
+    B1:7400,B2:7400,B3:2150,B4:3979,B5:15000,B6:15000,B7:18700,
+    C1:18700,C2:18700,C3:18700,C4:18700,C5:18700,C6:18700,C7:18700,
+    D1:10300,D2:10300,D3:13563,D4:10300,D5:10300,D6:18700,D7:18700,D8:18700,
+    E1:8200,E2:8200,E3:8200,E4:8200,E5:8200,E6:8200,E7:1400,E8:18700,E9:18700,
+    F1:18700,F2:8200,F3:8200,F4:8200,F5:8200,F6:8200,F7:8200,F8:8200,F9:8200,F10:18700,
+    G1:15157,G2:15400,G3:14479,G4:15000,G5:15000,G6:15000,G7:15157,G8:18700,
+    H1:18700,H2:18700,H3:10366,H4:10366,H5:10366,H6:10366,H7:10366,H8:10366,H9:10366,H10:10366,H11:10366};
+  Object.assign(CAP, { R1:18000, R2:18000, 'PD-1':14500, 'PD-2':14500 });
+  const OTHER = [['VAR A',4000],['I-1 CAVA',10000],['I-2 CAVA',10000],['I-3 CAVA',10000],['I-4 CAVA',10000],['I-5 CAVA',10000],['I-6 CAVA',10000],['VAR B',1000],['Tibores (21)',21000],['Domecq (7)',315000],['Kegs (11)',620]];
+  // Row order north to south (rows run east-west, tank 1 at the west end), null = pasillo
+  const LAYOUT = ['A', null, 'B', 'C', null, 'D', 'E', null, 'F', 'G', null, 'H'];
+  const VAR = {CS:['Cabernet Sauvignon','--v-cs'],CF:['Cabernet Franc','--v-cf'],ME:['Merlot','--v-me'],SY:['Syrah','--v-sy'],DU:['Durif','--v-du'],TE:['Tempranillo','--v-te'],PV:['Petit Verdot','--v-pv'],MA:['Malbec','--v-ma'],SB:['Sauvignon Blanc','--v-sb'],CH:['Chardonnay','--v-ch'],RO:['Rosado','--v-ro']};
+  const STAGES = [['rec','Recepción','--s-rec'],['mac','Macera­ción','--s-mac'],['fa','Ferm. alcohólica','--s-fa'],['des','Descube','--s-des'],['fml','FML','--s-fml'],['cri','Crianza','--s-cri'],['emb','Listo embot.','--s-emb']];
+  const SI = Object.fromEntries(STAGES.map((s, i) => [s[0], i]));
+
+  // Example occupancy (lot codes match real 2025 WineXRay ids where possible)
+  const tanks = {};
+  Object.keys(CAP).forEach(id => tanks[id] = { id, cap: CAP[id], parts: [], stage: null, since: null });
+  function put(id, lot, v, vol, stage, since) { tanks[id].parts = [{ lot, v, vol }]; tanks[id].stage = stage; tanks[id].since = since; }
+  put('A1','25SBVDG-1','SB',6900,'fa','2025-09-02'); put('A2','25CHVA-1','CH',7000,'fml','2025-09-10'); put('A4','25SBVDG-2','SB',7100,'cri','2025-10-05');
+  put('A5','25MEKMP-1','ME',14200,'fml','2025-10-02'); put('A6','25MEON-1','ME',14600,'cri','2025-10-20'); put('A7','25CFVA-1','CF',13900,'fml','2025-10-25'); put('A8','25TEKMP-2','TE',14800,'cri','2025-10-28');
+  put('B1','25SYKMP-1','SY',7000,'fml','2025-10-30'); put('B4','25DUKMP-3','DU',3800,'cri','2025-10-23'); put('B5','25CSON-4','CS',14700,'fml','2025-10-27'); put('B6','25SYON-2','SY',14100,'cri','2025-11-02'); put('B7','25CSVDG-1','CS',18200,'cri','2025-11-08');
+  put('C2','25CSKMP-5','CS',18300,'cri','2025-11-10'); put('C3','25CSKMP-6','CS',18000,'fml','2025-11-04'); put('C4','25CFKMP-1','CF',17500,'cri','2025-11-12'); put('C6','25MAKMP-1','MA',16900,'fml','2025-11-01');
+  tanks.C5.parts = [{ lot:'25MEKMP-3', v:'ME', vol:12700 }, { lot:'25MEON-1', v:'ME', vol:5400 }]; tanks.C5.stage = 'cri'; tanks.C5.since = '2025-12-04';
+  put('D1','25PVVA-1','PV',9800,'cri','2025-10-18'); put('D3','25MADUB-2','MA',12900,'fml','2025-10-29'); put('D6','25MEVA-2','ME',18000,'cri','2025-11-15'); put('D7','25TEON-2','TE',17200,'cri','2025-11-18');
+  put('E2','25SY7L-1','SY',7900,'fa','2026-01-28'); put('E3','25TEKMP-5','TE',8000,'mac','2026-02-01'); put('E8','25CSVDG-4','CS',18300,'fml','2025-11-20'); put('E9','25CSVDG-2','CS',18500,'cri','2025-11-22');
+  put('F1','24CSCC-1','CS',18200,'cri','2025-06-20'); put('F3','25RONK-1','RO',7800,'fa','2026-01-30'); put('F10','25DUKMP-1','DU',18400,'cri','2025-11-25');
+  put('G3','25CFVA-2','CF',14000,'fml','2025-11-26'); put('G8','25SYKMP-3','SY',18100,'cri','2025-11-28');
+  put('H4','25CFKMP-2','CF',10100,'cri','2025-12-01'); put('H5','25CFVA-3','CF',10000,'cri','2025-12-01'); put('H8','25CSKMP-4','CS',9900,'cri','2025-12-01'); put('H10','25DUKMP-2','DU',10200,'cri','2025-12-03'); put('H11','25MEVA-3','ME',9600,'cri','2025-12-03');
+
+  const tray = [{ lot:'25MEKMP-4', v:'ME', vol:6200, note:'recibido hoy' }, { lot:'25CHVA-2', v:'CH', vol:3100, note:'prensado' }];
+
+  // History: entries marked lab come from real 2025 vessel_id changes
+  const hist = [
+    { d:'2025-10-12', type:'Recepción', to:'D5', lot:'25DUKMP-3', vol:4200, src:'lab' },
+    { d:'2025-10-18', type:'Trasiego', from:'D5', to:'D1', lot:'25DUKMP-3', vol:4100, src:'lab' },
+    { d:'2025-10-21', type:'Trasiego', from:'D1', to:'E5', lot:'25DUKMP-3', vol:4000, src:'lab' },
+    { d:'2025-10-23', type:'Trasiego', from:'E5', to:'B4', lot:'25DUKMP-3', vol:3800, src:'lab' },
+    { d:'2025-10-30', type:'Recepción', to:'D5', lot:'25CSKMP-4', vol:10200, src:'lab' },
+    { d:'2025-11-12', type:'Descube', from:'D5', to:'E1', lot:'25CSKMP-4', vol:8100, src:'lab' },
+    { d:'2025-12-01', type:'Trasiego', from:'E1', to:'H8', lot:'25CSKMP-4', vol:9900, src:'lab', note:'incluye vino de prensa' },
+    { d:'2025-12-04', type:'Ensamble', from:'A6', to:'C5', lot:'25MEON-1', vol:5400, src:'man' },
+  ];
+  const inbox = [
+    { lot:'25CSVDG-1', from:'E9', to:'B7', d:'2025-11-08', why:'Análisis del 6 nov en E9; del 8 nov en B7.' },
+    { lot:'25SYKMP-1', from:'D2', to:'B1', d:'2025-10-30', why:'Cambio de vessel_id entre muestras del 27 y 30 oct.' },
+    { lot:'24CSCC-1', from:'D1', to:'BCA', d:'2025-06-20', why:'Pasó a barrica (BCA). BCA no es un tanque del inventario: ¿se modela como área?' },
+  ];
+
+  const $ = s => document.querySelector(s);
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const fmt = n => n.toLocaleString('es-MX');
+  const fdate = s => { const [y, m, d] = s.split('-'); return d + ' ' + ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][+m - 1] + (y === '2026' ? '' : ' ' + y.slice(2)); };
+  const vol = t => t.parts.reduce((a, p) => a + p.vol, 0);
+  let mode = 'variedad', sel = 'H8', tap = false, tapFrom = null, q = '';
+
+  function colorOf(t, p) {
+    if (mode === 'etapa') return css(STAGES[SI[t.stage]][2]);
+    if (mode === 'ocupacion') { const f = vol(t) / t.cap; return f > 0.95 ? css('--ok') : f > 0.6 ? css('--gold') : css('--warn'); }
+    return css(VAR[(p || t.parts[0]).v][1]);
+  }
+
+  // Geometry: oblique top-down, north up. Rows run east-west; each tank's floor point is fixed and taller tanks rise toward the north.
+  const R = 17, RY = 6.5, PX = 42, ROWH = 62, PATHH = 24, HMIN = 8, HMAX = 36, RECW = 170, X0 = RECW + 58;
+  const hOf = cap => HMIN + (HMAX - HMIN) * Math.min(1, cap / 18700);
+  const pos = {}, rowY = {}, paths = [];
+  let yy = 34 + PATHH;
+  LAYOUT.forEach(c => { if (c) { rowY[c] = yy + HMAX + RY + 6; yy += ROWH; } else { paths.push(yy); yy += PATHH; } });
+  const W = X0 + 10 * PX + R + 24, H = yy + 34;
+  Object.keys(CAP).forEach(id => { if (/^[A-H]\d+$/.test(id)) pos[id] = { x: X0 + (+id.slice(1) - 1) * PX, y: rowY[id[0]] }; });
+  pos.R1 = { x: 56, y: rowY.A }; pos.R2 = { x: 126, y: rowY.A }; pos['PD-1'] = { x: 56, y: rowY.B }; pos['PD-2'] = { x: 126, y: rowY.B };
+
+  function draw() {
+    const svg = $('#plan'); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    const lbl = (x, y, t, o) => '<text x="' + x + '" y="' + y + '" fill="' + css('--path-text') + '" font-size="' + ((o && o.fs) || 9) + '" letter-spacing="' + ((o && o.ls) || 3) + '" text-anchor="middle" font-family="IBM Plex Sans, sans-serif">' + t + '</text>';
+    let s = '<rect x="0" y="0" width="' + W + '" height="' + H + '" fill="' + css('--floor') + '" rx="6"/>';
+    // Pasillo de servicio (north) and pasillo exterior (south)
+    s += '<rect x="8" y="6" width="' + (W - 16) + '" height="' + (PATHH - 4) + '" fill="' + css('--path') + '" rx="3"/>' + lbl(W / 2, 20, 'PASILLO DE SERVICIO');
+    s += '<rect x="8" y="' + (H - 26) + '" width="' + (W - 16) + '" height="20" fill="' + css('--path') + '" rx="3"/>' + lbl(W / 2, H - 12, 'PASILLO EXTERIOR');
+    // Recepcion y molienda strip on the west, with R/PD tanks and prensas
+    s += '<rect x="10" y="' + (PATHH + 10) + '" width="' + RECW + '" height="' + (H - PATHH - 42) + '" fill="none" stroke="' + css('--border-gold') + '" stroke-dasharray="5 4" rx="4"/>';
+    s += '<rect x="20" y="' + (rowY.A - HMAX - 20) + '" width="' + (RECW - 20) + '" height="' + (rowY.B - rowY.A + HMAX + 44) + '" fill="' + css('--path') + '" opacity="0.6" rx="3"/>';
+    s += lbl(10 + RECW / 2, rowY.A - HMAX - 26, 'TANQUES R / PD', { fs: 8, ls: 2 });
+    s += lbl(10 + RECW / 2, (rowY.D + rowY.E) / 2, '\u00c1REA DE RECEPCI\u00d3N', { fs: 9, ls: 2 }) + lbl(10 + RECW / 2, (rowY.D + rowY.E) / 2 + 14, 'Y MOLIENDA', { fs: 9, ls: 2 });
+    s += '<rect x="30" y="' + (rowY.G - 40) + '" width="70" height="' + (rowY.H - rowY.G + 40) + '" fill="' + css('--path') + '" stroke="' + css('--border') + '" rx="3"/>' + lbl(65, (rowY.G + rowY.H) / 2 - 16, 'PRENSAS', { fs: 8, ls: 2 });
+    // Interior pasillos between row groups
+    paths.forEach(py => { s += '<rect x="' + (X0 - 30) + '" y="' + (py + 9) + '" width="' + (W - X0 + 22) + '" height="' + (PATHH - 12) + '" fill="' + css('--path') + '" rx="3"/>'; });
+    Object.keys(rowY).forEach(c => { s += '<text x="' + (X0 - 38) + '" y="' + (rowY[c] - 10) + '" fill="' + css('--gold') + '" font-size="14" font-weight="700" text-anchor="middle" font-family="Syncopate, sans-serif">' + c + '</text>'; });
+    s += lbl(W - 30, PATHH + 18, 'LAB / CALIDAD', { fs: 7, ls: 1 }) + lbl(W - 30, PATHH + 28, 'AL ESTE', { fs: 7, ls: 1 });
+    const order = Object.keys(CAP).sort((a, b) => pos[a].y - pos[b].y || pos[a].x - pos[b].x);
+    order.forEach(id => s += tankSVG(tanks[id]));
+    svg.innerHTML = s;
+    legend();
+  }
+
+  function tankSVG(t) {
+    const { x, y } = pos[t.id], h = hOf(t.cap), top = y - h, v = vol(t), f = v / t.cap;
+    const match = !q || t.id.toLowerCase().includes(q) || t.parts.some(p => p.lot.toLowerCase().includes(q));
+    const cls = 'tank' + (sel === t.id ? ' sel' : '') + (match ? '' : ' dim') + (tapFrom === t.id ? ' sel' : '');
+    let g = '<g class="' + cls + '" data-tank="' + t.id + '" tabindex="0" role="button" aria-label="Tanque ' + t.id + ', ' + fmt(t.cap) + ' litros' + (v ? ', ' + t.parts.map(p => p.lot).join(' y ') : ', vacío') + '">';
+    g += '<ellipse cx="' + x + '" cy="' + (y + 1.5) + '" rx="' + (R + 1) + '" ry="' + (RY + 1) + '" fill="rgba(0,0,0,0.25)"/>';
+    g += '<path d="M' + (x - R) + ' ' + top + ' L' + (x - R) + ' ' + y + ' A' + R + ' ' + RY + ' 0 0 0 ' + (x + R) + ' ' + y + ' L' + (x + R) + ' ' + top + ' Z" fill="' + css('--steel-side') + '" stroke="' + css('--steel-edge') + '" stroke-width="0.8"/>';
+    if (v) {
+      // liquid band on the side, stacked by part for blends
+      let base = y; const lh = h * Math.min(1, f);
+      t.parts.forEach(p => {
+        const ph = lh * (p.vol / v), yt = base - ph;
+        g += '<path d="M' + (x - R + 1) + ' ' + yt + ' L' + (x - R + 1) + ' ' + base + ' A' + (R - 1) + ' ' + (RY - 0.5) + ' 0 0 0 ' + (x + R - 1) + ' ' + base + ' L' + (x + R - 1) + ' ' + yt + ' A' + (R - 1) + ' ' + (RY - 0.5) + ' 0 0 1 ' + (x - R + 1) + ' ' + yt + ' Z" fill="' + colorOf(t, p) + '" opacity="0.92"/>';
+        base = yt;
+      });
+    }
+    g += '<rect x="' + (x + R * 0.35) + '" y="' + top + '" width="' + (R * 0.4) + '" height="' + h + '" fill="rgba(255,255,255,0.10)"/>';
+    g += '<ellipse class="lid" cx="' + x + '" cy="' + top + '" rx="' + R + '" ry="' + RY + '" fill="' + css('--steel-top') + '" stroke="' + css('--steel-edge') + '" stroke-width="0.8"/>';
+    if (v) g += '<circle cx="' + (x + R - 5) + '" cy="' + (top - 1) + '" r="2.6" fill="' + css(STAGES[SI[t.stage]][2]) + '" stroke="' + css('--steel-edge') + '" stroke-width="0.5"/>';
+    g += '<text x="' + x + '" y="' + (top + 3) + '" text-anchor="middle" font-size="8.5" font-weight="500" fill="' + css('--steel-edge') + '">' + t.id + '</text>';
+    g += '<text x="' + x + '" y="' + (y + RY + 9) + '" text-anchor="middle" font-size="7" fill="' + css('--path-text') + '">' + (t.cap / 1000).toFixed(1) + 'k</text>';
+    return g + '</g>';
+  }
+
+  function legend() {
+    let items;
+    if (mode === 'etapa') items = STAGES.map(s => [s[1].replace('­', ''), css(s[2])]);
+    else if (mode === 'ocupacion') items = [['Lleno (>95%)', css('--ok')], ['60 a 95%', css('--gold')], ['<60% (merma o espacio de cabeza)', css('--warn')]];
+    else items = Object.values(VAR).map(v => [v[0], css(v[1])]);
+    $('#legend').innerHTML = items.map(i => '<span><i style="background:' + i[1] + '"></i>' + i[0] + '</span>').join('') + '<span><i style="background:' + css('--steel-top') + '"></i>Vacío</span>';
+  }
+
+  function trays() {
+    $('#lotTray').innerHTML = tray.map((l, i) => '<span class="chip lote" data-lot="' + i + '"><span class="dot" style="background:' + css(VAR[l.v][1]) + '"></span>' + l.lot + ' <small>' + fmt(l.vol) + ' L, ' + l.note + '</small></span>').join('') || '<span class="hint">Todos los lotes tienen tanque.</span>';
+    $('#otherTray').innerHTML = OTHER.map(o => '<span class="chip" title="Arrastrable cuando se defina su ubicación">' + o[0] + ' <small>' + fmt(o[1]) + ' L</small></span>').join('');
+  }
+
+  function brixCurve(t) {
+    // Example curve shaped by stage; crianza shows SO2 libre instead
+    const st = SI[t.stage];
+    if (st >= SI.fml) return { label: 'SO₂ libre (mg/L)', pts: [22, 28, 26, 24, 31, 29, 27, 25, 30, 28], lo: 15, hi: 40, band: [25, 35] };
+    const n = st === SI.mac ? 3 : st === SI.fa ? 7 : 10, pts = [];
+    for (let i = 0; i < n; i++) pts.push(+(25.4 - 27 * (1 / (1 + Math.exp(-(i - 4.5))))).toFixed(1));
+    return { label: 'Brix / densidad (°Bx)', pts, lo: -3, hi: 27, band: null, total: 10 };
+  }
+
+  function spark(c) {
+    const w = 320, h = 90, pad = 18, n = c.total || c.pts.length;
+    const X = i => pad + i * (w - pad - 6) / (n - 1), Y = v => h - 14 - (v - c.lo) / (c.hi - c.lo) * (h - 24);
+    let s = '<svg class="spark" viewBox="0 0 ' + w + ' ' + h + '" role="img" aria-label="' + c.label + '">';
+    [c.lo, (c.lo + c.hi) / 2, c.hi].forEach(v => s += '<line x1="' + pad + '" x2="' + w + '" y1="' + Y(v) + '" y2="' + Y(v) + '" stroke="' + css('--border') + '"/><text x="0" y="' + (Y(v) + 3) + '" font-size="8" fill="' + css('--muted') + '" font-family="IBM Plex Mono, monospace">' + Math.round(v) + '</text>');
+    if (c.band) s += '<rect x="' + pad + '" width="' + (w - pad) + '" y="' + Y(c.band[1]) + '" height="' + (Y(c.band[0]) - Y(c.band[1])) + '" fill="' + css('--gold') + '" opacity="0.10"/>';
+    const d = c.pts.map((v, i) => (i ? 'L' : 'M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ');
+    s += '<path d="' + d + ' L' + X(c.pts.length - 1) + ' ' + (h - 14) + ' L' + X(0) + ' ' + (h - 14) + ' Z" fill="' + css('--gold') + '" opacity="0.12"/>';
+    s += '<path d="' + d + '" fill="none" stroke="' + css('--gold') + '" stroke-width="1.8"/>';
+    const li = c.pts.length - 1; s += '<circle cx="' + X(li) + '" cy="' + Y(c.pts[li]) + '" r="3.2" fill="' + css('--gold-lt') + '"/>';
+    s += '<text x="' + (X(li) - 4) + '" y="' + (Y(c.pts[li]) - 7) + '" text-anchor="end" font-size="9" fill="' + css('--strong') + '" font-family="IBM Plex Mono, monospace">' + c.pts[li] + '</text>';
+    return s + '</svg><div class="p-sub">' + c.label + ' <span class="tag">ejemplo</span></div>';
+  }
+
+  function panel() {
+    const t = tanks[sel], v = vol(t), el = $('#panel');
+    const th = hist.filter(h => h.to === t.id || h.from === t.id).sort((a, b) => b.d.localeCompare(a.d));
+    let s = '<div class="p-head"><div><div class="eyebrow">Tanque</div><h2>' + t.id + '</h2><div class="p-sub">Acero inoxidable, ' + fmt(t.cap) + ' L</div></div>' +
+      '<div style="text-align:right"><div style="font:600 20px var(--font-mono);color:var(--strong)">' + Math.round(v / t.cap * 100) + '%</div><div class="p-sub">' + fmt(v) + ' L</div></div></div>';
+    s += '<div class="fillbar">' + t.parts.map(p => '<div style="width:' + (p.vol / t.cap * 100) + '%;background:' + colorOf(t, p) + '"></div>').join('') + '</div>';
+    if (!v) {
+      const last = th[0];
+      s += '<div class="alert">Vacío' + (last ? ' desde el ' + fdate(last.d) + '. Último lote: <b>' + last.lot + '</b>' : '') + '. Arrastra un lote aquí o usa el modo mover.</div>';
+    } else {
+      const p0 = t.parts[0];
+      if (t.parts.length > 1) {
+        s += '<div class="sec"><h3>Ensamble</h3><div class="comp">' + t.parts.map(p => '<div style="width:' + (p.vol / v * 100) + '%;background:' + css(VAR[p.v][1]) + '">' + p.lot + ' ' + Math.round(p.vol / v * 100) + '%</div>').join('') + '</div></div>';
+      }
+      s += '<div class="sec"><h3>Lote</h3><dl class="kv"><dt>Código</dt><dd>' + t.parts.map(p => p.lot).join(' + ') + '</dd><dt>Variedad</dt><dd>' + VAR[p0.v][0] + '</dd><dt>En tanque desde</dt><dd>' + fdate(t.since) + '</dd><dt>Espacio libre</dt><dd>' + fmt(t.cap - v) + ' L</dd></dl></div>';
+      s += '<div class="sec"><h3>Etapa</h3><div class="stages">' + STAGES.map((st, i) => '<div class="' + (i < SI[t.stage] ? 'on' : i === SI[t.stage] ? 'now' : '') + '" title="' + st[1].replace('­', '') + '"></div>').join('') + '</div><div class="stage-labels">' + STAGES.map(st => '<span>' + st[1] + '</span>').join('') + '</div></div>';
+      s += '<div class="sec">' + spark(brixCurve(t)) + '</div>';
+      const route = hist.filter(h => h.lot === p0.lot).sort((a, b) => a.d.localeCompare(b.d));
+      if (route.length) {
+        const stops = [route[0].to].concat(route.slice(1).map(r => r.to));
+        s += '<div class="sec"><h3>Recorrido del lote ' + p0.lot + '</h3><div class="route">' + stops.map((st, i) => (i ? '<span class="chev"></span>' : '') + '<button type="button" class="stop' + (st === t.id ? ' cur' : '') + '" data-goto="' + st + '">' + st + '</button>').join('') + '</div></div>';
+      }
+    }
+    s += '<div class="sec"><h3>Historial del tanque</h3>' + (th.length ? '<ul class="timeline">' + th.map(h => '<li><time>' + fdate(h.d) + '</time><div><b>' + h.type + '</b> ' + h.lot + ', ' + fmt(h.vol) + ' L ' + (h.to === t.id ? (h.from ? 'desde ' + h.from : '') : 'hacia ' + h.to) + (h.src === 'lab' ? '<span class="tag lab">lab</span>' : '') + (h.note ? '<div class="p-sub">' + h.note + '</div>' : '') + '</div></li>').join('') + '</ul>' : '<p class="hint">Sin movimientos registrados.</p>') + '</div>';
+    s += '<div class="actions"><button type="button" class="btn primary" data-act="mover">Mover / trasegar</button><button type="button" class="btn">Ver análisis en Explorador</button><button type="button" class="btn">Agregar medición</button></div>';
+    el.innerHTML = s;
+  }
+
+  function render() { draw(); trays(); panel(); renderInbox(); }
+
+  function renderInbox() {
+    $('#inbox').innerHTML = inbox.map((m, i) => '<div class="inbox-row"><div><b>' + m.lot + '</b> <span class="tag">' + fdate(m.d) + '</span> Trasiego ' + m.from + ' a ' + m.to + '<div class="why">' + m.why + '</div></div><div class="actions"><button type="button" class="btn primary" data-confirm="' + i + '">Confirmar</button><button type="button" class="btn" data-discard="' + i + '">Descartar</button></div></div>').join('') || '<p class="hint">Nada pendiente.</p>';
+  }
+
+  // Move dialog
+  let pending = null;
+  function openMove(from, to, lotIdx) {
+    const T = tanks[to]; const src = from ? tanks[from] : null; const L = lotIdx != null ? tray[lotIdx] : null;
+    const sv = src ? vol(src) : L.vol, tv = vol(T), free = T.cap - tv;
+    const def = Math.min(sv, free);
+    const blend = tv > 0;
+    pending = { from, to, lotIdx };
+    const f = $('#mvForm');
+    f.innerHTML = '<h2>' + (L ? 'Asignar lote a tanque' : blend ? 'Ensamble' : 'Registrar trasiego') + '</h2>' +
+      '<div class="mv"><div class="box"><b>' + (src ? src.id : L.lot) + '</b><small>' + (src ? (src.parts.map(p => p.lot).join(' + ') || 'vacío') : 'sin tanque') + '</small><small>' + fmt(sv) + ' L</small></div><span class="chev"></span>' +
+      '<div class="box"><b>' + T.id + '</b><small>' + (T.parts.map(p => p.lot).join(' + ') || 'vacío') + '</small><small>libre ' + fmt(free) + ' de ' + fmt(T.cap) + ' L</small></div></div>' +
+      (src && !sv ? '<div class="alert err">' + src.id + ' está vacío. No hay vino que mover.</div>' : '') +
+      (blend ? '<div class="alert">' + T.id + ' ya tiene vino. Esto registra una mezcla y guarda la composición por volumen.</div>' : '') +
+      (sv > free ? '<div class="alert err">El volumen de origen (' + fmt(sv) + ' L) excede el espacio libre de ' + T.id + ' (' + fmt(free) + ' L). Se moverá solo una parte.</div>' : '') +
+      '<div class="row2"><label class="field">Tipo<select id="mvType"><option>' + (L ? 'Recepción' : blend ? 'Ensamble' : 'Trasiego') + '</option><option>Descube</option><option>Sangrado</option><option>Prensa</option><option>Trasiego</option></select></label>' +
+      '<label class="field">Fecha<input id="mvDate" type="date" value="2026-02-04"></label></div>' +
+      '<div class="row2"><label class="field">Volumen movido (L)<input id="mvVol" type="number" min="1" max="' + Math.min(sv, free) + '" value="' + def + '"></label>' +
+      '<label class="field">Merma estimada (L)<input id="mvLoss" type="number" min="0" value="' + Math.round(def * 0.01) + '"></label></div>' +
+      '<label class="field">Nota<input id="mvNote" type="text" placeholder="Ej. trasiego con aireación, lías gruesas"></label>' +
+      '<div class="actions" style="justify-content:flex-end"><button class="btn" value="cancel" formnovalidate>Cancelar</button><button class="btn primary" value="ok"' + (src && !sv ? ' disabled' : '') + '>Registrar</button></div>';
+    $('#dlg').showModal();
+  }
+
+  let undo = null;
+  $('#dlg').addEventListener('close', () => {
+    if ($('#dlg').returnValue !== 'ok' || !pending) return;
+    const snap = JSON.stringify({ tanks, tray, hist });
+    const { from, to, lotIdx } = pending; const T = tanks[to];
+    const mv = Math.max(0, +$('#mvVol').value || 0), loss = Math.max(0, +$('#mvLoss').value || 0), type = $('#mvType').value, d = $('#mvDate').value;
+    if (lotIdx != null) {
+      const L = tray.splice(lotIdx, 1)[0];
+      T.parts.push({ lot: L.lot, v: L.v, vol: mv - loss }); T.stage = T.stage || 'rec'; T.since = T.since || d;
+      hist.push({ d, type, to, lot: L.lot, vol: mv, src: 'man' });
+    } else {
+      const S = tanks[from], sv = vol(S), ratio = mv / sv;
+      S.parts.forEach(p => {
+        const amt = p.vol * ratio; p.vol -= amt;
+        const ex = T.parts.find(x => x.lot === p.lot);
+        const add = amt * (1 - loss / mv);
+        if (ex) ex.vol += add; else T.parts.push({ lot: p.lot, v: p.v, vol: add });
+        hist.push({ d, type, from, to, lot: p.lot, vol: Math.round(amt), src: 'man', note: $('#mvNote').value || '' });
+      });
+      S.parts = S.parts.filter(p => p.vol > 1); S.parts.forEach(p => p.vol = Math.round(p.vol)); T.parts.forEach(p => p.vol = Math.round(p.vol));
+      if (!T.stage) { T.stage = S.stage; T.since = d; } else T.since = d;
+      if (!S.parts.length) S.stage = null;
+    }
+    sel = to; pending = null; render();
+    undo = snap; toast(type + ' registrado: ' + (from || 'bandeja') + ' a ' + to + ', ' + fmt(mv) + ' L');
+  });
+
+  function toast(msg) {
+    const t = $('#toast'); t.innerHTML = '<span>' + msg + '</span><button type="button" id="undo">Deshacer</button>'; t.hidden = false;
+    clearTimeout(toast.h); toast.h = setTimeout(() => t.hidden = true, 6000);
+    $('#undo').onclick = () => { if (!undo) return; const o = JSON.parse(undo); Object.assign(tanks, o.tanks); tray.length = 0; tray.push(...o.tray); hist.length = 0; hist.push(...o.hist); undo = null; t.hidden = true; render(); };
+  }
+
+  // Pointer drag (tanks and tray chips)
+  const svg = $('#plan'); let drag = null, ghost = null;
+  function tankAt(e) { const el = document.elementFromPoint(e.clientX, e.clientY); const g = el && el.closest('[data-tank]'); return g ? g.dataset.tank : null; }
+  function startDrag(e, src) { drag = { src, x: e.clientX, y: e.clientY, moved: false }; }
+  svg.addEventListener('pointerdown', e => { const g = e.target.closest('[data-tank]'); if (g) startDrag(e, { tank: g.dataset.tank }); });
+  $('#lotTray').addEventListener('pointerdown', e => { const c = e.target.closest('[data-lot]'); if (c) { e.preventDefault(); startDrag(e, { lot: +c.dataset.lot }); } });
+  window.addEventListener('pointermove', e => {
+    if (!drag) return;
+    if (!drag.moved && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 6) return;
+    drag.moved = true;
+    if (!ghost) { ghost = document.createElement('div'); ghost.style.cssText = 'position:fixed;pointer-events:none;z-index:9;padding:3px 8px;border-radius:2px;font:500 12px IBM Plex Mono,monospace;background:' + css('--gold') + ';color:' + css('--bg'); document.body.appendChild(ghost); }
+    ghost.textContent = drag.src.tank ? drag.src.tank + ' a ...' : tray[drag.src.lot].lot;
+    ghost.style.left = e.clientX + 12 + 'px'; ghost.style.top = e.clientY + 12 + 'px';
+    document.querySelectorAll('.tank.drop').forEach(n => n.classList.remove('drop'));
+    const over = tankAt(e); if (over && over !== drag.src.tank) { const n = svg.querySelector('[data-tank="' + over + '"]'); n && n.classList.add('drop'); ghost.textContent = (drag.src.tank || tray[drag.src.lot].lot) + ' a ' + over; }
+  });
+  window.addEventListener('pointerup', e => {
+    if (!drag) return; const d = drag; drag = null; if (ghost) { ghost.remove(); ghost = null; }
+    if (!d.moved) { if (d.src.tank) clickTank(d.src.tank); return; }
+    const over = tankAt(e); if (!over || over === d.src.tank) { draw(); return; }
+    openMove(d.src.tank || null, over, d.src.lot);
+    draw();
+  });
+
+  function clickTank(id) {
+    if (tap) {
+      if (!tapFrom) { tapFrom = id; sel = id; draw(); panel(); toast('Origen: ' + id + '. Ahora toca el tanque destino.'); return; }
+      const from = tapFrom; tapFrom = null; if (from !== id) openMove(from, id); draw(); return;
+    }
+    sel = id; draw(); panel();
+  }
+  svg.addEventListener('keydown', e => { if ((e.key === 'Enter' || e.key === ' ') && e.target.dataset.tank) { e.preventDefault(); clickTank(e.target.dataset.tank); } });
+
+  document.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => {
+    mode = b.dataset.mode; document.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', x === b)); draw(); panel();
+  }));
+  $('#q').addEventListener('input', e => { q = e.target.value.trim().toLowerCase(); draw(); const hit = Object.values(tanks).find(t => q && t.parts.some(p => p.lot.toLowerCase().includes(q))); if (hit) { sel = hit.id; panel(); } });
+  $('#tapmode').addEventListener('click', e => { tap = !tap; tapFrom = null; e.currentTarget.setAttribute('aria-pressed', tap); e.currentTarget.classList.toggle('primary', tap); draw(); });
+  $('#panel').addEventListener('click', e => {
+    const g = e.target.closest('[data-goto]'); if (g && tanks[g.dataset.goto]) { sel = g.dataset.goto; draw(); panel(); return; }
+    if (e.target.closest('[data-act="mover"]')) { tap = true; tapFrom = sel; $('#tapmode').setAttribute('aria-pressed', true); $('#tapmode').classList.add('primary'); draw(); toast('Origen: ' + sel + '. Toca el tanque destino.'); }
+  });
+  $('#inbox').addEventListener('click', e => {
+    const c = e.target.closest('[data-confirm]'), d = e.target.closest('[data-discard]');
+    if (c) { const m = inbox.splice(+c.dataset.confirm, 1)[0]; hist.push({ d: m.d, type: 'Trasiego', from: m.from, to: m.to, lot: m.lot, vol: tanks[m.to] ? vol(tanks[m.to]) : 0, src: 'lab' }); renderInbox(); panel(); toast('Trasiego confirmado: ' + m.from + ' a ' + m.to); }
+    if (d) { inbox.splice(+d.dataset.discard, 1); renderInbox(); }
+  });
+  if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener('change', render);
+  new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  render();
+})();
+</script>
