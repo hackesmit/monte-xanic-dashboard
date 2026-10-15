@@ -410,14 +410,19 @@ export const TanquesView = {
       for (const p of partes) {
         const ph = alturaLiquido * (p.litros / v);
         const yt = base - ph;
-        g += `<path d="M${x - G.R + 1} ${yt} L${x - G.R + 1} ${base}`
+        g += `<path class="tanque-liquido" d="M${x - G.R + 1} ${yt} L${x - G.R + 1} ${base}`
           + ` A${G.R - 1} ${G.RY - 0.5} 0 0 0 ${x + G.R - 1} ${base}`
           + ` L${x + G.R - 1} ${yt} A${G.R - 1} ${G.RY - 0.5} 0 0 1 ${x - G.R + 1} ${yt} Z"`
           + ` opacity="0.92" ${relleno(tokenBanda(this.modo, est, p))}/>`;
         base = yt;
       }
     }
-    g += `<rect x="${x + G.R * 0.35}" y="${tapa}" width="${G.R * 0.4}" height="${h}" ${relleno('--tank-gloss')}/>`;
+    // The highlight ends on the same ellipse as the tank's base, so it follows
+    // the curved bottom instead of cutting straight across it.
+    const gx1 = x + G.R * 0.35, gx2 = x + G.R * 0.75;
+    const fondo = (gx) => y + G.RY * Math.sqrt(1 - ((gx - x) / G.R) ** 2);
+    g += `<path d="M${gx1} ${tapa} L${gx1} ${fondo(gx1)} A${G.R} ${G.RY} 0 0 0 ${gx2} ${fondo(gx2)}`
+      + ` L${gx2} ${tapa} Z" ${relleno('--tank-gloss')}/>`;
     g += `<ellipse class="tanque-tapa" cx="${x}" cy="${tapa}" rx="${G.R}" ry="${G.RY}"`
       + ` stroke="var(--tank-steel-edge)" stroke-width="0.8" ${relleno('--tank-steel-top')}/>`;
     if (v > 0 && est?.etapa) {
