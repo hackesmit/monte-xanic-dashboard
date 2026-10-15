@@ -231,3 +231,135 @@ In-memory rate limiter for all authenticated endpoints.
 - Stale bucket eviction every 100 inserts
 - Resets on Vercel cold start (acceptable for serverless)
 - Returns 429 with Spanish error message when exceeded
+
+## /api/tanques
+
+Token-gated access to the tank catalog and the movement log. `dim_tanque`,
+`dim_tanque_sinonimo` and `movimientos_tanque` are server-only (RLS on with no
+policies, and `sql/migration_tanques.sql` revokes the grants the public schema
+hands `anon` and `authenticated`), so the client never reads or writes them with
+the anon key.
+
+**Auth:** `x-session-token`. Reads need any valid session; writes need role
+`lab`, the same gate as `/api/row`.
+**Rate limit:** 60 requests per 15 minutes per IP, shared by GET and POST.
+**Cache:** `no-store`.
+
+### GET /api/tanques
+
+```json
+{
+  "ok": true,
+  "tanques":     [ { "codigo": "A1", "fila": "A", "posicion": 1, "capacidad_l": 20000,
+                     "tipo": "TQ", "area": "fermentacion", "activo": true, "orden": 1 } ],
+  "sinonimos":   { "TIB13": "TIBOR 13" },
+  "movimientos": [ { "id": 1, "fecha": "2025-09-01", "tipo": "recepcion", "origen": null,
+                     "destino": "A1", "lot_code": "CS-01", "vintage_year": 2025,
+                     "volumen_l": 10000, "merma_l": 0, "nota": null, "fuente": "manual",
+                     "creado_por": "labuser", "anulado": false,
+                     "created_at": "2025-09-01T18:00:00+00:00" } ]
+}
+```
+
+- Returns the whole of all three tables, paged past the PostgREST 1000-row
+  ceiling. A truncated log would derive the wrong tank contents.
+- Inactive vessels (`activo: false`) are included: they keep their history even
+  though the map does not draw them.
+- Annulled movements are included, so the history panel can show them struck
+  through. The replay in `js/tanques/estado.js` skips them.
+- No derived state in the payload. Tank contents come from
+  `deriveEstado(tanques, movimientos, { sinonimos })` on the caller's side; the
+  endpoint never stores or returns a tank's current litres.
+
+### POST /api/tanques - `{ "action": "crear", "movimiento": { ... } }`
+
+Appends one movement. Allowed fields, and nothing else:
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `fecha` | yes | business date `AAAA-MM-DD` |
+| `tipo` | yes | `recepcion` `trasiego` `descube` `sangrado` `prensa` `ensamble` `salida` |
+| `origen` | per type | tank code or synonym; stored canonical |
+| `destino` | per type | tank code or synonym; stored canonical |
+| `lot_code` | yes | the column is `NOT NULL` with a non-blank CHECK for every type |
+| `vintage_year` | yes | integer 1988..2100 |
+| `volumen_l` | yes | > 0; a numeric string is coerced |
+| `merma_l` | no | defaults to 0 |
+| `nota` | no | <= 2000 characters |
+| `fuente` | no | `manual` (default) or `lab` for a confirmed inference |
+
+- **Strict whitelist.** Any other key is a `400` naming the field, not a silent
+  drop: `creado_por` in a body is a client signing someone else's work (it is
+  always taken from the verified token), an explicit `id` desyncs the BIGSERIAL,
+  `created_at` or a pre-set `anulado` backdates or pre-kills a row, and `etapa`
+  is read by the pure module but the table has no such column (the stage is
+  derived from the log).
+- **Validation is at the row's place in the log**, via
+  `validarMovimientoEnLog`: `fecha` is a business date, so a row written today
+  can belong in the middle of the replay. A backdated withdrawal that fits the
+  state of its own day but leaves next week overdrawn is refused. The candidate
+  is validated with no `created_at`, which sorts it last among rows sharing its
+  `fecha`, exactly where `NOW()` will put it.
+- Tank references resolve through `dim_tanque_sinonimo` and the canonical
+  `codigo` is stored, because `origen` and `destino` are foreign keys to
+  `dim_tanque(codigo)`.
+- Synonym resolution is an exact lookup. The migration seeds every variant the
+  lab actually writes (`TIB 16`, `TIB16`, `TIBOR16`); a new one is a one-line
+  `INSERT`, not a normalization rule in code.
+- The endpoint restates no tank semantics. Everything about what a movement
+  does lives in `js/tanques/estado.js`, which is stricter than the table in one
+  place: the schema permits a `trasiego`/`descube`/`sangrado`/`prensa`/`ensamble`
+  with one end NULL (a press or a barrel is not a catalog vessel), the module
+  requires both ends, so such a row cannot be created through this endpoint.
+
+**Success (200):** `{ "ok": true, "movimiento": { /* inserted row */ } }`
+**Errors:** `400` whitelist, field or validation failure (`error` is the first
+Spanish reason, `errores` is all of them) · `401` no/invalid/revoked token ·
+`403` not role `lab` · `429` rate limited · `500` env vars missing ·
+`502` PostgREST refused the read or the insert.
+
+### POST /api/tanques - `{ "action": "anular", "id": 123 }`
+
+Marks one row `anulado = true`. Undo never deletes: the append-only trigger on
+`movimientos_tanque` rejects `DELETE`, `TRUNCATE`, re-activation, and any UPDATE
+that changes a column other than `anulado`, so the PATCH sends `{"anulado":true}`
+and nothing else.
+
+- `id` must be a positive integer (a digit string is accepted).
+- Already annulled is a `200` with `ya_anulado: true` and no write, so a double
+  click does not read as a failure.
+- **Gated.** `js/tanques/estado.js` validates an appended row; an annulment is a
+  removal, and taking out an early `recepcion` can leave every withdrawal after
+  it overdrawn. The endpoint replays the live log with and without the row and
+  refuses with `400` if removing it creates a new `sobregiro` or `desbordado`
+  warning. A warning the log already had with the row in place is not blamed on
+  the annulment.
+
+**Success (200):** `{ "ok": true, "movimiento": { /* updated row */ } }`
+(plus `ya_anulado: true` when it was already annulled)
+**Errors:** `400` bad id, or the annulment breaks a later movement · `401` ·
+`403` not role `lab` · `404` no such movement · `502` PostgREST refused.
+
+### Known limitation: concurrent writes
+
+Validation is read-then-insert with no lock, and no database constraint can see
+the derived state, so two writes in flight at once are each judged against the
+log as it was read. Two simultaneous 6000 L withdrawals from a tank holding
+10000 L both land. `tests/mt52-api-tanques.test.mjs` proves this deliberately
+rather than asserting it away, and contrasts it with the sequential case, where
+the second is refused.
+
+The failure mode is a visible warning, not silent corruption: the log stays
+append-only and truthful, and the replay clamps the impossible withdrawal and
+reports a `sobregiro` aviso for the UI to surface. The fix is to annul a row.
+Serialising writes properly (an advisory lock, or a serializable transaction
+around validate-and-insert) is a design decision, not an ad-hoc patch, so it is
+filed as bead xd-qrn.8 instead of improvised here.
+
+### Client
+
+`js/dataLoader.js` owns the three calls: `loadTanques()` fills
+`DataStore.tanquesCatalogo` / `tanquesSinonimos` / `movimientosTanque`,
+`postMovimiento(mov)` and `anularMovimiento(id)` write and then re-read the log.
+Both writers throw with the server's Spanish reason, so a caller shows it
+instead of inventing one.
