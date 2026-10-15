@@ -15,7 +15,7 @@ import { CONFIG } from '../js/config.js';
 import { ETAPAS } from '../js/tanques/estado.js';
 import {
   POSICION_1_AL, GEOMETRIA, FILAS_PLANO,
-  construirPlano, alturaDeCapacidad, fechaCorta,
+  construirPlano, alturaDeCapacidad, fechaCorta, cadenasRecorrido,
   MODOS, ETAPA_ETIQUETAS, NIVELES_OCUPACION,
   TOKEN_VARIEDAD, TOKEN_VARIEDAD_OTRA, TOKEN_VACIO, TOKEN_ETAPA_ND,
   variedadDeLote, tokenVariedad, tokenEtapa, tokenBanda, nivelOcupacion,
@@ -296,6 +296,55 @@ describe('mt53 - the colour modes', () => {
     // A capacity the catalog never recorded must not divide by zero.
     assert.equal(nivel(100, 0), 'bajo');
     assert.equal(nivel(100, null), 'bajo');
+  });
+});
+
+describe('mt53 - a lote route is chains, never one invented line', () => {
+  const paso = (origen, destino) => ({ origen, destino });
+
+  test('a lote that only ever moved on is one chain', () => {
+    const c = cadenasRecorrido([paso(null, 'D5'), paso('D5', 'D1'), paso('D1', 'E5')]);
+    assert.equal(c.length, 1);
+    assert.deepEqual(c[0].codigos, ['D5', 'D1', 'E5']);
+    assert.equal(c[0].entrada, true);
+    assert.equal(c[0].salida, false);
+  });
+
+  test('a split lote does not grow a journey it never made', () => {
+    // 6 000 L into A1, then 2 000 to B1 and 2 000 to C1. Concatenating the
+    // endpoints with adjacent de-duplication would draw A1 > B1 > A1 > C1 and
+    // claim a transfer out of B1 that never happened.
+    const c = cadenasRecorrido([paso(null, 'A1'), paso('A1', 'B1'), paso('A1', 'C1')]);
+    assert.equal(c.length, 2);
+    assert.deepEqual(c[0].codigos, ['A1', 'B1']);
+    assert.equal(c[0].entrada, true);
+    assert.deepEqual(c[1].codigos, ['A1', 'C1']);
+    assert.equal(c[1].entrada, false);
+    for (const cadena of c) {
+      assert.ok(!cadena.codigos.includes('B1') || !cadena.codigos.includes('C1'),
+        'B1 and C1 must never land in the same chain');
+    }
+  });
+
+  test('bottling closes a chain and anything after it starts a new one', () => {
+    const c = cadenasRecorrido([paso(null, 'A1'), paso('A1', null), paso(null, 'B1')]);
+    assert.equal(c.length, 2);
+    assert.deepEqual(c[0].codigos, ['A1']);
+    assert.equal(c[0].salida, true);
+    assert.deepEqual(c[1].codigos, ['B1']);
+    assert.equal(c[1].entrada, true);
+  });
+
+  test('two receptions of the same lote are two chains', () => {
+    const c = cadenasRecorrido([paso(null, 'A1'), paso(null, 'B1')]);
+    assert.deepEqual(c.map((x) => x.codigos), [['A1'], ['B1']]);
+    assert.deepEqual(c.map((x) => x.entrada), [true, true]);
+  });
+
+  test('no steps, or junk steps, give no chains', () => {
+    assert.deepEqual(cadenasRecorrido([]), []);
+    assert.deepEqual(cadenasRecorrido(null), []);
+    assert.deepEqual(cadenasRecorrido(undefined), []);
   });
 });
 

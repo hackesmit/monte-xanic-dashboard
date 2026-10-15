@@ -18,7 +18,16 @@ import {
   MODOS, MODO_ETIQUETAS, ETAPA_ETIQUETAS, ETAPA_ABREV,
   TOKEN_VACIO, TOKEN_ETAPA_ND, ETAPA_ND_ETIQUETA, NIVELES_OCUPACION,
   variedadDeLote, tokenVariedad, tokenEtapa, tokenBanda, nivelOcupacion, fechaCorta,
+  cadenasRecorrido,
 } from './plan.js';
+
+// Clock time of the last good read, in the browser's own zone: this is "a
+// moment ago in this session", not a business date, so Date is the right tool
+// here (unlike a movement's `fecha`, see plan.fechaCorta).
+function horaCorta(ms) {
+  if (!ms) return '';
+  return new Date(ms).toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+}
 
 function litros(n) {
   const v = Number(n);
@@ -72,6 +81,11 @@ function etiquetaMovimiento(tipo) {
 // attribute is allowed by the CSP (style-src 'unsafe-inline').
 const relleno = (token) => `style="fill:var(${token})"`;
 
+// The movement log is shared: another lab session can append a trasiego while
+// this tab is open, so a successful read is reused for a short while and then
+// revalidated on the next mount. The revalidation keeps the current plan on
+// screen; only an outright first failure leaves the tab empty.
+const FRESCURA_MS = 15_000;
 // A failed read is retried the next time the tab is mounted, but not on every
 // App.refresh(): several of those fire in a row while the dashboard boots.
 const REINTENTO_MS = 10_000;
@@ -84,6 +98,7 @@ export const TanquesView = {
   _cargando: false,
   _fallo: false,
   _ultimoIntento: 0,
+  _ultimoExito: 0,
   _wired: false,
 
   /** Called by App.refresh() every time the tab is shown. Idempotent. */
@@ -93,22 +108,30 @@ export const TanquesView = {
     this.render();
   },
 
-  // Every state except "we have the data" is recoverable, so the decision is
-  // taken on each mount rather than once: a read that failed while the network
-  // was down must load when the user comes back to the tab, and leaving demo
-  // mode must load the bodega that demo mode refused to fetch.
+  // No state is terminal, so the decision is taken on each mount rather than
+  // once: a read that failed while the network was down must load when the user
+  // comes back to the tab, leaving demo mode must load the bodega that demo
+  // mode refused to fetch, and a read that succeeded a while ago must be
+  // revalidated because the log is shared with other sessions.
   _quizaCargar() {
-    if (this._cargando || this._cargado) return;
+    if (this._cargando) return;
     // DataStore refuses the read while the demo overlay owns the data layer.
     if (DemoMode.isActive()) return;
-    if (this._fallo && Date.now() - this._ultimoIntento < REINTENTO_MS) return;
+    const ahora = Date.now();
+    if (this._fallo && ahora - this._ultimoIntento < REINTENTO_MS) return;
+    if (this._cargado && ahora - this._ultimoExito < FRESCURA_MS) return;
     this._cargando = true;
-    this._ultimoIntento = Date.now();
+    this._ultimoIntento = ahora;
     DataStore.loadTanques().then((ok) => {
       this._cargando = false;
-      this._cargado = ok;
-      // A read superseded by demo mode turning on mid-flight is not a failure.
-      this._fallo = !ok && !DemoMode.isActive();
+      if (ok) {
+        this._cargado = true;
+        this._fallo = false;
+        this._ultimoExito = Date.now();
+      } else {
+        // A read superseded by demo mode turning on mid-flight is not a failure.
+        this._fallo = !DemoMode.isActive();
+      }
       this.render();
     }).catch(() => {
       this._cargando = false;
@@ -254,6 +277,10 @@ export const TanquesView = {
     const el = document.activeElement;
     const d = el && el.dataset;
     if (!d) return null;
+    // Only for a KEYBOARD user. A mouse click also focuses the tank's <g>, and
+    // restoring that focus after the re-render draws a focus ring around the
+    // tank the user just clicked, on top of the gold selected lid.
+    if (typeof el.matches !== 'function' || !el.matches(':focus-visible')) return null;
     if (d.tanque) return { attr: 'data-tanque', valor: d.tanque };
     if (d.irTanque) return { attr: 'data-ir-tanque', valor: d.irTanque };
     return null;
@@ -276,8 +303,13 @@ export const TanquesView = {
       return '<p class="tanques-hint">Cargando el catálogo y la bitácora de tanques…</p>';
     }
     if (this._fallo) {
-      return '<div class="tanques-alert err">No se pudo leer la bodega. '
-        + 'Revise su sesión; se reintenta al volver a abrir la pestaña.</div>';
+      // With a previous read on screen the failure is a stale view, not an
+      // empty one, and saying "no se pudo leer" over a full plan would lie.
+      return this._cargado
+        ? '<div class="tanques-alert">No se pudo actualizar la bodega; se muestra la última lectura '
+          + `del ${escapeHtml(horaCorta(this._ultimoExito))}.</div>`
+        : '<div class="tanques-alert err">No se pudo leer la bodega. '
+          + 'Revise su sesión; se reintenta al volver a abrir la pestaña.</div>';
     }
     if (DataStore.tanquesDesactualizado) {
       return '<div class="tanques-alert">Se registró el movimiento, pero no se pudo actualizar la vista.</div>';
@@ -591,19 +623,18 @@ export const TanquesView = {
   _htmlRecorrido(catalogo, movimientos, sinonimos, lot_code, actual) {
     if (!lot_code) return '';
     const r = recorridoLote(catalogo, movimientos, lot_code, { sinonimos });
-    if (!r.pasos.length) return '';
-    const paradas = [];
-    const empujar = (c) => { if (c && paradas[paradas.length - 1] !== c) paradas.push(c); };
-    for (const paso of r.pasos) { empujar(paso.origen); empujar(paso.destino); }
-    if (!paradas.length) return '';
-    const salio = r.pasos[r.pasos.length - 1].destino === null;
+    const cadenas = cadenasRecorrido(r.pasos);
+    if (!cadenas.length) return '';
+    const sep = '<span class="tanques-route-sep"></span>';
+    const filas = cadenas.map((c) => '<div class="tanques-route">'
+      + (c.entrada ? `<span class="tanques-tag">recepción</span>${c.codigos.length ? sep : ''}` : '')
+      + c.codigos.map((codigo, i) => (i ? sep : '')
+        + `<button type="button" class="tanques-route-stop${codigo === actual ? ' cur' : ''}"`
+        + ` data-ir-tanque="${escapeHtml(codigo)}">${escapeHtml(codigo)}</button>`).join('')
+      + (c.salida ? `${sep}<span class="tanques-tag">salida</span>` : '')
+      + '</div>').join('');
     return '<div class="tanques-sec">'
-      + `<h3>Recorrido del lote ${escapeHtml(lot_code)}</h3><div class="tanques-route">`
-      + paradas.map((c, i) => (i ? '<span class="tanques-route-sep"></span>' : '')
-        + `<button type="button" class="tanques-route-stop${c === actual ? ' cur' : ''}"`
-        + ` data-ir-tanque="${escapeHtml(c)}">${escapeHtml(c)}</button>`).join('')
-      + (salio ? '<span class="tanques-route-sep"></span><span class="tanques-tag">salida</span>' : '')
-      + '</div>'
+      + `<h3>Recorrido del lote ${escapeHtml(lot_code)}</h3>${filas}`
       + `<div class="tanques-p-sub">Recibido ${litros(r.litros_recibidos)} L &middot; `
       + `merma ${litros(r.litros_merma)} L &middot; en tanques ${litros(r.litros_actuales)} L`
       + (r.litros_salidos > 0 ? ` &middot; salió ${litros(r.litros_salidos)} L` : '')

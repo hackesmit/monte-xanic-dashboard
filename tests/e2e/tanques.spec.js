@@ -62,6 +62,10 @@ const MOVIMIENTOS = [
   // has no row or position in dim_tanque, so it lives in the tray.
   mv({ fecha: '2025-09-20', tipo: 'recepcion', destino: 'I-4 CAVA', lot_code: '25CAVDG-1', volumen_l: 9000 }),
   mv({ fecha: '2025-11-30', tipo: 'trasiego', origen: 'I-4 CAVA', destino: 'G1', lot_code: '25CAVDG-1', volumen_l: 4000, merma_l: 50 }),
+  // A lote that SPLITS: 6 000 L into F5, then 2 000 to F6 and 2 000 to F7.
+  mv({ fecha: '2025-09-25', tipo: 'recepcion', destino: 'F5', lot_code: '25NBVDG-1', volumen_l: 6000 }),
+  mv({ fecha: '2025-10-05', tipo: 'trasiego', origen: 'F5', destino: 'F6', lot_code: '25NBVDG-1', volumen_l: 2000 }),
+  mv({ fecha: '2025-10-06', tipo: 'trasiego', origen: 'F5', destino: 'F7', lot_code: '25NBVDG-1', volumen_l: 2000 }),
 ];
 
 async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark' } = {}) {
@@ -306,6 +310,70 @@ test.describe('Tanques', () => {
     // Typing in the search box must NOT have focus stolen by the re-render.
     await page.locator('#tanques-buscar').fill('25DU');
     expect(await page.evaluate(() => document.activeElement?.id)).toBe('tanques-buscar');
+
+    // A MOUSE click must not leave a focus ring on top of the gold selected
+    // lid: focus is only restored for a keyboard user.
+    await page.locator('#tanques-buscar').fill('');
+    await page.locator('#tanques-plano [data-tanque="A5"]').click();
+    await expect(page.locator('#tanques-panel h2')).toHaveText('A5');
+    expect(await page.evaluate(() =>
+      !!document.querySelector('#tanques-plano [data-tanque]:focus-visible'))).toBe(false);
+  });
+
+  test('a split lote shows two chains, not one invented path', async ({ page }) => {
+    await abrir(page);
+    const panel = page.locator('#tanques-panel');
+    await page.locator('#tanques-plano [data-tanque="F7"]').click();
+    await expect(panel.locator('h2')).toHaveText('F7');
+    // Two rows: F5 > F6 and F5 > F7. One row reading F5 > F6 > F5 > F7 would
+    // claim a transfer out of F6 that never happened.
+    const filas = await panel.locator('.tanques-sec .tanques-route').evaluateAll(
+      (els) => els.map((e) => [...e.querySelectorAll('.tanques-route-stop')].map((b) => b.textContent)));
+    expect(filas).toEqual([['F5', 'F6'], ['F5', 'F7']]);
+    await expect(panel.locator('.tanques-route-stop.cur')).toHaveText('F7');
+  });
+
+  test('every tank stays an individual control for assistive tech', async ({ page }) => {
+    await abrir(page);
+    // role="img" would make the whole plan one atomic image and hide the tank
+    // buttons inside it from the accessibility tree.
+    await expect(page.locator('#tanques-plano')).toHaveAttribute('role', 'group');
+    const aria = await page.locator('#tanques-plano').ariaSnapshot();
+    const botones = [...aria.matchAll(/- button "(Tanque [^"]*)"/g)].map((m) => m[1]);
+    expect(botones.length).toBe(72);
+    expect(botones.some((n) => n.startsWith('Tanque C5,') && n.includes('25MEKMP-3'))).toBe(true);
+    expect(botones).toContain('Tanque C1, 18,700 litros, vacío');
+  });
+
+  test('a stale view is revalidated when the tab is opened again', async ({ page }) => {
+    let movimientos = MOVIMIENTOS;
+    await page.setViewportSize({ width: 1300, height: 1000 });
+    await page.addInitScript(() => {
+      localStorage.setItem('xanic_session_token', 'e2e.dev.bypass');
+      localStorage.setItem('xanic_user_role', 'lab');
+      localStorage.setItem('xanic_theme', 'dark');
+    });
+    await page.route('**/api/tanques', (route) => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, version: 1, tanques: TANQUES, sinonimos: SINONIMOS, movimientos }),
+    }));
+    await page.goto('/');
+    await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+    await page.locator('.nav-tab[data-view="tanques"]').click();
+    await page.waitForSelector('#tanques-plano .tanque');
+    await page.locator('#tanques-plano [data-tanque="H1"]').click();
+    await expect(page.locator('#tanques-panel .tanques-alert')).toContainText('Vacío');
+
+    // Another lab session records a reception into H1. The log is shared, so
+    // reopening the tab after the freshness window must show it.
+    movimientos = [...MOVIMIENTOS, mv({
+      fecha: '2026-02-01', tipo: 'recepcion', destino: 'H1', lot_code: '25TEKMP-9', volumen_l: 15000,
+    })];
+    await page.locator('.nav-tab[data-view="berry"]').click();
+    await page.waitForTimeout(15_400);
+    await page.locator('.nav-tab[data-view="tanques"]').click();
+    await expect(page.locator('#tanques-panel')).toContainText('25TEKMP-9', { timeout: 10_000 });
+    await expect(page.locator('#tanques-panel')).toContainText('Tempranillo');
   });
 
   test('renders in the light theme and at phone width', async ({ page }) => {
