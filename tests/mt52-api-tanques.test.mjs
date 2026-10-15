@@ -631,6 +631,74 @@ describe('MT.52 - POST /api/tanques action anular', () => {
     assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   });
 
+  it('refuses an annulment that DEEPENS an overdraw the log already had', async () => {
+    // A1 takes 9000 L then 1000 L. Two 6000 L withdrawals landed through the
+    // known concurrency race, so the second already owes 2000 L and the replay
+    // already says so. Annulling the 1000 L reception takes that debt to
+    // 3000 L: an inconsistency that exists is not permission to worsen it
+    // (lucy, 2026-10-15).
+    const comun = { lot_code: 'CS-01', vintage_year: 2025, merma_l: '0', nota: null,
+                    fuente: 'manual', creado_por: 'labuser', anulado: false };
+    const calls = mockSupabase({ movimientos: [
+      { id: 1, fecha: '2025-09-01', tipo: 'recepcion', origen: null, destino: 'A1',
+        volumen_l: '9000', created_at: '2025-09-01T18:00:00+00:00', ...comun },
+      { id: 2, fecha: '2025-09-02', tipo: 'recepcion', origen: null, destino: 'A1',
+        volumen_l: '1000', created_at: '2025-09-02T18:00:00+00:00', ...comun },
+      { id: 3, fecha: '2025-09-05', tipo: 'trasiego', origen: 'A1', destino: 'A2',
+        volumen_l: '6000', created_at: '2025-09-05T18:00:00+00:00', ...comun },
+      { id: 4, fecha: '2025-09-05', tipo: 'trasiego', origen: 'A1', destino: 'A2',
+        volumen_l: '6000', created_at: '2025-09-05T18:00:01+00:00', ...comun },
+    ]});
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'anular', id: 2 } }), res);
+    assert.equal(res.statusCode, 400, JSON.stringify(res.body));
+    assert.match(res.body.error, /posterior/);
+    assert.equal(calls.some(c => c.method === 'PATCH'), false);
+  });
+
+  it('allows an annulment that REDUCES an overflow the log already had', async () => {
+    // A3 (1000 L) is already overfull by row 3 on its own. Annulling row 2
+    // leaves it with 9000 L instead of 9500 L over the same capacity: still
+    // wrong, but less wrong, so it is not the annulment's fault.
+    const comun = { lot_code: 'CS-01', vintage_year: 2025, merma_l: '0', nota: null,
+                    fuente: 'manual', creado_por: 'labuser', anulado: false };
+    let patched = false;
+    mockSupabase({
+      movimientos: [
+        ...logBase(),
+        { id: 2, fecha: '2025-09-05', tipo: 'trasiego', origen: 'A1', destino: 'A3',
+          volumen_l: '500', created_at: '2025-09-05T18:00:00+00:00', ...comun },
+        { id: 3, fecha: '2025-09-06', tipo: 'recepcion', origen: null, destino: 'A3',
+          volumen_l: '9000', created_at: '2025-09-06T18:00:00+00:00', ...comun, lot_code: 'ME-02' },
+      ],
+      patch: (url, opts, ok) => { patched = true; return ok([{ id: 2, anulado: true }]); },
+    });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'anular', id: 2 } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.equal(patched, true);
+  });
+
+  it('refuses an annulment that makes an existing overflow worse', async () => {
+    // A2 is overfilled on 07 Sep. Annulling the 06 Sep salida out of A2 leaves
+    // 3000 L more standing there when the 07 Sep arrival lands.
+    const comun = { lot_code: 'CS-01', vintage_year: 2025, merma_l: '0', nota: null,
+                    fuente: 'manual', creado_por: 'labuser', anulado: false };
+    const calls = mockSupabase({ movimientos: [
+      { id: 1, fecha: '2025-09-01', tipo: 'recepcion', origen: null, destino: 'A2',
+        volumen_l: '19000', created_at: '2025-09-01T18:00:00+00:00', ...comun },
+      { id: 2, fecha: '2025-09-06', tipo: 'salida', origen: 'A2', destino: null,
+        volumen_l: '3000', created_at: '2025-09-06T18:00:00+00:00', ...comun },
+      { id: 3, fecha: '2025-09-07', tipo: 'recepcion', origen: null, destino: 'A2',
+        volumen_l: '5000', created_at: '2025-09-07T18:00:00+00:00', ...comun, lot_code: 'ME-02' },
+    ]});
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'anular', id: 2 } }), res);
+    assert.equal(res.statusCode, 400, JSON.stringify(res.body));
+    assert.match(res.body.error, /posterior/);
+    assert.equal(calls.some(c => c.method === 'PATCH'), false);
+  });
+
   it('returns 404 when the PATCH matches no row (annulled by someone else first)', async () => {
     mockSupabase({ patch: (url, opts, ok) => ok([]) });
     const res = makeRes();
@@ -755,7 +823,9 @@ describe('MT.52 - DataStore.loadTanques / postMovimiento / anularMovimiento', ()
     };
     const mov = movimiento();
     const out = await DataStore.postMovimiento(mov);
-    assert.equal(out.id, 7);
+    assert.equal(out.movimiento.id, 7);
+    assert.equal(out.actualizado, true);
+    assert.equal(DataStore.tanquesDesactualizado, false);
     const sent = JSON.parse(calls[0].opts.body);
     assert.equal(sent.action, 'crear');
     assert.deepEqual(sent.movimiento, mov);
@@ -771,6 +841,22 @@ describe('MT.52 - DataStore.loadTanques / postMovimiento / anularMovimiento', ()
     await assert.rejects(() => DataStore.postMovimiento(movimiento()), /A1 esta vacio/);
   });
 
+  it('reports a committed write whose refresh failed instead of hiding it', async () => {
+    // The movement IS in the log; only the re-read failed. Reporting this as a
+    // failed write would invite a duplicate POST.
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') {
+        return { ok: true, status: 200, json: async () => ({ ok: true, movimiento: { id: 8 } }) };
+      }
+      return { ok: false, status: 502, json: async () => ({ ok: false, error: 'boom' }) };
+    };
+    const out = await DataStore.postMovimiento(movimiento());
+    assert.equal(out.movimiento.id, 8);
+    assert.equal(out.actualizado, false);
+    assert.equal(DataStore.tanquesDesactualizado, true);
+    DataStore.tanquesDesactualizado = false;
+  });
+
   it('anularMovimiento posts the anular envelope', async () => {
     const calls = [];
     globalThis.fetch = async (url, opts = {}) => {
@@ -781,7 +867,8 @@ describe('MT.52 - DataStore.loadTanques / postMovimiento / anularMovimiento', ()
       return { ok: true, status: 200, json: async () => cuerpo };
     };
     const out = await DataStore.anularMovimiento(1);
-    assert.equal(out.anulado, true);
+    assert.equal(out.movimiento.anulado, true);
+    assert.equal(out.actualizado, true);
     assert.deepEqual(JSON.parse(calls[0].opts.body), { action: 'anular', id: 1 });
   });
 });

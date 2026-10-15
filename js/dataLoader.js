@@ -17,6 +17,7 @@ export const DataStore = {
   tanquesCatalogo: [],      // dim_tanque rows
   tanquesSinonimos: {},     // dim_tanque_sinonimo as {sinonimo: codigo}
   movimientosTanque: [],    // movimientos_tanque rows (annulled ones included)
+  tanquesDesactualizado: false,  // true when a write landed but the re-read failed
   loaded: { berry: false, wine: false },
   supabase: null,        // Supabase client instance (set by initSupabase)
   _supabaseReady: false, // true once credentials have been fetched
@@ -360,10 +361,11 @@ export const DataStore = {
       });
       const data = await res.json();
       if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-      if (this._demoActive) return false;  // demo enabled mid-fetch — keep overlay
+      if (this._demoActive) return false;  // demo enabled mid-fetch, keep the overlay
       this.tanquesCatalogo  = data.tanques || [];
       this.tanquesSinonimos = data.sinonimos || {};
       this.movimientosTanque = data.movimientos || [];
+      this.tanquesDesactualizado = false;
       return true;
     } catch (e) {
       console.error('[DataStore] loadTanques failed:', e);
@@ -371,33 +373,36 @@ export const DataStore = {
     }
   },
 
-  // Append a movement. The server validates it against the log at its place in
-  // time and answers 400 with the Spanish reason, so the caller shows data.error
-  // rather than guessing. Throws on refusal; refreshes the log on success.
-  async postMovimiento(movimiento) {
+  // A write plus the re-read that follows it. The two outcomes are reported
+  // separately on purpose: if the POST succeeded and the GET did not, the
+  // movement IS in the log and the screen is stale, so the caller must not
+  // treat it as a failed write and invite a duplicate POST (lucy, 2026-10-15).
+  // `actualizado: false` with `tanquesDesactualizado` set is the signal to show
+  // "registrado, no se pudo actualizar la vista" and offer a plain reload.
+  async _escribirMovimiento(cuerpo) {
     const res = await fetch('/api/tanques', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
-      body: JSON.stringify({ action: 'crear', movimiento }),
+      body: JSON.stringify(cuerpo),
     });
     const data = await res.json();
     if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    await this.loadTanques();
-    return data.movimiento;
+    const actualizado = await this.loadTanques();
+    if (!actualizado) this.tanquesDesactualizado = true;
+    return { movimiento: data.movimiento, actualizado };
+  },
+
+  // Append a movement. The server validates it against the log at its place in
+  // time and answers 400 with the Spanish reason, so the caller shows that
+  // reason rather than guessing. Throws only when the write itself was refused.
+  async postMovimiento(movimiento) {
+    return await this._escribirMovimiento({ action: 'crear', movimiento });
   },
 
   // Undo marks a row anulado, never deletes it. Refused (400) when taking the
   // row out would leave a later movement overdrawn.
   async anularMovimiento(id) {
-    const res = await fetch('/api/tanques', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
-      body: JSON.stringify({ action: 'anular', id }),
-    });
-    const data = await res.json();
-    if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-    await this.loadTanques();
-    return data.movimiento;
+    return await this._escribirMovimiento({ action: 'anular', id });
   },
 
   parseValue(v) {

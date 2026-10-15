@@ -33,6 +33,9 @@ const MAX_NOTA = 2000;
 const VINTAGE_MIN = 1988;   // same range as the movimientos_tanque CHECK
 const VINTAGE_MAX = 2100;
 const PAGINA = 1000;        // PostgREST caps a response at 1000 rows
+// Half a microlitre, the same "this is nothing" threshold js/tanques/estado.js
+// quantizes to, so a float-dust difference is not read as a deeper overdraw.
+const TOLERANCIA_L = 5e-7;
 
 // --- PostgREST to JS ----------------------------------------------------------
 
@@ -227,9 +230,56 @@ function revisarCampos(m) {
 // Key an aviso to the ROW it blames, not to its index: `orden` is the position
 // in the array handed to the replay, so removing a row renumbers everything
 // after it and an id-free diff would report avisos that did not change.
-function claveAviso(a) {
-  const id = a.movimiento && a.movimiento.id != null ? a.movimiento.id : `i${a.orden}`;
-  return `${id}|${a.codigo}`;
+function filaDe(a) {
+  return a.movimiento && a.movimiento.id != null ? a.movimiento.id : `i${a.orden}`;
+}
+
+// How BADLY one replay contradicts itself, per row and per kind. Presence is
+// not enough: a log that already owes 2000 L on one withdrawal must not be read
+// as permission to make that same withdrawal owe 3000 L, which is what a plain
+// "was this warning already there" diff would do (lucy, 2026-10-15).
+//
+// Both numbers come out of the replay's own output, so no tank rule is restated
+// here. A sobregiro is clamped by the replay, so `volumen_l - movido_l` is the
+// litres the log owes, and a row skipped outright (an empty origin) moved
+// nothing at all. A desbordado clamps nothing, so its severity is the litres
+// standing in the destination right after that row, accumulated from the
+// per-row deltas the replay reports. The capacity is deliberately left out of
+// that figure: the two replays being compared share one catalog, so it cancels,
+// and leaving it out cannot disagree with how estado.js read it.
+function severidades(replay) {
+  const sobra = new Map();   // row -> litres in the destination just after it
+  const nivel = new Map();   // tank -> running litres
+  const movido = new Map();  // row -> litres it actually moved
+  for (const a of replay.aplicados) {
+    const fila = filaDe(a);
+    movido.set(fila, a.movido_l);
+    if (a.origen) nivel.set(a.origen, (nivel.get(a.origen) || 0) - a.movido_l);
+    if (a.destino) {
+      const total = (nivel.get(a.destino) || 0) + a.llegado_l;
+      nivel.set(a.destino, total);
+      sobra.set(fila, total);
+    }
+  }
+
+  const sev = new Map();
+  for (const a of replay.avisos) {
+    const fila = filaDe(a);
+    if (a.codigo === 'sobregiro') {
+      const pedido = num(a.movimiento && a.movimiento.volumen_l);
+      const dado = movido.has(fila) ? movido.get(fila) : 0;
+      const falta = typeof pedido === 'number' && Number.isFinite(pedido)
+        ? Math.max(0, pedido - dado)
+        : Infinity;
+      sev.set(`${fila}|sobregiro`, { grave: falta, mensaje: a.mensaje });
+    } else if (a.codigo === 'desbordado') {
+      sev.set(`${fila}|desbordado`, {
+        grave: sobra.has(fila) ? sobra.get(fila) : Infinity,
+        mensaje: a.mensaje,
+      });
+    }
+  }
+  return sev;
 }
 
 // --- handler -----------------------------------------------------------------
@@ -362,15 +412,16 @@ async function anular(req, res) {
   // overdrawn, so the gate is here: replay the live log with and without this
   // row and refuse if taking it out creates a new sobregiro or desbordado.
   const vivos = movimientos.filter(m => !m.anulado);
-  const con = replayMovimientos(tanques, vivos, { sinonimos });
-  const sin = replayMovimientos(tanques, vivos.filter(m => m.id !== id), { sinonimos });
-  const previos = new Set(con.avisos.map(claveAviso));
-  for (const a of sin.avisos) {
-    if (a.codigo !== 'sobregiro' && a.codigo !== 'desbordado') continue;
-    if (previos.has(claveAviso(a))) continue;  // already inconsistent with the row in place
+  const con = severidades(replayMovimientos(tanques, vivos, { sinonimos }));
+  const sin = severidades(replayMovimientos(tanques, vivos.filter(m => m.id !== id), { sinonimos }));
+  for (const [clave, despues] of sin) {
+    const antes = con.get(clave);
+    // Allowed: an inconsistency the log already had, unchanged or smaller.
+    // Refused: one this annulment introduces, or one it deepens.
+    if (antes && despues.grave <= antes.grave + TOLERANCIA_L) continue;
     return res.status(400).json({
       ok: false,
-      error: `No se puede anular: deja inconsistente un movimiento posterior: ${a.mensaje}`,
+      error: `No se puede anular: deja inconsistente un movimiento posterior: ${despues.mensaje}`,
     });
   }
 
