@@ -58,6 +58,10 @@ const MOVIMIENTOS = [
   mv({ fecha: '2025-12-04', tipo: 'ensamble', origen: 'A5', destino: 'C5', lot_code: '25MEKMP-1', volumen_l: 5400, merma_l: 50 }),
   mv({ fecha: '2025-12-06', tipo: 'trasiego', origen: 'A2', destino: 'G3', lot_code: '25CHVA-1', volumen_l: 7000, anulado: true }),
   mv({ fecha: '2026-01-15', tipo: 'salida', origen: 'A1', lot_code: '25SBVDG-1', volumen_l: 6900, nota: 'embotellado' }),
+  // A lote whose route passes through a vessel the plan cannot draw: I-4 CAVA
+  // has no row or position in dim_tanque, so it lives in the tray.
+  mv({ fecha: '2025-09-20', tipo: 'recepcion', destino: 'I-4 CAVA', lot_code: '25CAVDG-1', volumen_l: 9000 }),
+  mv({ fecha: '2025-11-30', tipo: 'trasiego', origen: 'I-4 CAVA', destino: 'G1', lot_code: '25CAVDG-1', volumen_l: 4000, merma_l: 50 }),
 ];
 
 async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark' } = {}) {
@@ -233,6 +237,75 @@ test.describe('Tanques', () => {
     const plan2 = await page.locator('.tanques-plan-card').boundingBox();
     const panel2 = await page.locator('.tanques-panel').boundingBox();
     expect(panel2.x).toBeGreaterThan(plan2.x + plan2.width - 1);
+  });
+
+  test('a vessel with no place on the plan is still reachable and readable', async ({ page }) => {
+    await abrir(page);
+    const panel = page.locator('#tanques-panel');
+    // G1 holds wine that came from I-4 CAVA, a tray vessel.
+    await page.locator('#tanques-plano [data-tanque="G1"]').click();
+    await expect(panel.locator('h2')).toHaveText('G1');
+    const paradas = await panel.locator('.tanques-route-stop').allTextContents();
+    expect(paradas).toEqual(['I-4 CAVA', 'G1']);
+
+    // Clicking the tray stop must open THAT vessel, not silently fall back.
+    await panel.locator('.tanques-route-stop', { hasText: 'I-4 CAVA' }).click();
+    await expect(panel.locator('h2')).toHaveText('I-4 CAVA');
+    await expect(panel).toContainText('Ubicación por definir');
+    await expect(panel).toContainText('25CAVDG-1');
+    await expect(panel).toContainText('Caladoc');
+
+    // And the tray chip is the other way in.
+    await page.locator('#tanques-plano [data-tanque="G1"]').click();
+    await expect(panel.locator('h2')).toHaveText('G1');
+    await page.locator('#tanques-otras button', { hasText: 'I-4 CAVA' }).click();
+    await expect(panel.locator('h2')).toHaveText('I-4 CAVA');
+  });
+
+  test('a failed read is retried when the tab is opened again', async ({ page }) => {
+    let fallar = true;
+    await page.setViewportSize({ width: 1300, height: 1000 });
+    await page.addInitScript(() => {
+      localStorage.setItem('xanic_session_token', 'e2e.dev.bypass');
+      localStorage.setItem('xanic_user_role', 'lab');
+      localStorage.setItem('xanic_theme', 'dark');
+    });
+    await page.route('**/api/tanques', (route) => (fallar
+      ? route.fulfill({ status: 500, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'caida' }) })
+      : route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, version: 1, tanques: TANQUES, sinonimos: SINONIMOS, movimientos: MOVIMIENTOS }) })));
+    await page.goto('/');
+    await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+    await page.locator('.nav-tab[data-view="tanques"]').click();
+    await expect(page.locator('#tanques-estado .tanques-alert.err')).toBeVisible();
+    await expect(page.locator('#tanques-plano .tanque')).toHaveCount(0);
+
+    // Connectivity comes back. Leaving and reopening the tab must retry; the
+    // retry cooldown is 10s, so wait it out rather than assert a tight loop.
+    fallar = false;
+    await page.locator('.nav-tab[data-view="berry"]').click();
+    await page.waitForTimeout(10_200);
+    await page.locator('.nav-tab[data-view="tanques"]').click();
+    await expect(page.locator('#tanques-plano .tanque')).toHaveCount(72, { timeout: 10_000 });
+    await expect(page.locator('#tanques-estado .tanques-alert.err')).toHaveCount(0);
+  });
+
+  test('keyboard selection keeps focus on the tank it selected', async ({ page }) => {
+    await abrir(page);
+    await page.locator('#tanques-plano [data-tanque="C5"]').focus();
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#tanques-panel h2')).toHaveText('C5');
+    // render() replaced the whole SVG; without focus restore the user is back
+    // at the top of the document and cannot Tab on from where they were.
+    expect(await page.evaluate(() => document.activeElement?.dataset?.tanque)).toBe('C5');
+
+    await page.locator('#tanques-plano [data-tanque="B4"]').focus();
+    await page.keyboard.press(' ');
+    await expect(page.locator('#tanques-panel h2')).toHaveText('B4');
+    expect(await page.evaluate(() => document.activeElement?.dataset?.tanque)).toBe('B4');
+
+    // Typing in the search box must NOT have focus stolen by the re-render.
+    await page.locator('#tanques-buscar').fill('25DU');
+    expect(await page.evaluate(() => document.activeElement?.id)).toBe('tanques-buscar');
   });
 
   test('renders in the light theme and at phone width', async ({ page }) => {
