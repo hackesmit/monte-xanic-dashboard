@@ -545,8 +545,11 @@ export const TanquesMoves = {
 
   // --- unconfirmed writes -----------------------------------------------------
 
-  _cargarPendientes() {
-    if (this._pendientesLeidos) return;
+  // `forzar` re-reads the store: another tab may have added or resolved an
+  // entry since this one last looked, and a blind overwrite would drop its
+  // key (lucy, 2026-10-15). Every mutation below re-reads first.
+  _cargarPendientes(forzar) {
+    if (this._pendientesLeidos && !forzar) return;
     this._pendientesLeidos = true;
     try {
       const crudo = typeof localStorage !== 'undefined' && localStorage
@@ -554,37 +557,52 @@ export const TanquesMoves = {
       const lista = crudo ? JSON.parse(crudo) : [];
       this._pendientes = Array.isArray(lista)
         ? lista.filter((p) => p && p.intento && typeof p.intento.client_id === 'string')
-          .slice(-PENDIENTES_MAX)
         : [];
     } catch (_) {
       this._pendientes = [];
     }
   },
 
+  // Reports whether the list is actually stored. A silent failure here would
+  // mean a movement sent with a key nothing remembers, which is the duplicate
+  // this whole mechanism exists to prevent.
   _guardarPendientes() {
     try {
-      if (typeof localStorage === 'undefined' || !localStorage) return;
-      if (this._pendientes.length) {
-        localStorage.setItem(CLAVE_PENDIENTES, JSON.stringify(this._pendientes.slice(-PENDIENTES_MAX)));
-      } else {
+      if (typeof localStorage === 'undefined' || !localStorage) return false;
+      if (!this._pendientes.length) {
         localStorage.removeItem(CLAVE_PENDIENTES);
+        return true;
       }
-    } catch (_) { /* a full or blocked store must not stop the write */ }
+      const texto_ = JSON.stringify(this._pendientes);
+      localStorage.setItem(CLAVE_PENDIENTES, texto_);
+      return localStorage.getItem(CLAVE_PENDIENTES) === texto_;
+    } catch (_) {
+      return false;
+    }
   },
 
   // Recorded BEFORE the request leaves, so a browser that dies mid-flight
   // still knows which key to retry with.
   _anotarPendiente(intento, mensaje) {
+    this._cargarPendientes(true);
     const clave = String(intento.client_id).toLowerCase();
     const i = this._pendientes.findIndex((p) => String(p.intento.client_id).toLowerCase() === clave);
-    if (i >= 0) this._pendientes[i] = { intento, mensaje };
-    else this._pendientes.push({ intento, mensaje });
-    this._guardarPendientes();
+    if (i >= 0) {
+      this._pendientes[i] = { intento, mensaje };
+    } else {
+      // An unresolved key is never evicted to make room for a new one: that
+      // would throw away the only thing standing between a retry and a second
+      // row. At the cap the answer is to stop writing, not to forget.
+      if (this._pendientes.length >= PENDIENTES_MAX) return false;
+      this._pendientes.push({ intento, mensaje });
+    }
+    return this._guardarPendientes();
   },
 
   // Resolve ONE entry by its key: a retry's callback must never clear someone
   // else's pending write.
   _resolverPendiente(client_id) {
+    this._cargarPendientes(true);
     const clave = String(client_id || '').toLowerCase();
     const quedan = this._pendientes.filter((p) => String(p.intento.client_id).toLowerCase() !== clave);
     if (quedan.length === this._pendientes.length) return;
@@ -595,6 +613,7 @@ export const TanquesMoves = {
   // A key that is now in the log landed after all: the log is the answer, so
   // the banner goes without anyone retrying anything.
   _revisarPendientes() {
+    this._cargarPendientes(true);
     if (!this._pendientes.length) return;
     const log = Array.isArray(DataStore.movimientosTanque) ? DataStore.movimientosTanque : [];
     const vistos = new Set();
@@ -1051,6 +1070,16 @@ export const TanquesMoves = {
       this._avisar('Hay un movimiento en curso. Espere a que el servidor conteste.');
       return;
     }
+    // The last write landed but its re-read did not, so the plan on screen is
+    // older than the bitacora: it still shows the tank empty and the lote in
+    // the tray. Recording against that picture is how one reception becomes
+    // two (lucy, 2026-10-15). The way out is a read, not a second write.
+    if (DataStore.tanquesDesactualizado) {
+      this._avisar('La vista está desactualizada: el último movimiento se registró y no se pudo '
+        + 'releer la bitácora. Relea antes de registrar otro.',
+        { etiqueta: 'Releer', fn: () => this._releer() });
+      return;
+    }
     const dlg = this._dialogo();
     if (!dlg || dlg.open) return;    // never two dialogs over one gesture
     const modelo = planearMovimiento(gesto, this._ctx.bodega());
@@ -1061,6 +1090,15 @@ export const TanquesMoves = {
       || dlg.querySelector('[data-cerrar]');
     if (foco) foco.focus();
     this._ctx.render();
+  },
+
+  async _releer() {
+    const ok = await DataStore.loadTanques();
+    this._ctx.render();
+    this._avisar(ok
+      ? 'Bitácora al día.'
+      : 'No se pudo leer la bitácora. Revise su sesión e intente de nuevo.',
+      ok ? null : { etiqueta: 'Releer', fn: () => this._releer() });
   },
 
   _dialogo() {
@@ -1205,8 +1243,13 @@ export const TanquesMoves = {
     // still knows which key to retry under, and the server answers a repeat
     // of that key with the row it already has instead of a second one.
     const intento = { ...mov, client_id: globalThis.crypto.randomUUID() };
-    this._cargarPendientes();
-    this._anotarPendiente(intento, 'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.');
+    if (!this._anotarPendiente(intento,
+      'No se pudo confirmar el movimiento. Revise la bitácora antes de repetirlo.')) {
+      this._errores(['Este navegador no pudo guardar el identificador del movimiento, '
+        + 'así que no se envía: sin él, un reintento podría registrarlo dos veces. '
+        + 'Resuelva los avisos pendientes de esta pestaña y vuelva a intentarlo.']);
+      return;
+    }
 
     const boton = form.querySelector('button[type="submit"]');
     const cancelar = form.querySelector('[data-cerrar]');
@@ -1270,15 +1313,14 @@ export const TanquesMoves = {
       // the server answers with that row instead of writing a second one.
       out = await DataStore.postMovimiento(intento);
     } catch (err) {
-      if (err && err.indeterminado) {
-        // Still unknown: KEEP this entry and its key. Dropping it here is what
-        // would force a fresh form and a fresh client_id later.
-        this._anotarPendiente(err.movimiento || intento, err.message);
-      } else {
-        // A definite refusal under this key: nothing was written under it, so
-        // THIS entry is resolved. Another pending write is not.
-        this._resolverPendiente(intento.client_id);
-      }
+      // The entry stays either way. A refusal of THIS request (an expired
+      // session, a 409) says nothing about whether the FIRST attempt under
+      // this key committed, and dropping the key on that evidence is how the
+      // original row gets written a second time later (lucy, 2026-10-15). An
+      // entry leaves only on a confirmed write, on finding its key in the
+      // bitacora, or when the user says they have checked.
+      this._anotarPendiente(err.movimiento || intento,
+        err && err.message ? err.message : 'No se pudo confirmar el movimiento.');
       this._avisar(err && err.message ? err.message : 'No se pudo registrar el movimiento.',
         err && err.indeterminado
           ? { etiqueta: 'Reintentar', fn: () => this._reintentar(err.movimiento || intento) }
