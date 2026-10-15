@@ -525,6 +525,30 @@ export function validarMovimiento(estado, mov, opciones = {}) {
   return errores;
 }
 
+const vivas = (movimientos) => (Array.isArray(movimientos) ? movimientos : [])
+  .filter(m => m && typeof m === 'object' && !m.anulado);
+
+/**
+ * The tanks as they stand just BEFORE a candidate movement is applied, at the
+ * place the replay will put it (its fecha, then created_at; a candidate with
+ * no created_at goes after every row of its own day). This is what both the
+ * server gate and the move dialog must reason about: a backdated row moves
+ * what the tank held THEN, not what it holds today.
+ * @param {Object} mov the candidate; only its fecha and created_at matter here
+ * @returns {Object} keyed by codigo, the same shape deriveEstado returns
+ */
+export function estadoEnPosicion(tanques, movimientos, mov, opciones = {}) {
+  const filas = vivas(movimientos);
+  // the prefix is taken from the REPLAY order with the candidate in place, so a
+  // row with the same fecha and created_at counts as before it exactly as the
+  // replay will apply it. Filtering on a strict "happens before" test would drop
+  // that row and judge the candidate against a tank that still looks empty.
+  const orden = ordenar([...filas, mov && typeof mov === 'object' ? mov : {}]);
+  const posicion = orden.findIndex(e => e.i === filas.length);
+  const previas = orden.slice(0, posicion).map(e => e.mov);
+  return deriveEstado(tanques, previas, opciones);
+}
+
 /**
  * Validate a candidate movement AT ITS PLACE IN THE LOG, which is what the API
  * must use: `fecha` is a business date, so a backdated row is appended to the
@@ -534,16 +558,8 @@ export function validarMovimiento(estado, mov, opciones = {}) {
  * @returns {string[]} Spanish error strings; empty means the row can be appended.
  */
 export function validarMovimientoEnLog(tanques, movimientos, mov, opciones = {}) {
-  const filas = (Array.isArray(movimientos) ? movimientos : [])
-    .filter(m => m && typeof m === 'object' && !m.anulado);
-  // the prefix is taken from the REPLAY order with the candidate in place, so a
-  // row with the same fecha and created_at counts as before it exactly as the
-  // replay will apply it. Filtering on a strict "happens before" test would drop
-  // that row and judge the candidate against a tank that still looks empty.
-  const orden = ordenar([...filas, mov]);
-  const posicion = orden.findIndex(e => e.i === filas.length);
-  const previas = orden.slice(0, posicion).map(e => e.mov);
-  const errores = validarMovimiento(deriveEstado(tanques, previas, opciones), mov, opciones);
+  const filas = vivas(movimientos);
+  const errores = validarMovimiento(estadoEnPosicion(tanques, filas, mov, opciones), mov, opciones);
 
   // anything the candidate breaks downstream: compare the avisos of the log
   // without it against the avisos of the log with it appended

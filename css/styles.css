@@ -38,6 +38,7 @@
   --scrollbar-thumb: rgba(196,160,96,0.35);
   --table-header-bg: var(--near-black);
   --help-bg:     rgba(0,0,0,0.85);
+  --scrim:       rgba(0,0,0,0.55);   /* behind a modal dialog */
   --diff-positive: #7EC87A;
   --diff-negative: #E07070;
   --success-color: #7EC87A;
@@ -189,6 +190,7 @@
   --scrollbar-thumb: rgba(160,130,60,0.30);
   --table-header-bg: #EDE8E0;
   --help-bg:     rgba(255,255,255,0.90);
+  --scrim:       rgba(40,32,20,0.35);
   --diff-positive: #2E8B2E;
   --diff-negative: #CC3333;
   --success-color: #2E8B2E;
@@ -3289,6 +3291,171 @@ button.tanques-chip:focus-visible { outline: 2px solid var(--gold); outline-offs
 .tanques-alert.err { border-left-color: var(--flag-error); }
 .tanques-avisos { display: grid; gap: 4px; font-size: var(--text-sm); color: var(--muted); }
 .tanques-avisos li { margin-left: 16px; }
+
+/* ==================================================================
+   Tanques: registrar un movimiento (bead xd-qrn.5)
+   ==================================================================
+   The write surface of the Tanques tab: the Modo mover toggle, the drag
+   ghost and drop target, the move dialog, and the undo toast. Every one of
+   these nodes is created at runtime by js/tanques/moves.js and only for a
+   user with role `lab`, so a viewer never has write chrome in the DOM. */
+
+/* Drag and tap feedback on the plan. The lid is what a user aims at, so the
+   lid is what changes: the gold dashes read as "drop here", and a solid gold
+   ring as "this tank is armed as the origin". */
+.tanque.drop .tanque-tapa {
+  stroke: var(--gold-lt); stroke-width: 3; stroke-dasharray: 4 3;
+}
+.tanque.origen .tanque-tapa { stroke: var(--gold-lt); stroke-width: 3; }
+/* A vessel with no place on the plan is a drop target as its tray chip. */
+button.tanques-chip.drop { border-color: var(--gold-lt); border-style: dashed; }
+.tanques-pendiente { display: grid; gap: 6px; }
+.tanques-pendiente .tanques-alert { display: grid; gap: 6px; }
+/* The by-name destination picker, shown only while an origin is armed. */
+.tanques-destino {
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: end;
+  padding: 10px; border: 1px solid var(--border-gold);
+  border-radius: var(--radius-base); background: var(--card2);
+}
+.tanques-destino .tanques-campo { min-width: 180px; }
+
+.tanques-ghost {
+  position: fixed; z-index: 9100; pointer-events: none;
+  padding: 3px 8px; border-radius: var(--radius-sharp);
+  background: var(--gold); color: var(--on-gold);
+  font-family: var(--font-mono); font-size: var(--text-xs);
+}
+
+/* The toolbar toggle and the panel's own buttons share one look with the
+   colour-mode segment, so the tab reads as one piece of chrome. */
+.tanques-mover, .tanques-btn {
+  background: transparent; color: var(--text);
+  border: 1px solid var(--border-gold); border-radius: var(--radius-base);
+  padding: 7px 12px; cursor: pointer;
+  font-family: var(--font-display); font-size: var(--text-xs);
+  letter-spacing: 0.08em; text-transform: uppercase;
+  transition: background var(--motion-fast);
+}
+.tanques-mover.on, .tanques-btn.on, .tanques-btn.primary {
+  background: var(--gold); color: var(--on-gold); border-color: var(--gold);
+}
+.tanques-mover:focus-visible, .tanques-btn:focus-visible,
+.tanques-anular:focus-visible, .tanques-toast button:focus-visible {
+  outline: 2px solid var(--gold); outline-offset: 2px;
+}
+.tanques-acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.tanques-anular {
+  margin-left: 8px; padding: 1px 6px; cursor: pointer;
+  background: transparent; color: var(--muted);
+  border: 1px solid var(--border); border-radius: var(--radius-sharp);
+  font-family: var(--font-mono); font-size: var(--text-2xs);
+}
+.tanques-anular:hover { color: var(--flag-error); border-color: var(--flag-error); }
+.tanques-anular-confirma {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px;
+  color: var(--flag-error); font-size: var(--text-xs);
+}
+.tanques-gemelo { color: var(--text); }
+
+/* The dialog. The scrim is the --scrim token, defined in both themes;
+   ::backdrop inherits custom properties from its dialog in every engine this
+   dashboard supports (Chromium 122+, Firefox 120+, Safari 17.4+). */
+.tanques-dialog {
+  background: var(--card); color: var(--text);
+  border: 1px solid var(--border-gold); border-radius: var(--radius-panel);
+  padding: 0; width: min(460px, calc(100vw - 32px)); max-height: 90vh; overflow: auto;
+}
+.tanques-dialog::backdrop { background: var(--scrim); }
+.tanques-dialog form { padding: 18px; display: grid; gap: 12px; }
+.tanques-dialog h2 {
+  font-family: var(--font-display); font-size: var(--text-lg);
+  font-weight: 400; color: var(--cream); margin: 0;
+}
+.tanques-dialog .tanques-alert { margin: 0; }
+
+/* Origin and destination side by side, each with what it holds now: the move
+   is between two real vessels and the dialog says so before asking for litres. */
+.tanques-mv {
+  display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center;
+}
+.tanques-mv-caja {
+  display: grid; gap: 2px; padding: 8px 10px; min-width: 0;
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: var(--radius-base);
+}
+.tanques-mv-caja b {
+  font-family: var(--font-mono); font-size: var(--text-md); color: var(--cream);
+  overflow-wrap: anywhere;
+}
+.tanques-mv-caja small { font-size: var(--text-xs); color: var(--muted); overflow-wrap: anywhere; }
+.tanques-mv-chev {
+  width: 8px; height: 8px; border-top: 2px solid var(--gold);
+  border-right: 2px solid var(--gold); transform: rotate(45deg);
+}
+
+.tanques-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: end; }
+.tanques-campo {
+  display: grid; gap: 4px; margin: 0; min-width: 0;
+  font-family: var(--font-display); font-size: var(--text-xs);
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted);
+}
+.tanques-campo b {
+  font-family: var(--font-mono); font-size: var(--text-md); color: var(--cream);
+  text-transform: none; letter-spacing: normal; overflow-wrap: anywhere;
+}
+.tanques-campo small {
+  font-size: var(--text-2xs); color: var(--muted);
+  text-transform: none; letter-spacing: normal;
+}
+.tanques-campo input, .tanques-campo select {
+  background: var(--card2); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius-base);
+  padding: 7px 8px; min-width: 0; width: 100%;
+  font-family: var(--font-body); font-size: var(--text-md);
+  text-transform: none; letter-spacing: normal;
+}
+.tanques-campo input:focus-visible, .tanques-campo select:focus-visible {
+  outline: 2px solid var(--gold); outline-offset: 1px;
+}
+.tanques-campo select:disabled { opacity: 0.7; }
+
+.tanques-dialog-errores:empty { display: none; }
+.tanques-dialog-errores { display: grid; gap: 6px; }
+.tanques-dialog-acciones { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* The undo toast. Interactive, so unlike .offline-toast it keeps its pointer
+   events, and it sits above the dialog's own stacking context. */
+.tanques-toast {
+  position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%); z-index: 9200;
+  display: flex; gap: 12px; align-items: center;
+  max-width: min(560px, calc(100vw - 24px));
+  padding: 10px 14px; border-radius: var(--radius-base);
+  background: var(--surface); border: 1px solid var(--border-gold); color: var(--text);
+  font-size: var(--text-sm);
+}
+.tanques-toast[hidden] { display: none; }
+.tanques-toast-accion {
+  background: transparent; border: 0; cursor: pointer;
+  color: var(--gold); font-weight: 600; font-size: var(--text-sm); white-space: nowrap;
+}
+.tanques-toast-cerrar {
+  background: transparent; border: 0; cursor: pointer;
+  color: var(--muted); font-size: var(--text-lg); line-height: 1; padding: 0 2px;
+}
+
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  /* Touch floor on every write control, and one column in the dialog: two
+     number inputs side by side on a phone are both too narrow to type in. */
+  .tanques-mover, .tanques-btn { min-height: 44px; }
+  .tanques-row2 { grid-template-columns: minmax(0, 1fr); }
+  .tanques-campo input, .tanques-campo select { min-height: 44px; font-size: var(--text-lg); }
+  .tanques-dialog-acciones .tanques-btn { flex: 1; }
+  .tanques-anular { min-height: 32px; padding-inline: 10px; }
+  .tanques-toast { font-size: var(--text-md); }
+  .tanques-toast-accion, .tanques-toast-cerrar { min-height: 44px; }
+}
 
 /* The plan needs 560 CSS px before it starts scrolling sideways, and the
    dashboard's sidebar already takes about 334 of the viewport, so a 320px side
