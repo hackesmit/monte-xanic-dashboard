@@ -43,4 +43,5 @@ export const MIGRATIONS = [
   'migration_dim_catalogs',
   'migration_seguimiento_origen_envero',
   'migration_tanques',
+  'migration_tanques_escritura',
 ];
