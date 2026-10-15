@@ -86,7 +86,7 @@ function logBase() {
 // (crear) or `patch` (anular) hook, so a test can still shape what the
 // database "stored". `rpc` replaces the whole function when a test needs to.
 function mockSupabase({ tanques = TANQUES, sinonimos = SINONIMOS, movimientos = logBase(),
-                        insert, patch, rpc, blacklisted = false, maxRows = Infinity } = {}) {
+                        insert, patch, rpc, blacklisted = false, maxRows = Infinity, alLeer } = {}) {
   const calls = [];
   const db = { v: 0, cola: Promise.resolve() };
   globalThis.fetch = async (url, opts = {}) => {
@@ -138,6 +138,9 @@ function mockSupabase({ tanques = TANQUES, sinonimos = SINONIMOS, movimientos = 
       db.cola = turno.catch(() => {});
       return turno;
     }
+    // `alLeer` runs before every table read, so a test can land a write (bump
+    // the version, add a row) in the middle of the endpoint's snapshot.
+    if (alLeer && method === 'GET') await alLeer(url, db);
     if (url.includes('/tanques_version')) return ok([{ v: db.v }]);
     if (url.includes('/dim_tanque_sinonimo')) return page(sinonimos);
     if (url.includes('/dim_tanque')) return page(tanques);
@@ -1321,5 +1324,250 @@ describe('MT.52 - DataStore.loadTanques / postMovimiento / anularMovimiento', ()
     assert.equal(out.movimiento.anulado, true);
     assert.equal(out.actualizado, true);
     assert.deepEqual(JSON.parse(calls[0].opts.body), { action: 'anular', id: 1 });
+  });
+});
+
+// --- round 3 (coordinator review round 2) ------------------------------------
+
+describe('MT.52 - one consistent snapshot per read', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; });
+
+  const nuevaFila = { id: 2, fecha: '2025-09-12', tipo: 'salida', origen: 'A1', destino: null,
+    lot_code: 'CS-01', vintage_year: 2025, volumen_l: '1000', merma_l: '0', nota: null,
+    fuente: 'manual', creado_por: 'labuser', anulado: false,
+    created_at: '2025-09-12T18:00:00+00:00' };
+
+  it('GET retries a read the version moved during, and answers with the stable version', async () => {
+    // A write lands while the endpoint is reading the log: the first pass saw
+    // the version before it and maybe a log without it. That mix must not be
+    // returned; the second pass is stable and is the answer.
+    const movimientos = logBase();
+    let lecturas = 0;
+    const calls = mockSupabase({ movimientos, alLeer: (url, db) => {
+      if (url.includes('/movimientos_tanque') && ++lecturas === 1) {
+        movimientos.push(nuevaFila);
+        db.v++;
+      }
+    } });
+    const res = makeRes();
+    await handler(makeReq({ method: 'GET' }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.equal(res.body.version, 1, 'the version that held across the read');
+    assert.deepEqual(res.body.movimientos.map(m => m.id), [1, 2]);
+    assert.equal(calls.filter(c => c.url.includes('/tanques_version')).length, 4,
+      'before and after, twice');
+  });
+
+  it('GET answers 503 in Spanish when the version never holds still', async () => {
+    mockSupabase({ alLeer: (url, db) => { if (url.includes('/movimientos_tanque')) db.v++; } });
+    const res = makeRes();
+    await handler(makeReq({ method: 'GET' }), res);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.ok, false);
+    assert.equal(res.body.indeterminado, undefined, 'nothing was written, so nothing is unknown');
+    assert.match(res.body.error, /cambiando/);
+  });
+
+  it('crear validates against the stable read and sends ITS version to the RPC', async () => {
+    let lecturas = 0;
+    const calls = mockSupabase({ alLeer: (url, db) => {
+      if (url.includes('/dim_tanque?') && ++lecturas === 1) db.v++;  // a catalog edit mid-read
+    } });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    const args = rpcArgs(calls);
+    assert.equal(args.length, 1, 'no wasted conflicto round');
+    assert.equal(args[0].p_version, 1);
+  });
+
+  it('crear never calls the RPC when the version never holds still', async () => {
+    const calls = mockSupabase({ alLeer: (url, db) => { if (url.includes('/movimientos_tanque')) db.v++; } });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.indeterminado, undefined);
+    assert.equal(escribio(calls), false);
+  });
+
+  it('anular reads through the same stable snapshot', async () => {
+    const calls = mockSupabase({ alLeer: (url, db) => { if (url.includes('/movimientos_tanque')) db.v++; } });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'anular', id: 1 } }), res);
+    assert.equal(res.statusCode, 503);
+    assert.equal(escribio(calls), false);
+  });
+});
+
+describe('MT.52 - a client_id reused with different data is a 409, not duplicado', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; });
+
+  const cid = '6f1c2a3b-4d5e-4f60-8a7b-9c0d1e2f3a4b';
+  // As PostgREST would hand the stored row back: numerics as strings.
+  const guardada = { id: 2, fecha: '2025-09-10', tipo: 'trasiego', origen: 'A1', destino: 'A2',
+    lot_code: 'CS-01', vintage_year: 2025, volumen_l: '6000.000000', merma_l: '0.000000',
+    nota: null, fuente: 'manual', creado_por: 'labuser', anulado: false,
+    created_at: '2025-09-10T18:00:00+00:00', client_id: cid };
+
+  for (const [nombre, over, user] of [
+    ['another volume', { volumen_l: 5000 }],
+    ['another date', { volumen_l: 6000, fecha: '2025-09-11' }],
+    ['another destination', { volumen_l: 6000, destino: 'TIBOR 13' }],
+    ['another note', { volumen_l: 6000, nota: 'otra' }],
+    ['another user', { volumen_l: 6000 }, 'otrouser'],
+  ]) {
+    it(`refuses the key with ${nombre} (pre-check, no RPC)`, async () => {
+      const calls = mockSupabase({ movimientos: [...logBase(), guardada] });
+      const res = makeRes();
+      await handler(makeReq({ user, body: { action: 'crear', movimiento: movimiento({ ...over, client_id: cid }) } }), res);
+      assert.equal(res.statusCode, 409, JSON.stringify(res.body));
+      assert.equal(res.body.ok, false);
+      assert.equal(res.body.duplicado, undefined);
+      assert.match(res.body.error, /identificador del movimiento ya se usó con datos distintos/);
+      assert.equal(escribio(calls), false);
+    });
+  }
+
+  it('still answers a true duplicate as duplicado, comparing normalized types', async () => {
+    // '6000' vs '6000.000000', '2025' vs 2025, merma absent vs '0.000000', an
+    // uppercased key: all the same intent.
+    const calls = mockSupabase({ movimientos: [...logBase(), guardada] });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({
+      volumen_l: '6000', vintage_year: '2025', client_id: cid.toUpperCase() }) } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.equal(res.body.duplicado, true);
+    assert.equal(res.body.movimiento.id, 2);
+    assert.equal(escribio(calls), false);
+  });
+
+  it('maps the RPC client_id_distinto to 409', async () => {
+    mockSupabase({ rpc: (args, ok) => ok({ resultado: 'client_id_distinto',
+      fila: { ...guardada, volumen_l: 1 } }) });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ client_id: cid }) } }), res);
+    assert.equal(res.statusCode, 409, JSON.stringify(res.body));
+    assert.equal(res.body.duplicado, undefined);
+    assert.match(res.body.error, /datos distintos/);
+  });
+});
+
+describe('MT.52 - client: only an API refusal is definite', () => {
+  let originalFetch, DataStore;
+
+  before(async () => {
+    globalThis.localStorage = globalThis.localStorage || {
+      _s: { xanic_session_token: 'tok' },
+      getItem(k) { return this._s[k] ?? null; },
+      setItem(k, v) { this._s[k] = String(v); },
+      removeItem(k) { delete this._s[k]; },
+    };
+    DataStore = (await import('../js/dataLoader.js')).DataStore;
+  });
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; DataStore.tanquesDesactualizado = false; });
+
+  const vacio = { ok: true, tanques: TANQUES, sinonimos: {}, movimientos: [] };
+  const json = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+
+  it('a JSON 504 after the insert committed: the retry reuses the key and writes nothing new', async () => {
+    // A tiny server that is idempotent on client_id, like tanques_escribir.
+    const filas = [];
+    const claves = [];
+    let posts = 0, gets = 0;
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') {
+        const m = JSON.parse(opts.body).movimiento;
+        claves.push(m.client_id);
+        const previa = filas.find(f => f.client_id === m.client_id);
+        if (previa) return json(200, { ok: true, duplicado: true, movimiento: previa });
+        filas.push({ id: filas.length + 1, ...m });
+        // Committed, then the gateway gave up and answered with its own JSON.
+        if (++posts === 1) return json(504, { error: 'upstream timeout' });
+        return json(200, { ok: true, movimiento: filas[filas.length - 1] });
+      }
+      // The reconcile re-read fails too, so the outcome stays unknown.
+      if (++gets === 1) return json(503, { error: 'upstream timeout' });
+      return json(200, { ...vacio, movimientos: filas });
+    };
+    const { client_id, ...sinClave } = movimiento();
+    let error = null;
+    try { await DataStore.postMovimiento(sinClave); } catch (e) { error = e; }
+    assert.ok(error, 'the first attempt cannot report success');
+    assert.equal(error.indeterminado, true, 'a gateway 504 is not a refusal');
+    assert.equal(error.movimiento && error.movimiento.client_id, claves[0]);
+    // The UI retries the intent the error hands back, or the original as a
+    // last resort; only the former keeps the key.
+    const out = await DataStore.postMovimiento(error.movimiento || sinClave);
+    assert.equal(claves[1], claves[0], 'same intent, same key');
+    assert.equal(filas.length, 1, 'no second row');
+    assert.equal(out.duplicado, true);
+  });
+
+  for (const [nombre, respuesta] of [
+    ['a 500 with an API-looking body', () => json(500, { ok: false, error: 'Error al procesar el movimiento' })],
+    ['a 502 with arbitrary JSON', () => json(502, { error: 'upstream timeout' })],
+    ['a 503 with arbitrary JSON', () => json(503, { message: 'Service Unavailable' })],
+    ['a 504 with arbitrary JSON', () => json(504, { error: 'upstream timeout' })],
+    ['a 400 that is not JSON', () => ({ ok: false, status: 400, json: async () => { throw new SyntaxError('Unexpected token <'); } })],
+    ['a 200 that is not JSON', () => ({ ok: true, status: 200, json: async () => { throw new SyntaxError('Unexpected token <'); } })],
+    ['a 400 without the API envelope', () => json(400, { message: 'Bad Request' })],
+    ['a 409 without the API envelope', () => json(409, { error: 'conflict' })],
+    ['a 401', () => json(401, { ok: false, error: 'No autorizado' })],
+    ['a 429', () => json(429, { ok: false, error: 'Demasiadas solicitudes' })],
+    ['a 200 with ok:false', () => json(200, { ok: false, error: 'x' })],
+    ['a 200 with no envelope', () => json(200, {})],
+    ['a 200 with ok but no movimiento', () => json(200, { ok: true })],
+    ['a 201 with a null body', () => json(201, null)],
+  ]) {
+    it(`treats ${nombre} as indeterminate and reconciles`, async () => {
+      let gets = 0;
+      globalThis.fetch = async (url, opts = {}) => {
+        if ((opts.method || 'GET') === 'POST') return respuesta();
+        gets++;
+        return json(200, vacio);
+      };
+      const mov = movimiento();
+      await assert.rejects(() => DataStore.postMovimiento(mov), (e) => {
+        assert.equal(e.indeterminado, true, nombre);
+        assert.equal(e.rechazado, undefined);
+        assert.equal(e.movimiento.client_id, mov.client_id);
+        return true;
+      });
+      assert.equal(gets, 1, 'it re-reads the log to reconcile');
+    });
+  }
+
+  for (const status of [400, 403, 404, 409]) {
+    it(`keeps a ${status} with the API envelope a definite refusal, with the intent attached`, async () => {
+      let gets = 0;
+      globalThis.fetch = async (url, opts = {}) => {
+        if ((opts.method || 'GET') === 'POST') return json(status, { ok: false, error: 'Motivo en español.' });
+        gets++;
+        return json(200, vacio);
+      };
+      const mov = movimiento();
+      await assert.rejects(() => DataStore.postMovimiento(mov), (e) => {
+        assert.equal(e.message, 'Motivo en español.');
+        assert.equal(e.rechazado, true);
+        assert.equal(e.status, status);
+        assert.equal(e.indeterminado, undefined);
+        assert.equal(e.movimiento.client_id, mov.client_id);
+        return true;
+      });
+      assert.equal(gets, 0, 'a refusal wrote nothing, so there is nothing to re-read');
+    });
+  }
+
+  it('applies the same rule to anularMovimiento', async () => {
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') return json(502, { error: 'bad gateway' });
+      return json(200, vacio);
+    };
+    await assert.rejects(() => DataStore.anularMovimiento(1), (e) => e.indeterminado === true);
   });
 });

@@ -250,6 +250,7 @@ the anon key.
 ```json
 {
   "ok": true,
+  "version":     42,
   "tanques":     [ { "codigo": "A1", "fila": "A", "posicion": 1, "capacidad_l": 20000,
                      "tipo": "TQ", "area": "fermentacion", "activo": true, "orden": 1 } ],
   "sinonimos":   { "TIB13": "TIBOR 13" },
@@ -263,6 +264,12 @@ the anon key.
 
 - Returns the whole of all three tables, paged past the PostgREST 1000-row
   ceiling. A truncated log would derive the wrong tank contents.
+- **One consistent snapshot.** `tanques_version` is read before and after the
+  catalog and the log. If it moved (a write or a catalog edit landed between
+  the pages), the whole read runs again, up to three attempts; `version` is the
+  value that held across the read. If it never holds still the answer is `503`
+  with a Spanish message and no data. The write path validates against the same
+  stable read.
 - Inactive vessels (`activo: false`) are included: they keep their history even
   though the map does not draw them.
 - Annulled movements are included, so the history panel can show them struck
@@ -372,7 +379,11 @@ reaches production:
 
 - **Optimistic version check.** `public.tanques_version` holds one counter `v`,
   bumped by an `AFTER INSERT OR UPDATE` trigger on `movimientos_tanque` in the
-  same transaction as the write. The endpoint reads `v` **before** the log,
+  same transaction as the write, and by `FOR EACH STATEMENT` triggers on
+  `dim_tanque` and `dim_tanque_sinonimo` (insert, update, delete, truncate),
+  because a movement is validated against the catalog too: a capacity edited
+  between the read and the write turns the write into `conflicto`. The endpoint
+  reads a stable snapshot (version before and after the catalog and the log),
   validates, and calls `POST /rest/v1/rpc/tanques_escribir` with that version
   (service key, server-side only). The function locks the version row
   `FOR UPDATE`, so two writes queue there; if `v` moved it returns `conflicto`
@@ -383,7 +394,11 @@ reaches production:
 - **Idempotency key.** Every `crear` carries a `client_id` UUID, stored in a
   `UNIQUE` column that the append-only trigger freezes. A retry of a write that
   already committed returns the existing row with `duplicado: true`, whether the
-  endpoint sees it in the log first or the function finds it.
+  endpoint sees it in the log first or the function finds it. A key reused with
+  **different data** (any whitelisted field or `creado_por`, compared as table
+  types: numeric as numeric, date as date, absent `merma_l` as 0) is `409`
+  "El identificador del movimiento ya se usó con datos distintos", never
+  `duplicado`; the function answers `client_id_distinto` for it.
 - **Unknown outcome is not a refusal.** When the RPC fetch rejects, times out
   (8 s), answers 5xx or answers something unreadable, the write may have
   committed. The endpoint answers `503` with `indeterminado: true` and a Spanish
@@ -410,14 +425,19 @@ someone press the button again and record a movement twice:
   (with `DataStore.tanquesDesactualizado` set) means the movement is in the log
   and the screen is stale: report "registrado, no se pudo actualizar la vista"
   and offer a reload, not a retry.
-- **Refused.** Throws with the server's Spanish reason, so a caller shows it
-  instead of inventing one. Nothing was written and nothing is stale.
-- **Unknown.** The request left and no readable answer came back, or the
-  server answered `indeterminado: true`. The log is re-read first: if the write
+- **Refused.** Only the API's own refusal: status `400`, `403`, `404` or `409`
+  with its envelope (`ok: false` and a string `error`). Throws with that Spanish
+  reason, `err.rechazado: true` and `err.status`. Nothing was written and
+  nothing is stale.
+- **Unknown.** Everything else that is not a `2xx` with `ok: true` and a
+  `movimiento` object: a network error, a body that is not JSON, any `5xx`
+  (including a gateway `502`/`503`/`504` with JSON of its own, which can arrive
+  after the insert committed), a `401` or `429`, or a malformed success. The log is re-read first: if the write
   is visible there (the crear's `client_id`, or the row now annulled), it
   resolves as written with `reconciliado: true`. Otherwise it throws an error
-  carrying `indeterminado: true` and, for a crear, `err.movimiento`: the same
-  intent with its `client_id`. Retrying with `postMovimiento(err.movimiento)`
+  carrying `indeterminado: true`. Every error from `postMovimiento`, refused or
+  unknown, carries `err.movimiento`: the same intent with its `client_id` (and a
+  success carries it as `intento`). Retrying with `postMovimiento(err.movimiento)`
   is safe, because the server recognises the key instead of writing twice.
   `tanquesDesactualizado` is set only when the re-read failed too.
 

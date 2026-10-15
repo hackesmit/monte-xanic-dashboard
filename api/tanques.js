@@ -8,11 +8,13 @@
 // the same gate as api/row.js.
 //
 // Writes are serialized and idempotent (decision on bead xd-qrn.8): the version
-// counter is read before the log, the movement is validated against that log,
+// counter is read before and after the catalog and the log (and the read is
+// retried until it held still), the movement is validated against that log,
 // and public.tanques_escribir writes only if the version has not moved, else
 // the whole read and validation runs again (up to INTENTOS, then 409). Each
 // crear carries a client_id, so repeating a POST whose answer was lost returns
-// the row already written instead of a second one. A write whose outcome is
+// the row already written instead of a second one; the same key with other
+// data is a 409, never "already saved". A write whose outcome is
 // unknown answers 503 with `indeterminado: true`, never a refusal.
 //
 // This file holds no tank semantics. What a movement does to a tank lives in
@@ -54,6 +56,7 @@ const VINTAGE_MIN = 1988;   // same range as the movimientos_tanque CHECK
 const VINTAGE_MAX = 2100;
 const PAGINA = 1000;        // PostgREST caps a response at 1000 rows
 const INTENTOS = 3;         // read, validate and write attempts before a 409
+const LECTURAS = 3;         // attempts at a read the version stays still across
 const ESPERA_RPC_MS = 8000; // past this the write is abandoned as indeterminate
 // One millilitre: the threshold below which a difference between two replays is
 // not a real worsening. js/tanques/estado.js reports its balance totals to the
@@ -133,6 +136,12 @@ class ErrorSupabase extends Error {
   }
 }
 
+// The bodega would not hold still: the version moved during every one of the
+// LECTURAS attempts to read it. Nothing was written; answered 503 so the client
+// simply tries again later. Distinct from ErrorIndeterminado, which is about a
+// write that may have committed.
+class ErrorInestable extends Error {}
+
 // A write whose outcome we cannot know: the request may have reached Postgres
 // and committed even though no answer came back. Reported as 503 with
 // `indeterminado: true`, never as a refusal, because a refusal invites the
@@ -207,9 +216,8 @@ async function escribir(version, accion, fila, id) {
   return json;
 }
 
-// Read the version BEFORE the log. A write that commits between the two reads
-// then shows up as a stale version and a conflicto, never as a log that looks
-// current under a version that is not.
+// The version counter. leerEstable() reads it on both sides of the catalog and
+// the log; a write that commits in between shows up as a moved version.
 async function leerVersion() {
   const filas = await sb('tanques_version?select=v&id=eq.1');
   const v = Array.isArray(filas) && filas[0] ? num(filas[0].v) : undefined;
@@ -239,6 +247,24 @@ async function leerTodo(tabla, orden) {
     filas.push(...pagina);
   }
   return filas;
+}
+
+// One consistent snapshot: the version read before the catalog and the log and
+// again after them. The pages of three tables are separate requests, so a write
+// (or a catalog edit, which bumps the same version) landing between them would
+// otherwise hand back a mix of before and after that never existed: a log with
+// a row whose catalog is from before it, or half a page shifted by an insert.
+// If the version moved, the whole read runs again; the version returned is the
+// one that held across the read, so a write validated against this snapshot is
+// refused as conflicto the moment anything in it changes.
+async function leerEstable() {
+  for (let i = 0; i < LECTURAS; i++) {
+    const antes = await leerVersion();
+    const bodega = await leerBodega();
+    const despues = await leerVersion();
+    if (antes === despues) return { version: antes, ...bodega };
+  }
+  throw new ErrorInestable(`la version cambio durante ${LECTURAS} lecturas`);
 }
 
 async function leerBodega() {
@@ -444,7 +470,7 @@ export default async function handler(req, res) {
 
   try {
     if (req.method === 'GET') {
-      const bodega = await leerBodega();
+      const bodega = await leerEstable();
       return res.status(200).json({ ok: true, ...bodega });
     }
 
@@ -465,6 +491,14 @@ export default async function handler(req, res) {
     if (action === 'crear') return await crear(req, res, usuario);
     return await anular(req, res);
   } catch (e) {
+    if (e instanceof ErrorInestable) {
+      console.error('[tanques] lectura inestable:', e.message);
+      return res.status(503).json({
+        ok: false,
+        error: 'La bitácora de tanques está cambiando en este momento; no se pudo leer completa. '
+          + 'Intente de nuevo en unos segundos.',
+      });
+    }
     if (e instanceof ErrorIndeterminado) {
       console.error('[tanques] escritura sin confirmar:', e.message);
       return res.status(503).json({
@@ -484,6 +518,36 @@ export default async function handler(req, res) {
 }
 
 const CONFLICTO = 'La bitácora de tanques cambió mientras se registraba; no se escribió nada. Intente de nuevo.';
+const CLIENT_ID_DISTINTO = 'El identificador del movimiento ya se usó con datos distintos; no se escribió nada.';
+
+// Normalized forms for comparing a stored row with a request: numbers as
+// numbers (so '10000.000000' from PostgREST equals 10000), a DATE as its plain
+// YYYY-MM-DD, and an absent text as null.
+const fechaPlana = (v) => {
+  const t = texto(v);
+  return /^\d{4}-\d{2}-\d{2}/.test(t) ? t.slice(0, 10) : t;
+};
+const textoONulo = (v) => (v == null || v === '' ? null : v);
+const extremo = (v) => texto(v) || null;
+const litros = (v) => (v == null ? 0 : num(v));
+
+// Is the stored row with this client_id the SAME intent as the movement being
+// posted? Same fields public.tanques_misma_intencion compares in SQL: the
+// whitelist plus creado_por (from the token). Different means the key is being
+// reused for another movement, which must not be answered as "already saved".
+function mismaIntencion(guardada, mov) {
+  return fechaPlana(guardada.fecha) === fechaPlana(mov.fecha)
+    && texto(guardada.tipo) === texto(mov.tipo)
+    && extremo(guardada.origen) === extremo(mov.origen)
+    && extremo(guardada.destino) === extremo(mov.destino)
+    && texto(guardada.lot_code) === texto(mov.lot_code)
+    && num(guardada.vintage_year) === num(mov.vintage_year)
+    && num(guardada.volumen_l) === num(mov.volumen_l)
+    && litros(guardada.merma_l) === litros(mov.merma_l)
+    && textoONulo(guardada.nota) === textoONulo(mov.nota)
+    && texto(guardada.fuente) === texto(mov.fuente)
+    && textoONulo(guardada.creado_por) === textoONulo(mov.creado_por);
+}
 
 async function crear(req, res, usuario) {
   const entrada = (req.body || {}).movimiento;
@@ -499,15 +563,7 @@ async function crear(req, res, usuario) {
   // again and judge the movement against what is there now. Nothing is written
   // on a conflicto, so a retry can never duplicate.
   for (let intento = 0; intento < INTENTOS; intento++) {
-    const version = await leerVersion();
-    const { tanques, sinonimos, movimientos } = await leerBodega();
-
-    // The same intent already landed (its acknowledgment was lost and the
-    // client retried). Judging it again would count it twice and refuse it as
-    // an overdraw of its own litres; the answer is the row that is there.
-    const previo = movimientos.find(m => typeof m.client_id === 'string'
-      && m.client_id.toLowerCase() === clientId);
-    if (previo) return res.status(200).json({ ok: true, duplicado: true, movimiento: previo });
+    const { version, tanques, sinonimos, movimientos } = await leerEstable();
 
     const codigos = new Set(tanques.map(t => texto(t.codigo)).filter(Boolean));
 
@@ -529,6 +585,20 @@ async function crear(req, res, usuario) {
       creado_por: usuario,   // from the verified token, never from the body
       client_id: clientId,
     };
+
+    // The same key already landed (its acknowledgment was lost and the client
+    // retried). Judging it again would count it twice and refuse it as an
+    // overdraw of its own litres; the answer is the row that is there. But only
+    // if it IS the same movement: a key reused with other data is a client bug
+    // or a replay, and "already saved" would be a lie about what is saved.
+    const previo = movimientos.find(m => typeof m.client_id === 'string'
+      && m.client_id.toLowerCase() === clientId);
+    if (previo) {
+      if (!mismaIntencion(previo, movimiento)) {
+        return res.status(409).json({ ok: false, error: CLIENT_ID_DISTINTO });
+      }
+      return res.status(200).json({ ok: true, duplicado: true, movimiento: previo });
+    }
 
     // `fecha` is a BUSINESS date, so a row written today can belong in the middle
     // of the replay: validarMovimientoEnLog judges it at its place in the log and
@@ -555,6 +625,9 @@ async function crear(req, res, usuario) {
 
     const r = await escribir(version, 'crear', movimiento, null);
     if (r.resultado === 'conflicto') continue;
+    if (r.resultado === 'client_id_distinto') {
+      return res.status(409).json({ ok: false, error: CLIENT_ID_DISTINTO });
+    }
     if ((r.resultado === 'creado' || r.resultado === 'duplicado') && r.fila && typeof r.fila === 'object') {
       const cuerpo = { ok: true, movimiento: filaMovimiento(r.fila) };
       if (r.resultado === 'duplicado') cuerpo.duplicado = true;
@@ -572,8 +645,7 @@ async function anular(req, res) {
   }
 
   for (let intento = 0; intento < INTENTOS; intento++) {
-    const version = await leerVersion();
-    const { tanques, sinonimos, movimientos } = await leerBodega();
+    const { version, tanques, sinonimos, movimientos } = await leerEstable();
     const objetivo = movimientos.find(m => m.id === id);
     if (!objetivo) {
       return res.status(404).json({ ok: false, error: 'El movimiento no existe.' });
