@@ -499,3 +499,132 @@ describe('mt58 - sql/migration_tanques_descartes.sql', () => {
       'la nueva migracion va al final del manifiesto, en orden de aplicacion');
   });
 });
+
+// --- what "the windows do not overlap" has to mean ----------------------------
+//
+// Three findings from the cross-vendor review (lucy, 2026-10-15), each of which
+// turned ambiguous sampling into a specific route an append-only ledger would
+// have had to carry.
+
+describe('mt58 - evidencia ambigua no se convierte en ruta', () => {
+  const motivos = (r) => r.traslapes.map((t) => `${t.motivo}:${t.a}/${t.b}`).sort();
+
+  test('una ventana que abarca a otras dos bloquea TODO el tramo, no solo su par', () => {
+    // D5 del 1 al 10, E1 el 2, H8 el 3: el lote estuvo en los tres a la vez.
+    // Mirar solo pares vecinos descarta D5 y E1 y luego ve E1 y H8 como un par
+    // limpio, que propone un trasiego preciso entre dos tanques que el lote
+    // ocupaba al mismo tiempo.
+    const muestras = [
+      m('25CSKMP-4', '2025-10-01', 'D5'),
+      m('25CSKMP-4', '2025-10-10', 'D5'),
+      m('25CSKMP-4', '2025-10-02', 'E1'),
+      m('25CSKMP-4', '2025-10-03', 'H8'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas), []);
+    assert.deepEqual(motivos(r), ['simultaneo:D5/E1', 'simultaneo:E1/H8']);
+  });
+
+  test('salir de un grupo de dos no nombra origen; entrar a uno si nombra destino', () => {
+    // E1 cierra el 18, A4 abre el 18 (el dia del trasiego) y A2 aparece el 20,
+    // dentro de la ventana de A4. La entrada a A4 sigue siendo clara.
+    const muestras = [
+      ...dias('25TEKMP-2', '2025-10', 10, 16, 'E1'),
+      m('25TEKMP-2', '2025-10-18', 'A4'),
+      m('25TEKMP-2', '2025-10-20', 'A2'),
+      m('25TEKMP-2', '2025-10-22', 'A4'),
+      // y despues un grupo de dos del que no se puede salir
+      m('25TEKMP-2', '2025-11-01', 'B4'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas), ['E1>A4@2025-10-18']);
+    assert.ok(r.traslapes.some((t) => t.motivo === 'simultaneo' && t.a === 'A4' && t.b === 'A2'));
+    // B4 abre despues del grupo {A4, A2}, pero no se sabe de cual de los dos salio
+    assert.ok(!r.propuestas.some((p) => p.destino === 'B4'));
+  });
+
+  test('un empate en el primer dia de un grupo no nombra destino', () => {
+    const muestras = [
+      ...dias('25CSKMP-4', '2025-10', 1, 5, 'D5'),
+      m('25CSKMP-4', '2025-10-10', 'E1'),
+      m('25CSKMP-4', '2025-10-10', 'H8'),
+      m('25CSKMP-4', '2025-10-12', 'E1'),
+      m('25CSKMP-4', '2025-10-12', 'H8'),
+    ];
+    assert.deepEqual(ruta(inferirMovimientos(muestras, BODEGA).propuestas), []);
+  });
+
+  test('dos vasijas el mismo unico dia no ponen direccion: el alfabeto no es un flujo', () => {
+    const muestras = [
+      m('25CSKMP-4', '2025-11-12', 'D5'),
+      m('25CSKMP-4', '2025-11-12', 'E1'),
+      m('25CSKMP-4', '2025-11-12', 'H8'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas), []);
+    assert.deepEqual(motivos(r), ['mismo_dia:D5/E1', 'mismo_dia:E1/H8']);
+  });
+
+  test('pero un dia compartido con una ventana que sigue SI pone direccion', () => {
+    // D5 solo el 12; E1 el 12 y hasta el 21: el lote se quedo en E1.
+    const muestras = [
+      m('25CSKMP-4', '2025-11-12', 'D5'),
+      ...dias('25CSKMP-4', '2025-11', 12, 21, 'E1'),
+    ];
+    assert.deepEqual(ruta(inferirMovimientos(muestras, BODEGA).propuestas), ['D5>E1@2025-11-12']);
+  });
+
+  test('una vasija sin tanque EN EL HUECO bloquea el trasiego directo', () => {
+    const muestras = [
+      m('25CSKMP-4', '2025-10-01', 'D5'),
+      m('25CSKMP-4', '2025-10-02', 'C9'),    // el catalogo no la tiene
+      m('25CSKMP-4', '2025-10-03', 'E1'),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    assert.deepEqual(ruta(r.propuestas), []);
+    assert.deepEqual(motivos(r), ['sin_tanque_en_medio:D5/E1']);
+    // y la vasija sigue reportandose aparte
+    assert.ok(r.sinResolver.some((e) => e.vessel_id === 'C9'));
+  });
+
+  test('una vasija sin tanque DENTRO de una ventana no bloquea nada', () => {
+    // Una barrica muestreada mientras el lote vive en D5 es una lectura
+    // paralela, no una escala del viaje.
+    const muestras = [
+      ...dias('25CSKMP-4', '2025-10', 1, 5, 'D5'),
+      m('25CSKMP-4', '2025-10-03', 'BCA'),
+      ...dias('25CSKMP-4', '2025-10', 8, 12, 'E1'),
+      m('25CSKMP-4', '2025-10-10', 'BCA'),
+    ];
+    assert.deepEqual(ruta(inferirMovimientos(muestras, BODEGA).propuestas), ['D5>E1@2025-10-08']);
+  });
+
+  test('el hueco se mide por lote: la barrica de OTRO lote no bloquea este', () => {
+    const muestras = [
+      m('25CSKMP-4', '2025-10-01', 'D5'),
+      m('25DUKMP-3', '2025-10-02', 'BCA'),
+      m('25CSKMP-4', '2025-10-03', 'E1'),
+    ];
+    assert.deepEqual(ruta(inferirMovimientos(muestras, BODEGA).propuestas), ['D5>E1@2025-10-03']);
+  });
+
+  test('la cobertura se reporta por vendimia, no promediada sobre toda la tabla', () => {
+    // Un 2023 que vive en barricas no debe esconder como esta cubierto el 2025.
+    const muestras = [
+      ...dias('25CSKMP-4', '2025-10', 1, 5, 'D5'),
+      ...dias('25CSKMP-4', '2025-10', 8, 12, 'E1'),
+      ...dias('23CSLLC-9', '2025-06', 1, 9, 'BCA', { vintage: 2023 }),
+      m('23CSLLC-9', '2025-06-20', 'E6', { vintage: 2023 }),
+    ];
+    const r = inferirMovimientos(muestras, BODEGA);
+    const v = Object.fromEntries(r.resumen.por_vendimia.map((e) => [e.vendimia, e]));
+    assert.equal(v[2025].muestras, 10);
+    assert.equal(v[2025].sin_tanque, 0);
+    assert.equal(v[2023].sin_tanque, 9);
+    assert.ok(v[2023].fraccion > 0.8);
+    // la vendimia mas nueva primero: es la que se esta trabajando
+    assert.equal(r.resumen.por_vendimia[0].vendimia, 2025);
+    // y el total sigue ahi, diluido, que es justo por lo que no se muestra solo
+    assert.ok(r.resumen.fraccion_sin_tanque < v[2023].fraccion);
+  });
+});

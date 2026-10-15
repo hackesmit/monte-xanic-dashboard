@@ -228,6 +228,15 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
 
   // vessel_id -> {vessel_id, muestras, lotes:Set, desde, hasta}
   const sinResolver = new Map();
+  // Coverage per vendimia, because the spec's stop-when is about ONE vintage's
+  // samples and a whole-table percentage can hide a bad year behind good ones
+  // (lucy, 2026-10-15).
+  const vendimias = new Map();
+  const porVendimia = (y) => {
+    const e = vendimias.get(y) || { vendimia: y, muestras: 0, sin_tanque: 0 };
+    vendimias.set(y, e);
+    return e;
+  };
   // lot_code -> {vintage_year, vasijas: Map(codigo -> {desde, hasta, muestras})}
   const porLote = new Map();
   let total = 0, sinVasija = 0;
@@ -244,10 +253,20 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
     const ref = texto(r.tanque);
     if (!fecha || !ref) continue;
     total += 1;
+    porVendimia(vintage_year).muestras += 1;
+
+    const lote = porLote.get(lot_code)
+      || { vintage_year, vasijas: new Map(), sinTanque: [] };
+    porLote.set(lot_code, lote);
 
     const codigo = resolverVasija(ref, codigos, sinonimos);
     if (!codigo) {
       sinVasija += 1;
+      // Kept against the LOTE too, not only against the vessel: a reading with
+      // no tank inside the gap between two tank windows is what tells us the
+      // route is not a straight line (see the `puente` check below).
+      lote.sinTanque.push(fecha);
+      porVendimia(vintage_year).sin_tanque += 1;
       const n = normalizarVasija(ref);
       const e = sinResolver.get(n)
         || { vessel_id: n, muestras: 0, lotes: new Set(), desde: fecha, hasta: fecha };
@@ -259,35 +278,84 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
       continue;
     }
 
-    const lote = porLote.get(lot_code) || { vintage_year, vasijas: new Map() };
     const v = lote.vasijas.get(codigo) || { codigo, desde: fecha, hasta: fecha, muestras: 0 };
     v.muestras += 1;
     if (fecha < v.desde) v.desde = fecha;
     if (fecha > v.hasta) v.hasta = fecha;
     lote.vasijas.set(codigo, v);
-    porLote.set(lot_code, lote);
   }
 
   const propuestas = [];
   const traslapes = [];
   for (const [lot_code, lote] of porLote) {
-    // Order by window: first sample, then last, then the code, so the chain is
-    // the same whatever order the rows arrived in.
+    // Order by window: first sample, then last, then the code, so the grouping
+    // below is the same whatever order the rows arrived in.
     const vasijas = [...lote.vasijas.values()].sort((a, b) =>
       (a.desde < b.desde ? -1 : a.desde > b.desde ? 1
         : a.hasta < b.hasta ? -1 : a.hasta > b.hasta ? 1
           : a.codigo.localeCompare(b.codigo, 'es')));
-    for (let i = 1; i < vasijas.length; i++) {
-      const origen = vasijas[i - 1];
-      const destino = vasijas[i];
-      if (origen.hasta > destino.desde) {
-        // The lote was sampled in both vessels at once: a split, a blend, or a
-        // vessel id somebody mistyped. Either way the samples name no single
-        // movement, and guessing one would put litres in the ledger that no
-        // measurement supports.
+
+    // Merge the windows into GROUPS of vessels the lote occupied at the same
+    // time, and only then look between groups. Comparing neighbours alone is
+    // not enough: with D5 sampled from the 1st to the 10th, E1 on the 2nd and
+    // H8 on the 3rd, D5 and E1 overlap and are set aside, and E1 and H8 then
+    // look like a clean pair - so a lote that was demonstrably in three tanks
+    // at once would propose a precise E1 to H8 trasiego (lucy, 2026-10-15). A
+    // window that starts before everything seen so far has ended belongs to
+    // the same group. Starting exactly ON that day does not: that is the
+    // transfer day, sampled in the old tank and then in the new one.
+    const grupos = [];
+    for (const v of vasijas) {
+      const g = grupos[grupos.length - 1];
+      if (g && v.desde < g.hasta) {
+        g.vasijas.push(v);
+        if (v.hasta > g.hasta) g.hasta = v.hasta;
+      } else {
+        grupos.push({ vasijas: [v], hasta: v.hasta });
+      }
+    }
+
+    // A group of more than one vessel is reported, never resolved: the lote was
+    // in both (a split, a blend) or somebody mistyped a tank, and the samples
+    // name no single movement either way.
+    for (const g of grupos) {
+      for (let i = 1; i < g.vasijas.length; i++) {
         traslapes.push({
           lot_code,
           vintage_year: lote.vintage_year,
+          motivo: 'simultaneo',
+          a: g.vasijas[i - 1].codigo,
+          b: g.vasijas[i].codigo,
+          desde: g.vasijas[i].desde,
+          hasta: g.vasijas[i - 1].hasta,
+        });
+      }
+    }
+
+    for (let i = 1; i < grupos.length; i++) {
+      const antes = grupos[i - 1];
+      const despues = grupos[i];
+      // Leaving a group of two or more says nothing about WHICH tank the wine
+      // left, so there is no origin to name.
+      if (antes.vasijas.length !== 1) continue;
+      const origen = antes.vasijas[0];
+      // Arriving is different: a group's first-sampled vessel IS where the lote
+      // turned up, and whatever happens between the vessels of that group
+      // afterwards is the traslape above. A tie for first says nothing.
+      const entrada = [...despues.vasijas].sort((a, b) =>
+        (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0));
+      if (entrada.length > 1 && entrada[0].desde === entrada[1].desde) continue;
+      const destino = entrada[0];
+
+      // Two windows that are the SAME single day put no order on the two tanks:
+      // one sample in D5 and one in E1, both on the 12th, says the lote was in
+      // both that day and nothing about which came first. Sorting by code would
+      // turn the alphabet into a direction of flow (lucy, 2026-10-15).
+      if (origen.desde === destino.desde && origen.hasta === destino.hasta) {
+        traslapes.push({
+          lot_code,
+          vintage_year: lote.vintage_year,
+          motivo: 'mismo_dia',
           a: origen.codigo,
           b: destino.codigo,
           desde: destino.desde,
@@ -295,6 +363,28 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
         });
         continue;
       }
+
+      // A vessel the catalog does not have, sampled in the GAP between the two
+      // windows, is the only thing known about where the wine was in between.
+      // Proposing a direct trasiego across it asserts a route the samples
+      // contradict (lucy, 2026-10-15). Inside either window it is a parallel
+      // reading instead - BCA is barrels and BIN is bins, and a lote lives in
+      // F9 while somebody samples one of its barrels - so only the gap counts.
+      const puente = (lote.sinTanque || []).some(
+        (f) => f > origen.hasta && f < destino.desde);
+      if (puente) {
+        traslapes.push({
+          lot_code,
+          vintage_year: lote.vintage_year,
+          motivo: 'sin_tanque_en_medio',
+          a: origen.codigo,
+          b: destino.codigo,
+          desde: origen.hasta,
+          hasta: destino.desde,
+        });
+        continue;
+      }
+
       const p = {
         lot_code,
         vintage_year: lote.vintage_year,
@@ -324,7 +414,9 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
   propuestas.sort((a, b) =>
     (a.fecha < b.fecha ? -1 : a.fecha > b.fecha ? 1 : a.lot_code.localeCompare(b.lot_code, 'es')));
   traslapes.sort((a, b) =>
-    (a.lot_code.localeCompare(b.lot_code, 'es') || a.a.localeCompare(b.a, 'es')));
+    (a.lot_code.localeCompare(b.lot_code, 'es')
+      || a.desde.localeCompare(b.desde)
+      || a.a.localeCompare(b.a, 'es')));
 
   const lista = [...sinResolver.values()]
     .map((e) => ({ ...e, lotes: [...e.lotes].sort((a, b) => a.localeCompare(b, 'es')) }))
@@ -338,6 +430,11 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
       muestras: total,
       muestras_sin_tanque: sinVasija,
       vasijas_sin_tanque: lista.length,
+      // Newest vendimia first: that is the one being worked, and the one the
+      // spec's 20 per cent stop-when is about.
+      por_vendimia: [...vendimias.values()]
+        .sort((a, b) => b.vendimia - a.vendimia)
+        .map((e) => ({ ...e, fraccion: e.muestras ? e.sin_tanque / e.muestras : 0 })),
       // The SPEC's stop-when is a share of the samples that name a vessel the
       // catalog does not have. Reported rather than enforced: a module that
       // silently returned nothing would be worse than one that says how much
