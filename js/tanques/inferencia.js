@@ -304,14 +304,23 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
     // window that starts before everything seen so far has ended belongs to
     // the same group. Starting exactly ON that day does not: that is the
     // transfer day, sampled in the old tank and then in the new one.
+    //
+    // A shared boundary day is the transfer day only when the side being left
+    // has more than that one day to show. Two vessels whose whole record is
+    // "seen on the 2nd" are simultaneous, not sequential, and keeping them in
+    // separate groups let the tanks on either side be named by the alphabet:
+    // D5 on the 1st, E1 and H8 both on the 2nd and B4 on the 3rd proposed
+    // D5 to E1 and H8 to B4, picking between E1 and H8 twice with no evidence
+    // either time (lucy, 2026-10-15).
     const grupos = [];
     for (const v of vasijas) {
       const g = grupos[grupos.length - 1];
-      if (g && v.desde < g.hasta) {
+      const unDia = g && g.desde === g.hasta;
+      if (g && (v.desde < g.hasta || (v.desde === g.hasta && unDia))) {
         g.vasijas.push(v);
         if (v.hasta > g.hasta) g.hasta = v.hasta;
       } else {
-        grupos.push({ vasijas: [v], hasta: v.hasta });
+        grupos.push({ vasijas: [v], desde: v.desde, hasta: v.hasta });
       }
     }
 
@@ -320,14 +329,19 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
     // name no single movement either way.
     for (const g of grupos) {
       for (let i = 1; i < g.vasijas.length; i++) {
+        const a = g.vasijas[i - 1];
+        const b = g.vasijas[i];
         traslapes.push({
           lot_code,
           vintage_year: lote.vintage_year,
-          motivo: 'simultaneo',
-          a: g.vasijas[i - 1].codigo,
-          b: g.vasijas[i].codigo,
-          desde: g.vasijas[i].desde,
-          hasta: g.vasijas[i - 1].hasta,
+          // Two windows that are the SAME single day are a different story from
+          // two that overlap for weeks, and the inbox tells them apart.
+          motivo: (a.desde === a.hasta && b.desde === b.hasta && a.desde === b.desde)
+            ? 'mismo_dia' : 'simultaneo',
+          a: a.codigo,
+          b: b.codigo,
+          desde: b.desde,
+          hasta: a.hasta,
         });
       }
     }
@@ -346,23 +360,6 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
         (a.desde < b.desde ? -1 : a.desde > b.desde ? 1 : 0));
       if (entrada.length > 1 && entrada[0].desde === entrada[1].desde) continue;
       const destino = entrada[0];
-
-      // Two windows that are the SAME single day put no order on the two tanks:
-      // one sample in D5 and one in E1, both on the 12th, says the lote was in
-      // both that day and nothing about which came first. Sorting by code would
-      // turn the alphabet into a direction of flow (lucy, 2026-10-15).
-      if (origen.desde === destino.desde && origen.hasta === destino.hasta) {
-        traslapes.push({
-          lot_code,
-          vintage_year: lote.vintage_year,
-          motivo: 'mismo_dia',
-          a: origen.codigo,
-          b: destino.codigo,
-          desde: destino.desde,
-          hasta: origen.hasta,
-        });
-        continue;
-      }
 
       // A vessel the catalog does not have, sampled in the GAP between the two
       // windows, is the only thing known about where the wine was in between.
