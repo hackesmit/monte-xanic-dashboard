@@ -12,7 +12,8 @@
 import { DataStore } from '../dataLoader.js';
 import { DemoMode } from '../demoMode.js';
 import { escapeHtml } from '../utils.js';
-import { replayMovimientos, historialTanque, recorridoLote, ETAPAS, TIPOS } from './estado.js';
+import { replayMovimientos, historialTanque, recorridoLote, ETAPAS } from './estado.js';
+import { TanquesMoves, etiquetaMovimiento } from './moves.js';
 import {
   POSICION_1_AL, GEOMETRIA, construirPlano,
   MODOS, MODO_ETIQUETAS, ETAPA_ETIQUETAS, ETAPA_ABREV,
@@ -58,24 +59,6 @@ const AREA_ETIQUETA = {
   otras: 'Ubicación por definir',
 };
 
-// Spanish movement-type labels. Keyed off estado.js TIPOS so a type added to
-// the log without a label here is shown verbatim instead of disappearing.
-const TIPO_MOVIMIENTO = {
-  recepcion: 'Recepción',
-  trasiego: 'Trasiego',
-  descube: 'Descube',
-  sangrado: 'Sangrado',
-  prensa: 'Prensa',
-  ensamble: 'Ensamble',
-  salida: 'Salida',
-};
-
-function etiquetaMovimiento(tipo) {
-  const t = typeof tipo === 'string' ? tipo.trim() : '';
-  if (TIPOS.includes(t)) return TIPO_MOVIMIENTO[t] || t;
-  return t || 'Movimiento';
-}
-
 // `style="fill:var(--x)"` rather than `fill="var(--x)"`: a presentation
 // attribute is not a reliable place for a custom property, and an inline style
 // attribute is allowed by the CSP (style-src 'unsafe-inline').
@@ -104,6 +87,16 @@ export const TanquesView = {
   /** Called by App.refresh() every time the tab is shown. Idempotent. */
   mount() {
     this._wire();
+    // The write layer (js/tanques/moves.js) draws its own controls and gets
+    // everything it needs through these callbacks, so this file stays the
+    // read-only renderer and the import goes one way only.
+    TanquesMoves.mount({
+      render: () => this.render(),
+      bodega: () => this._bodega(),
+      busqueda: () => this.busqueda,
+      seleccion: () => this.seleccion,
+      seleccionar: (codigo) => { if (codigo) this.seleccion = codigo; },
+    });
     this._quizaCargar();
     this.render();
   },
@@ -240,6 +233,7 @@ export const TanquesView = {
       this._pintarLeyenda(estado, plan);
       this._pintarBandeja(plan, estado);
       this._pintarAvisos(avisos);
+      TanquesMoves.pintar();
       return;
     }
 
@@ -259,6 +253,7 @@ export const TanquesView = {
     this._pintarLeyenda(estado, plan);
     this._pintarBandeja(plan, estado);
     this._pintarAvisos(avisos);
+    TanquesMoves.pintar();
     this._restaurarFoco(foco);
   },
 
@@ -372,6 +367,7 @@ export const TanquesView = {
 
     const clases = ['tanque'];
     if (t.codigo === this.seleccion) clases.push('sel');
+    if (t.codigo === TanquesMoves.origenArmado()) clases.push('origen');
     if (!this._coincide(t, est)) clases.push('dim');
     if (!t.activo) clases.push('inactivo');
 
@@ -604,7 +600,8 @@ export const TanquesView = {
       etiquetas.push(`<span class="tanques-tag">aplicado ${litros(Math.abs(h.delta_l))} L</span>`);
     }
     if (!h.anulado && !h.aplicado) etiquetas.push('<span class="tanques-tag">no aplicado</span>');
-    return `<li class="${h.anulado ? 'anulado' : ''}">`
+    return `<li class="${h.anulado ? 'anulado' : ''}"`
+      + (h.id == null ? '' : ` data-mov="${escapeHtml(h.id)}"`) + '>'
       + `<time>${escapeHtml(fechaCorta(h.fecha))}</time><div>`
       + `<b>${escapeHtml(etiquetaMovimiento(h.tipo))}</b> ${escapeHtml(h.lot_code || 'sin lote')}, `
       + `${litros(h.volumen_l)} L ${escapeHtml(sentido)}${etiquetas.join('')}`
