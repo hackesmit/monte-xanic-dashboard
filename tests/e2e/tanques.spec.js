@@ -179,7 +179,7 @@ test.describe('Tanques', () => {
 
   test('the colour modes repaint the bands and the legend', async ({ page }) => {
     await abrir(page);
-    const banda = page.locator('#tanques-plano [data-tanque="C2"] path[style*="--tank-"]').last();
+    const banda = page.locator('#tanques-plano [data-tanque="C2"] path.tanque-liquido').last();
     await expect(banda).toHaveAttribute('style', /--tank-v-cs/);
     await expect(page.locator('#tanques-leyenda')).toContainText('Cabernet Sauvignon');
 
