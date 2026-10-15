@@ -75,7 +75,8 @@ function servidor() {
     proximoId: 2000,
     cuerpos: [],          // every POST body, in order: the payload evidence
     gets: 0,
-    guion: [],            // queued ['abortar'|'indeterminado'|'ok'] for the next POSTs
+    guion: [],            // queued ['abortar'|'indeterminado'|'retener'] for the next POSTs
+    soltar: null,         // resolves the held response
   };
 
   s.crear = (mov) => {
@@ -150,6 +151,9 @@ async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440,
     const cuerpo = JSON.parse(req.postData() || '{}');
     s.cuerpos.push(cuerpo);
     const guion = s.guion.shift();
+    if (guion === 'retener') {
+      await new Promise((resolve) => { s.soltar = resolve; });
+    }
     if (guion === 'abortar') return route.abort('failed');
     if (guion === 'indeterminado') {
       return route.fulfill({
@@ -442,6 +446,83 @@ test.describe('Tanques: registrar movimientos', () => {
     // marked stale and the plan still shows A5 full.
     await expect(page.locator('#tanques-estado')).not.toContainText('Se registró el movimiento');
     expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(0);
+  });
+
+  test('cancelling a dialog whose write is in flight cannot double the movement', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    s.guion.push('retener');
+
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    // The write is in flight: both ways out of the dialog are shut, because
+    // repeating the gesture would send the same movement under a new key.
+    await expect(dialogo(page).locator('button[type="submit"]')).toBeDisabled();
+    await expect(dialogo(page).locator('[data-cerrar]')).toBeDisabled();
+    await page.keyboard.press('Escape');
+    await expect(dialogo(page)).toBeVisible();
+
+    await page.waitForFunction(() => true);
+    s.soltar();
+    await expect(dialogo(page)).toBeHidden({ timeout: 10_000 });
+    expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(1);
+    expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(1);
+  });
+
+  test('an unconfirmed write outlives its toast and keeps its key', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    s.guion.push('abortar');
+
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    const banner = page.locator('#tanques-pendiente');
+    await expect(banner).toBeVisible({ timeout: 10_000 });
+    await expect(banner).toContainText('Trasiego');
+    await expect(banner).toContainText('A5 a B2');
+
+    // The toast is transient; the banner is not. Dismissing the toast must not
+    // take the pending intent with it.
+    await toast(page).locator('.tanques-toast-cerrar').click();
+    await expect(toast(page)).toBeHidden();
+    await expect(banner).toBeVisible();
+
+    await banner.locator('[data-pendiente="reintentar"]').click();
+    await expect(banner).toBeHidden({ timeout: 10_000 });
+    const claves = s.cuerpos.filter((c) => c.action === 'crear').map((c) => c.movimiento.client_id);
+    expect(claves[0]).toBe(claves[1]);
+    expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(1);
+  });
+
+  test('a vessel with no place on the plan can still receive wine', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    // I-4 CAVA is in the tray: it has no row or position in dim_tanque, so it
+    // is a chip and not a tank on the floor.
+    const chip = page.locator('#tanques-otras [data-ir-tanque="I-4 CAVA"]');
+    await expect(chip).toBeVisible();
+
+    // As a destination for an armed origin.
+    await page.locator('#tanques-plano [data-tanque="A5"]').click();
+    await page.locator('#tanques-panel [data-accion="mover"]').click();
+    await chip.click();
+    await expect(dialogo(page).locator('h2')).toHaveText('Registrar trasiego');
+    await expect(dialogo(page).locator('[name="volumen_l"]')).toHaveValue('10000');
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page)).toBeHidden();
+    const enviado = s.cuerpos.filter((c) => c.action === 'crear')[0].movimiento;
+    console.log('payload vasija de bandeja:', JSON.stringify(enviado));
+    expect(enviado).toMatchObject({ origen: 'A5', destino: 'I-4 CAVA', volumen_l: 10000 });
+    await expect(page.locator('#tanques-panel h2')).toHaveText('I-4 CAVA');
+
+    // And as an origin: its chip is a drag source back onto the floor.
+    await arrastrar(page, '#tanques-otras [data-ir-tanque="I-4 CAVA"]', tanque('B2'));
+    await expect(dialogo(page)).toBeVisible();
+    await expect(dialogo(page).locator('[name="volumen_l"]')).toHaveValue('7400');
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page)).toBeHidden();
+    const segundo = s.cuerpos.filter((c) => c.action === 'crear')[1].movimiento;
+    expect(segundo).toMatchObject({ origen: 'I-4 CAVA', destino: 'B2', volumen_l: 7400 });
   });
 
   test('a viewer has no write controls at all', async ({ page }) => {
