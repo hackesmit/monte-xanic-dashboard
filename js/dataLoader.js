@@ -6,6 +6,15 @@ import { expandLotCode } from './utils.js';
 import { createClient } from '@supabase/supabase-js';
 import * as XLSX from 'xlsx';
 
+// /api/tanques refuses a write with one of these statuses and its own envelope
+// ({ok:false, error:'<Spanish reason>'}); only that combination means nothing
+// was written. Any other non-success is an unknown outcome.
+const TANQUES_RECHAZO = new Set([400, 403, 404, 409]);
+const esSobreRechazo = (d) => !!d && typeof d === 'object' && d.ok === false
+  && typeof d.error === 'string' && d.error !== '' && d.indeterminado !== true;
+const esSobreExito = (d) => !!d && typeof d === 'object' && d.ok === true
+  && !!d.movimiento && typeof d.movimiento === 'object' && !Array.isArray(d.movimiento);
+
 export const DataStore = {
   berryData: [],
   wineRecepcion: [],
@@ -391,25 +400,43 @@ export const DataStore = {
   // this write landed (the crear's client_id, or the annulled id). It is how an
   // indeterminate write gets reconciled instead of left to the user.
   async _escribirMovimiento(cuerpo, confirma) {
-    let res, data;
+    let res;
     try {
       res = await fetch('/api/tanques', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
         body: JSON.stringify(cuerpo),
       });
-      data = await res.json();
     } catch (e) {
-      // The request left and no readable answer came back, so whether the
+      // The request may have left and no answer came back, so whether the
       // write committed is UNKNOWN, not refused.
       console.error('[DataStore] movimiento sin confirmar:', e);
       return await this._reconciliar(confirma);
     }
-    // The server itself could not tell whether its write committed (the RPC
-    // timed out, or Postgres answered 5xx). Same path as a lost answer.
-    if (data?.indeterminado === true) return await this._reconciliar(confirma, data.error);
-    // An answer arrived and it says no: nothing was written, nothing is stale.
-    if (!data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+    let data;
+    try {
+      data = await res.json();
+    } catch (e) {
+      // A body that is not JSON is not the API talking (a proxy page, a cut
+      // stream), so it says nothing about whether the write landed.
+      console.error('[DataStore] respuesta ilegible de /api/tanques:', res.status);
+      return await this._reconciliar(confirma);
+    }
+    // A DEFINITE refusal is only the API's own answer that it wrote nothing:
+    // one of the statuses it refuses with, carrying its own envelope. Anything
+    // else that is not a clean success is indeterminate, including a gateway
+    // 502/503/504 with JSON of its own ({"error":"upstream timeout"}), which
+    // can arrive after the insert committed (lucy, 2026-10-15).
+    if (TANQUES_RECHAZO.has(res.status) && esSobreRechazo(data)) {
+      const err = new Error(data.error);
+      err.status = res.status;
+      err.rechazado = true;
+      throw err;
+    }
+    if (!(res.ok && esSobreExito(data))) {
+      return await this._reconciliar(confirma, data && data.indeterminado === true && typeof data.error === 'string'
+        ? data.error : undefined);
+    }
     const actualizado = await this.loadTanques();
     if (!actualizado) this.tanquesDesactualizado = true;
     const out = { movimiento: data.movimiento, actualizado };
@@ -439,10 +466,11 @@ export const DataStore = {
 
   // Append a movement. The server validates it against the log at its place in
   // time and answers 400 with the Spanish reason, so the caller shows that
-  // reason rather than guessing. Throws only when the write itself was refused,
-  // or (with err.indeterminado) when its outcome is still unknown after a
-  // re-read; then err.movimiento is the same intent, client_id included, to
-  // retry with.
+  // reason rather than guessing. Throws only when the API itself refused the
+  // write (err.rechazado, err.status 400/403/404/409), or (with
+  // err.indeterminado) when its outcome is still unknown after a re-read. Either
+  // way err.movimiento is the same intent, client_id included, to retry with;
+  // on success `intento` is.
   //
   // One client_id per user intent: generated here when the movement has none,
   // and kept when it already carries one, which is what a retry passes back.
@@ -452,10 +480,14 @@ export const DataStore = {
       : { ...movimiento, client_id: globalThis.crypto.randomUUID() };
     const id = String(intento.client_id).toLowerCase();
     try {
-      return await this._escribirMovimiento({ action: 'crear', movimiento: intento },
+      const out = await this._escribirMovimiento({ action: 'crear', movimiento: intento },
         (log) => log.find(m => typeof m.client_id === 'string' && m.client_id.toLowerCase() === id) || null);
+      out.intento = intento;
+      return out;
     } catch (e) {
-      if (e && e.indeterminado) e.movimiento = intento;
+      // Every failure carries the intent, client_id included, so whatever the
+      // caller retries is this same intent and never a freshly keyed copy.
+      if (e && typeof e === 'object') e.movimiento = intento;
       throw e;
     }
   },
