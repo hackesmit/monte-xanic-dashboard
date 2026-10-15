@@ -29,8 +29,8 @@ import { replayMovimientos, validarMovimientoEnLog } from '../js/tanques/estado.
 // refused by name rather than silently dropped: `creado_por` in a body is a
 // client trying to sign someone else's work, an explicit `id` desyncs the
 // BIGSERIAL, a `created_at` or a pre-set `anulado` backdates or pre-kills a row,
-// and `etapa` is a field the pure module reads but the table does not have
-// (the stage is derived from the log). A silent drop would turn each of those
+// and `etapa` is written only by the inventory load (a lab stage statement),
+// not by a client. A silent drop would turn each of those
 // into a bug nobody can see from the response.
 const CAMPOS_MOVIMIENTO = new Set([
   'fecha', 'tipo', 'origen', 'destino', 'lot_code',
