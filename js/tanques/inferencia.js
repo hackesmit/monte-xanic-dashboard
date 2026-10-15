@@ -327,10 +327,21 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
     // A group of more than one vessel is reported, never resolved: the lote was
     // in both (a split, a blend) or somebody mistyped a tank, and the samples
     // name no single movement either way.
+    //
+    // Each vessel is reported against one it REALLY intersects, not against
+    // whichever happens to sit before it in the sort. A group is held open by
+    // one long window, and its members need not touch each other: with D5 from
+    // the 1st to the 10th, E1 on the 2nd and H8 on the 3rd, reporting the
+    // sorted pair E1/H8 claims a simultaneity that never happened, over the
+    // backwards interval 10-03 to 10-02 (lucy, 2026-10-15). The partner is the
+    // earlier vessel whose window reaches furthest, which is the one that kept
+    // the group open and therefore the one this vessel overlaps; the dates are
+    // the intersection of the two windows.
     for (const g of grupos) {
       for (let i = 1; i < g.vasijas.length; i++) {
-        const a = g.vasijas[i - 1];
         const b = g.vasijas[i];
+        let a = g.vasijas[0];
+        for (let k = 1; k < i; k++) if (g.vasijas[k].hasta > a.hasta) a = g.vasijas[k];
         traslapes.push({
           lot_code,
           vintage_year: lote.vintage_year,
@@ -340,8 +351,8 @@ export function inferirMovimientos(muestras, bodega = {}, opciones = {}) {
             ? 'mismo_dia' : 'simultaneo',
           a: a.codigo,
           b: b.codigo,
-          desde: b.desde,
-          hasta: a.hasta,
+          desde: a.desde > b.desde ? a.desde : b.desde,
+          hasta: a.hasta < b.hasta ? a.hasta : b.hasta,
         });
       }
     }

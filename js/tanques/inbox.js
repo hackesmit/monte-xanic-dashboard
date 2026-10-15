@@ -65,7 +65,7 @@ export const TanquesInbox = {
   _ctx: null,
   _todas: false,           // the user asked to see past the cap
   _confirmarDescarte: null, // the clave whose Descartar is waiting for a yes
-  _ocupado: false,          // a dismissal is in flight
+  _ocupado: null,           // the clave of the dismissal in flight
   _wired: false,
 
   /** Called by TanquesView.mount(). Idempotent. */
@@ -218,21 +218,25 @@ export const TanquesInbox = {
         + '.</div>';
     }
 
+    // A dismissal is in flight, here or on another card: every write control in
+    // the inbox waits for its answer, rather than looking live and doing
+    // nothing (lucy, 2026-10-15).
+    const esperando = this._ocupado ? ' disabled' : '';
     if (this._confirmarDescarte === p.clave) {
       s += '<div class="tanques-anular-confirma" role="alert">'
         + '<span>¿Descartar esta propuesta? No se puede deshacer.</span>'
-        + `<button type="button" class="tanques-anular" data-inbox="descartar-si" data-clave="${clave}">`
-        + 'Sí, descartar</button>'
-        + '<button type="button" class="tanques-anular" data-inbox="descartar-no">No</button>'
+        + `<button type="button" class="tanques-anular" data-inbox="descartar-si" data-clave="${clave}"`
+        + `${esperando}>${this._ocupado === p.clave ? 'Descartando…' : 'Sí, descartar'}</button>`
+        + `<button type="button" class="tanques-anular" data-inbox="descartar-no"${esperando}>No</button>`
         + '</div>';
     } else {
       const etiqueta = `${p.lot_code}, ${p.origen} a ${p.destino}, ${dia(p.fecha)}`;
       s += '<div class="tanques-acciones">'
         + `<button type="button" class="tanques-btn${listo ? ' primary' : ''}" data-inbox="confirmar"`
-        + ` data-clave="${clave}" aria-label="${escapeHtml(`Confirmar: ${etiqueta}`)}">`
+        + ` data-clave="${clave}" aria-label="${escapeHtml(`Confirmar: ${etiqueta}`)}"${esperando}>`
         + 'Confirmar</button>'
         + '<button type="button" class="tanques-btn" data-inbox="descartar"'
-        + ` data-clave="${clave}" aria-label="${escapeHtml(`Descartar: ${etiqueta}`)}">`
+        + ` data-clave="${clave}" aria-label="${escapeHtml(`Descartar: ${etiqueta}`)}"${esperando}>`
         + 'Descartar</button>'
         + '</div>';
     }
@@ -361,16 +365,29 @@ export const TanquesInbox = {
   },
 
   async _descartar(clave) {
-    if (this._ocupado) return;
-    this._ocupado = true;
+    // One at a time, and SAID so. Returning quietly here meant the user pressed
+    // "Sí, descartar" on a second proposal, nothing was sent, the first
+    // request's success toast arrived, and the second proposal was still in
+    // the inbox with no sign anything had failed (lucy, 2026-10-15). The
+    // buttons are disabled while this is set, so this is the last resort.
+    if (this._ocupado) {
+      TanquesMoves.avisar('Hay un descarte en curso. Espere la respuesta antes del siguiente.');
+      return;
+    }
+    this._ocupado = clave;
+    // Redraw BEFORE awaiting, or the disabled state above never reaches the
+    // screen: the only render would be the one after the answer came back.
+    this._ctx.render();
     try {
       await DataStore.descartarPropuesta(clave);
     } catch (err) {
       TanquesMoves.avisar(err && err.message ? err.message : 'No se pudo descartar la propuesta.');
       return;
     } finally {
-      this._ocupado = false;
-      this._confirmarDescarte = null;
+      this._ocupado = null;
+      // Only this proposal's question. Clearing it outright would close the one
+      // the user opened on ANOTHER card while this request was in flight.
+      if (this._confirmarDescarte === clave) this._confirmarDescarte = null;
       this._ctx.render();
     }
     TanquesMoves.avisar('Propuesta descartada. No volverá a aparecer.');
