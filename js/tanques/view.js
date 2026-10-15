@@ -13,6 +13,7 @@ import { DataStore } from '../dataLoader.js';
 import { DemoMode } from '../demoMode.js';
 import { escapeHtml } from '../utils.js';
 import { replayMovimientos, historialTanque, recorridoLote, ETAPAS, TIPOS } from './estado.js';
+import { PanelCharts } from './panelCharts.js';
 import {
   POSICION_1_AL, GEOMETRIA, construirPlano,
   MODOS, MODO_ETIQUETAS, ETAPA_ETIQUETAS, ETAPA_ABREV,
@@ -256,6 +257,7 @@ export const TanquesView = {
     planoEl.setAttribute('viewBox', `0 0 ${plan.ancho} ${plan.alto}`);
     planoEl.innerHTML = this._svgPlano(plan, estado);
     panelEl.innerHTML = this._htmlPanel(plan, estado, catalogo, movimientos, sinonimos);
+    PanelCharts.render(panelEl, { estado, catalogo, movimientos, sinonimos }, this.seleccion, DataStore);
     this._pintarLeyenda(estado, plan);
     this._pintarBandeja(plan, estado);
     this._pintarAvisos(avisos);
