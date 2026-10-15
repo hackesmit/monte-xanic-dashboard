@@ -7,6 +7,14 @@
 // with the service key. Reads need any valid session; writes need role `lab`,
 // the same gate as api/row.js.
 //
+// Writes are serialized and idempotent (decision on bead xd-qrn.8): the version
+// counter is read before the log, the movement is validated against that log,
+// and public.tanques_escribir writes only if the version has not moved, else
+// the whole read and validation runs again (up to INTENTOS, then 409). Each
+// crear carries a client_id, so repeating a POST whose answer was lost returns
+// the row already written instead of a second one. A write whose outcome is
+// unknown answers 503 with `indeterminado: true`, never a refusal.
+//
 // This file holds no tank semantics. What a movement does to a tank lives in
 // js/tanques/estado.js and is called, never restated. What this file owns is
 // the gate around it: the session, the role, the insert whitelist, and turning
@@ -24,8 +32,20 @@ import { replayMovimientos, validarMovimientoEnLog } from '../js/tanques/estado.
 // into a bug nobody can see from the response.
 const CAMPOS_MOVIMIENTO = new Set([
   'fecha', 'tipo', 'origen', 'destino', 'lot_code',
-  'vintage_year', 'volumen_l', 'merma_l', 'nota', 'fuente',
+  'vintage_year', 'volumen_l', 'merma_l', 'nota', 'fuente', 'client_id',
 ]);
+
+// Fields that must arrive as JSON strings. An array or an object would be
+// String()-coerced into something like 'A1,A2' or '[object Object]' and then
+// judged as if the client had meant it.
+const CAMPOS_TEXTO = ['fecha', 'tipo', 'origen', 'destino', 'lot_code', 'nota', 'fuente', 'client_id'];
+// Fields that must be a JSON number or a plain decimal string.
+const CAMPOS_NUMERO = ['vintage_year', 'volumen_l', 'merma_l'];
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// A plain decimal as Postgres prints a NUMERIC: optional minus, digits, an
+// optional fraction. No hex, no exponent, no padding, no leading '+' or '.'.
+const DECIMAL = /^-?\d+(\.\d+)?$/;
 
 const FUENTES = new Set(['manual', 'lab']);
 const ACCIONES = new Set(['crear', 'anular']);
@@ -33,6 +53,8 @@ const MAX_NOTA = 2000;
 const VINTAGE_MIN = 1988;   // same range as the movimientos_tanque CHECK
 const VINTAGE_MAX = 2100;
 const PAGINA = 1000;        // PostgREST caps a response at 1000 rows
+const INTENTOS = 3;         // read, validate and write attempts before a 409
+const ESPERA_RPC_MS = 8000; // past this the write is abandoned as indeterminate
 // One millilitre: the threshold below which a difference between two replays is
 // not a real worsening. js/tanques/estado.js reports its balance totals to the
 // same precision for the same reason, and the running destination level below
@@ -47,19 +69,21 @@ const TOLERANCIA_L = 1e-3;
 // A NUMERIC column can reach us as a JSON number (PostgREST) or as a string
 // (node-postgres, and PostgREST too for values a double cannot hold). Read as a
 // string every volume is junk to the pure module, which would then derive an
-// empty bodega and refuse every movement. A value we cannot read as a finite
-// number is passed through UNCHANGED so the module reports it instead of us
-// inventing a zero.
+// empty bodega and refuse every movement. Only a plain decimal string is read
+// as a number: Number() would also take '0x10', '1e400', '' and ' 5 ', none of
+// which Postgres ever prints and none of which a client means as litres. A
+// value we cannot read is passed through UNCHANGED so the caller or the module
+// reports it instead of us inventing a number.
 function num(v) {
   if (typeof v === 'number') return v;
-  if (typeof v === 'string') {
-    const t = v.trim();
-    if (t === '') return v;
-    const n = Number(t);
+  if (typeof v === 'string' && DECIMAL.test(v)) {
+    const n = Number(v);
     return Number.isFinite(n) ? n : v;
   }
   return v;
 }
+
+const esNumero = (v) => typeof num(v) === 'number' && Number.isFinite(num(v));
 
 // `anulado` gates the whole replay, so it must be a strict boolean: the string
 // 'false' is truthy, and a log read back that way would look entirely annulled.
@@ -109,6 +133,12 @@ class ErrorSupabase extends Error {
   }
 }
 
+// A write whose outcome we cannot know: the request may have reached Postgres
+// and committed even though no answer came back. Reported as 503 with
+// `indeterminado: true`, never as a refusal, because a refusal invites the
+// user to repeat a movement that may already be in the log.
+class ErrorIndeterminado extends Error {}
+
 async function sb(path, opts = {}) {
   const { url, key } = entorno();
   const res = await fetch(`${url}/rest/v1/${path}`, {
@@ -132,22 +162,88 @@ async function sb(path, opts = {}) {
   return json;
 }
 
+// The one write: public.tanques_escribir (sql/migration_tanques_escritura.sql)
+// locks the version row, refuses with `conflicto` if the log changed since
+// `version` was read, and is idempotent on client_id. Server-side only, with
+// the service key; EXECUTE is revoked from anon and authenticated.
+//
+// Every way this can end without a definite answer is indeterminate: the fetch
+// rejecting (network, or our own timeout firing after the request left), a 5xx
+// (a gateway can time out while Postgres commits), or a 2xx we cannot read. A
+// 4xx is definite: PostgREST answers it when the statement raised, and then the
+// transaction rolled back.
+async function escribir(version, accion, fila, id) {
+  const { url, key } = entorno();
+  const control = new AbortController();
+  const reloj = setTimeout(() => control.abort(), ESPERA_RPC_MS);
+  let res, text;
+  try {
+    res = await fetch(`${url}/rest/v1/rpc/tanques_escribir`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({ p_version: version, p_accion: accion, p_fila: fila, p_id: id }),
+      signal: control.signal,
+    });
+    text = await res.text();
+  } catch (e) {
+    throw new ErrorIndeterminado(e && e.message);
+  } finally {
+    clearTimeout(reloj);
+  }
+  if (res.status >= 500) throw new ErrorIndeterminado(`HTTP ${res.status}`);
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { json = undefined; }
+  if (!res.ok) {
+    const detalle = (json && (json.message || json.error)) || `HTTP ${res.status}`;
+    throw new ErrorSupabase(String(detalle).slice(0, 200), res.status);
+  }
+  if (!json || typeof json !== 'object' || typeof json.resultado !== 'string') {
+    throw new ErrorIndeterminado('respuesta ilegible de tanques_escribir');
+  }
+  return json;
+}
+
+// Read the version BEFORE the log. A write that commits between the two reads
+// then shows up as a stale version and a conflicto, never as a log that looks
+// current under a version that is not.
+async function leerVersion() {
+  const filas = await sb('tanques_version?select=v&id=eq.1');
+  const v = Array.isArray(filas) && filas[0] ? num(filas[0].v) : undefined;
+  if (!Number.isInteger(v)) {
+    throw new ErrorSupabase('tanques_version sin fila (falta migration_tanques_escritura)', 500);
+  }
+  return v;
+}
+
 // Read a whole table past the 1000-row ceiling. The movement log is the history
 // of the bodega: a silently truncated read would derive the wrong contents.
 async function leerTodo(tabla, orden) {
   const filas = [];
-  for (let offset = 0; ; offset += PAGINA) {
-    const pagina = await sb(`${tabla}?select=*&order=${orden}&limit=${PAGINA}&offset=${offset}`);
-    if (!Array.isArray(pagina) || pagina.length === 0) break;
+  for (;;) {
+    // The offset is the rows already read, not a multiple of PAGINA: a server
+    // capping pages below PAGINA would otherwise have rows skipped between pages.
+    const pagina = await sb(`${tabla}?select=*&order=${orden}&limit=${PAGINA}&offset=${filas.length}`);
+    if (!Array.isArray(pagina)) {
+      throw new ErrorSupabase(`${tabla}: respuesta que no es una lista`, 502);
+    }
+    // Only an EMPTY page ends the read. A short page is not proof of the end:
+    // a server whose max-rows is set below PAGINA returns short pages all the
+    // way through, and stopping on the first one would truncate the history.
+    // The ordering always ends on a unique key (id, codigo, sinonimo), so
+    // offset pages are stable between requests.
+    if (pagina.length === 0) break;
     filas.push(...pagina);
-    if (pagina.length < PAGINA) break;
   }
   return filas;
 }
 
 async function leerBodega() {
   const [tanques, sinonimos, movimientos] = await Promise.all([
-    leerTodo('dim_tanque', 'orden.asc'),
+    leerTodo('dim_tanque', 'orden.asc,codigo.asc'),
     leerTodo('dim_tanque_sinonimo', 'sinonimo.asc'),
     leerTodo('movimientos_tanque', 'fecha.asc,id.asc'),
   ]);
@@ -205,6 +301,17 @@ function revisarCampos(m) {
     if (!CAMPOS_MOVIMIENTO.has(k)) {
       return `Campo no permitido en un movimiento: "${k}".`;
     }
+  }
+  for (const k of CAMPOS_TEXTO) {
+    if (m[k] != null && typeof m[k] !== 'string') return `El campo "${k}" debe ser texto.`;
+  }
+  // The idempotency key: one per user intent, reused when that intent is
+  // retried, so a lost acknowledgment cannot record the movement twice.
+  if (!UUID.test(m.client_id || '')) {
+    return 'El movimiento necesita un client_id (UUID) para no registrarse dos veces.';
+  }
+  for (const k of ['volumen_l', 'merma_l']) {
+    if (m[k] != null && !esNumero(m[k])) return `El campo "${k}" debe ser un numero decimal.`;
   }
   // `fecha` is a DATE column, so a full timestamp would be truncated on the way
   // in and the stored row would sit at a different place in the replay than the
@@ -276,15 +383,41 @@ function severidades(replay) {
       const falta = typeof pedido === 'number' && Number.isFinite(pedido)
         ? Math.max(0, pedido - dado)
         : Infinity;
-      sev.set(`${fila}|sobregiro`, { grave: falta, mensaje: a.mensaje });
+      sev.set(`${fila}|sobregiro`, { grave: falta, mensaje: a.mensaje, movimiento: a.movimiento });
     } else if (a.codigo === 'desbordado') {
       sev.set(`${fila}|desbordado`, {
         grave: sobra.has(fila) ? sobra.get(fila) : Infinity,
         mensaje: a.mensaje,
+        movimiento: a.movimiento,
       });
     }
   }
   return sev;
+}
+
+// The first sobregiro or desbordado that `despues` has and `antes` did not, or
+// has worse than `antes` had it. Allowed: an inconsistency the log already had,
+// unchanged or smaller. Refused: one the change introduces or deepens. `propia`
+// is a candidate row whose own avisos are skipped, because the point-in-time
+// check in validarMovimientoEnLog is the authoritative report for it.
+//
+// Both writes go through this one comparison: an annulment compares the log
+// with the row against the log without it, and a new row compares the log
+// without it against the log with it. validarMovimientoEnLog alone only asks
+// whether a downstream aviso is PRESENT, so a backdated withdrawal that takes
+// an already overdrawn row from owing 5000 L to owing 9000 L would pass it.
+function empeora(antes, despues, propia = null) {
+  for (const [clave, d] of despues) {
+    if (propia && d.movimiento === propia) continue;
+    const a = antes.get(clave);
+    if (a && d.grave <= a.grave + TOLERANCIA_L) continue;
+    return d;
+  }
+  return null;
+}
+
+function vivos(movimientos) {
+  return movimientos.filter(m => !m.anulado);
 }
 
 // --- handler -----------------------------------------------------------------
@@ -332,6 +465,15 @@ export default async function handler(req, res) {
     if (action === 'crear') return await crear(req, res, usuario);
     return await anular(req, res);
   } catch (e) {
+    if (e instanceof ErrorIndeterminado) {
+      console.error('[tanques] escritura sin confirmar:', e.message);
+      return res.status(503).json({
+        ok: false,
+        indeterminado: true,
+        error: 'No se pudo confirmar si la escritura quedó en la bitácora de tanques. '
+          + 'Revise la bitácora antes de repetirla.',
+      });
+    }
     if (e instanceof ErrorSupabase) {
       console.error('[tanques] supabase:', e.status, e.message);
       return res.status(502).json({ ok: false, error: 'Error de base de datos en la bitácora de tanques' });
@@ -341,6 +483,8 @@ export default async function handler(req, res) {
   }
 }
 
+const CONFLICTO = 'La bitácora de tanques cambió mientras se registraba; no se escribió nada. Intente de nuevo.';
+
 async function crear(req, res, usuario) {
   const entrada = (req.body || {}).movimiento;
   if (!entrada || typeof entrada !== 'object' || Array.isArray(entrada)) {
@@ -349,49 +493,76 @@ async function crear(req, res, usuario) {
 
   const problema = revisarCampos(entrada);
   if (problema) return res.status(400).json({ ok: false, error: problema, errores: [problema] });
+  const clientId = entrada.client_id.toLowerCase();
 
-  const { tanques, sinonimos, movimientos } = await leerBodega();
-  const codigos = new Set(tanques.map(t => texto(t.codigo)).filter(Boolean));
+  // Read, validate, write; on `conflicto` the log changed under us, so read it
+  // again and judge the movement against what is there now. Nothing is written
+  // on a conflicto, so a retry can never duplicate.
+  for (let intento = 0; intento < INTENTOS; intento++) {
+    const version = await leerVersion();
+    const { tanques, sinonimos, movimientos } = await leerBodega();
 
-  // The row as it will be stored. Built field by field from the whitelist, so a
-  // column the client has no business setting cannot arrive by spread. The
-  // numerics are coerced here, once, so the validator below and the INSERT
-  // below it judge and store the same value.
-  const movimiento = {
-    fecha: texto(entrada.fecha),
-    tipo: texto(entrada.tipo),
-    origen: texto(entrada.origen) ? canonico(entrada.origen, codigos, sinonimos) : null,
-    destino: texto(entrada.destino) ? canonico(entrada.destino, codigos, sinonimos) : null,
-    lot_code: texto(entrada.lot_code),
-    vintage_year: num(entrada.vintage_year),
-    volumen_l: num(entrada.volumen_l),
-    merma_l: entrada.merma_l == null ? 0 : num(entrada.merma_l),
-    nota: entrada.nota == null || entrada.nota === '' ? null : entrada.nota,
-    fuente: entrada.fuente == null ? 'manual' : texto(entrada.fuente),
-    creado_por: usuario,   // from the verified token, never from the body
-  };
+    // The same intent already landed (its acknowledgment was lost and the
+    // client retried). Judging it again would count it twice and refuse it as
+    // an overdraw of its own litres; the answer is the row that is there.
+    const previo = movimientos.find(m => typeof m.client_id === 'string'
+      && m.client_id.toLowerCase() === clientId);
+    if (previo) return res.status(200).json({ ok: true, duplicado: true, movimiento: previo });
 
-  // `fecha` is a BUSINESS date, so a row written today can belong in the middle
-  // of the replay: validarMovimientoEnLog judges it at its place in the log and
-  // reports the later rows it breaks. validarMovimiento against current state
-  // would accept a backdated withdrawal that leaves next week overdrawn.
-  // No `created_at` on the candidate on purpose: the module then sorts it last
-  // among rows sharing its fecha, which is exactly where NOW() will put it.
-  const errores = validarMovimientoEnLog(tanques, movimientos, movimiento, { sinonimos });
-  if (errores.length) {
-    return res.status(400).json({ ok: false, error: errores[0], errores });
+    const codigos = new Set(tanques.map(t => texto(t.codigo)).filter(Boolean));
+
+    // The row as it will be stored. Built field by field from the whitelist, so a
+    // column the client has no business setting cannot arrive by spread. The
+    // numerics are coerced here, once, so the validator below and the INSERT
+    // below it judge and store the same value.
+    const movimiento = {
+      fecha: texto(entrada.fecha),
+      tipo: texto(entrada.tipo),
+      origen: texto(entrada.origen) ? canonico(entrada.origen, codigos, sinonimos) : null,
+      destino: texto(entrada.destino) ? canonico(entrada.destino, codigos, sinonimos) : null,
+      lot_code: texto(entrada.lot_code),
+      vintage_year: num(entrada.vintage_year),
+      volumen_l: num(entrada.volumen_l),
+      merma_l: entrada.merma_l == null ? 0 : num(entrada.merma_l),
+      nota: entrada.nota == null || entrada.nota === '' ? null : entrada.nota,
+      fuente: entrada.fuente == null ? 'manual' : texto(entrada.fuente),
+      creado_por: usuario,   // from the verified token, never from the body
+      client_id: clientId,
+    };
+
+    // `fecha` is a BUSINESS date, so a row written today can belong in the middle
+    // of the replay: validarMovimientoEnLog judges it at its place in the log and
+    // reports the later rows it breaks. validarMovimiento against current state
+    // would accept a backdated withdrawal that leaves next week overdrawn.
+    // No `created_at` on the candidate on purpose: the module then sorts it last
+    // among rows sharing its fecha, which is exactly where NOW() will put it.
+    const errores = validarMovimientoEnLog(tanques, movimientos, movimiento, { sinonimos });
+    if (!errores.length) {
+      // validarMovimientoEnLog lets a row through when the downstream aviso it
+      // touches was already there. Same severity gate as anular: an existing
+      // inconsistency is not permission to deepen it.
+      const log = vivos(movimientos);
+      const peor = empeora(
+        severidades(replayMovimientos(tanques, log, { sinonimos })),
+        severidades(replayMovimientos(tanques, [...log, movimiento], { sinonimos })),
+        movimiento,
+      );
+      if (peor) errores.push(`Este movimiento agrava un movimiento posterior: ${peor.mensaje}`);
+    }
+    if (errores.length) {
+      return res.status(400).json({ ok: false, error: errores[0], errores });
+    }
+
+    const r = await escribir(version, 'crear', movimiento, null);
+    if (r.resultado === 'conflicto') continue;
+    if ((r.resultado === 'creado' || r.resultado === 'duplicado') && r.fila && typeof r.fila === 'object') {
+      const cuerpo = { ok: true, movimiento: filaMovimiento(r.fila) };
+      if (r.resultado === 'duplicado') cuerpo.duplicado = true;
+      return res.status(200).json(cuerpo);
+    }
+    throw new ErrorIndeterminado(`resultado inesperado: ${String(r.resultado).slice(0, 40)}`);
   }
-
-  const filas = await sb('movimientos_tanque', {
-    method: 'POST',
-    headers: { Prefer: 'return=representation' },
-    body: JSON.stringify(movimiento),
-  });
-  const fila = Array.isArray(filas) ? filas[0] : filas;
-  if (!fila) {
-    return res.status(502).json({ ok: false, error: 'El movimiento no se pudo registrar.' });
-  }
-  return res.status(200).json({ ok: true, movimiento: filaMovimiento(fila) });
+  return res.status(409).json({ ok: false, error: CONFLICTO });
 }
 
 async function anular(req, res) {
@@ -400,46 +571,50 @@ async function anular(req, res) {
     return res.status(400).json({ ok: false, error: 'Identificador de movimiento no válido.' });
   }
 
-  const { tanques, sinonimos, movimientos } = await leerBodega();
-  const objetivo = movimientos.find(m => m.id === id);
-  if (!objetivo) {
-    return res.status(404).json({ ok: false, error: 'El movimiento no existe.' });
-  }
-  // The append-only trigger forbids re-activating a row, so an annulment is
-  // final; answering 200 for one already annulled keeps a double click from
-  // looking like a failure.
-  if (objetivo.anulado) {
-    return res.status(200).json({ ok: true, ya_anulado: true, movimiento: objetivo });
-  }
+  for (let intento = 0; intento < INTENTOS; intento++) {
+    const version = await leerVersion();
+    const { tanques, sinonimos, movimientos } = await leerBodega();
+    const objetivo = movimientos.find(m => m.id === id);
+    if (!objetivo) {
+      return res.status(404).json({ ok: false, error: 'El movimiento no existe.' });
+    }
+    // The append-only trigger forbids re-activating a row, so an annulment is
+    // final; answering 200 for one already annulled keeps a double click from
+    // looking like a failure.
+    if (objetivo.anulado) {
+      return res.status(200).json({ ok: true, ya_anulado: true, movimiento: objetivo });
+    }
 
-  // js/tanques/estado.js validates an APPENDED row. An annulment is a removal,
-  // and removing an early recepcion can leave every withdrawal after it
-  // overdrawn, so the gate is here: replay the live log with and without this
-  // row and refuse if taking it out creates a new sobregiro or desbordado.
-  const vivos = movimientos.filter(m => !m.anulado);
-  const con = severidades(replayMovimientos(tanques, vivos, { sinonimos }));
-  const sin = severidades(replayMovimientos(tanques, vivos.filter(m => m.id !== id), { sinonimos }));
-  for (const [clave, despues] of sin) {
-    const antes = con.get(clave);
-    // Allowed: an inconsistency the log already had, unchanged or smaller.
-    // Refused: one this annulment introduces, or one it deepens.
-    if (antes && despues.grave <= antes.grave + TOLERANCIA_L) continue;
-    return res.status(400).json({
-      ok: false,
-      error: `No se puede anular: deja inconsistente un movimiento posterior: ${despues.mensaje}`,
-    });
-  }
+    // js/tanques/estado.js validates an APPENDED row. An annulment is a removal,
+    // and removing an early recepcion can leave every withdrawal after it
+    // overdrawn, so the gate is here: replay the live log with and without this
+    // row and refuse if taking it out introduces or deepens a sobregiro or a
+    // desbordado.
+    const log = vivos(movimientos);
+    const peor = empeora(
+      severidades(replayMovimientos(tanques, log, { sinonimos })),
+      severidades(replayMovimientos(tanques, log.filter(m => m.id !== id), { sinonimos })),
+    );
+    if (peor) {
+      return res.status(400).json({
+        ok: false,
+        error: `No se puede anular: deja inconsistente un movimiento posterior: ${peor.mensaje}`,
+      });
+    }
 
-  const filas = await sb(`movimientos_tanque?id=eq.${id}`, {
-    method: 'PATCH',
-    headers: { Prefer: 'return=representation' },
-    // Only `anulado`. The append-only trigger raises on any other change, and
-    // sending the whole row back would hand it every reason to.
-    body: JSON.stringify({ anulado: true }),
-  });
-  const fila = Array.isArray(filas) ? filas[0] : filas;
-  if (!fila) {
-    return res.status(404).json({ ok: false, error: 'El movimiento no existe.' });
+    // tanques_escribir sends exactly anulado = true, the one change the
+    // append-only trigger admits.
+    const r = await escribir(version, 'anular', null, id);
+    if (r.resultado === 'conflicto') continue;
+    if (r.resultado === 'no_existe') {
+      return res.status(404).json({ ok: false, error: 'El movimiento no existe.' });
+    }
+    if ((r.resultado === 'anulado' || r.resultado === 'ya_anulado') && r.fila && typeof r.fila === 'object') {
+      const cuerpo = { ok: true, movimiento: filaMovimiento(r.fila) };
+      if (r.resultado === 'ya_anulado') cuerpo.ya_anulado = true;
+      return res.status(200).json(cuerpo);
+    }
+    throw new ErrorIndeterminado(`resultado inesperado: ${String(r.resultado).slice(0, 40)}`);
   }
-  return res.status(200).json({ ok: true, movimiento: filaMovimiento(fila) });
+  return res.status(409).json({ ok: false, error: CONFLICTO });
 }

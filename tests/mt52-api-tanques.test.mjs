@@ -80,9 +80,15 @@ function logBase() {
   ];
 }
 
+// Writes go through the tanques_escribir RPC (sql/migration_tanques_escritura.sql),
+// which this mock plays: it keeps a version counter, answers `conflicto` when
+// the caller's version is stale, and otherwise hands the row to the `insert`
+// (crear) or `patch` (anular) hook, so a test can still shape what the
+// database "stored". `rpc` replaces the whole function when a test needs to.
 function mockSupabase({ tanques = TANQUES, sinonimos = SINONIMOS, movimientos = logBase(),
-                        insert, patch, blacklisted = false } = {}) {
+                        insert, patch, rpc, blacklisted = false, maxRows = Infinity } = {}) {
   const calls = [];
+  const db = { v: 0, cola: Promise.resolve() };
   globalThis.fetch = async (url, opts = {}) => {
     const method = (opts.method || 'GET').toUpperCase();
     calls.push({ url, method, opts });
@@ -90,22 +96,53 @@ function mockSupabase({ tanques = TANQUES, sinonimos = SINONIMOS, movimientos = 
       ok: status >= 200 && status < 300, status,
       json: async () => json, text: async () => JSON.stringify(json),
     });
+    const primera = async (r) => {
+      const rows = await r.json();
+      return Array.isArray(rows) ? rows[0] : rows;
+    };
 
     if (url.includes('token_blacklist')) return ok(blacklisted ? [{ token_hash: 'x' }] : []);
 
+    // `maxRows` plays a PostgREST whose db-max-rows is below the page size the
+    // endpoint asks for: every page comes back short, not only the last one.
     const page = (rows) => {
       const m = /[?&]offset=(\d+)/.exec(url);
       const l = /[?&]limit=(\d+)/.exec(url);
       const from = m ? Number(m[1]) : 0;
-      const size = l ? Number(l[1]) : rows.length;
+      const size = Math.min(l ? Number(l[1]) : rows.length, maxRows);
       return ok(rows.slice(from, from + size));
     };
 
+    if (url.includes('/rpc/tanques_escribir')) {
+      const args = JSON.parse(opts.body);
+      if (rpc) return rpc(args, ok, db);
+      // One call at a time, like the FOR UPDATE on the version row: the next
+      // call starts only after this one has compared, written and bumped.
+      const turno = db.cola.then(async () => {
+        if (args.p_version !== db.v) return ok({ resultado: 'conflicto', version: db.v });
+        if (args.p_accion === 'crear') {
+          const r = insert
+            ? await insert(url, { ...opts, body: JSON.stringify(args.p_fila) }, ok)
+            : ok([{ id: 99, ...args.p_fila }]);
+          if (!r.ok) return r;
+          db.v++;
+          return ok({ resultado: 'creado', fila: await primera(r) });
+        }
+        const r = patch ? await patch(url, opts, ok) : ok([{ ...movimientos[0], anulado: true }]);
+        if (!r.ok) return r;
+        const fila = await primera(r);
+        if (!fila) return ok({ resultado: 'no_existe' });
+        db.v++;
+        return ok({ resultado: 'anulado', fila });
+      });
+      db.cola = turno.catch(() => {});
+      return turno;
+    }
+    if (url.includes('/tanques_version')) return ok([{ v: db.v }]);
     if (url.includes('/dim_tanque_sinonimo')) return page(sinonimos);
     if (url.includes('/dim_tanque')) return page(tanques);
     if (url.includes('/movimientos_tanque')) {
-      if (method === 'POST')  return insert ? insert(url, opts, ok) : ok([{ id: 99, ...JSON.parse(opts.body) }]);
-      if (method === 'PATCH') return patch  ? patch(url, opts, ok)  : ok([{ ...movimientos[0], anulado: true }]);
+      if (method !== 'GET') throw new Error(`direct table write: ${method} ${url}`);
       return page(movimientos);
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -113,9 +150,15 @@ function mockSupabase({ tanques = TANQUES, sinonimos = SINONIMOS, movimientos = 
   return calls;
 }
 
+// Did the handler call the write RPC at all?
+const escribio = (calls) => calls.some(c => c.url.includes('/rpc/tanques_escribir'));
+const rpcArgs = (calls) => calls.filter(c => c.url.includes('/rpc/tanques_escribir'))
+  .map(c => JSON.parse(c.opts.body));
+
 const movimiento = (over = {}) => ({
   fecha: '2025-09-10', tipo: 'trasiego', origen: 'A1', destino: 'A2',
-  lot_code: 'CS-01', vintage_year: 2025, volumen_l: 5000, ...over,
+  lot_code: 'CS-01', vintage_year: 2025, volumen_l: 5000,
+  client_id: crypto.randomUUID(), ...over,
 });
 
 // --- gates -------------------------------------------------------------------
@@ -219,6 +262,21 @@ describe('MT.52 - GET /api/tanques', () => {
     assert.equal(res.body.movimientos[2299].id, 2300);
   });
 
+  it('keeps paging through SHORT pages until an empty one', async () => {
+    // A PostgREST whose db-max-rows is below the page size answers every page
+    // short. Stopping on the first short page returned 500 of 1200 rows.
+    const many = [];
+    for (let i = 1; i <= 1200; i++) {
+      many.push({ ...logBase()[0], id: i, destino: 'A1', volumen_l: '1' });
+    }
+    mockSupabase({ movimientos: many, maxRows: 500 });
+    const res = makeRes();
+    await handler(makeReq({ method: 'GET' }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body).slice(0, 200));
+    assert.equal(res.body.movimientos.length, 1200);
+    assert.deepEqual(res.body.movimientos.map(m => m.id), many.map(m => m.id));
+  });
+
   it('returns annulled rows too, so history can show them', async () => {
     mockSupabase({ movimientos: [{ ...logBase()[0], anulado: true }] });
     const res = makeRes();
@@ -297,8 +355,12 @@ describe('MT.52 - POST /api/tanques action crear', () => {
     assert.equal('id' in sent, false);
     assert.equal('anulado' in sent, false);
     assert.equal('created_at' in sent, false);
-    const insert = calls.find(c => c.method === 'POST' && c.url.includes('/movimientos_tanque'));
-    assert.equal(insert.opts.headers.Prefer, 'return=representation');
+    const [args] = rpcArgs(calls);
+    assert.equal(args.p_accion, 'crear');
+    assert.equal(args.p_version, 0);
+    assert.equal(args.p_id, null);
+    // the key is stored, so a lost acknowledgment can be recognised on retry
+    assert.match(sent.client_id, /^[0-9a-f-]{36}$/);
   });
 
   it('accepts fuente lab for a confirmed inference', async () => {
@@ -343,7 +405,7 @@ describe('MT.52 - POST /api/tanques action crear', () => {
     assert.equal(res.statusCode, 400);
     assert.match(res.body.error, /excede el contenido del tanque A1/);
     assert.ok(Array.isArray(res.body.errores));
-    assert.equal(calls.some(c => c.method === 'POST' && c.url.includes('/movimientos_tanque')), false);
+    assert.equal(escribio(calls), false);
   });
 
   it('refuses a move whose arrival overflows the destination', async () => {
@@ -371,6 +433,62 @@ describe('MT.52 - POST /api/tanques action crear', () => {
       movimiento: movimiento({ fecha: '2025-09-03', destino: 'A3', volumen_l: 600 }) } }), res);
     assert.equal(res.statusCode, 400);
     assert.match(res.body.error, /movimiento posterior/);
+  });
+
+  it('refuses a backdated row that DEEPENS an overdraw the log already had', async () => {
+    // Round 1 red-team repro. A1 takes 10000 L on 01 Sep and gives 15000 L on
+    // 20 Sep, so the 20 Sep salida already owes 5000 L. A 4000 L salida on
+    // 10 Sep fits that day, and validarMovimientoEnLog lets it through because
+    // the 20 Sep sobregiro was already PRESENT; but it takes that debt to
+    // 9000 L. Same severity gate as anular.
+    const calls = mockSupabase({ movimientos: [
+      ...logBase(),
+      { id: 2, fecha: '2025-09-20', tipo: 'salida', origen: 'A1', destino: null,
+        lot_code: 'CS-01', vintage_year: 2025, volumen_l: '15000', merma_l: '0',
+        nota: null, fuente: 'manual', creado_por: 'labuser', anulado: false,
+        created_at: '2025-09-20T18:00:00+00:00' },
+    ]});
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({
+      fecha: '2025-09-10', tipo: 'salida', destino: null, volumen_l: 4000 }) } }), res);
+    assert.equal(res.statusCode, 400, JSON.stringify(res.body));
+    assert.equal(res.body.ok, false);
+    assert.match(res.body.error, /agrava un movimiento posterior/);
+    assert.equal(escribio(calls), false);
+  });
+
+  it('refuses a backdated row that DEEPENS an overflow the log already had', async () => {
+    // A3 (1000 L) is already overfull on 20 Sep by 500 L. A 300 L recepcion
+    // into A3 on 10 Sep fits that day but leaves 800 L too many on 20 Sep.
+    const calls = mockSupabase({ movimientos: [
+      ...logBase(),
+      { id: 2, fecha: '2025-09-20', tipo: 'recepcion', origen: null, destino: 'A3',
+        lot_code: 'ME-02', vintage_year: 2025, volumen_l: '1500', merma_l: '0',
+        nota: null, fuente: 'manual', creado_por: 'labuser', anulado: false,
+        created_at: '2025-09-20T18:00:00+00:00' },
+    ]});
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({
+      fecha: '2025-09-10', tipo: 'recepcion', origen: null, destino: 'A3', lot_code: 'ME-03', volumen_l: 300 }) } }), res);
+    assert.equal(res.statusCode, 400, JSON.stringify(res.body));
+    assert.match(res.body.error, /agrava un movimiento posterior/);
+    assert.equal(escribio(calls), false);
+  });
+
+  it('accepts a row that leaves an existing downstream overdraw exactly as it was', async () => {
+    // A recepcion into A2 touches nothing A1 owes, so the existing debt is not
+    // the new row's fault and does not block it.
+    mockSupabase({ movimientos: [
+      ...logBase(),
+      { id: 2, fecha: '2025-09-20', tipo: 'salida', origen: 'A1', destino: null,
+        lot_code: 'CS-01', vintage_year: 2025, volumen_l: '15000', merma_l: '0',
+        nota: null, fuente: 'manual', creado_por: 'labuser', anulado: false,
+        created_at: '2025-09-20T18:00:00+00:00' },
+    ]});
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({
+      fecha: '2025-09-10', tipo: 'recepcion', origen: null, destino: 'A2', lot_code: 'ME-03', volumen_l: 300 }) } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
   });
 
   it('accepts a backdated row that breaks nothing after it', async () => {
@@ -496,6 +614,42 @@ describe('MT.52 - POST /api/tanques action crear', () => {
     assert.match(res.body.error, /nota/i);
   });
 
+  it('refuses an array or an object in a text field instead of String()-coercing it', async () => {
+    const calls = mockSupabase();
+    const casos = {
+      fecha: ['2025-09-10'], lot_code: ['CS-01'], tipo: ['trasiego'], origen: ['A1'],
+      destino: { codigo: 'A2' }, fuente: ['manual'], nota: ['hola'], client_id: [crypto.randomUUID()],
+    };
+    for (const [campo, valor] of Object.entries(casos)) {
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ [campo]: valor }) } }), res);
+      assert.equal(res.statusCode, 400, campo);
+      assert.ok(res.body.error.includes(campo), `${campo}: ${res.body.error}`);
+    }
+    assert.equal(escribio(calls), false);
+  });
+
+  it('reads only plain decimals as numbers: no hex, blanks, padding or exponents', async () => {
+    const calls = mockSupabase();
+    for (const volumen_l of ['0x10', '', '   ', ' 5000', '5000 ', '1e3', '5e400', '+5000', '.5', 'Infinity', [5000], true]) {
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ volumen_l }) } }), res);
+      assert.equal(res.statusCode, 400, JSON.stringify(volumen_l));
+    }
+    for (const merma_l of ['0x1', '', '1e1']) {
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ merma_l }) } }), res);
+      assert.equal(res.statusCode, 400, JSON.stringify(merma_l));
+    }
+    for (const vintage_year of ['0x7E9', ' 2025', '2.025e3']) {
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ vintage_year }) } }), res);
+      assert.equal(res.statusCode, 400, JSON.stringify(vintage_year));
+      assert.match(res.body.error, /vendimia/);
+    }
+    assert.equal(escribio(calls), false);
+  });
+
   it('refuses a movimiento that is not an object', async () => {
     mockSupabase();
     for (const movimiento of [undefined, null, 'trasiego', 7, []]) {
@@ -528,19 +682,18 @@ describe('MT.52 - POST /api/tanques action anular', () => {
     assert.equal(res.statusCode, 403);
   });
 
-  it('annulls one row by id, patching only anulado', async () => {
-    let sent = null;
+  it('annuls one row by id through the write RPC, at the version it read', async () => {
     const calls = mockSupabase({
       movimientos: logBase(),
-      patch: (url, opts, ok) => { sent = JSON.parse(opts.body); return ok([{ ...logBase()[0], anulado: true }]); },
+      patch: (url, opts, ok) => ok([{ ...logBase()[0], anulado: true }]),
     });
     const res = makeRes();
     await handler(makeReq({ body: { action: 'anular', id: 1 } }), res);
     assert.equal(res.statusCode, 200, JSON.stringify(res.body));
     assert.equal(res.body.movimiento.anulado, true);
-    assert.deepEqual(sent, { anulado: true });  // the append-only trigger rejects anything else
-    const patch = calls.find(c => c.method === 'PATCH');
-    assert.match(patch.url, /\/movimientos_tanque\?id=eq\.1/);
+    // tanques_escribir sets exactly anulado = true, the one change the
+    // append-only trigger admits; nothing of the row travels.
+    assert.deepEqual(rpcArgs(calls), [{ p_version: 0, p_accion: 'anular', p_fila: null, p_id: 1 }]);
   });
 
   it('refuses an id that is not a positive integer', async () => {
@@ -564,7 +717,7 @@ describe('MT.52 - POST /api/tanques action anular', () => {
     const res = makeRes();
     await handler(makeReq({ body: { action: 'anular', id: 777 } }), res);
     assert.equal(res.statusCode, 404);
-    assert.equal(calls.some(c => c.method === 'PATCH'), false);
+    assert.equal(escribio(calls), false);
   });
 
   it('is idempotent on an already annulled row and writes nothing', async () => {
@@ -573,7 +726,7 @@ describe('MT.52 - POST /api/tanques action anular', () => {
     await handler(makeReq({ body: { action: 'anular', id: 1 } }), res);
     assert.equal(res.statusCode, 200);
     assert.equal(res.body.ya_anulado, true);
-    assert.equal(calls.some(c => c.method === 'PATCH'), false);
+    assert.equal(escribio(calls), false);
   });
 
   it('refuses an annulment that overdraws a later movement', async () => {
@@ -590,7 +743,7 @@ describe('MT.52 - POST /api/tanques action anular', () => {
     await handler(makeReq({ body: { action: 'anular', id: 1 } }), res);
     assert.equal(res.statusCode, 400);
     assert.match(res.body.error, /posterior/);
-    assert.equal(calls.some(c => c.method === 'PATCH'), false);
+    assert.equal(escribio(calls), false);
   });
 
   it('allows annulling the last movement, which breaks nothing after it', async () => {
@@ -653,7 +806,7 @@ describe('MT.52 - POST /api/tanques action anular', () => {
     await handler(makeReq({ body: { action: 'anular', id: 2 } }), res);
     assert.equal(res.statusCode, 400, JSON.stringify(res.body));
     assert.match(res.body.error, /posterior/);
-    assert.equal(calls.some(c => c.method === 'PATCH'), false);
+    assert.equal(escribio(calls), false);
   });
 
   it('allows an annulment that REDUCES an overflow the log already had', async () => {
@@ -696,7 +849,7 @@ describe('MT.52 - POST /api/tanques action anular', () => {
     await handler(makeReq({ body: { action: 'anular', id: 2 } }), res);
     assert.equal(res.statusCode, 400, JSON.stringify(res.body));
     assert.match(res.body.error, /posterior/);
-    assert.equal(calls.some(c => c.method === 'PATCH'), false);
+    assert.equal(escribio(calls), false);
   });
 
   it('returns 404 when the PATCH matches no row (annulled by someone else first)', async () => {
@@ -707,9 +860,9 @@ describe('MT.52 - POST /api/tanques action anular', () => {
   });
 });
 
-// --- known limitation --------------------------------------------------------
+// --- concurrent writes (xd-qrn.8) ------------------------------------------
 
-describe('MT.52 - concurrent writes (known limitation)', () => {
+describe('MT.52 - concurrent writes are serialized by the version check', () => {
   let originalFetch;
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(()  => { globalThis.fetch = originalFetch; });
@@ -718,7 +871,7 @@ describe('MT.52 - concurrent writes (known limitation)', () => {
   // another one has written really does see that write.
   function mockLogQueVaCreciendo() {
     const log = logBase();
-    mockSupabase({
+    const calls = mockSupabase({
       movimientos: log,
       insert: (url, opts, ok) => {
         const row = JSON.parse(opts.body);
@@ -729,7 +882,7 @@ describe('MT.52 - concurrent writes (known limitation)', () => {
         return ok([row]);
       },
     });
-    return log;
+    return { log, calls };
   }
 
   const saca6000 = () => makeReq({ body: { action: 'crear', movimiento: movimiento({ volumen_l: 6000 }) } });
@@ -745,24 +898,176 @@ describe('MT.52 - concurrent writes (known limitation)', () => {
     assert.match(resB.body.error, /excede el contenido del tanque A1/);
   });
 
-  it('lets both land when they run CONCURRENTLY, and the overdraw shows up as an aviso', async () => {
-    // Deliberate proof, not a wish. Validation is read-then-insert with no lock
-    // and no DB-side constraint that can see the derived state, so two requests
-    // in flight at once each take 6000 L of the 10000 L in A1. Documented in
-    // docs/API.md and escalated as a design question rather than patched with
-    // ad-hoc locking: the bead DoD stop-when says escalate, do not improvise,
-    // so the design question is bead xd-qrn.8.
-    const log = mockLogQueVaCreciendo();
+  it('refuses the second of two CONCURRENT withdrawals: it is retried against the new log', async () => {
+    // Both requests read version 0 and a log holding 10000 L, and both judge
+    // their 6000 L as fine. The first write bumps the version; the second gets
+    // `conflicto`, re-reads the log with the first withdrawal in it, and is
+    // refused. Before xd-qrn.8 both landed and the log owed 2000 L.
+    const { log, calls } = mockLogQueVaCreciendo();
     const resA = makeRes(), resB = makeRes();
     await Promise.all([handler(saca6000(), resA), handler(saca6000(), resB)]);
-    assert.equal(resA.statusCode, 200, JSON.stringify(resA.body));
-    assert.equal(resB.statusCode, 200, JSON.stringify(resB.body));
-    assert.equal(log.length, 3);
+    const codigos = [resA.statusCode, resB.statusCode].sort();
+    assert.deepEqual(codigos, [200, 400], JSON.stringify([resA.body, resB.body]));
+    const rechazo = resA.statusCode === 400 ? resA.body : resB.body;
+    assert.match(rechazo.error, /excede el contenido del tanque A1/);
+    assert.equal(log.length, 2, 'only one withdrawal landed');
+    // the race really happened: both writes were sent at version 0
+    assert.deepEqual(rpcArgs(calls).map(a => a.p_version), [0, 0]);
 
-    // The failure mode is a visible warning on an honest append-only log, not
-    // silent corruption: the replay clamps the second withdrawal and says so.
-    const { avisos } = replayMovimientos(TANQUES, log);
-    assert.ok(avisos.some(a => a.codigo === 'sobregiro'), JSON.stringify(avisos));
+    const { avisos } = replayMovimientos(TANQUES, log.map(m => ({ ...m, volumen_l: Number(m.volumen_l), merma_l: Number(m.merma_l) })));
+    assert.equal(avisos.some(a => a.codigo === 'sobregiro'), false, JSON.stringify(avisos));
+  });
+
+  it('gives up with 409 after three conflicts, writing nothing', async () => {
+    let intentos = 0;
+    mockSupabase({ rpc: (args, ok, db) => { intentos++; return ok({ resultado: 'conflicto', version: db.v + 1 }); } });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body.ok, false);
+    assert.match(res.body.error, /cambi/);
+    assert.equal(intentos, 3);
+  });
+
+  it('retries an annulment on conflict too', async () => {
+    let intentos = 0;
+    mockSupabase({ rpc: (args, ok, db) => { intentos++; return ok({ resultado: 'conflicto', version: 5 }); } });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'anular', id: 1 } }), res);
+    assert.equal(res.statusCode, 409);
+    assert.equal(intentos, 3);
+  });
+
+  it('reads the version BEFORE the log, so a write between the two reads is a conflict', async () => {
+    const calls = mockSupabase();
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    const iVersion = calls.findIndex(c => c.url.includes('/tanques_version'));
+    const iLog = calls.findIndex(c => c.url.includes('/movimientos_tanque'));
+    assert.ok(iVersion >= 0 && iVersion < iLog, `version read at ${iVersion}, log read at ${iLog}`);
+  });
+});
+
+// --- idempotency and unknown outcomes ----------------------------------------
+
+describe('MT.52 - a lost acknowledgment never writes twice', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; });
+
+  it('requires a UUID client_id on crear', async () => {
+    const calls = mockSupabase();
+    for (const client_id of [undefined, null, '', 'abc', '1234', 'zzzzzzzz-zzzz-4zzz-8zzz-zzzzzzzzzzzz', 7]) {
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ client_id }) } }), res);
+      assert.equal(res.statusCode, 400, String(client_id));
+      assert.match(res.body.error, /client_id|texto/);
+    }
+    assert.equal(escribio(calls), false);
+  });
+
+  it('answers a retry whose first attempt already landed with that row, without writing', async () => {
+    // The first POST committed and its answer was lost. The retry carries the
+    // same client_id; judging it again would count it twice.
+    const cid = crypto.randomUUID();
+    const calls = mockSupabase({ movimientos: [
+      ...logBase(),
+      { id: 2, fecha: '2025-09-10', tipo: 'trasiego', origen: 'A1', destino: 'A2',
+        lot_code: 'CS-01', vintage_year: 2025, volumen_l: '6000', merma_l: '0',
+        nota: null, fuente: 'manual', creado_por: 'labuser', anulado: false,
+        created_at: '2025-09-10T18:00:00+00:00', client_id: cid },
+    ]});
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear',
+      movimiento: movimiento({ volumen_l: 6000, client_id: cid.toUpperCase() }) } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.equal(res.body.duplicado, true);
+    assert.equal(res.body.movimiento.id, 2);
+    assert.equal(escribio(calls), false);
+  });
+
+  it('passes on the RPC duplicado as the existing row', async () => {
+    const cid = crypto.randomUUID();
+    mockSupabase({ rpc: (args, ok) => ok({ resultado: 'duplicado',
+      fila: { ...logBase()[0], id: 5, client_id: cid, volumen_l: 5000 } }) });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ client_id: cid }) } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.equal(res.body.duplicado, true);
+    assert.equal(res.body.movimiento.id, 5);
+  });
+
+  it('reports a write whose fetch rejects as indeterminate (503), not as a refusal', async () => {
+    mockSupabase({ rpc: () => { throw new TypeError('fetch failed'); } });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.ok, false);
+    assert.equal(res.body.indeterminado, true);
+    assert.match(res.body.error, /confirmar/);
+  });
+
+  it('reports a timed-out write as indeterminate, and does give the RPC a timeout', async () => {
+    let signal = null;
+    const calls = mockSupabase();
+    const base = globalThis.fetch;
+    globalThis.fetch = async (url, opts = {}) => {
+      if (url.includes('/rpc/tanques_escribir')) {
+        signal = opts.signal;
+        const e = new Error('This operation was aborted');
+        e.name = 'AbortError';
+        throw e;
+      }
+      return base(url, opts);
+    };
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'anular', id: 1 } }), res);
+    assert.ok(signal instanceof AbortSignal, 'the RPC fetch carries an AbortSignal');
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.indeterminado, true);
+    assert.ok(calls.length > 0);
+  });
+
+  it('reports a 5xx from the RPC as indeterminate: a gateway can time out after the commit', async () => {
+    for (const status of [500, 502, 504]) {
+      mockSupabase({ rpc: (args, ok) => ok({ message: 'upstream timeout' }, status) });
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+      assert.equal(res.statusCode, 503, String(status));
+      assert.equal(res.body.indeterminado, true);
+    }
+  });
+
+  it('reports an unreadable 2xx from the RPC as indeterminate', async () => {
+    mockSupabase({ rpc: () => ({ ok: true, status: 200, text: async () => '<html>' }) });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.indeterminado, true);
+  });
+
+  it('keeps a 4xx from the RPC a definite failure: the statement raised and rolled back', async () => {
+    mockSupabase({ rpc: (args, ok) => ok({ message: 'violates check constraint' }, 400) });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.equal(res.statusCode, 502);
+    assert.equal(res.body.indeterminado, undefined);
+  });
+
+  it('keeps a failed READ a definite failure: nothing was sent yet', async () => {
+    const calls = mockSupabase();
+    const base = globalThis.fetch;
+    globalThis.fetch = async (url, opts = {}) => {
+      if (url.includes('/movimientos_tanque')) throw new TypeError('fetch failed');
+      return base(url, opts);
+    };
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento() } }), res);
+    assert.notEqual(res.statusCode, 200);
+    assert.notEqual(res.statusCode, 503);
+    assert.equal(res.body.indeterminado, undefined);
+    assert.equal(escribio(calls), false);
   });
 });
 
@@ -917,6 +1222,90 @@ describe('MT.52 - DataStore.loadTanques / postMovimiento / anularMovimiento', ()
     assert.equal(await lento, false, 'the superseded load reports no success');
     assert.equal(DataStore.movimientosTanque.length, 1, 'and it replaced nothing');
     assert.equal(DataStore.tanquesDesactualizado, false);
+  });
+
+  it('generates one client_id per intent when the movement has none', async () => {
+    const enviados = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') {
+        enviados.push(JSON.parse(opts.body).movimiento);
+        return { ok: true, status: 200, json: async () => ({ ok: true, movimiento: { id: 7 } }) };
+      }
+      return { ok: true, status: 200, json: async () => cuerpo };
+    };
+    const { client_id, ...sinClave } = movimiento();
+    await DataStore.postMovimiento(sinClave);
+    await DataStore.postMovimiento(sinClave);
+    assert.match(enviados[0].client_id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.notEqual(enviados[0].client_id, enviados[1].client_id, 'two intents, two keys');
+    assert.equal('client_id' in sinClave, false, 'the caller object is not mutated');
+  });
+
+  it('a retry of an unconfirmed intent reuses the same client_id', async () => {
+    const enviados = [];
+    let caido = true;
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') {
+        enviados.push(JSON.parse(opts.body).movimiento.client_id);
+        if (caido) throw new TypeError('Failed to fetch');
+        return { ok: true, status: 200, json: async () => ({ ok: true, duplicado: true, movimiento: { id: 7 } }) };
+      }
+      return { ok: true, status: 200, json: async () => cuerpo };
+    };
+    const { client_id, ...sinClave } = movimiento();
+    let error = null;
+    try { await DataStore.postMovimiento(sinClave); } catch (e) { error = e; }
+    assert.equal(error && error.indeterminado, true);
+    assert.match(enviados[0], /^[0-9a-f-]{36}$/);
+    assert.equal(error.movimiento.client_id, enviados[0]);
+    caido = false;
+    const out = await DataStore.postMovimiento(error.movimiento);
+    assert.equal(enviados[1], enviados[0], 'same intent, same key');
+    assert.equal(out.duplicado, true);
+  });
+
+  it('routes the server indeterminado answer through the reconcile path', async () => {
+    let gets = 0;
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') {
+        return { ok: false, status: 503, json: async () => ({
+          ok: false, indeterminado: true, error: 'No se pudo confirmar si la escritura quedó en la bitácora de tanques.' }) };
+      }
+      gets++;
+      return { ok: true, status: 200, json: async () => cuerpo };
+    };
+    await assert.rejects(
+      () => DataStore.postMovimiento(movimiento()),
+      (e) => e.indeterminado === true && /confirmar/.test(e.message) && typeof e.movimiento?.client_id === 'string',
+    );
+    assert.equal(gets, 1, 'it re-reads the log to reconcile');
+  });
+
+  it('reconciles an unconfirmed write that IS in the re-read log into a success', async () => {
+    const mov = movimiento();
+    const conFila = { ...cuerpo, movimientos: [...cuerpo.movimientos,
+      { id: 12, ...mov, client_id: mov.client_id.toUpperCase(), anulado: false }] };
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') {
+        return { ok: false, status: 503, json: async () => ({ ok: false, indeterminado: true, error: 'x' }) };
+      }
+      return { ok: true, status: 200, json: async () => conFila };
+    };
+    const out = await DataStore.postMovimiento(mov);
+    assert.equal(out.reconciliado, true);
+    assert.equal(out.movimiento.id, 12);
+    assert.equal(out.actualizado, true);
+  });
+
+  it('reconciles an unconfirmed annulment that the re-read log shows annulled', async () => {
+    const anulada = { ...cuerpo, movimientos: [{ ...cuerpo.movimientos[0], id: 1, anulado: true }] };
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') throw new TypeError('Failed to fetch');
+      return { ok: true, status: 200, json: async () => anulada };
+    };
+    const out = await DataStore.anularMovimiento(1);
+    assert.equal(out.reconciliado, true);
+    assert.equal(out.movimiento.anulado, true);
   });
 
   it('anularMovimiento posts the anular envelope', async () => {
