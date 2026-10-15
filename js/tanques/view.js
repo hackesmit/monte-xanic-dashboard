@@ -382,7 +382,10 @@ export const TanquesView = {
 
     let g = `<g class="${clases.join(' ')}" data-tanque="${escapeHtml(t.codigo)}" tabindex="0"`
       + ` role="button" aria-label="${escapeHtml(aria)}">`;
+    // The shadow stays on the floor; everything else is the body, which lifts
+    // and glows when the tank is selected (CSS .tanque.sel .tanque-cuerpo).
     g += `<ellipse cx="${x}" cy="${y + 1.5}" rx="${G.R + 1}" ry="${G.RY + 1}" ${relleno('--tank-shadow')}/>`;
+    g += '<g class="tanque-cuerpo">';
     g += `<path d="M${x - G.R} ${tapa} L${x - G.R} ${y} A${G.R} ${G.RY} 0 0 0 ${x + G.R} ${y}`
       + ` L${x + G.R} ${tapa} Z" stroke="var(--tank-steel-edge)" stroke-width="0.8"`
       + ` ${relleno('--tank-steel-side')}/>`;
@@ -413,8 +416,9 @@ export const TanquesView = {
       g += `<circle cx="${x + G.R - 5}" cy="${tapa - 1}" r="2.6" stroke="var(--tank-steel-edge)"`
         + ` stroke-width="0.5" ${relleno(tokenEtapa(est.etapa))}/>`;
     }
-    g += `<text x="${x}" y="${tapa + 3}" text-anchor="middle" font-size="8.5" font-weight="500"`
+    g += `<text class="tanque-codigo" x="${x}" y="${tapa + 3}" text-anchor="middle" font-size="8.5" font-weight="500"`
       + ` style="fill:var(--tank-steel-edge)">${escapeHtml(t.codigo)}</text>`;
+    g += '</g>';
     g += `<text x="${x}" y="${y + G.RY + 9}" text-anchor="middle" font-size="7"`
       + ` style="fill:var(--tank-path-text)">${(cap / 1000).toFixed(1)}k</text>`;
     return `${g}</g>`;
