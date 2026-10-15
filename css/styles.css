@@ -3148,7 +3148,7 @@ body.demo-mode-active .row-clickable        { display: none; }
 }
 
 .tanques-layout {
-  display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start;
+  display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start;
 }
 .tanques-plan-card, .tanques-panel {
   background: var(--card); border: 1px solid var(--border);
@@ -3158,7 +3158,7 @@ body.demo-mode-active .row-clickable        { display: none; }
 .tanques-plan-card { display: grid; gap: 10px; }
 .tanques-plan-scroll { overflow-x: auto; }
 .tanques-plan {
-  display: block; width: 100%; min-width: 680px; height: auto; user-select: none;
+  display: block; width: 100%; min-width: 560px; height: auto; user-select: none;
 }
 .tanque { cursor: pointer; }
 .tanque.dim { opacity: 0.22; }
@@ -3272,13 +3272,13 @@ button.tanques-chip:focus-visible { outline: 2px solid var(--gold); outline-offs
 .tanques-avisos { display: grid; gap: 4px; font-size: var(--text-sm); color: var(--muted); }
 .tanques-avisos li { margin-left: 16px; }
 
-/* The plan needs 680 CSS px before it starts scrolling sideways, and the
-   dashboard's sidebar already takes about 334 of the viewport, so a 360px side
-   panel only fits from roughly 1420px up. Below that the panel stacks under the
+/* The plan needs 560 CSS px before it starts scrolling sideways, and the
+   dashboard's sidebar already takes about 334 of the viewport, so a 320px side
+   panel fits from roughly 1300px up. Below that the panel stacks under the
    plan and the plan gets the whole column: a plan you can only see two thirds
    of is worse than a panel one scroll away. (Measured with the sidebar OPEN,
    which is the narrow case; hiding it only adds room.) */
-@media (max-width: 1419px) {
+@media (max-width: 1299px) {
   .tanques-layout { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {

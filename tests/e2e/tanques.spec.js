@@ -221,10 +221,10 @@ test.describe('Tanques', () => {
   });
 
   test('the whole plan is visible on a 1300px laptop', async ({ page }) => {
-    // The sidebar takes about 334px, so at 1300 the side panel has to stack or
-    // the plan is cut off at its 680px minimum. This is the guard on that
+    // The sidebar takes about 334px. Below 1300 the side panel has to stack or
+    // the plan is cut off at its 560px minimum. This is the guard on that
     // breakpoint: a plan you can only see two thirds of is the regression.
-    await abrir(page, { ancho: 1300 });
+    await abrir(page, { ancho: 1200 });
     const caja = await page.locator('.tanques-plan-scroll').evaluate((el) => ({
       cliente: el.clientWidth, contenido: el.scrollWidth,
     }));
@@ -233,8 +233,9 @@ test.describe('Tanques', () => {
     const panel = await page.locator('.tanques-panel').boundingBox();
     expect(panel.y).toBeGreaterThan(plan.y);
 
-    // At 1440 the panel fits beside the plan and the plan still does not scroll.
-    await page.setViewportSize({ width: 1440, height: 1000 });
+    // From 1300 the compact plan leaves room for the panel beside it, and the
+    // plan still does not scroll (Daniel, 2026-10-15).
+    await page.setViewportSize({ width: 1300, height: 1000 });
     await page.waitForTimeout(200);
     const ancho = await page.locator('.tanques-plan-scroll').evaluate((el) => ({
       cliente: el.clientWidth, contenido: el.scrollWidth,

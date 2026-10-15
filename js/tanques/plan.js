@@ -38,15 +38,15 @@ export const GEOMETRIA = {
   R: 17,        // lid radius, east-west
   RY: 6.5,      // lid radius, north-south (the obliqueness)
   PX: 42,       // spacing between positions in a fermentation row
-  PX_REC: 70,   // spacing in the reception strip (wider tanks, fewer of them)
+  PX_REC: 44,   // spacing in the reception block (two tanks per row)
   ROWH: 62,     // spacing between rows
   PASILLO_H: 24,
   H_MIN: 8,     // drawn height of the smallest vessel
   H_MAX: 36,    // drawn height of the largest located vessel
-  REC_W: 170,   // width of the reception strip
-  X0_REC: 56,   // centre of reception position 1
-  MARGEN_SUP: 34,
-  MARGEN_INF: 34,
+  REC_W: 96,    // width of the reception block: the R/PD tanks only
+  X0_REC: 30,   // centre of reception position 1
+  MARGEN_SUP: 22,
+  MARGEN_INF: 22,
   MARGEN_DER: 24,
 };
 GEOMETRIA.X0 = GEOMETRIA.REC_W + 58;   // centre of fermentation position 1
@@ -90,7 +90,9 @@ export function construirPlano(tanques, opciones = {}) {
   const y = Object.create(null);
   const pasillos = [];
   const orden = [];
-  let cursor = G.MARGEN_SUP + G.PASILLO_H;
+  // No outer walkways: the plan starts at row A and ends at row H, so the
+  // space goes to the tanks and the panel (Daniel, 2026-10-15).
+  let cursor = G.MARGEN_SUP;
   for (const letra of FILAS_PLANO) {
     if (letra) {
       y[letra] = cursor + G.H_MAX + G.RY + 6;
