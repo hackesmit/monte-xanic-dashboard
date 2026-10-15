@@ -86,7 +86,8 @@ function logBase() {
 // (crear) or `patch` (anular) hook, so a test can still shape what the
 // database "stored". `rpc` replaces the whole function when a test needs to.
 function mockSupabase({ tanques = TANQUES, sinonimos = SINONIMOS, movimientos = logBase(),
-                        insert, patch, rpc, blacklisted = false, maxRows = Infinity, alLeer } = {}) {
+                        descartes = [], insert, patch, rpc, blacklisted = false,
+                        maxRows = Infinity, alLeer } = {}) {
   const calls = [];
   const db = { v: 0, cola: Promise.resolve() };
   globalThis.fetch = async (url, opts = {}) => {
@@ -142,6 +143,18 @@ function mockSupabase({ tanques = TANQUES, sinonimos = SINONIMOS, movimientos = 
     // the version, add a row) in the middle of the endpoint's snapshot.
     if (alLeer && method === 'GET') await alLeer(url, db);
     if (url.includes('/tanques_version')) return ok([{ v: db.v }]);
+    // tanques_propuestas_descartadas (sql/migration_tanques_descartes.sql). The
+    // INSERT carries Prefer: resolution=ignore-duplicates, so this mock plays
+    // the primary key: a clave already there is kept with its first author.
+    if (url.includes('/tanques_propuestas_descartadas')) {
+      if (method === 'GET') return page(descartes);
+      if (method !== 'POST') throw new Error(`unexpected descartes write: ${method} ${url}`);
+      const fila = JSON.parse(opts.body);
+      if (!descartes.some(d => d.clave === fila.clave)) {
+        descartes.push({ ...fila, created_at: '2026-10-15T00:00:00+00:00' });
+      }
+      return ok(null, 201);
+    }
     if (url.includes('/dim_tanque_sinonimo')) return page(sinonimos);
     if (url.includes('/dim_tanque')) return page(tanques);
     if (url.includes('/movimientos_tanque')) {
@@ -1613,5 +1626,225 @@ describe('MT.52 - client: only an API refusal is definite', () => {
     assert.equal(DataStore.tanquesDesactualizado, false, 'the view on screen is current');
     assert.equal(out.actualizado, true);
     assert.equal(DataStore.movimientosTanque.length, 1, 'the superseded load did not put the old log back');
+  });
+});
+
+// --- action descartar (bead xd-qrn.6) ----------------------------------------
+//
+// Dismissing an inferred trasiego proposal remembers a "no". It writes no
+// litres, so it skips the version counter, the replay and the validator: what it
+// has to be is role-gated, shape-checked and idempotent on the clave.
+
+describe('MT.52 - POST /api/tanques action descartar', () => {
+  let originalFetch;
+  beforeEach(() => { originalFetch = globalThis.fetch; });
+  afterEach(()  => { globalThis.fetch = originalFetch; });
+
+  const CLAVE = '25CSKMP-4|D5|E1|2025-11-12';
+  const descartar = (clave, role = 'lab') => makeReq({ body: { action: 'descartar', clave }, role });
+
+  it('stores the clave with the user from the TOKEN, never from the body', async () => {
+    const descartes = [];
+    mockSupabase({ descartes });
+    const res = makeRes();
+    await handler(makeReq({
+      body: { action: 'descartar', clave: CLAVE, descartado_por: 'otro', created_at: '1999-01-01' },
+      role: 'lab', user: 'labuser',
+    }), res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.ok, true);
+    assert.equal(res.body.clave, CLAVE);
+    assert.equal(descartes.length, 1);
+    assert.equal(descartes[0].clave, CLAVE);
+    assert.equal(descartes[0].descartado_por, 'labuser');
+  });
+
+  it('refuses a viewer, like every other write', async () => {
+    const descartes = [];
+    mockSupabase({ descartes });
+    const res = makeRes();
+    await handler(descartar(CLAVE, 'viewer'), res);
+    assert.equal(res.statusCode, 403);
+    assert.equal(descartes.length, 0);
+  });
+
+  it('is idempotent on the clave: a repeat keeps the first author', async () => {
+    const descartes = [];
+    mockSupabase({ descartes });
+    for (const user of ['labuser', 'otrolab']) {
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'descartar', clave: CLAVE }, role: 'lab', user }), res);
+      assert.equal(res.statusCode, 200);
+    }
+    assert.equal(descartes.length, 1, 'one row, not two');
+    assert.equal(descartes[0].descartado_por, 'labuser');
+  });
+
+  it('uses on_conflict and ignore-duplicates so the repeat is the database\'s call', async () => {
+    const calls = mockSupabase({ descartes: [] });
+    const res = makeRes();
+    await handler(descartar(CLAVE), res);
+    const post = calls.find(c => c.url.includes('tanques_propuestas_descartadas') && c.method === 'POST');
+    assert.ok(post, 'the dismissal is written');
+    assert.match(post.url, /on_conflict=clave/);
+    assert.match(post.opts.headers.Prefer, /resolution=ignore-duplicates/);
+  });
+
+  it('refuses a clave that is missing, blank, over-long or not four parts', async () => {
+    for (const clave of [undefined, '', '   ', 'x'.repeat(201),
+      '25CSKMP-4|D5|E1', '25CSKMP-4|D5|E1|2025-11-12|extra', 'cualquier cosa']) {
+      const descartes = [];
+      mockSupabase({ descartes });
+      const res = makeRes();
+      await handler(descartar(clave), res);
+      assert.equal(res.statusCode, 400, JSON.stringify(clave));
+      assert.equal(descartes.length, 0, JSON.stringify(clave));
+    }
+  });
+
+  it('does not touch the movement log, the version counter or the RPC', async () => {
+    const calls = mockSupabase({ descartes: [] });
+    const res = makeRes();
+    await handler(descartar(CLAVE), res);
+    assert.equal(res.statusCode, 200);
+    assert.equal(escribio(calls), false, 'no write RPC');
+    assert.ok(!calls.some(c => c.url.includes('/movimientos_tanque')), 'the log is not even read');
+    assert.ok(!calls.some(c => c.url.includes('/tanques_version')), 'the version is not touched');
+  });
+
+  it('GET returns the dismissed claves, to any valid session', async () => {
+    mockSupabase({ descartes: [
+      { clave: CLAVE, descartado_por: 'labuser' },
+      { clave: '25DUKMP-3|D5|D1|2025-10-18', descartado_por: 'labuser' },
+      { clave: '', descartado_por: 'labuser' },        // a blank the CHECK forbids: left out
+      { descartado_por: 'labuser' },                   // no clave at all: left out
+    ] });
+    const res = makeRes();
+    await handler(makeReq({ method: 'GET', role: 'viewer' }), res);
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body.descartadas, [CLAVE, '25DUKMP-3|D5|D1|2025-10-18']);
+  });
+
+  it('GET answers an empty list when nothing is dismissed', async () => {
+    mockSupabase({ descartes: [] });
+    const res = makeRes();
+    await handler(makeReq({ method: 'GET' }), res);
+    assert.deepEqual(res.body.descartadas, []);
+  });
+
+  it('an unknown action is still refused, so descartar is a whitelist not a catch-all', async () => {
+    mockSupabase({ descartes: [] });
+    const res = makeRes();
+    await handler(makeReq({ body: { action: 'borrar', clave: CLAVE } }), res);
+    assert.equal(res.statusCode, 400);
+  });
+
+  it('a database failure on the dismissal is a 502, not a silent ok', async () => {
+    mockSupabase({ descartes: [] });
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url, opts = {}) => {
+      if (url.includes('tanques_propuestas_descartadas') && (opts.method || 'GET') === 'POST') {
+        return { ok: false, status: 500, json: async () => ({ message: 'boom' }),
+                 text: async () => JSON.stringify({ message: 'boom' }) };
+      }
+      return real(url, opts);
+    };
+    const res = makeRes();
+    await handler(descartar(CLAVE), res);
+    assert.equal(res.statusCode, 502);
+    assert.equal(res.body.ok, false);
+  });
+});
+
+describe('MT.52 - DataStore.descartarPropuesta', () => {
+  let originalFetch, originalLocalStorage, DataStore;
+
+  before(async () => {
+    globalThis.localStorage = {
+      _s: { xanic_session_token: 'tok' },
+      getItem(k) { return this._s[k] ?? null; },
+      setItem(k, v) { this._s[k] = String(v); },
+      removeItem(k) { delete this._s[k]; },
+    };
+    DataStore = (await import('../js/dataLoader.js')).DataStore;
+  });
+
+  beforeEach(() => { originalFetch = globalThis.fetch; originalLocalStorage = globalThis.localStorage; });
+  afterEach(()  => {
+    globalThis.fetch = originalFetch;
+    globalThis.localStorage = originalLocalStorage;
+    DataStore.tanquesDescartadas = [];
+    DataStore.tanquesDesactualizado = false;
+  });
+
+  const CLAVE = '25CSKMP-4|D5|E1|2025-11-12';
+  const json = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
+
+  it('posts the clave with the session token and re-reads the list', async () => {
+    const calls = [];
+    globalThis.fetch = async (url, opts = {}) => {
+      calls.push({ url, opts });
+      if ((opts.method || 'GET') === 'POST') return json(200, { ok: true, clave: CLAVE });
+      return json(200, { ok: true, tanques: TANQUES, sinonimos: {}, movimientos: [], descartadas: [CLAVE] });
+    };
+    const out = await DataStore.descartarPropuesta(CLAVE);
+    assert.equal(out.clave, CLAVE);
+    assert.equal(out.actualizado, true);
+    assert.deepEqual(DataStore.tanquesDescartadas, [CLAVE]);
+    assert.equal(calls[0].opts.headers['x-session-token'], 'tok');
+    assert.deepEqual(JSON.parse(calls[0].opts.body), { action: 'descartar', clave: CLAVE });
+  });
+
+  it('keeps the clave locally when the re-read fails, so the proposal still leaves the inbox', async () => {
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') return json(200, { ok: true, clave: CLAVE });
+      throw new TypeError('network down');
+    };
+    const out = await DataStore.descartarPropuesta(CLAVE);
+    assert.equal(out.actualizado, false);
+    assert.deepEqual(DataStore.tanquesDescartadas, [CLAVE]);
+    // A dismissal is not a movement, so a failed re-read does NOT make the plan
+    // on screen a stale picture of the bodega.
+    assert.equal(DataStore.tanquesDesactualizado, false);
+  });
+
+  it('throws the API reason when it refused, and remembers nothing', async () => {
+    globalThis.fetch = async () => json(403, { ok: false, error: 'Sin permisos para registrar movimientos' });
+    await assert.rejects(() => DataStore.descartarPropuesta(CLAVE),
+      /Sin permisos para registrar movimientos/);
+    assert.deepEqual(DataStore.tanquesDescartadas, []);
+  });
+
+  it('a body that is not the API talking is a failure, not a success', async () => {
+    globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => { throw new Error('html'); } });
+    await assert.rejects(() => DataStore.descartarPropuesta(CLAVE), /No se pudo descartar/);
+    assert.deepEqual(DataStore.tanquesDescartadas, []);
+  });
+
+  it('refuses a blank clave before any request leaves', async () => {
+    let llamado = false;
+    globalThis.fetch = async () => { llamado = true; return json(200, { ok: true }); };
+    await assert.rejects(() => DataStore.descartarPropuesta('  '), /Falta la clave/);
+    assert.equal(llamado, false);
+  });
+
+  it('does not store the same clave twice', async () => {
+    globalThis.fetch = async (url, opts = {}) => {
+      if ((opts.method || 'GET') === 'POST') return json(200, { ok: true, clave: CLAVE });
+      throw new TypeError('network down');   // the local list is what is left
+    };
+    await DataStore.descartarPropuesta(CLAVE);
+    await DataStore.descartarPropuesta(CLAVE);
+    assert.deepEqual(DataStore.tanquesDescartadas, [CLAVE]);
+  });
+
+  it('loadTanques fills tanquesDescartadas, and an old server that omits it empties it', async () => {
+    globalThis.fetch = async () =>
+      json(200, { ok: true, tanques: TANQUES, sinonimos: {}, movimientos: [], descartadas: [CLAVE] });
+    assert.equal(await DataStore.loadTanques(), true);
+    assert.deepEqual(DataStore.tanquesDescartadas, [CLAVE]);
+    globalThis.fetch = async () => json(200, { ok: true, tanques: TANQUES, sinonimos: {}, movimientos: [] });
+    assert.equal(await DataStore.loadTanques(), true);
+    assert.deepEqual(DataStore.tanquesDescartadas, []);
   });
 });

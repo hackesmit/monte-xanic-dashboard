@@ -51,6 +51,7 @@ export const DataStore = {
   tanquesCatalogo: [],      // dim_tanque rows
   tanquesSinonimos: {},     // dim_tanque_sinonimo as {sinonimo: codigo}
   movimientosTanque: [],    // movimientos_tanque rows (annulled ones included)
+  tanquesDescartadas: [],   // claves of inferred trasiego proposals somebody dismissed
   tanquesDesactualizado: false,  // true when a write landed but the re-read failed
   _tanquesGen: 0,                // load generation; an older GET never wins
   loaded: { berry: false, wine: false },
@@ -413,6 +414,7 @@ export const DataStore = {
       this.tanquesCatalogo  = data.tanques || [];
       this.tanquesSinonimos = data.sinonimos || {};
       this.movimientosTanque = data.movimientos || [];
+      this.tanquesDescartadas = Array.isArray(data.descartadas) ? data.descartadas : [];
       this.tanquesDesactualizado = false;
       return 'aplicado';
     } catch (e) {
@@ -537,6 +539,31 @@ export const DataStore = {
       if (e && typeof e === 'object') e.movimiento = intento;
       throw e;
     }
+  },
+
+  // Dismiss an inferred trasiego proposal: remember the "no" so the inbox stops
+  // asking. Nothing about the bodega changes, so this does NOT go through
+  // _escribirMovimiento: there is no log to re-read for proof, no three-outcome
+  // problem and nothing to reconcile, because the server ignores a duplicate
+  // clave and a repeat is therefore free. The clave is added locally before the
+  // re-read so the proposal leaves the inbox even when the GET fails.
+  // Throws with the API's own Spanish reason when it refused.
+  async descartarPropuesta(clave) {
+    const c = String(clave || '').trim();
+    if (!c) throw new Error('Falta la clave de la propuesta a descartar.');
+    const res = await fetch('/api/tanques', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
+      body: JSON.stringify({ action: 'descartar', clave: c }),
+    });
+    let data = null;
+    try { data = await res.json(); } catch (_) { data = null; }
+    if (!res.ok || !data || data.ok !== true) {
+      throw new Error((data && data.error) || 'No se pudo descartar la propuesta.');
+    }
+    if (!this.tanquesDescartadas.includes(c)) this.tanquesDescartadas = [...this.tanquesDescartadas, c];
+    const carga = await this._cargarTanques();
+    return { clave: c, actualizado: carga !== 'fallo' };
   },
 
   // Undo marks a row anulado, never deletes it. Refused (400) when taking the

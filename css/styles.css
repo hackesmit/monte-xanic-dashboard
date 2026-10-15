@@ -3358,6 +3358,37 @@ button.tanques-chip.drop { border-color: var(--gold-lt); border-style: dashed; }
 }
 .tanques-gemelo { color: var(--text); }
 
+/* The lab inbox (js/tanques/inbox.js): trasiegos proposed from the samples'
+   vessel changes. One card per proposal, in date order. Created at runtime and
+   only for role `lab`, like the rest of the write chrome above. */
+.tanques-inbox { margin-top: 4px; }
+.tanques-props { display: grid; gap: 8px; }
+.tanques-prop {
+  display: grid; gap: 4px; padding: 10px;
+  background: var(--card2); border: 1px solid var(--border);
+  border-radius: var(--radius-base);
+}
+.tanques-prop-cab {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+  font-family: var(--font-mono); font-size: var(--text-sm);
+}
+.tanques-prop-cab i {
+  width: 10px; height: 10px; border-radius: var(--radius-round);
+  display: inline-block; flex: none;
+}
+.tanques-prop-cab b { color: var(--cream); }
+.tanques-prop-ruta { color: var(--gold-dim); }
+.tanques-prop .tanques-acciones { margin-top: 4px; }
+.tanques-inbox-mas > summary {
+  cursor: pointer; font-size: var(--text-sm); color: var(--muted);
+}
+.tanques-inbox-mas > summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.tanques-inbox-ul {
+  margin: 6px 0 0; padding-left: 18px;
+  font-size: var(--text-sm); color: var(--muted);
+}
+.tanques-inbox-ul b { font-family: var(--font-mono); color: var(--text); }
+
 /* The dialog. The scrim is the --scrim token, defined in both themes;
    ::backdrop inherits custom properties from its dialog in every engine this
    dashboard supports (Chromium 122+, Firefox 120+, Safari 17.4+). */

@@ -50,8 +50,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECIMAL = /^-?\d+(\.\d+)?$/;
 
 const FUENTES = new Set(['manual', 'lab']);
-const ACCIONES = new Set(['crear', 'anular']);
+const ACCIONES = new Set(['crear', 'anular', 'descartar']);
 const MAX_NOTA = 2000;
+// The identity of an inferred trasiego proposal (js/tanques/inferencia.js
+// clavePropuesta): lot_code|origen|destino|fecha. Same ceiling as the
+// tanques_descartes_clave_chk CHECK, so the column answers what this answers.
+const MAX_CLAVE = 200;
 const VINTAGE_MIN = 1988;   // same range as the movimientos_tanque CHECK
 const VINTAGE_MAX = 2100;
 const PAGINA = 1000;        // PostgREST caps a response at 1000 rows
@@ -267,6 +271,20 @@ async function leerEstable() {
   throw new ErrorInestable(`la version cambio durante ${LECTURAS} lecturas`);
 }
 
+// The claves of the trasiego proposals somebody dismissed. Read on GET only,
+// not inside leerEstable(): a dismissal changes no litres, so it is not part of
+// the snapshot a write is validated against, and reading it there would cost a
+// query on every write attempt for an answer no write looks at.
+async function leerDescartadas() {
+  const filas = await leerTodo('tanques_propuestas_descartadas', 'clave.asc');
+  const fuera = [];
+  for (const f of filas) {
+    const c = typeof f.clave === 'string' ? f.clave : '';
+    if (c) fuera.push(c);
+  }
+  return fuera;
+}
+
 async function leerBodega() {
   const [tanques, sinonimos, movimientos] = await Promise.all([
     leerTodo('dim_tanque', 'orden.asc,codigo.asc'),
@@ -471,7 +489,11 @@ export default async function handler(req, res) {
   try {
     if (req.method === 'GET') {
       const bodega = await leerEstable();
-      return res.status(200).json({ ok: true, ...bodega });
+      // The dismissal list is read after the snapshot and outside its version
+      // check on purpose (see leerDescartadas): the worst a dismissal landing
+      // in between can do is show a proposal one render longer.
+      const descartadas = await leerDescartadas();
+      return res.status(200).json({ ok: true, ...bodega, descartadas });
     }
 
     // Reads are open to any session; appending to the bodega log is role lab.
@@ -489,6 +511,7 @@ export default async function handler(req, res) {
     }
 
     if (action === 'crear') return await crear(req, res, usuario);
+    if (action === 'descartar') return await descartar(req, res, usuario);
     return await anular(req, res);
   } catch (e) {
     if (e instanceof ErrorInestable) {
@@ -689,4 +712,39 @@ async function anular(req, res) {
     throw new ErrorIndeterminado(`resultado inesperado: ${String(r.resultado).slice(0, 40)}`);
   }
   return res.status(409).json({ ok: false, error: CONFLICTO });
+}
+
+// Remember that somebody said NO to an inferred trasiego proposal.
+//
+// Nothing about the bodega changes: a dismissal writes no litres, so it skips
+// the version counter, the replay and the validator entirely (the only three
+// things the rest of this file exists to serialize). What it needs is to be
+// idempotent on `clave`, which `on_conflict` plus `resolution=ignore-duplicates`
+// gives: the FIRST dismissal keeps its author and its timestamp, and a repeat
+// is a 201 with nothing written, so a lost answer costs a user nothing.
+//
+// Because a repeat is free, this write has no client_id and no indeterminate
+// outcome to reconcile: pressing the button again is always safe.
+async function descartar(req, res, usuario) {
+  const clave = texto((req.body || {}).clave);
+  if (!clave) {
+    return res.status(400).json({ ok: false, error: 'Falta la clave de la propuesta a descartar.' });
+  }
+  if (clave.length > MAX_CLAVE) {
+    return res.status(400).json({ ok: false, error: 'La clave de la propuesta no es válida.' });
+  }
+  // Four parts, the shape clavePropuesta() builds, so the table cannot become a
+  // store for whatever a client feels like keying. The parts themselves are not
+  // judged here: a proposal names tanks the catalog has, but a tank dropped
+  // from the catalog later must not make an old dismissal unwritable.
+  if (clave.split('|').length !== 4) {
+    return res.status(400).json({ ok: false, error: 'La clave de la propuesta no es válida.' });
+  }
+
+  await sb('tanques_propuestas_descartadas?on_conflict=clave', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
+    body: JSON.stringify({ clave, descartado_por: usuario }),  // usuario from the token
+  });
+  return res.status(200).json({ ok: true, clave });
 }
