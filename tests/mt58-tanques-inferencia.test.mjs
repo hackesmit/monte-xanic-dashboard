@@ -874,3 +874,23 @@ describe('mt58 - visitas de regreso', () => {
     assert.deepEqual(motivos(r), ['simultaneo:E6/F3']);
   });
 });
+
+// Coordinator round, 2026-10-15 (lucy round 2): every proposal the inbox can
+// show must be dismissable, so its clave has to fit the API's MAX_CLAVE (200).
+describe('MT.58 - proposal claves stay dismissable', () => {
+  test('a lot code longer than 36 characters, or with non-ASCII, is not a lote', () => {
+    assert.equal(esCodigoDeLote('25A' + 'x'.repeat(33)), true);
+    assert.equal(esCodigoDeLote('25A' + 'x'.repeat(34)), false);
+    assert.equal(esCodigoDeLote('25A' + 'x'.repeat(181)), false);
+    assert.equal(esCodigoDeLote('25Aé'), false);
+  });
+
+  test('the worst clave the rule allows fits MAX_CLAVE with the longest real tank codes', () => {
+    const peor = '25A' + '%'.repeat(33);  // every character percent-encodes
+    assert.equal(esCodigoDeLote(peor), true);
+    const clave = clavePropuesta({ lot_code: peor, origen: 'VAR 1 CESAR', destino: 'VAR 2 CESAR', fecha: '2025-11-02' });
+    assert.ok(clave.length <= 200, `clave of ${clave.length} characters`);
+    const api = readFileSync(new URL('../api/tanques.js', import.meta.url), 'utf8');
+    assert.match(api, /const MAX_CLAVE = 200;/);
+  });
+});
