@@ -104,6 +104,26 @@ function numero(v) {
   return typeof v === 'number' && Number.isFinite(v) ? v : NaN;
 }
 
+// A litre amount as the replay will apply it: quantized to whole microlitres,
+// so validation and replay agree on what a row moves. Anything that rounds to
+// zero is refused: it would be counted as moved while no wine moves.
+function litros(v) {
+  return redondear(numero(v));
+}
+
+// Merma is optional: only an ABSENT value means zero. A supplied value that is
+// not a finite number ('10', true, NaN) is an error, not a silent zero, so the
+// recorded loss is never discarded without a trace.
+function mermaDe(v) {
+  return v == null ? 0 : litros(v);
+}
+
+// Tank lookups must be own properties: a reference like 'toString' or
+// '__proto__' must report tanque_desconocido, not resolve to Object.prototype.
+function propio(obj, k) {
+  return Object.prototype.hasOwnProperty.call(obj, k);
+}
+
 function fmtL(n) {
   const r = Math.round(n * 10) / 10;
   return String(Object.is(r, -0) ? 0 : r);
@@ -237,7 +257,7 @@ function ordenar(movimientos) {
  */
 export function replayMovimientos(tanques, movimientos, opciones = {}) {
   const sinonimos = indiceSinonimos(opciones);
-  const estado = {};
+  const estado = Object.create(null);
   for (const t of Array.isArray(tanques) ? tanques : []) {
     const codigo = texto(t && t.codigo);
     if (!codigo) continue;
@@ -268,11 +288,11 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
       avisar('sin_tanques', 'El movimiento no indica tanque origen ni tanque destino.', mov, i);
       continue;
     }
-    if (codOrigen && !estado[codOrigen]) {
+    if (codOrigen && !propio(estado, codOrigen)) {
       avisar('tanque_desconocido', `El tanque origen "${refOrigen}" no existe en el catalogo.`, mov, i);
       continue;
     }
-    if (codDestino && !estado[codDestino]) {
+    if (codDestino && !propio(estado, codDestino)) {
       avisar('tanque_desconocido', `El tanque destino "${refDestino}" no existe en el catalogo.`, mov, i);
       continue;
     }
@@ -280,9 +300,14 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
       avisar('mismo_tanque', `El origen y el destino son el mismo tanque (${codOrigen}).`, mov, i);
       continue;
     }
-    const volumen = numero(mov.volumen_l);
+    const volumen = litros(mov.volumen_l);
     if (Number.isNaN(volumen) || volumen <= 0) {
-      avisar('volumen_invalido', 'El volumen movido no es un numero mayor que cero.', mov, i);
+      avisar('volumen_invalido', 'El volumen movido no es un numero mayor que cero (minimo 0.000001 L).', mov, i);
+      continue;
+    }
+    let merma = mermaDe(mov.merma_l);
+    if (Number.isNaN(merma) || merma < 0) {
+      avisar('merma_invalida', 'La merma no es un numero mayor o igual a cero.', mov, i);
       continue;
     }
     if (!fechaValida(mov.fecha)) avisar('sin_fecha', 'El movimiento no tiene una fecha valida (AAAA-MM-DD).', mov, i);
@@ -327,8 +352,6 @@ export function replayMovimientos(tanques, movimientos, opciones = {}) {
     }
 
     // what arrives at the destination: the same split, less merma
-    let merma = numero(mov.merma_l);
-    merma = Number.isNaN(merma) ? 0 : Math.max(0, merma);
     if (merma > movido) {
       avisar('merma_excesiva', `La merma (${fmtL(merma)} L) es mayor que el volumen movido (${fmtL(movido)} L).`, mov, i);
       merma = movido;
@@ -434,8 +457,8 @@ export function validarMovimiento(estado, mov, opciones = {}) {
   const refDestino = texto(m.destino);
   const codOrigen = refOrigen ? resolver(refOrigen, codigos, sinonimos) : '';
   const codDestino = refDestino ? resolver(refDestino, codigos, sinonimos) : '';
-  const origen = codOrigen && tanques[codOrigen] ? tanques[codOrigen] : null;
-  const destino = codDestino && tanques[codDestino] ? tanques[codDestino] : null;
+  const origen = codOrigen && propio(tanques, codOrigen) && tanques[codOrigen] ? tanques[codOrigen] : null;
+  const destino = codDestino && propio(tanques, codDestino) && tanques[codDestino] ? tanques[codDestino] : null;
 
   if (refOrigen && !origen) errores.push(`El tanque origen "${refOrigen}" no existe en el catalogo.`);
   if (refDestino && !destino) errores.push(`El tanque destino "${refDestino}" no existe en el catalogo.`);
@@ -449,7 +472,7 @@ export function validarMovimiento(estado, mov, opciones = {}) {
     } else if (SIN_DESTINO.has(tipo)) {
       if (refDestino) errores.push(`Una ${tipo} no lleva tanque destino.`);
       if (!refOrigen) errores.push(`Una ${tipo} necesita un tanque origen.`);
-      if (numero(m.merma_l) > 0) errores.push(`Una ${tipo} no lleva merma: el volumen que sale ya la incluye.`);
+      if (mermaDe(m.merma_l) > 0) errores.push(`Una ${tipo} no lleva merma: el volumen que sale ya la incluye.`);
     } else {
       if (!refOrigen) errores.push(`Un movimiento de tipo ${tipo} necesita un tanque origen.`);
       if (!refDestino) errores.push(`Un movimiento de tipo ${tipo} necesita un tanque destino.`);
@@ -461,13 +484,13 @@ export function validarMovimiento(estado, mov, opciones = {}) {
   const etapa = texto(m.etapa);
   if (etapa && !ETAPAS.includes(etapa)) errores.push(`Etapa no reconocida: "${etapa}".`);
 
-  const volumen = numero(m.volumen_l);
+  const volumen = litros(m.volumen_l);
   const volumenOk = !Number.isNaN(volumen) && volumen > 0;
-  if (!volumenOk) errores.push('El volumen movido debe ser mayor que cero.');
+  if (!volumenOk) errores.push('El volumen movido debe ser un numero mayor que cero (minimo 0.000001 L).');
 
-  let merma = numero(m.merma_l);
-  if (Number.isNaN(merma)) merma = 0;
-  if (merma < 0) errores.push('La merma no puede ser negativa.');
+  let merma = mermaDe(m.merma_l);
+  if (Number.isNaN(merma)) { errores.push('La merma debe ser un numero.'); merma = 0; }
+  else if (merma < 0) errores.push('La merma no puede ser negativa.');
   else if (volumenOk && merma > volumen) {
     errores.push(`La merma (${fmtL(merma)} L) no puede ser mayor que el volumen movido (${fmtL(volumen)} L).`);
   }

@@ -747,8 +747,8 @@ test('deriveEstado does not mutate its inputs', () => {
 });
 
 test('deriveEstado tolerates missing or junk inputs', () => {
-  assert.deepEqual(deriveEstado(null, null), {});
-  assert.deepEqual(deriveEstado(undefined, undefined), {});
+  assert.deepEqual(Object.keys(deriveEstado(null, null)), []);
+  assert.deepEqual(Object.keys(deriveEstado(undefined, undefined)), []);
   const estado = deriveEstado([{ codigo: 'A1', capacidad_l: null }, { codigo: null }], [null, 42]);
   assert.equal(estado.A1.capacidad_l, 0);
   assert.equal(Object.keys(estado).length, 1);
@@ -782,3 +782,47 @@ function fixture20() {
   // the newest row comes first in the array on purpose: the replay must sort, not trust input order
   return [filas[filas.length - 1], ...filas.slice(0, -1)];
 }
+
+// Cross-vendor review 2026-10-15: three holes in what the validator accepts and
+// what the replay does with it.
+test('a withdrawal that rounds to zero microlitres is refused, so salido never grows while nothing leaves', () => {
+  const cat = [{ codigo: 'A', capacidad_l: 200 }];
+  const filas = [{ tipo: 'recepcion', destino: 'A', lot_code: 'L', fecha: '2025-09-01', volumen_l: 1 }];
+  const tiny = { tipo: 'salida', origen: 'A', fecha: '2025-09-02', volumen_l: 0.0000004 };
+  assert.ok(validarMovimientoEnLog(cat, filas, tiny).length > 0);
+  for (let k = 0; k < 3000; k++) filas.push({ ...tiny });
+  const r = replayMovimientos(cat, filas);
+  assert.equal(r.balance.salido_l, 0);
+  assert.equal(r.balance.en_tanques_l, 1);
+  assert.equal(r.balance.descuadre_l, 0);
+  assert.ok(r.avisos.every(a => a.codigo === 'volumen_invalido'));
+});
+
+test('a supplied merma that is not a finite number is an error, never a silent zero', () => {
+  const cat = [{ codigo: 'A', capacidad_l: 200 }];
+  for (const merma_l of ['10', true, NaN, Infinity, {}, -1]) {
+    const mov = { tipo: 'recepcion', destino: 'A', lot_code: 'L', fecha: '2025-09-01', volumen_l: 100, merma_l };
+    assert.ok(validarMovimientoEnLog(cat, [], mov).length > 0, `validation accepted merma ${String(merma_l)}`);
+    const r = replayMovimientos(cat, [mov]);
+    assert.equal(r.estado.A.litros, 0, `replay applied a row with merma ${String(merma_l)}`);
+    assert.ok(r.avisos.some(a => a.codigo === 'merma_invalida'));
+  }
+  // absent merma still means zero
+  const ok = { tipo: 'recepcion', destino: 'A', lot_code: 'L', fecha: '2025-09-01', volumen_l: 100, merma_l: null };
+  assert.deepEqual(validarMovimientoEnLog(cat, [], ok), []);
+  assert.equal(replayMovimientos(cat, [ok]).estado.A.litros, 100);
+});
+
+test('inherited property names are unknown tanks, and __proto__ works as a real catalog code', () => {
+  const cat = [{ codigo: 'A', capacidad_l: 200 }];
+  for (const ref of ['toString', 'constructor', 'hasOwnProperty', '__proto__']) {
+    const mov = { tipo: 'recepcion', destino: ref, lot_code: 'L', fecha: '2025-09-01', volumen_l: 100 };
+    const r = replayMovimientos(cat, [mov]);
+    assert.ok(r.avisos.some(a => a.codigo === 'tanque_desconocido'), ref);
+    assert.ok(validarMovimientoEnLog(cat, [], mov).length > 0, ref);
+  }
+  const raro = [{ codigo: '__proto__', capacidad_l: 200 }];
+  const r = replayMovimientos(raro, [{ tipo: 'recepcion', destino: '__proto__', lot_code: 'L', fecha: '2025-09-01', volumen_l: 50 }]);
+  assert.equal(r.estado.__proto__.litros, 50);
+  assert.equal(r.balance.descuadre_l, 0);
+});
