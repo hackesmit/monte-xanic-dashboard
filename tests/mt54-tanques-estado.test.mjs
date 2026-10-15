@@ -826,3 +826,23 @@ test('inherited property names are unknown tanks, and __proto__ works as a real 
   assert.equal(r.estado.__proto__.litros, 50);
   assert.equal(r.balance.descuadre_l, 0);
 });
+
+test('amounts too large to count in whole microlitres are refused, not turned into Infinity', () => {
+  const cat = [{ codigo: 'A', capacidad_l: 200 }];
+  const mov = { tipo: 'recepcion', destino: 'A', lot_code: 'L', fecha: '2025-09-01', volumen_l: Number.MAX_VALUE, merma_l: Number.MAX_VALUE };
+  assert.ok(validarMovimientoEnLog(cat, [], mov).length > 0);
+  const r = replayMovimientos(cat, [mov]);
+  assert.equal(r.estado.A.litros, 0);
+  assert.ok(Number.isFinite(r.balance.descuadre_l) && r.balance.descuadre_l === 0);
+  const sinMerma = { ...mov, merma_l: undefined, volumen_l: 1e300 };
+  assert.ok(validarMovimientoEnLog(cat, [], sinMerma).length > 0);
+});
+
+test('historialTanque keeps each occurrence apart when the same row object appears twice', () => {
+  const cat = [{ codigo: 'A', capacidad_l: 200 }];
+  const rec = { tipo: 'recepcion', destino: 'A', lot_code: 'L', fecha: '2025-09-01', volumen_l: 100 };
+  const sal = { tipo: 'salida', origen: 'A', fecha: '2025-09-02', volumen_l: 60 };
+  const h = historialTanque(cat, [rec, sal, sal], 'A');
+  const salidas = h.filter(f => f.direccion === 'salida').map(f => f.movido_l).sort((a, b) => b - a);
+  assert.deepEqual(salidas, [60, 40]);
+});
