@@ -153,3 +153,53 @@ describe('MT.55 - idempotency and registration', () => {
     assert.ok(i > MIGRATIONS.indexOf('migration_tanques') && MIGRATIONS.indexOf('migration_tanques') >= 0);
   });
 });
+
+describe('MT.55 - catalog edits move the same version (round 3)', () => {
+  // The endpoint validates a movement against the capacity and the synonyms it
+  // read. Editing either between that read and tanques_escribir must turn the
+  // write into a conflicto, so both catalog tables bump tanques_version too,
+  // through the same upsert (and so the same row lock) as the movement log.
+  for (const [tabla, trigger] of [
+    ['dim_tanque', 'dim_tanque_version'],
+    ['dim_tanque_sinonimo', 'dim_tanque_sinonimo_version'],
+  ]) {
+    it(`${tabla} bumps the version on insert, update, delete and truncate`, () => {
+      assert.match(SQL, new RegExp(`DROP TRIGGER IF EXISTS ${trigger} ON public\\.${tabla};\\n`
+        + `CREATE TRIGGER ${trigger}\\n`
+        + `\\s+AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON public\\.${tabla}\\n`
+        + `\\s+FOR EACH STATEMENT EXECUTE FUNCTION public\\.tanques_version_incrementar\\(\\);`));
+    });
+  }
+});
+
+describe('MT.55 - a client_id reused with other data (round 3)', () => {
+  const { cabecera, cuerpo } = funcion(SQL, 'tanques_misma_intencion');
+  const escribir = funcion(SQL, 'tanques_escribir').cuerpo;
+
+  it('compares every whitelisted column plus creado_por, with the table types', () => {
+    for (const col of ['fecha', 'tipo', 'origen', 'destino', 'lot_code', 'vintage_year',
+      'volumen_l', 'merma_l', 'nota', 'fuente', 'creado_por']) {
+      assert.ok(cuerpo.includes(`p_guardada.${col}`), `stored ${col} not compared`);
+      assert.ok(cuerpo.includes(`p_fila ->> '${col}'`), `requested ${col} not compared`);
+    }
+    assert.match(cuerpo, /\(p_fila ->> 'fecha'\)::date/);
+    assert.match(cuerpo, /\(p_fila ->> 'vintage_year'\)::int/);
+    assert.match(cuerpo, /\(p_fila ->> 'volumen_l'\)::numeric/);
+    assert.match(cuerpo, /COALESCE\(\(p_fila ->> 'merma_l'\)::numeric, 0\)/);
+    assert.match(cuerpo, /IS NOT DISTINCT FROM/);
+    assert.match(cabecera, /SECURITY INVOKER/);
+  });
+
+  it('answers client_id_distinto instead of duplicado when the data differ', () => {
+    const dup = escribir.match(/'resultado', 'duplicado'/g) || [];
+    const distinto = escribir.match(/'resultado', 'client_id_distinto'/g) || [];
+    const juicios = escribir.match(/IF public\.tanques_misma_intencion\(v_fila, p_fila\) THEN/g) || [];
+    assert.equal(dup.length, 2);
+    assert.equal(distinto.length, 2, 'both duplicate paths can refuse');
+    assert.equal(juicios.length, 2, 'both duplicate paths compare first');
+  });
+
+  it('can be executed by service_role only', () => {
+    assert.match(SQL, /REVOKE EXECUTE ON FUNCTION public\.tanques_misma_intencion\(public\.movimientos_tanque, JSONB\) FROM PUBLIC, anon, authenticated;/);
+  });
+});
