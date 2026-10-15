@@ -752,6 +752,7 @@ export const CONFIG = {
     'ipt':             'iptSpica',
     'ph':              'pH',
     'ta':              'at',
+    'va':              'av',
     'brix':            'brix',
     'l_star':          'colorL',
     'a_star':          'colorA',
