@@ -335,25 +335,13 @@ export const TanquesView = {
       + ` letter-spacing="${ls}" text-anchor="middle">${escapeHtml(texto)}</text>`;
 
     let s = `<rect x="0" y="0" width="${W}" height="${H}" rx="6" ${relleno('--tank-floor')}/>`;
-    // Service walkway along the north, exterior walkway along the south.
-    s += `<rect x="8" y="6" width="${W - 16}" height="${G.PASILLO_H - 4}" rx="3" ${relleno('--tank-path')}/>`
-      + etiqueta(W / 2, 20, 'PASILLO DE SERVICIO');
-    s += `<rect x="8" y="${H - 26}" width="${W - 16}" height="20" rx="3" ${relleno('--tank-path')}/>`
-      + etiqueta(W / 2, H - 12, 'PASILLO EXTERIOR');
 
-    // Reception and crushing strip on the west, with the R/PD tanks and presses.
-    const yA = piso('A'), yB = piso('B', 'A'), yD = piso('D', 'A');
-    const yE = piso('E', 'D'), yG = piso('G', 'A'), yH = piso('H', 'G');
-    s += `<rect x="10" y="${G.PASILLO_H + 10}" width="${G.REC_W}" height="${H - G.PASILLO_H - 42}"`
-      + ` fill="none" stroke="var(--border-gold)" stroke-dasharray="5 4" rx="4"/>`;
-    s += `<rect x="20" y="${yA - G.H_MAX - 20}" width="${G.REC_W - 20}"`
-      + ` height="${yB - yA + G.H_MAX + 44}" rx="3" opacity="0.6" ${relleno('--tank-path')}/>`;
-    s += etiqueta(10 + G.REC_W / 2, yA - G.H_MAX - 26, 'TANQUES R / PD', 8, 2);
-    s += etiqueta(10 + G.REC_W / 2, (yD + yE) / 2, 'ÁREA DE RECEPCIÓN', 9, 2)
-      + etiqueta(10 + G.REC_W / 2, (yD + yE) / 2 + 14, 'Y MOLIENDA', 9, 2);
-    s += `<rect x="30" y="${yG - 40}" width="70" height="${yH - yG + 40}" rx="3"`
-      + ` stroke="var(--border)" ${relleno('--tank-path')}/>`
-      + etiqueta(65, (yG + yH) / 2 - 16, 'PRENSAS', 8, 2);
+    // The R/PD reception tanks sit in a compact block west of rows A and B.
+    // No walkway, area or press labels: they took room and said nothing.
+    const yA = piso('A'), yB = piso('B', 'A');
+    s += `<rect x="4" y="${yA - G.H_MAX - 14}" width="${G.REC_W - 2}"`
+      + ` height="${yB - yA + G.H_MAX + 34}" rx="3" opacity="0.6" ${relleno('--tank-path')}/>`;
+    s += etiqueta(3 + G.REC_W / 2, yA - G.H_MAX - 18, 'R / PD', 8, 2);
 
     // Inner walkways between row groups carry no text label (spec).
     for (const py of plan.pasillos) {
@@ -364,10 +352,6 @@ export const TanquesView = {
       s += `<text x="${G.X0 - 38}" y="${f.y - 10}" style="fill:var(--gold)" font-size="14"`
         + ` font-weight="700" text-anchor="middle" font-family="var(--font-display)">${escapeHtml(f.letra)}</text>`;
     }
-    // Anchored inside the right margin: with letter-spacing a centred label at
-    // W - MARGEN_DER would spill past the viewBox and be clipped.
-    s += etiqueta(W - 44, G.PASILLO_H + 18, 'LAB / CALIDAD', 7, 1)
-      + etiqueta(W - 44, G.PASILLO_H + 28, 'AL ESTE', 7, 1);
 
     // North to south, west to east: a taller tank drawn later must overlap the
     // one behind it, never the other way round.
