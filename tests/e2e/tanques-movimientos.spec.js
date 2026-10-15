@@ -77,6 +77,7 @@ function servidor() {
     gets: 0,
     guion: [],            // queued ['abortar'|'indeterminado'|'retener'] for the next POSTs
     soltar: null,         // resolves the held response
+    romperGet: 0,         // GETs to fail before answering normally again
   };
 
   s.crear = (mov) => {
@@ -139,6 +140,11 @@ async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440,
     const req = route.request();
     if (req.method() === 'GET') {
       s.gets += 1;
+      if (s.romperGet > 0) {
+        s.romperGet -= 1;
+        return route.fulfill({ status: 500, contentType: 'application/json',
+          body: JSON.stringify({ ok: false, error: 'caida' }) });
+      }
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
@@ -155,6 +161,20 @@ async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440,
       await new Promise((resolve) => { s.soltar = resolve; });
     }
     if (guion === 'abortar') return route.abort('failed');
+    if (guion === 'perdido') {
+      // The INSERT commits and the answer is lost, and the re-read that would
+      // reconcile it fails too: the one case where the client cannot tell.
+      if (cuerpo.action === 'crear') s.crear(cuerpo.movimiento || {});
+      s.romperGet += 1;
+      return route.fulfill({
+        status: 503, contentType: 'application/json',
+        body: JSON.stringify({
+          ok: false, indeterminado: true,
+          error: 'No se pudo confirmar si la escritura quedó en la bitácora de tanques. '
+            + 'Revise la bitácora antes de repetirla.',
+        }),
+      });
+    }
     if (guion === 'indeterminado') {
       return route.fulfill({
         status: 503,
@@ -523,6 +543,75 @@ test.describe('Tanques: registrar movimientos', () => {
     await expect(dialogo(page)).toBeHidden();
     const segundo = s.cuerpos.filter((c) => c.action === 'crear')[1].movimiento;
     expect(segundo).toMatchObject({ origen: 'I-4 CAVA', destino: 'B2', volumen_l: 7400 });
+  });
+
+  test('two unconfirmed writes keep two keys, and resolving one leaves the other', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    s.guion.push('abortar', 'abortar');
+
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(1, { timeout: 10_000 });
+    await arrastrar(page, tanque('A1'), tanque('H1'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(2, { timeout: 10_000 });
+    await expect(page.locator('#tanques-pendiente')).toContainText('A5 a B2');
+    await expect(page.locator('#tanques-pendiente')).toContainText('A1 a H1');
+
+    const claves = s.cuerpos.map((c) => c.movimiento.client_id);
+    // Retrying the FIRST one must not touch the second's entry.
+    await page.locator('#tanques-pendiente [data-clave="' + claves[0] + '"][data-pendiente="reintentar"]').click();
+    await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(1, { timeout: 10_000 });
+    await expect(page.locator('#tanques-pendiente')).toContainText('A1 a H1');
+    const reintento = s.cuerpos[s.cuerpos.length - 1].movimiento;
+    expect(reintento.client_id).toBe(claves[0]);
+    expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(1);
+  });
+
+  test('a write lost across a reload is reconciled from the log, not repeated', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    // The row commits, the answer is lost, and the re-read fails too.
+    s.guion.push('perdido');
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(1, { timeout: 10_000 });
+    expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(1);
+
+    // The user reloads, which used to be the end of the idempotency key.
+    await page.reload();
+    await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
+    await page.locator('.nav-tab[data-view="tanques"]').click();
+    await page.waitForSelector('#tanques-plano .tanque', { timeout: 12_000 });
+    // The key is in the log, so the pending entry answers itself.
+    await expect(toast(page)).toContainText('sí quedó registrado', { timeout: 10_000 });
+    await expect(page.locator('#tanques-pendiente')).toHaveCount(0);
+    expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(1);
+    await expect(page.locator('#tanques-plano [data-tanque="B2"]')).toBeVisible();
+  });
+
+  test('an empty vessel the tray groups can still be filled, by name', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    // The 21 tibores, 7 Domecq tanks and 11 kegs share one chip each when
+    // empty, so the picker is the only way to name one of them.
+    await expect(page.locator('#tanques-otras')).toContainText('Tibores (21)');
+    await page.locator('#tanques-plano [data-tanque="A5"]').click();
+    await page.locator('#tanques-panel [data-accion="mover"]').click();
+    const picker = page.locator('#tanques-destino');
+    await expect(picker).toBeVisible();
+    await expect(picker).toContainText('Destino de A5');
+    await picker.locator('select').selectOption('TIBOR 3');
+    await picker.locator('[data-destino="usar"]').click();
+
+    await expect(dialogo(page).locator('h2')).toHaveText('Registrar trasiego');
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page)).toBeHidden();
+    const enviado = s.cuerpos.filter((c) => c.action === 'crear')[0].movimiento;
+    console.log('payload vasija agrupada:', JSON.stringify(enviado));
+    expect(enviado).toMatchObject({ origen: 'A5', destino: 'TIBOR 3' });
+    await expect(page.locator('#tanques-otras')).toContainText('TIBOR 3');
   });
 
   test('a viewer has no write controls at all', async ({ page }) => {
