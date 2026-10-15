@@ -38,6 +38,7 @@
   --scrollbar-thumb: rgba(196,160,96,0.35);
   --table-header-bg: var(--near-black);
   --help-bg:     rgba(0,0,0,0.85);
+  --scrim:       rgba(0,0,0,0.55);   /* behind a modal dialog */
   --diff-positive: #7EC87A;
   --diff-negative: #E07070;
   --success-color: #7EC87A;
@@ -189,6 +190,7 @@
   --scrollbar-thumb: rgba(160,130,60,0.30);
   --table-header-bg: #EDE8E0;
   --help-bg:     rgba(255,255,255,0.90);
+  --scrim:       rgba(40,32,20,0.35);
   --diff-positive: #2E8B2E;
   --diff-negative: #CC3333;
   --success-color: #2E8B2E;
@@ -3350,16 +3352,21 @@ button.tanques-chip.drop { border-color: var(--gold-lt); border-style: dashed; }
   font-family: var(--font-mono); font-size: var(--text-2xs);
 }
 .tanques-anular:hover { color: var(--flag-error); border-color: var(--flag-error); }
+.tanques-anular-confirma {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px;
+  color: var(--flag-error); font-size: var(--text-xs);
+}
+.tanques-gemelo { color: var(--text); }
 
-/* The dialog. `::backdrop` cannot read a custom property from :root in every
-   engine, so the scrim is a literal rgba rather than a token: it is a shade of
-   black over the page, not a themed surface. */
+/* The dialog. The scrim is the --scrim token, defined in both themes;
+   ::backdrop inherits custom properties from its dialog in every engine this
+   dashboard supports (Chromium 122+, Firefox 120+, Safari 17.4+). */
 .tanques-dialog {
   background: var(--card); color: var(--text);
   border: 1px solid var(--border-gold); border-radius: var(--radius-panel);
   padding: 0; width: min(460px, calc(100vw - 32px)); max-height: 90vh; overflow: auto;
 }
-.tanques-dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+.tanques-dialog::backdrop { background: var(--scrim); }
 .tanques-dialog form { padding: 18px; display: grid; gap: 12px; }
 .tanques-dialog h2 {
   font-family: var(--font-display); font-size: var(--text-lg);

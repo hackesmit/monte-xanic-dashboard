@@ -431,7 +431,15 @@ test.describe('Tanques: registrar movimientos', () => {
     await page.locator('#tanques-plano [data-tanque="H1"]').click();
     const fila = page.locator(`#tanques-panel li[data-mov="${primero}"] [data-anular]`);
     await expect(fila).toBeVisible();
+    // Anular asks first, and "No" sends nothing.
     await fila.click();
+    const confirma = page.locator(`#tanques-panel li[data-mov="${primero}"] .tanques-anular-confirma`);
+    await expect(confirma).toContainText('¿Anular este movimiento? No se puede deshacer.');
+    await confirma.locator('[data-anular-no]').click();
+    await expect(confirma).toHaveCount(0);
+    expect(s.cuerpos.filter((c) => c.action === 'anular')).toHaveLength(0);
+    await fila.click();
+    await page.locator(`#tanques-panel li[data-mov="${primero}"] [data-anular-si]`).click();
     await expect(toast(page)).toContainText('No se puede anular');
     await expect(toast(page)).toContainText('posterior');
     expect(s.movimientos.find((m) => m.id === primero).anulado).toBe(false);
@@ -800,6 +808,198 @@ test.describe('Tanques: registrar movimientos', () => {
     await expect(dialogo(page).locator('.tanques-mv-caja').first()).toContainText('hoy en H1');
     await expect(dialogo(page)).toContainText('otra entrega del mismo lote');
     await expect(dialogo(page).locator('[name="volumen_l"]')).toHaveValue('100');
+  });
+
+  // --- round 2 (xd-qrn.5): lucy BLOCK and red-team notes ----------------------
+
+  test('repeating a gesture while its first write is unresolved never records it twice',
+    async ({ page }) => {
+      const s = servidor();
+      await montar(page, s);
+      // The POST is aborted before commit, and the reconcile read does not show
+      // the row, so the pending banner stays.
+      s.guion.push('abortar');
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await dialogo(page).locator('button[type="submit"]').click();
+      const banner = page.locator('#tanques-pendiente');
+      await expect(banner.locator('.tanques-alert')).toHaveCount(1, { timeout: 10_000 });
+      expect(s.movimientos.filter((m) => m.destino === 'B2')).toHaveLength(0);
+
+      // The user dismisses the toast and repeats the same gesture.
+      await toast(page).locator('.tanques-toast-cerrar').click();
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await expect(dialogo(page)).toBeVisible();
+      await dialogo(page).locator('button[type="submit"]').click();
+
+      // No new key: the dialog routes the user to the pending intent.
+      const igual = dialogo(page).locator('.tanques-igual');
+      await expect(igual).toContainText('igual a uno que quedó sin confirmar');
+      expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(1);
+      await igual.locator('[data-igual="pendiente"]').click();
+      await expect(dialogo(page)).toBeHidden();
+      await expect(banner).toHaveCount(0, { timeout: 10_000 });
+
+      // And if the old banner were still there, Reintentar would only repeat
+      // the same key. Every POST carried one key, and there is one row.
+      await expect(page.locator('#tanques-pendiente [data-pendiente="reintentar"]')).toHaveCount(0);
+      const claves = new Set(s.cuerpos.filter((c) => c.action === 'crear').map((c) => c.movimiento.client_id));
+      console.log('claves del gesto repetido:', JSON.stringify([...claves]));
+      expect(claves.size).toBe(1);
+      expect(s.movimientos.filter((m) => m.destino === 'B2' && !m.anulado)).toHaveLength(1);
+    });
+
+  test('only an explicit "es distinto" mints a second key, and a twin in the log stops the old retry',
+    async ({ page }) => {
+      const s = servidor();
+      await montar(page, s);
+      s.guion.push('abortar', 'abortar');
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await dialogo(page).locator('[name="volumen_l"]').fill('1000');
+      await dialogo(page).locator('button[type="submit"]').click();
+      await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(1, { timeout: 10_000 });
+
+      // Same movement again; the user says it is a different one, and that
+      // write is lost too. Two entries, two keys, the same payload.
+      await toast(page).locator('.tanques-toast-cerrar').click();
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await dialogo(page).locator('[name="volumen_l"]').fill('1000');
+      await dialogo(page).locator('button[type="submit"]').click();
+      await dialogo(page).locator('[data-igual="distinto"]').click();
+      await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(2, { timeout: 10_000 });
+      const claves = s.cuerpos.filter((c) => c.action === 'crear').map((c) => c.movimiento.client_id);
+      expect(new Set(claves).size).toBe(2);
+
+      // The first entry's retry lands. The second is the same movement, so it
+      // is reconciled against the log: no plain Reintentar, a stated choice.
+      await page.locator(`#tanques-pendiente [data-clave="${claves[0]}"][data-pendiente="reintentar"]`).click();
+      await expect(page.locator('#tanques-pendiente .tanques-alert')).toHaveCount(1, { timeout: 10_000 });
+      const resto = page.locator('#tanques-pendiente');
+      await expect(resto).toContainText('La bitácora ya tiene un movimiento igual');
+      await expect(resto.locator('[data-pendiente="reintentar"]')).toHaveCount(0);
+      await expect(resto.locator('[data-pendiente="distinto"]')).toHaveCount(1);
+      expect(s.movimientos.filter((m) => m.destino === 'B2' && !m.anulado)).toHaveLength(1);
+
+      // A retry reached another way (the toast) is reconciled the same way.
+      await page.evaluate(async (clave) => {
+        const { TanquesMoves } = await import('/js/tanques/moves.js');
+        const p = TanquesMoves._pendientes.find((x) => x.intento.client_id === clave);
+        await TanquesMoves._reintentar(p.intento);
+      }, claves[1]);
+      await expect(toast(page)).toContainText('ya tiene un movimiento igual');
+      expect(s.cuerpos.filter((c) => c.action === 'crear')).toHaveLength(3);
+      expect(s.movimientos.filter((m) => m.destino === 'B2' && !m.anulado)).toHaveLength(1);
+
+      // "Ya la revisé" closes it without a write.
+      await resto.locator('[data-pendiente="descartar"]').click();
+      await expect(page.locator('#tanques-pendiente')).toHaveCount(0);
+      expect(s.movimientos.filter((m) => m.destino === 'B2' && !m.anulado)).toHaveLength(1);
+    });
+
+  test('a vendimia typed wrong or cleared is refused in Spanish, not replaced', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    const vendimia = dialogo(page).locator('[name="vintage_year"]');
+    await expect(vendimia).toHaveValue('2025');
+    await vendimia.fill('2024.5');
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page).locator('.tanques-dialog-errores'))
+      .toContainText('La vendimia "2024.5" no es válida');
+    await vendimia.fill('');
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page).locator('.tanques-dialog-errores'))
+      .toContainText('Escriba la vendimia');
+    expect(s.cuerpos).toEqual([]);
+    await vendimia.fill('2024');
+    await dialogo(page).locator('button[type="submit"]').click();
+    await expect(dialogo(page)).toBeHidden();
+    expect(s.cuerpos[0].movimiento.vintage_year).toBe(2024);
+  });
+
+  test('losing the lab role takes the undo, the dialog and every write path with it',
+    async ({ page }) => {
+      const s = servidor();
+      await montar(page, s);
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await dialogo(page).locator('button[type="submit"]').click();
+      await expect(toast(page).locator('.tanques-toast-accion')).toHaveText('Deshacer');
+      const id = s.movimientos[s.movimientos.length - 1].id;
+      // A second dialog is open when the role changes.
+      await arrastrar(page, tanque('A1'), tanque('H1'));
+      await expect(dialogo(page)).toBeVisible();
+
+      await page.evaluate(async () => {
+        document.body.classList.remove('can-write');
+        const { TanquesView } = await import('/js/tanques/view.js');
+        TanquesView.render();
+      });
+      await expect(page.locator('#tanques-toast')).toHaveCount(0);
+      await expect(page.locator('#tanques-dialogo')).toHaveCount(0);
+      await expect(page.locator('#tanques-mover')).toHaveCount(0);
+      await expect(page.locator('#tanques-panel [data-anular]')).toHaveCount(0);
+
+      // Every write entry point refuses, whoever calls it.
+      const antes = s.cuerpos.length;
+      await page.evaluate(async (idMov) => {
+        const { TanquesMoves } = await import('/js/tanques/moves.js');
+        await TanquesMoves.anular(idMov);
+        await TanquesMoves._reintentar({ tipo: 'trasiego', origen: 'A1', destino: 'H1', client_id: 'x' });
+        TanquesMoves.abrir({ origen: 'A1', destino: 'H1' });
+        await TanquesMoves._enviar();
+      }, id);
+      await page.waitForTimeout(13_000);   // past the old toast timer
+      await expect(page.locator('#tanques-toast')).toHaveCount(0);
+      await expect(page.locator('#tanques-dialogo')).toHaveCount(0);
+      expect(s.cuerpos.length).toBe(antes);
+      expect(s.movimientos.find((m) => m.id === id).anulado).toBe(false);
+    });
+
+  test('a re-planned dialog recomputes the type it proposed, not the one the user chose',
+    async ({ page }) => {
+      const s = servidor();
+      await montar(page, s);
+      const releer = () => page.evaluate(async () => {
+        const { DataStore } = await import('/js/dataLoader.js');
+        await DataStore.loadTanques();
+        const { TanquesView } = await import('/js/tanques/view.js');
+        TanquesView.render();
+      });
+
+      await arrastrar(page, tanque('A5'), tanque('B2'));
+      await expect(dialogo(page).locator('[name="tipo"]')).toHaveValue('trasiego');
+      // Another session fills B2 while the form is open.
+      s.movimientos.push(mv({ fecha: '2026-02-01', tipo: 'recepcion', destino: 'B2',
+        lot_code: '25CSKMP-9', volumen_l: 1000 }));
+      s.version += 1;
+      await releer();
+      await expect(dialogo(page)).toContainText('La bitácora cambió');
+      await expect(dialogo(page).locator('h2')).toHaveText('Ensamble');
+      await expect(dialogo(page).locator('[name="tipo"]')).toHaveValue('ensamble');
+      await expect(dialogo(page).locator('[name="volumen_l"]')).toHaveValue('6400');
+      await dialogo(page).locator('[data-cerrar]').click();
+
+      // A type the user picked by hand survives the re-plan.
+      await arrastrar(page, tanque('A1'), tanque('H1'));
+      await dialogo(page).locator('[name="tipo"]').selectOption('descube');
+      s.movimientos.push(mv({ fecha: '2026-02-01', tipo: 'recepcion', destino: 'H1',
+        lot_code: '25CSKMP-9', volumen_l: 1000 }));
+      s.version += 1;
+      await releer();
+      await expect(dialogo(page)).toContainText('La bitácora cambió');
+      await expect(dialogo(page).locator('[name="tipo"]')).toHaveValue('descube');
+    });
+
+  test('the dialog backdrop is drawn from the theme token', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    await expect(dialogo(page)).toBeVisible();
+    const fondo = await page.evaluate(() => getComputedStyle(
+      document.getElementById('tanques-dialogo'), '::backdrop').backgroundColor);
+    const token = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--scrim').trim());
+    expect(token).not.toBe('');
+    expect(fondo).not.toBe('rgba(0, 0, 0, 0)');
   });
 
   test('a viewer has no write controls at all', async ({ page }) => {

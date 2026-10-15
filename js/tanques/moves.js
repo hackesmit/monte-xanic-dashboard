@@ -26,7 +26,7 @@
 // same trasiego twice, so it is shown as "no confirmado, revise la bitacora"
 // with a retry that reuses the same client_id.
 
-import { DataStore } from '../dataLoader.js';
+import { DataStore, mismaIntencion } from '../dataLoader.js';
 import { DemoMode } from '../demoMode.js';
 import { escapeHtml, todayInVineyard } from '../utils.js';
 import { validarMovimientoEnLog } from './estado.js';
@@ -99,10 +99,6 @@ function numeroDeCampo(v) {
   return Number(t);
 }
 
-function enteroDeCampo(v) {
-  const n = numeroDeCampo(v);
-  return Number.isInteger(n) ? n : null;
-}
 
 // Resolve a tank reference against the derived state, then dim_tanque_sinonimo,
 // the way js/tanques/estado.js does: production writes PD1 for PD-1 and I4 for
@@ -378,7 +374,21 @@ export function movimientoDesdeFormulario(modelo = {}, valores = {}) {
   // A type outside what the gesture allows is not an instruction, it is a stale
   // or tampered form: fall back to what the model proposed.
   const tipo = tipos.includes(pedido) ? pedido : (tipos.includes(modelo.tipo) ? modelo.tipo : tipos[0]);
-  const vendimia = enteroDeCampo(valores.vintage_year);
+  // The vendimia field has three states and only one of them may fall back to
+  // the year the dialog inferred: the field NOT being on the form at all. A
+  // field that is on the form and blank, or holds '2024.5' or 'abc', is what
+  // the user typed, and quietly replacing it with the inferred year would file
+  // the movement under a vendimia nobody chose (lucy, 2026-10-15). Blank stays
+  // null and junk stays as typed, and erroresDeFormulario names each in Spanish.
+  let vintage_year;
+  if (!propio(valores, 'vintage_year') || valores.vintage_year === undefined) {
+    vintage_year = Number.isInteger(modelo.vintage_year) ? modelo.vintage_year : null;
+  } else if (texto(valores.vintage_year) === '') {
+    vintage_year = null;
+  } else {
+    const n = numeroDeCampo(valores.vintage_year);
+    vintage_year = Number.isFinite(n) ? n : texto(valores.vintage_year);
+  }
   const nota = texto(valores.nota);
   const mermaCampo = texto(valores.merma_l);
   return {
@@ -387,9 +397,7 @@ export function movimientoDesdeFormulario(modelo = {}, valores = {}) {
     origen: modelo.origen || null,
     destino: modelo.destino || null,
     lot_code: texto(modelo.lot_code),
-    vintage_year: vendimia === null
-      ? (Number.isInteger(modelo.vintage_year) ? modelo.vintage_year : null)
-      : vendimia,
+    vintage_year,
     volumen_l: numeroDeCampo(valores.volumen_l),
     // A salida carries no merma of its own: the loss is already inside the
     // volume that left, and the column has a CHECK saying so.
@@ -430,11 +438,56 @@ export function erroresDeFormulario(mov) {
   const m = mov && typeof mov === 'object' ? mov : {};
   const errores = [];
   if (!texto(m.lot_code)) errores.push('El movimiento necesita un código de lote.');
-  const v = Number(m.vintage_year);
-  if (!Number.isInteger(v) || v < VENDIMIA_MIN || v > VENDIMIA_MAX) {
-    errores.push(`La vendimia debe ser un año entre ${VENDIMIA_MIN} y ${VENDIMIA_MAX}.`);
+  // Blank and wrong are different mistakes and are named differently: a blank
+  // field asks for the year, a wrong one repeats what was typed.
+  const crudo = m.vintage_year;
+  if (crudo == null || texto(crudo) === '') {
+    errores.push('Escriba la vendimia: el año de la cosecha.');
+  } else {
+    const v = typeof crudo === 'number' ? crudo : Number(texto(crudo));
+    if (!Number.isInteger(v) || v < VENDIMIA_MIN || v > VENDIMIA_MAX) {
+      errores.push(`La vendimia "${texto(crudo)}" no es válida. `
+        + `La vendimia debe ser un año entre ${VENDIMIA_MIN} y ${VENDIMIA_MAX}.`);
+    }
   }
   return errores;
+}
+
+/**
+ * The unresolved intent this movement repeats, if any.
+ *
+ * A write with no definite outcome keeps its key in a pending entry. If the
+ * user then makes the same gesture again and it is posted under a NEW key, the
+ * server has no way to tell the two apart: one physical movement, two rows,
+ * the moment someone presses Reintentar on the old entry (lucy, 2026-10-15).
+ * Same movement means every field the row stores (mismaIntencion: tipo,
+ * origen, destino, lot_code, volumen_l, merma_l, fecha, vintage_year, nota,
+ * fuente), with tank synonyms resolved.
+ * @returns {Object|null} the pending entry ({intento, mensaje, guardado})
+ */
+export function pendienteIgual(pendientes, mov, sinonimos = {}) {
+  if (!mov) return null;
+  for (const p of Array.isArray(pendientes) ? pendientes : []) {
+    if (p && p.intento && mismaIntencion(p.intento, mov, sinonimos)) return p;
+  }
+  return null;
+}
+
+/**
+ * A live row in the log that is the same movement as this intent but was
+ * written under ANOTHER key. Retrying the intent blindly would add a second
+ * row for what is probably one movement, so the retry has to ask first.
+ * @returns {Object|null} the log row
+ */
+export function gemeloEnBitacora(movimientos, intento, sinonimos = {}) {
+  if (!intento) return null;
+  const clave = String(intento.client_id || '').toLowerCase();
+  for (const m of Array.isArray(movimientos) ? movimientos : []) {
+    if (!m || m.anulado) continue;
+    if (typeof m.client_id === 'string' && m.client_id.toLowerCase() === clave) continue;
+    if (mismaIntencion(m, intento, sinonimos)) return m;
+  }
+  return null;
 }
 
 // Enough of the log to tell "it moved" from "it is the same": the row count
@@ -557,6 +610,9 @@ export const TanquesMoves = {
   _pendientes: [],
   _temporizador: null,
   _trasDrag: false,     // a click is pending behind a drop; it is not a tap
+  _distintoDe: null,    // the payload the user said is NOT the pending one
+  _tocados: null,       // form fields the user changed in the open dialog
+  _confirmarAnular: null, // the history row whose Anular is waiting for a yes
 
   /** Called by TanquesView.mount(). Idempotent. */
   mount(ctx) {
@@ -576,6 +632,7 @@ export const TanquesMoves = {
     if (!this._puedeEscribir()) {
       this._desarmar();
       this.modoMover = false;
+      this._confirmarAnular = null;
       this._quitarChrome();
       return;
     }
@@ -733,8 +790,20 @@ export const TanquesMoves = {
       const el = document.getElementById(id);
       if (el) el.remove();
     }
+    // The role can change under an open tab (the session is re-read and is no
+    // longer lab). A Deshacer button or an open dialog left behind is a write
+    // control in the hands of someone who may not write, so both leave the
+    // DOM, and the toast's timer with them.
     const dlg = document.getElementById(ID.dialogo);
-    if (dlg && dlg.open) dlg.close();
+    if (dlg) {
+      if (dlg.open) dlg.close();
+      dlg.remove();
+    }
+    this._pendiente = null;
+    const t = document.getElementById(ID.toast);
+    if (t) t.remove();
+    clearTimeout(this._temporizador);
+    this._temporizador = null;
   },
 
   _pintarBoton() {
@@ -755,17 +824,29 @@ export const TanquesMoves = {
     caja.id = ID.pendiente;
     caja.className = 'tanques-pendiente';
     caja.setAttribute('role', 'status');
+    const log = Array.isArray(DataStore.movimientosTanque) ? DataStore.movimientosTanque : [];
     caja.innerHTML = this._pendientes.map(({ intento, mensaje }) => {
       const clave = escapeHtml(intento.client_id);
       const donde = `${intento.origen || 'bandeja'} a ${intento.destino || 'fuera de bodega'}`;
+      // The same movement is already in the log under another key (a repeat
+      // that landed, or another pending entry whose retry did). A plain
+      // Reintentar here would be the second row, so the button asks instead.
+      const gemelo = gemeloEnBitacora(log, intento, DataStore.tanquesSinonimos || {});
       return '<div class="tanques-alert err">'
         + `<div>${escapeHtml(mensaje)}</div>`
         + `<div class="tanques-p-sub">${escapeHtml(etiquetaMovimiento(intento.tipo))} `
         + `${escapeHtml(intento.lot_code)}, ${fmtL(intento.volumen_l)} L, ${escapeHtml(donde)}, `
         + `${escapeHtml(fechaCorta(intento.fecha) || intento.fecha)}.</div>`
+        + (gemelo
+          ? '<div class="tanques-p-sub tanques-gemelo">La bitácora ya tiene un movimiento igual '
+            + `(registro ${escapeHtml(String(gemelo.id))}). Si es el mismo, pulse "Ya la revisé".</div>`
+          : '')
         + '<div class="tanques-acciones">'
-        + `<button type="button" class="tanques-btn" data-pendiente="reintentar" data-clave="${clave}">`
-        + 'Reintentar</button>'
+        + (gemelo
+          ? `<button type="button" class="tanques-btn" data-pendiente="distinto" data-clave="${clave}">`
+            + 'Es un movimiento distinto, registrar de nuevo</button>'
+          : `<button type="button" class="tanques-btn" data-pendiente="reintentar" data-clave="${clave}">`
+            + 'Reintentar</button>')
         + `<button type="button" class="tanques-btn" data-pendiente="descartar" data-clave="${clave}">`
         + 'Ya la revisé</button>'
         + '</div></div>';
@@ -786,13 +867,23 @@ export const TanquesMoves = {
     if (firma === this._firmaLog) return;
     this._firmaLog = firma;
     const form = dlg.querySelector('form');
+    // Only what the USER changed is carried over. A value the dialog proposed
+    // (the type, the volume) was a proposal about the old log, and the new
+    // log may propose something else: a trasiego into a tank that has since
+    // been filled is now an ensamble.
+    const tocados = this._tocados || new Set();
     const escrito = {};
-    for (const el of form.querySelectorAll('[name]')) escrito[el.name] = el.value;
+    for (const el of form.querySelectorAll('[name]')) {
+      if (tocados.has(el.name)) escrito[el.name] = el.value;
+    }
     const modelo = planearMovimiento(this._pendiente.gesto, bodega);
     this._pendiente = modelo;
     form.innerHTML = this._html(modelo);
     for (const el of form.querySelectorAll('[name]')) {
-      if (escrito[el.name] !== undefined) el.value = escrito[el.name];
+      if (escrito[el.name] === undefined) continue;
+      // A chosen type the new gesture no longer allows is not restored.
+      if (el.tagName === 'SELECT' && ![...el.options].some((o) => o.value === escrito[el.name])) continue;
+      el.value = escrito[el.name];
     }
     const nota = document.createElement('div');
     nota.className = 'tanques-alert err';
@@ -907,9 +998,23 @@ export const TanquesMoves = {
     const panel = document.getElementById('tanques-panel');
     if (!panel) return;
     for (const li of panel.querySelectorAll('.tanques-timeline li[data-mov]')) {
-      if (li.classList.contains('anulado') || li.querySelector('[data-anular]')) continue;
+      if (li.classList.contains('anulado')) continue;
+      if (li.querySelector('[data-anular], .tanques-anular-confirma')) continue;
       const cuerpo = li.lastElementChild;
       if (!cuerpo) continue;
+      // Anular is permanent in an append-only log (the row stays, marked), so
+      // the history asks once before it sends anything.
+      if (this._confirmarAnular != null && String(this._confirmarAnular) === li.dataset.mov) {
+        const c = document.createElement('div');
+        c.className = 'tanques-anular-confirma';
+        c.setAttribute('role', 'alert');
+        c.innerHTML = '<span>¿Anular este movimiento? No se puede deshacer.</span>'
+          + `<button type="button" class="tanques-anular" data-anular-si="${escapeHtml(li.dataset.mov)}">`
+          + 'Sí, anular</button>'
+          + '<button type="button" class="tanques-anular" data-anular-no>No</button>';
+        cuerpo.appendChild(c);
+        continue;
+      }
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'tanques-anular';
@@ -974,7 +1079,8 @@ export const TanquesMoves = {
           this._resolverPendiente(clave);
           this._ctx.render();
         } else if (fila) {
-          this._reintentar(fila.intento);
+          this._reintentar(fila.intento,
+            { confirmado: pendiente.dataset.pendiente === 'distinto' });
         }
         return;
       }
@@ -985,8 +1091,29 @@ export const TanquesMoves = {
         if (sel && sel.value) this._tocar(sel.value);
         return;
       }
+      const si = e.target.closest('[data-anular-si]');
+      if (si) {
+        const id = this._confirmarAnular;
+        this._confirmarAnular = null;
+        if (id != null && String(id) === si.dataset.anularSi) this.anular(id);
+        else this._ctx.render();
+        return;
+      }
+      if (e.target.closest('[data-anular-no]')) {
+        this._confirmarAnular = null;
+        this._ctx.render();
+        return;
+      }
       const anular = e.target.closest('[data-anular]');
-      if (anular) { this.anular(anular.dataset.anular); return; }
+      if (anular) {
+        if (this._enviando) {
+          this._avisar('Hay un movimiento en curso. Espere a que el servidor conteste.');
+          return;
+        }
+        this._confirmarAnular = anular.dataset.anular;
+        this._ctx.render();
+        return;
+      }
       const accion = e.target.closest('[data-accion]');
       if (accion) {
         if (accion.dataset.accion === 'mover') this._armarTanque(this._ctx.seleccion());
@@ -1189,6 +1316,8 @@ export const TanquesMoves = {
     const bodega = this._ctx.bodega();
     const modelo = planearMovimiento(gesto, bodega);
     this._pendiente = modelo;
+    this._tocados = new Set();
+    this._distintoDe = null;
     this._firmaLog = firmaDeLog(bodega.movimientos);
     dlg.querySelector('form').innerHTML = this._html(modelo);
     dlg.showModal();
@@ -1223,11 +1352,36 @@ export const TanquesMoves = {
     const form = dlg.querySelector('form');
     form.addEventListener('submit', (e) => { e.preventDefault(); this._enviar(); });
     form.addEventListener('click', (e) => {
+      const igual = e.target.closest('[data-igual]');
+      if (igual) {
+        e.preventDefault();
+        if (this._enviando) return;
+        if (igual.dataset.igual === 'distinto') {
+          // The one way to give an identical payload a fresh key: the user
+          // says, in so many words, that it is another movement.
+          this._distintoDe = this._movimientoDelFormulario();
+          this._enviar();
+          return;
+        }
+        const clave = String(igual.dataset.clave || '').toLowerCase();
+        const fila = this._pendientes.find(
+          (p) => String(p.intento.client_id).toLowerCase() === clave);
+        dlg.close();
+        if (fila) this._reintentar(fila.intento);
+        return;
+      }
       if (!e.target.closest('[data-cerrar]')) return;
       e.preventDefault();
       if (this._enviando) return;    // the write is in flight; it owns the dialog
       dlg.close();
     });
+    // What the user changed by hand, so a re-plan keeps it and recomputes the
+    // rest (see _revisarDialogo).
+    const tocar = (e) => {
+      if (e.target && e.target.name && this._tocados) this._tocados.add(e.target.name);
+    };
+    form.addEventListener('input', tocar);
+    form.addEventListener('change', tocar);
     // Escape is the other way out of a modal, and it must not escape the lock.
     dlg.addEventListener('cancel', (e) => { if (this._enviando) e.preventDefault(); });
     // Recompute the volume ceiling as merma is typed: merma comes off what
@@ -1238,7 +1392,11 @@ export const TanquesMoves = {
       if (!vol || !this._pendiente) return;
       vol.max = String(maximoVolumen(this._pendiente, numeroDeCampo(e.target.value)));
     });
-    dlg.addEventListener('close', () => { this._pendiente = null; });
+    dlg.addEventListener('close', () => {
+      this._pendiente = null;
+      this._distintoDe = null;
+      this._tocados = null;
+    });
     return dlg;
   },
 
@@ -1325,6 +1483,46 @@ export const TanquesMoves = {
 
   // --- writes ---------------------------------------------------------------
 
+  // The open dialog's form as the body it would post. A field missing from
+  // the form is left out of `valores` (not sent as ''), so the planner can tell
+  // an omitted field from one the user cleared.
+  _movimientoDelFormulario() {
+    const dlg = document.getElementById(ID.dialogo);
+    const modelo = this._pendiente;
+    if (!dlg || !modelo) return null;
+    const form = dlg.querySelector('form');
+    const valores = {};
+    for (const n of ['tipo', 'fecha', 'volumen_l', 'merma_l', 'vintage_year', 'nota']) {
+      const el = form.querySelector(`[name="${n}"]`);
+      if (el) valores[n] = el.value;
+    }
+    return movimientoDesdeFormulario(modelo, valores);
+  },
+
+  // The movement on the form is the same as one whose write is still
+  // unresolved. Minting a new key for it is how one physical movement becomes
+  // two rows (lucy, 2026-10-15), so the dialog routes the user to the pending
+  // intent instead: its own key, which the server answers with `duplicado` if
+  // the first attempt did land.
+  _ofrecerPendiente(p) {
+    const dlg = document.getElementById(ID.dialogo);
+    const caja = dlg && dlg.querySelector('.tanques-dialog-errores');
+    if (!caja) return;
+    const i = p.intento;
+    const clave = escapeHtml(i.client_id);
+    caja.innerHTML = '<div class="tanques-alert err tanques-igual">'
+      + '<div>Este movimiento es igual a uno que quedó sin confirmar: '
+      + `${escapeHtml(etiquetaMovimiento(i.tipo))} ${escapeHtml(i.lot_code)}, ${fmtL(i.volumen_l)} L, `
+      + `${escapeHtml(i.origen || 'bandeja')} a ${escapeHtml(i.destino || 'fuera de bodega')}. `
+      + 'Reintente ese, para no registrarlo dos veces.</div>'
+      + '<div class="tanques-acciones">'
+      + `<button type="button" class="tanques-btn primary" data-igual="pendiente" data-clave="${clave}">`
+      + 'Reintentar el pendiente</button>'
+      + '<button type="button" class="tanques-btn" data-igual="distinto">'
+      + 'Es un movimiento distinto, registrar de nuevo</button>'
+      + '</div></div>';
+  },
+
   async _enviar() {
     // A fast double tap on Registrar must not post twice. The server would
     // recognise the repeat by client_id, but only the retry path reuses it.
@@ -1332,22 +1530,20 @@ export const TanquesMoves = {
     const dlg = document.getElementById(ID.dialogo);
     const modelo = this._pendiente;
     if (!dlg || !modelo || !modelo.puedeRegistrar) return;
+    if (!this._puedeEscribir()) { dlg.close(); return; }
     const form = dlg.querySelector('form');
-    const valor = (n) => {
-      const el = form.querySelector(`[name="${n}"]`);
-      return el ? el.value : '';
-    };
-    const mov = movimientoDesdeFormulario(modelo, {
-      tipo: valor('tipo'),
-      fecha: valor('fecha'),
-      volumen_l: valor('volumen_l'),
-      merma_l: valor('merma_l'),
-      vintage_year: valor('vintage_year'),
-      nota: valor('nota'),
-    });
+    const mov = this._movimientoDelFormulario();
 
     const errores = erroresDeMovimiento(this._ctx.bodega(), mov);
     if (errores.length) { this._errores(errores); return; }
+
+    // Before a new key exists: is this the movement an unresolved intent
+    // already carries? Only an explicit "es distinto" for THIS payload skips it.
+    this._cargarPendientes();
+    const sinonimos = DataStore.tanquesSinonimos || {};
+    const yaDicho = this._distintoDe && mismaIntencion(this._distintoDe, mov, sinonimos);
+    const igual = yaDicho ? null : pendienteIgual(this._pendientes, mov, sinonimos);
+    if (igual) { this._ofrecerPendiente(igual); return; }
 
     // The key is minted here, not inside DataStore, so the intent can be
     // written down BEFORE the request leaves: a browser that dies mid-flight
@@ -1415,8 +1611,32 @@ export const TanquesMoves = {
     this._ctx.render();
   },
 
-  async _reintentar(intento) {
+  async _reintentar(intento, { confirmado = false } = {}) {
     if (this._enviando || !intento) return;
+    if (!this._puedeEscribir()) return;
+    // Reconcile against the log before anything leaves. Its own key in the
+    // log is the answer (it landed). The same movement under ANOTHER key
+    // (a repeat that landed, or a sibling entry's retry) means this retry
+    // would most likely be the second row, so it waits for the user to say
+    // it is a different movement.
+    const log = Array.isArray(DataStore.movimientosTanque) ? DataStore.movimientosTanque : [];
+    const clave = String(intento.client_id || '').toLowerCase();
+    if (log.some((m) => m && typeof m.client_id === 'string' && m.client_id.toLowerCase() === clave)) {
+      this._resolverPendiente(intento.client_id);
+      this._avisar('Un movimiento sin confirmar sí quedó registrado. La bitácora ya lo muestra.');
+      this._ctx.render();
+      return;
+    }
+    const gemelo = confirmado ? null
+      : gemeloEnBitacora(log, intento, DataStore.tanquesSinonimos || {});
+    if (gemelo) {
+      this._avisar(`La bitácora ya tiene un movimiento igual (registro ${gemelo.id}). `
+        + 'Si es el mismo, descarte el aviso pendiente con "Ya la revisé".',
+      { etiqueta: 'Es un movimiento distinto, registrar de nuevo',
+        fn: () => this._reintentar(intento, { confirmado: true }) });
+      this._ctx.render();
+      return;
+    }
     this._enviando = true;
     let out;
     try {
@@ -1455,6 +1675,7 @@ export const TanquesMoves = {
    */
   async anular(id) {
     if (this._enviando || !id) return;
+    if (!this._puedeEscribir()) return;
     this._enviando = true;
     let out;
     try {
@@ -1487,12 +1708,17 @@ export const TanquesMoves = {
       document.body.appendChild(t);
     }
     t.innerHTML = `<span>${escapeHtml(mensaje)}</span>`;
-    if (accion) {
+    // Every action a toast offers is a write (Deshacer, Reintentar), so a
+    // session that may not write gets the message without the button.
+    if (accion && this._puedeEscribir()) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'tanques-toast-accion';
       b.textContent = accion.etiqueta;
-      b.addEventListener('click', () => { t.hidden = true; accion.fn(); });
+      b.addEventListener('click', () => {
+        t.hidden = true;
+        if (this._puedeEscribir()) accion.fn();
+      });
       t.appendChild(b);
     }
     const cerrar = document.createElement('button');

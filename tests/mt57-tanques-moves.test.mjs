@@ -17,6 +17,8 @@ import {
   loteDeOrigen,
   vendimiaDeLote,
   lotesSinTanque,
+  pendienteIgual,
+  gemeloEnBitacora,
   CAMPOS_ENVIADOS,
 } from '../js/tanques/moves.js';
 import { validarMovimientoEnLog, replayMovimientos } from '../js/tanques/estado.js';
@@ -377,7 +379,7 @@ test('an incomplete form is answered by the dialog, not by a round trip', () => 
   // A plain decimal string is fine: api/tanques.js reads a numeric field that
   // way too (PostgREST prints NUMERIC as a string).
   assert.deepEqual(erroresDeFormulario({ lot_code: 'X', vintage_year: '2025' }), []);
-  for (const v of [null, NaN, 2025.5, 1987, 2101, 'ayer']) {
+  for (const v of [NaN, 2025.5, 1987, 2101, 'ayer', '2024.5']) {
     assert.match(erroresDeFormulario({ lot_code: 'X', vintage_year: v })[0] || '',
       /vendimia debe ser un año entre 1988 y 2100/, `vendimia ${String(v)}`);
   }
@@ -386,7 +388,7 @@ test('an incomplete form is answered by the dialog, not by a round trip', () => 
   const m = planearMovimiento({ origen: 'A1', destino: 'A2' }, b);
   const mov = movimientoDesdeFormulario(m, { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 100 });
   assert.deepEqual(erroresDeMovimiento(b, { ...mov, vintage_year: null }),
-    [`La vendimia debe ser un año entre 1988 y 2100.`]);
+    ['Escriba la vendimia: el año de la cosecha.']);
 });
 
 test('a backdated movement is judged at its place in the log, not against today', () => {
@@ -449,4 +451,77 @@ test('a lote that left the bodega is not offered again', () => {
 test('the tray is empty, not wrong, when there are no samples', () => {
   assert.deepEqual(lotesSinTanque([], LLENO), []);
   assert.deepEqual(lotesSinTanque(null, null), []);
+});
+
+// --- round 2: vendimia as typed, and one movement never under two keys --------
+
+test('a vendimia typed wrong or cleared is an error, never the inferred year', () => {
+  const b = bodega(LLENO);
+  const m = planearMovimiento({ origen: 'A1', destino: 'A2' }, b);
+  assert.equal(m.vintage_year, 2025);
+  const base = { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 100 };
+  // Omitted: the field is not on the form, so the inferred year stands.
+  assert.equal(movimientoDesdeFormulario(m, base).vintage_year, 2025);
+  // Present and valid: what was typed.
+  assert.equal(movimientoDesdeFormulario(m, { ...base, vintage_year: '2024' }).vintage_year, 2024);
+  // Present and invalid: kept as typed, and the gate names it in Spanish.
+  for (const v of ['2024.5', 'abc']) {
+    const mov = movimientoDesdeFormulario(m, { ...base, vintage_year: v });
+    assert.notEqual(mov.vintage_year, 2025, `vendimia ${v} no debe volverse 2025`);
+    const errores = erroresDeMovimiento(b, mov);
+    assert.ok(errores.some((e) => e.includes(`La vendimia "${v}" no es válida`)), errores.join(' | '));
+  }
+  // Present and blank: no value, and the column needs one.
+  for (const v of ['', '   ']) {
+    const mov = movimientoDesdeFormulario(m, { ...base, vintage_year: v });
+    assert.equal(mov.vintage_year, null);
+    assert.ok(erroresDeMovimiento(b, mov).includes('Escriba la vendimia: el año de la cosecha.'));
+  }
+});
+
+test('a repeated gesture is matched to the unresolved intent it repeats', () => {
+  const b = bodega(LLENO);
+  const m = planearMovimiento({ origen: 'A1', destino: 'A2' }, b);
+  const mov = movimientoDesdeFormulario(m, { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 100, nota: 'x' });
+  const viejo = { intento: { ...mov, client_id: 'AAAA' }, mensaje: 'sin confirmar', guardado: 1 };
+  assert.equal(pendienteIgual([viejo], mov, SINONIMOS), viejo);
+  // Each stored field makes it a different movement.
+  for (const [k, v] of [['tipo', 'descube'], ['destino', 'B1'], ['volumen_l', 101], ['merma_l', 1],
+    ['fecha', '2026-02-03'], ['vintage_year', 2024], ['nota', 'y'], ['lot_code', 'otro']]) {
+    assert.equal(pendienteIgual([viejo], { ...mov, [k]: v }, SINONIMOS), null, k);
+  }
+  // A synonym is the same tank, and a blank note is no note.
+  const sinNota = movimientoDesdeFormulario(m, { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 100 });
+  const conNull = { intento: { ...sinNota, nota: null, client_id: 'B' }, guardado: 2 };
+  assert.equal(pendienteIgual([conNull], { ...sinNota, nota: '' }, SINONIMOS), conNull);
+  assert.equal(pendienteIgual([], mov, SINONIMOS), null);
+});
+
+test('a pending intent whose movement is already in the log under another key is found', () => {
+  const intento = { fecha: '2026-02-04', tipo: 'trasiego', origen: 'A1', destino: 'A2',
+    lot_code: '25CSKMP-1', vintage_year: 2025, volumen_l: 100, merma_l: 0, nota: null,
+    fuente: 'manual', client_id: 'viejo' };
+  const otro = mv({ ...intento, client_id: 'nuevo', volumen_l: '100.000' });
+  assert.equal(gemeloEnBitacora([otro], intento, SINONIMOS), otro);
+  // Its own key is not a twin: that row IS the intent and resolves it.
+  assert.equal(gemeloEnBitacora([mv({ ...intento, client_id: 'VIEJO' })], intento, SINONIMOS), null);
+  // An annulled row is not in the bodega.
+  assert.equal(gemeloEnBitacora([{ ...otro, anulado: true }], intento, SINONIMOS), null);
+  assert.equal(gemeloEnBitacora([mv({ ...intento, client_id: 'n', volumen_l: 99 })], intento, SINONIMOS), null);
+});
+
+test('the dialog scrim is a design token defined in both themes, not a literal', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const css = await readFile(new URL('../css/styles.css', import.meta.url), 'utf8');
+  const regla = /\.tanques-dialog::backdrop\s*\{([^}]*)\}/.exec(css);
+  assert.ok(regla, 'falta la regla del backdrop');
+  assert.match(regla[1], /background:\s*var\(--scrim\)/);
+  assert.doesNotMatch(regla[1], /rgba?\(|#[0-9a-f]{3,8}\b/i);
+  const bloque = (sel) => {
+    const i = css.indexOf(`${sel} {`);
+    assert.ok(i >= 0, `falta el bloque ${sel}`);
+    return css.slice(i, css.indexOf('}', i));
+  };
+  assert.match(bloque(':root'), /--scrim:/);
+  assert.match(bloque('[data-theme="light"]'), /--scrim:/);
 });
