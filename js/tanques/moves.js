@@ -481,9 +481,9 @@ const ID = {
 // How many chips the tray draws before it collapses into a count. The search
 // box filters the tray, so the rest stays reachable without a wall of chips.
 const CHIPS_MAX = 12;
-// Where the unconfirmed writes survive a reload. The payload is a movement,
-// never a credential.
-const CLAVE_PENDIENTES = 'xanic_tanques_pendientes';
+// Where the unconfirmed writes survive a reload: one key per intent (see
+// _anotarPendiente). The payload is a movement, never a credential.
+const PREFIJO_PENDIENTE = 'xanic_tanques_pendiente:';
 const PENDIENTES_MAX = 20;
 const TOAST_MS = 12_000;    // long enough to read it and press Deshacer
 const ARRASTRE_PX = 6;      // below this a pointer gesture is a tap, not a drag
@@ -504,7 +504,6 @@ export const TanquesMoves = {
   // those ends with the user retyping the movement under a NEW key, which
   // the server accepts as a second row (lucy, 2026-10-15).
   _pendientes: [],
-  _pendientesLeidos: false,
   _temporizador: null,
   _trasDrag: false,     // a click is pending behind a drop; it is not a tap
 
@@ -532,7 +531,6 @@ export const TanquesMoves = {
     // One replay for the whole repaint: _bodega() derives every tank from the
     // log, and render() has already paid for that once.
     const bodega = this._ctx.bodega();
-    this._cargarPendientes();
     this._revisarPendientes();
     this._chrome();
     this._pintarBoton();
@@ -545,86 +543,86 @@ export const TanquesMoves = {
 
   // --- unconfirmed writes -----------------------------------------------------
 
-  // `forzar` re-reads the store: another tab may have added or resolved an
-  // entry since this one last looked, and a blind overwrite would drop its
-  // key (lucy, 2026-10-15). Every mutation below re-reads first.
-  _cargarPendientes(forzar) {
-    if (this._pendientesLeidos && !forzar) return;
-    this._pendientesLeidos = true;
+  // ONE localStorage key per intent, never a list. localStorage makes each
+  // operation atomic but not a read-modify-write cycle, so two tabs that both
+  // read an empty list and both write their own copy leave only the second
+  // one's key, and the first tab comes back with nothing to retry under
+  // (lucy, 2026-10-15). Adding, updating and resolving touch only their own
+  // key; the enumeration below is for painting and reconciling, never for
+  // writing the collection back.
+  _leerPendientes() {
+    const fuera = [];
     try {
-      const crudo = typeof localStorage !== 'undefined' && localStorage
-        ? localStorage.getItem(CLAVE_PENDIENTES) : '';
-      const lista = crudo ? JSON.parse(crudo) : [];
-      this._pendientes = Array.isArray(lista)
-        ? lista.filter((p) => p && p.intento && typeof p.intento.client_id === 'string')
-        : [];
-    } catch (_) {
-      this._pendientes = [];
-    }
+      if (typeof localStorage === 'undefined' || !localStorage) return fuera;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (!k || k.indexOf(PREFIJO_PENDIENTE) !== 0) continue;
+        try {
+          const p = JSON.parse(localStorage.getItem(k) || 'null');
+          if (p && p.intento && typeof p.intento.client_id === 'string') fuera.push(p);
+        } catch (_) { /* a key we cannot read is left alone, not deleted */ }
+      }
+    } catch (_) { /* storage blocked: there is nothing to show */ }
+    // Oldest first, so the banner reads in the order the writes were made.
+    return fuera.sort((a, b) => (a.guardado || 0) - (b.guardado || 0));
   },
 
-  // Reports whether the list is actually stored. A silent failure here would
-  // mean a movement sent with a key nothing remembers, which is the duplicate
-  // this whole mechanism exists to prevent.
-  _guardarPendientes() {
+  _cargarPendientes() {
+    this._pendientes = this._leerPendientes();
+  },
+
+  // Recorded BEFORE the request leaves, so a browser that dies mid-flight
+  // still knows which key to retry with. Reports whether it is really stored:
+  // a silent failure here would mean a movement sent under a key nothing
+  // remembers, which is the duplicate this whole mechanism exists to prevent.
+  _anotarPendiente(intento, mensaje) {
+    const clave = PREFIJO_PENDIENTE + String(intento.client_id).toLowerCase();
     try {
       if (typeof localStorage === 'undefined' || !localStorage) return false;
-      if (!this._pendientes.length) {
-        localStorage.removeItem(CLAVE_PENDIENTES);
-        return true;
+      const previo = localStorage.getItem(clave);
+      // An unresolved key is never evicted to make room for a new one: that
+      // would throw away the only thing standing between a retry and a second
+      // row. At the cap the answer is to stop writing, not to forget.
+      if (!previo && this._leerPendientes().length >= PENDIENTES_MAX) return false;
+      let guardado = Date.now();
+      if (previo) {
+        try { guardado = JSON.parse(previo).guardado || guardado; } catch (_) { /* keep now */ }
       }
-      const texto_ = JSON.stringify(this._pendientes);
-      localStorage.setItem(CLAVE_PENDIENTES, texto_);
-      return localStorage.getItem(CLAVE_PENDIENTES) === texto_;
+      const texto_ = JSON.stringify({ intento, mensaje, guardado });
+      localStorage.setItem(clave, texto_);
+      const ok = localStorage.getItem(clave) === texto_;
+      this._cargarPendientes();
+      return ok;
     } catch (_) {
       return false;
     }
   },
 
-  // Recorded BEFORE the request leaves, so a browser that dies mid-flight
-  // still knows which key to retry with.
-  _anotarPendiente(intento, mensaje) {
-    this._cargarPendientes(true);
-    const clave = String(intento.client_id).toLowerCase();
-    const i = this._pendientes.findIndex((p) => String(p.intento.client_id).toLowerCase() === clave);
-    if (i >= 0) {
-      this._pendientes[i] = { intento, mensaje };
-    } else {
-      // An unresolved key is never evicted to make room for a new one: that
-      // would throw away the only thing standing between a retry and a second
-      // row. At the cap the answer is to stop writing, not to forget.
-      if (this._pendientes.length >= PENDIENTES_MAX) return false;
-      this._pendientes.push({ intento, mensaje });
-    }
-    return this._guardarPendientes();
-  },
-
   // Resolve ONE entry by its key: a retry's callback must never clear someone
-  // else's pending write.
+  // else's pending write, in this tab or in another one.
   _resolverPendiente(client_id) {
-    this._cargarPendientes(true);
-    const clave = String(client_id || '').toLowerCase();
-    const quedan = this._pendientes.filter((p) => String(p.intento.client_id).toLowerCase() !== clave);
-    if (quedan.length === this._pendientes.length) return;
-    this._pendientes = quedan;
-    this._guardarPendientes();
+    try {
+      if (typeof localStorage !== 'undefined' && localStorage) {
+        localStorage.removeItem(PREFIJO_PENDIENTE + String(client_id || '').toLowerCase());
+      }
+    } catch (_) { /* nothing else to do */ }
+    this._cargarPendientes();
   },
 
   // A key that is now in the log landed after all: the log is the answer, so
   // the banner goes without anyone retrying anything.
   _revisarPendientes() {
-    this._cargarPendientes(true);
+    this._cargarPendientes();
     if (!this._pendientes.length) return;
     const log = Array.isArray(DataStore.movimientosTanque) ? DataStore.movimientosTanque : [];
     const vistos = new Set();
     for (const m of log) {
       if (m && typeof m.client_id === 'string') vistos.add(m.client_id.toLowerCase());
     }
-    const quedan = this._pendientes.filter(
-      (p) => !vistos.has(String(p.intento.client_id).toLowerCase()));
-    if (quedan.length === this._pendientes.length) return;
-    this._pendientes = quedan;
-    this._guardarPendientes();
+    const confirmados = this._pendientes.filter(
+      (p) => vistos.has(String(p.intento.client_id).toLowerCase()));
+    if (!confirmados.length) return;
+    for (const p of confirmados) this._resolverPendiente(p.intento.client_id);
     this._avisar('Un movimiento sin confirmar sí quedó registrado. La bitácora ya lo muestra.');
   },
 
@@ -711,7 +709,7 @@ export const TanquesMoves = {
         + `<div>${escapeHtml(mensaje)}</div>`
         + `<div class="tanques-p-sub">${escapeHtml(etiquetaMovimiento(intento.tipo))} `
         + `${escapeHtml(intento.lot_code)}, ${fmtL(intento.volumen_l)} L, ${escapeHtml(donde)}, `
-        + `${escapeHtml(intento.fecha)}.</div>`
+        + `${escapeHtml(fechaCorta(intento.fecha) || intento.fecha)}.</div>`
         + '<div class="tanques-acciones">'
         + `<button type="button" class="tanques-btn" data-pendiente="reintentar" data-clave="${clave}">`
         + 'Reintentar</button>'
@@ -761,9 +759,13 @@ export const TanquesMoves = {
     const todos = lotesSinTanque(DataStore.wineRecepcion, bodega.movimientos);
     const lotes = q ? todos.filter((l) => l.lot_code.toLowerCase().includes(q)) : todos;
     if (!lotes.length) {
+      // Not "every lote is in a tank": this list is the lotes of the newest
+      // vendimia that no live movement NAMES, which says nothing about where
+      // a lote that already left the bodega is. Where the wine is comes from
+      // estado.js, and nothing here is going to restate it.
       el.innerHTML = todos.length
         ? '<span class="tanques-hint">Ningún lote sin tanque coincide con la búsqueda.</span>'
-        : '<span class="tanques-hint">Todos los lotes conocidos están en un tanque.</span>';
+        : '<span class="tanques-hint">No hay lotes pendientes de asignar.</span>';
       return;
     }
     const visibles = lotes.slice(0, CHIPS_MAX);
