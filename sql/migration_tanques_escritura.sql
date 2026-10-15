@@ -15,7 +15,9 @@
 -- Tres piezas:
 --   tanques_version      una fila con un contador `v`. Un trigger AFTER INSERT
 --                        OR UPDATE sobre movimientos_tanque lo incrementa en la
---                        misma transaccion que la escritura.
+--                        misma transaccion que la escritura, y otros dos lo
+--                        incrementan por cada sentencia que cambia dim_tanque o
+--                        dim_tanque_sinonimo (el catalogo tambien se valida).
 --   client_id            UUID que el cliente genera una vez por intencion. Es
 --                        UNIQUE, asi que repetir un POST cuyo acuse se perdio
 --                        devuelve la fila que ya existe en lugar de duplicarla.
@@ -78,6 +80,24 @@ CREATE TRIGGER movimientos_tanque_version
   AFTER INSERT OR UPDATE ON public.movimientos_tanque
   FOR EACH ROW EXECUTE FUNCTION public.tanques_version_incrementar();
 
+-- El catalogo tambien entra en la validacion: el endpoint juzga un movimiento
+-- contra la capacidad y los sinonimos que leyo, asi que editar dim_tanque o
+-- dim_tanque_sinonimo entre esa lectura y tanques_escribir() tiene que mover la
+-- misma version, o un movimiento validado contra una capacidad vieja entraria.
+-- FOR EACH STATEMENT basta (una edicion de cien filas es un solo cambio) y
+-- tambien atrapa TRUNCATE. El upsert toma el mismo candado de fila que
+-- tanques_escribir(), asi que una edicion del catalogo y una escritura se
+-- serializan igual que dos escrituras.
+DROP TRIGGER IF EXISTS dim_tanque_version ON public.dim_tanque;
+CREATE TRIGGER dim_tanque_version
+  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON public.dim_tanque
+  FOR EACH STATEMENT EXECUTE FUNCTION public.tanques_version_incrementar();
+
+DROP TRIGGER IF EXISTS dim_tanque_sinonimo_version ON public.dim_tanque_sinonimo;
+CREATE TRIGGER dim_tanque_sinonimo_version
+  AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON public.dim_tanque_sinonimo
+  FOR EACH STATEMENT EXECUTE FUNCTION public.tanques_version_incrementar();
+
 -- --- client_id ---
 -- Nullable: las filas anteriores y las que se inserten desde el SQL editor no
 -- lo traen, y UNIQUE admite varios NULL. El endpoint lo exige en cada crear.
@@ -131,13 +151,43 @@ BEGIN
 END;
 $$;
 
+-- --- tanques_misma_intencion ---
+-- Si la fila guardada con un client_id es la MISMA intencion que p_fila. Se
+-- comparan las columnas de la lista blanca (mas creado_por, que el endpoint
+-- toma del token) con los tipos de la tabla: numeric contra numeric (asi 5000
+-- y 5000.000 son iguales), date contra date, y merma_l ausente como 0, igual
+-- que el INSERT de abajo. Un p_fila con un valor que no se puede convertir
+-- lanza error, como lo haria el INSERT.
+CREATE OR REPLACE FUNCTION public.tanques_misma_intencion(
+  p_guardada public.movimientos_tanque,
+  p_fila     JSONB
+)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY INVOKER
+SET search_path = pg_catalog, public
+AS $$
+  SELECT (p_guardada.fecha, p_guardada.tipo, p_guardada.origen, p_guardada.destino,
+          p_guardada.lot_code, p_guardada.vintage_year, p_guardada.volumen_l,
+          p_guardada.merma_l, p_guardada.nota, p_guardada.fuente, p_guardada.creado_por)
+         IS NOT DISTINCT FROM
+         ((p_fila ->> 'fecha')::date, p_fila ->> 'tipo', p_fila ->> 'origen',
+          p_fila ->> 'destino', p_fila ->> 'lot_code', (p_fila ->> 'vintage_year')::int,
+          (p_fila ->> 'volumen_l')::numeric, COALESCE((p_fila ->> 'merma_l')::numeric, 0),
+          p_fila ->> 'nota', p_fila ->> 'fuente', p_fila ->> 'creado_por')
+$$;
+
 -- --- tanques_escribir ---
 -- p_version: la `v` que el endpoint leyo antes de leer la bitacora.
 -- p_accion:  'crear' (inserta p_fila) o 'anular' (marca p_id).
 -- Devuelve jsonb con `resultado`:
 --   conflicto   la bitacora cambio; trae la `version` actual. Nada se escribio.
 --   creado      con `fila`.
---   duplicado   el client_id ya estaba; `fila` es la existente. Nada se escribio.
+--   duplicado   el client_id ya estaba con los mismos datos; `fila` es la
+--               existente. Nada se escribio.
+--   client_id_distinto  el client_id ya estaba con OTROS datos; `fila` es la
+--               existente. Nada se escribio (el endpoint responde 409).
 --   anulado     con `fila`.
 --   ya_anulado  con `fila`. Nada se escribio.
 --   no_existe   no hay fila con ese id.
@@ -179,7 +229,12 @@ BEGIN
 
     SELECT * INTO v_fila FROM public.movimientos_tanque WHERE client_id = v_cliente;
     IF FOUND THEN
-      RETURN jsonb_build_object('resultado', 'duplicado', 'fila', to_jsonb(v_fila));
+      IF public.tanques_misma_intencion(v_fila, p_fila) THEN
+        RETURN jsonb_build_object('resultado', 'duplicado', 'fila', to_jsonb(v_fila));
+      END IF;
+      -- La clave ya registro OTRO movimiento. Contestar duplicado diria "tu
+      -- movimiento esta guardado" cuando lo guardado es distinto.
+      RETURN jsonb_build_object('resultado', 'client_id_distinto', 'fila', to_jsonb(v_fila));
     END IF;
 
     IF p_version IS DISTINCT FROM v_actual THEN
@@ -207,9 +262,12 @@ BEGIN
 
     IF NOT FOUND THEN
       -- Solo posible si alguien inserto la misma clave por fuera de esta
-      -- funcion entre la busqueda y el INSERT; sigue siendo un duplicado.
+      -- funcion entre la busqueda y el INSERT; se juzga igual que arriba.
       SELECT * INTO v_fila FROM public.movimientos_tanque WHERE client_id = v_cliente;
-      RETURN jsonb_build_object('resultado', 'duplicado', 'fila', to_jsonb(v_fila));
+      IF public.tanques_misma_intencion(v_fila, p_fila) THEN
+        RETURN jsonb_build_object('resultado', 'duplicado', 'fila', to_jsonb(v_fila));
+      END IF;
+      RETURN jsonb_build_object('resultado', 'client_id_distinto', 'fila', to_jsonb(v_fila));
     END IF;
     RETURN jsonb_build_object('resultado', 'creado', 'fila', to_jsonb(v_fila));
 
@@ -247,6 +305,8 @@ GRANT SELECT, INSERT, UPDATE ON public.tanques_version TO service_role;
 REVOKE EXECUTE ON FUNCTION public.tanques_escribir(BIGINT, TEXT, JSONB, BIGINT) FROM PUBLIC, anon, authenticated;
 GRANT  EXECUTE ON FUNCTION public.tanques_escribir(BIGINT, TEXT, JSONB, BIGINT) TO service_role;
 REVOKE EXECUTE ON FUNCTION public.tanques_version_incrementar() FROM PUBLIC, anon, authenticated;
+REVOKE EXECUTE ON FUNCTION public.tanques_misma_intencion(public.movimientos_tanque, JSONB) FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION public.tanques_misma_intencion(public.movimientos_tanque, JSONB) TO service_role;
 REVOKE ALL ON FUNCTION public.movimientos_tanque_append_only() FROM anon, authenticated;
 
 INSERT INTO public.applied_migrations (name) VALUES ('migration_tanques_escritura')
