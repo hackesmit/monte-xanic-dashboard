@@ -846,3 +846,21 @@ test('historialTanque keeps each occurrence apart when the same row object appea
   const salidas = h.filter(f => f.direccion === 'salida').map(f => f.movido_l).sort((a, b) => b - a);
   assert.deepEqual(salidas, [60, 40]);
 });
+
+test('one movement cannot carry more than a million litres, where microlitres stop being exact', () => {
+  const cat = [{ codigo: 'A', capacidad_l: 1e6 }];
+  // a capacity past the cap is treated as unregistered, so nothing can fill it
+  const gigante = [{ codigo: 'G', capacidad_l: 1e10 }];
+  assert.equal(replayMovimientos(gigante, []).estado.G.capacidad_l, 0);
+  assert.ok(validarMovimientoEnLog(gigante, [], { tipo: 'recepcion', destino: 'G', lot_code: 'L', fecha: '2025-09-01', volumen_l: 10 }).length > 0);
+  const enorme = { tipo: 'recepcion', destino: 'A', lot_code: 'L', fecha: '2025-09-01', volumen_l: 9e9 };
+  assert.ok(validarMovimientoEnLog(cat, [], enorme).length > 0);
+  assert.equal(replayMovimientos(cat, [enorme]).estado.A.litros, 0);
+  // at the cap, a thousand one-microlitre withdrawals still balance exactly
+  const filas = [{ ...enorme, volumen_l: 1e6 }];
+  for (let k = 0; k < 1000; k++) filas.push({ tipo: 'salida', origen: 'A', fecha: '2025-09-02', volumen_l: 0.000001 });
+  const r = replayMovimientos(cat, filas);
+  assert.equal(r.avisos.length, 0);
+  assert.equal(r.estado.A.litros, 999999.999);
+  assert.equal(r.balance.descuadre_l, 0);
+});
