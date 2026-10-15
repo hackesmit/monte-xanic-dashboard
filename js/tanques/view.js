@@ -562,7 +562,11 @@ export const TanquesView = {
       const variedades = [...new Set(partes.map((p) => variedadDeLote(p.lot_code) || 'Sin variedad'))];
       s += '<div class="tanques-sec"><h3>Contenido</h3><dl class="tanques-kv">'
         + `<dt>Lote</dt><dd>${escapeHtml(partes.map((p) => p.lot_code).join(' + '))}</dd>`
-        + `<dt>Variedad</dt><dd>${escapeHtml(variedades.join(' + '))}</dd>`
+        // The varietal is DERIVED from the lot code, not recorded on the
+        // movement, so the panel says so instead of presenting it as a fact
+        // the bodega wrote down.
+        + `<dt>Variedad</dt><dd>${escapeHtml(variedades.join(' + '))}`
+        + '<span class="tanques-tag">del código</span></dd>'
         + `<dt>En tanque desde</dt><dd>${escapeHtml(fechaCorta(est.desde) || 'sin fecha')}</dd>`
         + `<dt>Espacio libre</dt><dd>${litros(est.libres)} L</dd>`
         + `<dt>Ocupación</dt><dd>${escapeHtml(nivel.etiqueta)}</dd>`
