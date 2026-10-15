@@ -104,6 +104,8 @@ function servidor() {
     cuerpos: [],
     proximoId: 2000,
     romperDescarte: false,
+    retener: false,     // hold the next dismissal's response
+    soltar: null,       // resolves it
   };
 
   s.crear = (mov) => {
@@ -163,6 +165,10 @@ async function montar(page, s, { rol = 'lab', muestras = MUESTRAS, ancho = 1440,
     }
     const cuerpo = JSON.parse(req.postData() || '{}');
     s.cuerpos.push(cuerpo);
+    if (s.retener && cuerpo.action === 'descartar') {
+      s.retener = false;
+      await new Promise((resolve) => { s.soltar = resolve; });
+    }
     const r = cuerpo.action === 'descartar'
       ? s.descartar(cuerpo.clave)
       : s.crear(cuerpo.movimiento || {});
@@ -407,6 +413,48 @@ test.describe('Descartar', () => {
     await expect(tarjetas(page)).toHaveCount(4);
     // and the server was not asked a second time
     expect(s.cuerpos.filter((c) => c.action === 'descartar')).toHaveLength(1);
+  });
+
+  test('mientras un descarte está en vuelo, los demás esperan en vez de parecer vivos', async ({ page }) => {
+    const s = servidor();
+    s.retener = true;
+    await montar(page, s);
+    const a = tarjeta(page, '25CSKMP-4', 'D5 a E1');
+    const b = tarjeta(page, '25DUKMP-3', 'D5 a D1');
+    await a.getByRole('button', { name: /^Descartar/ }).click();
+    await a.getByRole('button', { name: 'Sí, descartar' }).click();
+    await expect(a.getByRole('button', { name: 'Descartando…' })).toBeDisabled();
+    // every other card's controls wait too, so no click can be swallowed
+    await expect(b.getByRole('button', { name: /^Descartar/ })).toBeDisabled();
+    await expect(b.getByRole('button', { name: /^Confirmar/ })).toBeDisabled();
+    expect(s.cuerpos.filter((c) => c.action === 'descartar')).toHaveLength(1);
+
+    s.soltar();
+    await expect(toast(page)).toContainText('Propuesta descartada');
+    await expect(tarjeta(page, '25CSKMP-4', 'D5 a E1')).toHaveCount(0);
+    // and the other proposal is live again, untouched
+    await expect(b.getByRole('button', { name: /^Descartar/ })).toBeEnabled();
+  });
+
+  test('un descarte en vuelo no cierra la pregunta abierta en otra tarjeta', async ({ page }) => {
+    const s = servidor();
+    s.retener = true;
+    await montar(page, s);
+    const a = tarjeta(page, '25CSKMP-4', 'D5 a E1');
+    const b = tarjeta(page, '25DUKMP-3', 'D5 a D1');
+    await a.getByRole('button', { name: /^Descartar/ }).click();
+    await a.getByRole('button', { name: 'Sí, descartar' }).click();
+    s.soltar();
+    await expect(toast(page)).toContainText('Propuesta descartada');
+    // B was never asked about, so it is back to its two buttons, not a stray
+    // confirmation left open or closed by someone else's request
+    await expect(b.getByRole('button', { name: /^Descartar/ })).toBeEnabled();
+    await b.getByRole('button', { name: /^Descartar/ }).click();
+    await expect(b).toContainText('¿Descartar esta propuesta?');
+    await b.getByRole('button', { name: 'Sí, descartar' }).click();
+    await expect(tarjeta(page, '25DUKMP-3', 'D5 a D1')).toHaveCount(0);
+    expect(s.cuerpos.filter((c) => c.action === 'descartar').map((c) => c.clave))
+      .toEqual(['25CSKMP-4|D5|E1|2025-11-12', '25DUKMP-3|D5|D1|2025-10-18']);
   });
 
   test('un descarte que el servidor rechaza deja la propuesta donde estaba', async ({ page }) => {

@@ -522,7 +522,11 @@ describe('mt58 - evidencia ambigua no se convierte en ruta', () => {
     ];
     const r = inferirMovimientos(muestras, BODEGA);
     assert.deepEqual(ruta(r.propuestas), []);
-    assert.deepEqual(motivos(r), ['simultaneo:D5/E1', 'simultaneo:E1/H8']);
+    // Cada vasija se reporta contra una con la que DE VERDAD se cruza: E1 y H8
+    // no se tocan entre si, las dos se cruzan con D5.
+    assert.deepEqual(motivos(r), ['simultaneo:D5/E1', 'simultaneo:D5/H8']);
+    assert.deepEqual(r.traslapes.map((t) => `${t.desde}..${t.hasta}`),
+      ['2025-10-02..2025-10-02', '2025-10-03..2025-10-03']);
   });
 
   test('salir de un grupo de dos no nombra origen; entrar a uno si nombra destino', () => {
@@ -563,7 +567,22 @@ describe('mt58 - evidencia ambigua no se convierte en ruta', () => {
     const r = inferirMovimientos(muestras, BODEGA);
     assert.deepEqual(ruta(r.propuestas), []);
     // Un solo grupo de tres: el lote estuvo en los tres ese dia.
-    assert.deepEqual(motivos(r), ['mismo_dia:D5/E1', 'mismo_dia:E1/H8']);
+    assert.deepEqual(motivos(r), ['mismo_dia:D5/E1', 'mismo_dia:D5/H8']);
+  });
+
+  test('todo traslape reportado es un intervalo real, nunca uno al reves', () => {
+    const casos = [MUESTRAS, [
+      m('25CSKMP-4', '2025-10-01', 'D5'), m('25CSKMP-4', '2025-10-10', 'D5'),
+      m('25CSKMP-4', '2025-10-02', 'E1'), m('25CSKMP-4', '2025-10-03', 'H8'),
+      ...dias('25DUKMP-3', '2025-10', 1, 9, 'E6'), ...dias('25DUKMP-3', '2025-10', 2, 9, 'F3'),
+    ]];
+    for (const muestras of casos) {
+      const r = inferirMovimientos(muestras, BODEGA);
+      for (const t of r.traslapes) {
+        assert.ok(t.desde <= t.hasta, `${t.lot_code} ${t.a}/${t.b}: ${t.desde} > ${t.hasta}`);
+        assert.notEqual(t.a, t.b);
+      }
+    }
   });
 
   test('un origen de un solo dia que comparte ese dia con el destino tampoco pone direccion', () => {
