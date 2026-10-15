@@ -407,7 +407,7 @@ describe('MT.52 - POST /api/tanques action crear', () => {
     }
   });
 
-  it('refuses a field the table does not have (etapa is derived, not stored)', async () => {
+  it('refuses etapa from a client (only the inventory load writes it)', async () => {
     mockSupabase();
     const res = makeRes();
     await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ etapa: 'fa' }) } }), res);

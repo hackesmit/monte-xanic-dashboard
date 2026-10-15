@@ -611,9 +611,8 @@ describe('mt58 - sql/migration_tanques_descartes.sql', () => {
   });
 
   test('el nombre del archivo y el del registro coinciden', () => {
-    const ultima = MIGRATIONS[MIGRATIONS.length - 1];
-    assert.equal(ultima, 'migration_tanques_descartes',
-      'la nueva migracion va al final del manifiesto, en orden de aplicacion');
+    assert.ok(MIGRATIONS.indexOf('migration_tanques_descartes') > MIGRATIONS.indexOf('migration_tanques_escritura'),
+      'la migracion va despues de la de escritura, en orden de aplicacion');
   });
 });
 
