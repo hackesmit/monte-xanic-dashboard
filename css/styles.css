@@ -104,6 +104,60 @@
   --font-display: 'Sackers Gothic Medium', sans-serif;
   --font-body:    sans-serif;
   --font-mono:    ui-monospace, Menlo, Consolas, monospace;
+
+  /* ── Tanques (Mapa de Tanques) ──
+     The bodega plan is an SVG whose colours all come from here, so a theme
+     switch needs no re-render. Three families:
+       --tank-floor/path/path-text/steel-*: the room and the vessels themselves
+       --tank-v-*  : varietal of the wine in the band (palette approved by
+                     Daniel on the mockup; the extra varietals CONFIG.varietyAbbr
+                     can produce continue the same wine-toned family)
+       --tank-s-*  : vinification stage; --tank-ocu-*: fill level
+     The varietal and stage hues are deliberately NOT redefined in the light
+     theme: they are wine colours read against steel, and they carry the same
+     meaning on either ground. js/tanques/plan.js maps a varietal, a stage or a
+     fill level to one of these token NAMES; nothing writes a literal colour. */
+  --tank-floor:      #141312;
+  --tank-path:       #1D1B18;
+  --tank-path-text:  #5E574C;
+  --tank-steel-top:  #6E757C;
+  --tank-steel-side: #4A5057;
+  --tank-steel-edge: #2C3035;
+  --tank-shadow:     rgba(0,0,0,0.25);
+  --tank-gloss:      rgba(255,255,255,0.10);
+
+  --tank-v-cs:   #7A1E2E;
+  --tank-v-cf:   #A0344A;
+  --tank-v-me:   #8E3B5E;
+  --tank-v-sy:   #5A2A6E;
+  --tank-v-du:   #3E1F4F;
+  --tank-v-te:   #B04A3A;
+  --tank-v-pv:   #4A2340;
+  --tank-v-ma:   #6E2338;
+  --tank-v-sb:   #CDB64E;
+  --tank-v-ch:   #D9A441;
+  --tank-v-ro:   #D97A7A;
+  --tank-v-gr:   #C2654B;
+  --tank-v-ca:   #8F5570;
+  --tank-v-ms:   #7E4A86;
+  --tank-v-nb:   #9E4426;
+  --tank-v-mv:   #6B3B2A;
+  --tank-v-vg:   #E8D08C;
+  --tank-v-cb:   #A8BE72;
+  --tank-v-otra: #6E7378;
+
+  --tank-s-rec: #8AA1B1;
+  --tank-s-mac: #B07A9A;
+  --tank-s-fa:  #C0503A;
+  --tank-s-des: #C88A3A;
+  --tank-s-fml: #9B7D3A;
+  --tank-s-cri: #4E6E5A;
+  --tank-s-emb: #3E5A7A;
+  --tank-s-nd:  #6E7378;   /* holds wine, stage not recorded */
+
+  --tank-ocu-lleno: #6DBB7E;
+  --tank-ocu-medio: #C4A060;
+  --tank-ocu-bajo:  #E09030;
 }
 
 /* ══ LIGHT THEME ══ */
@@ -139,6 +193,20 @@
   --error-color: #CC3333;
   --bar-track: rgba(0,0,0,0.08);
   --tooltip-bg: #ffffff;
+
+  /* Tanques: only the room and the steel change ground. The varietal, stage and
+     fill-level hues stay as approved for both themes (see the dark block). */
+  --tank-floor:      #E4DED3;
+  --tank-path:       #D6CFC2;
+  --tank-path-text:  #9A9080;
+  --tank-steel-top:  #D9DCDF;
+  --tank-steel-side: #B9BEC4;
+  --tank-steel-edge: #8D949B;
+  --tank-shadow:     rgba(0,0,0,0.18);
+  --tank-gloss:      rgba(255,255,255,0.45);
+  --tank-ocu-lleno: #2E8B2E;
+  --tank-ocu-medio: #9B7D3A;
+  --tank-ocu-bajo:  #C07020;
 }
 
 /* Theme-aware logos: SVG (white text) for dark, webp (black text) for light */
@@ -3046,6 +3114,172 @@ body.demo-mode-active .row-clickable        { display: none; }
                         background: var(--surface); color: var(--text); }
 .settings-meta { font-size: var(--text-md); color: var(--muted); margin: 6px 0 8px 0; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+/* ══ TANQUES (Mapa de Tanques) ══
+   Plan on the left, tank panel on the right; the panel stacks under the plan
+   below 960px and the plan scrolls horizontally inside its card rather than
+   shrinking the tanks into illegibility. Every colour is a --tank-* token (see
+   the :root block), so switching theme repaints the SVG with no re-render.
+   Font sizes INSIDE the SVG stay plain numbers on purpose: they are user units
+   in the viewBox and scale with the drawing, so the --text-* UI scale does not
+   apply to them. */
+
+.tanques-toolbar {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0 14px 0;
+}
+.tanques-seg {
+  display: inline-flex; border: 1px solid var(--border-gold);
+  border-radius: var(--radius-base); overflow: hidden;
+}
+.tanques-seg button {
+  background: transparent; color: var(--muted); border: 0; padding: 7px 12px;
+  font-family: var(--font-display); font-size: var(--text-xs); letter-spacing: 0.08em;
+  text-transform: uppercase; cursor: pointer; transition: background var(--motion-fast);
+}
+.tanques-seg button[aria-pressed="true"] { background: var(--gold); color: var(--on-gold); }
+.tanques-search {
+  background: var(--card); color: var(--text); border: 1px solid var(--border);
+  border-radius: var(--radius-base); padding: 7px 10px;
+  font-family: var(--font-body); font-size: var(--text-md); width: 200px; min-width: 0;
+}
+.tanques-seg button:focus-visible, .tanques-search:focus-visible,
+.tanque:focus-visible, .tanques-route-stop:focus-visible {
+  outline: 2px solid var(--gold); outline-offset: 2px;
+}
+
+.tanques-layout {
+  display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; align-items: start;
+}
+.tanques-plan-card, .tanques-panel {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius-panel); padding: 14px; min-width: 0;
+}
+.tanques-panel { border-color: var(--border-gold); display: grid; gap: 14px; align-content: start; }
+.tanques-plan-card { display: grid; gap: 10px; }
+.tanques-plan-scroll { overflow-x: auto; }
+.tanques-plan {
+  display: block; width: 100%; min-width: 680px; height: auto; user-select: none;
+}
+.tanque { cursor: pointer; }
+.tanque.dim { opacity: 0.22; }
+.tanque.sel .tanque-tapa { stroke: var(--gold); stroke-width: 2.5; }
+.tanque.inactivo { opacity: 0.45; }
+.tanque text { font-family: var(--font-mono); pointer-events: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .tanque { transition: opacity var(--motion-base); }
+}
+
+.tanques-legend {
+  display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: var(--text-sm); color: var(--muted);
+}
+.tanques-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.tanques-legend i {
+  width: 10px; height: 10px; border-radius: var(--radius-sharp); display: inline-block;
+}
+.tanques-hint { font-size: var(--text-sm); color: var(--muted); }
+.tanques-tray { display: grid; gap: 8px; }
+.tanques-tray h3 {
+  font-family: var(--font-display); font-size: var(--text-xs); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold-dim); font-weight: 400;
+}
+.tanques-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tanques-chip {
+  display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--border);
+  background: var(--card2); border-radius: var(--radius-sharp); padding: 3px 8px;
+  font-family: var(--font-mono); font-size: var(--text-sm); color: var(--text);
+}
+.tanques-chip small { color: var(--muted); font-size: var(--text-xs); }
+
+.tanques-eyebrow {
+  font-family: var(--font-display); font-size: var(--text-2xs); letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--gold-dim);
+}
+.tanques-p-head { display: flex; justify-content: space-between; align-items: start; gap: 8px; }
+.tanques-p-head h2 {
+  font-family: var(--font-display); font-size: var(--text-2xl); letter-spacing: 0.04em;
+  color: var(--cream); font-weight: 400;
+}
+.tanques-p-sub { font-size: var(--text-sm); color: var(--muted); }
+.tanques-p-right { text-align: right; white-space: nowrap; }
+.tanques-p-fill {
+  font-family: var(--font-mono); font-size: var(--text-xl); color: var(--cream);
+}
+.tanques-fillbar {
+  height: 8px; background: var(--bar-track); border-radius: var(--radius-sharp);
+  overflow: hidden; display: flex;
+}
+.tanques-fillbar div { height: 100%; }
+.tanques-kv {
+  display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: var(--text-md);
+}
+.tanques-kv dt { color: var(--muted); }
+.tanques-kv dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--cream); }
+.tanques-sec h3 {
+  font-family: var(--font-display); font-size: var(--text-xs); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold-dim); font-weight: 400; margin-bottom: 6px;
+}
+.tanques-stages { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.tanques-stages div { height: 6px; border-radius: var(--radius-sharp); background: var(--bar-track); }
+.tanques-stages div.on { background: var(--gold-dim); }
+.tanques-stages div.now { background: var(--gold); box-shadow: 0 0 0 2px var(--border-gold); }
+.tanques-stage-labels {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px;
+  font-size: var(--text-2xs); color: var(--muted); text-align: center; line-height: 1.2;
+}
+.tanques-comp {
+  display: flex; height: 18px; border-radius: var(--radius-sharp); overflow: hidden;
+  font-family: var(--font-mono); font-size: var(--text-xs);
+}
+.tanques-comp div {
+  display: flex; align-items: center; padding-inline: 4px; color: var(--white);
+  white-space: nowrap; overflow: hidden;
+}
+.tanques-timeline {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; font-size: var(--text-md);
+}
+.tanques-timeline li { display: grid; grid-template-columns: 64px 1fr; gap: 8px; }
+.tanques-timeline time { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-sm); }
+.tanques-timeline li.anulado { opacity: 0.55; text-decoration: line-through; }
+.tanques-tag {
+  font-size: var(--text-xs); border: 1px solid var(--border); border-radius: var(--radius-sharp);
+  padding: 0 4px; color: var(--muted); margin-left: 4px; white-space: nowrap;
+}
+.tanques-tag.lab { color: var(--flag-info); border-color: var(--flag-info); }
+.tanques-route { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tanques-route-stop {
+  font-family: var(--font-mono); font-size: var(--text-sm); border: 1px solid var(--border-gold);
+  border-radius: var(--radius-sharp); padding: 3px 7px; cursor: pointer;
+  background: var(--card2); color: var(--text);
+}
+.tanques-route-stop.cur { background: var(--gold); color: var(--on-gold); }
+.tanques-route-sep {
+  width: 6px; height: 6px; border-top: 1.5px solid var(--muted);
+  border-right: 1.5px solid var(--muted); transform: rotate(45deg); margin-inline: 2px;
+}
+.tanques-alert {
+  font-size: var(--text-md); border-left: 3px solid var(--flag-warning);
+  padding: 6px 10px; background: var(--card2);
+}
+.tanques-alert.err { border-left-color: var(--flag-error); }
+.tanques-avisos { display: grid; gap: 4px; font-size: var(--text-sm); color: var(--muted); }
+.tanques-avisos li { margin-left: 16px; }
+
+/* The plan needs 680 CSS px before it starts scrolling sideways, and the
+   dashboard's sidebar already takes about 334 of the viewport, so a 360px side
+   panel only fits from roughly 1420px up. Below that the panel stacks under the
+   plan and the plan gets the whole column: a plan you can only see two thirds
+   of is worse than a panel one scroll away. (Measured with the sidebar OPEN,
+   which is the narrow case; hiding it only adds room.) */
+@media (max-width: 1419px) {
+  .tanques-layout { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+  /* Touch floor: the toolbar is the only interactive chrome outside the SVG. */
+  .tanques-seg button { min-height: 44px; padding-inline: 14px; }
+  .tanques-search { min-height: 44px; font-size: var(--text-lg); width: 100%; }
+  .tanques-route-stop { min-height: 44px; display: inline-flex; align-items: center; }
+  .tanques-timeline li { grid-template-columns: 1fr; gap: 2px; }
+}
 
 /* ==================================================================
    Mobile touch pass (Android + iOS)

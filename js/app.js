@@ -328,7 +328,8 @@ export const App = {
       if (berryFilters) berryFilters.style.display = 'none';
       if (wineFilters) wineFilters.style.display = 'none';
     }
-    if (view === 'prediccion' || view === 'ajustes-objetivos' || view === 'mona' || view === 'guardados') {
+    if (view === 'prediccion' || view === 'ajustes-objetivos' || view === 'mona'
+        || view === 'guardados' || view === 'tanques') {
       if (berryFilters) berryFilters.style.display = 'none';
       if (wineFilters) wineFilters.style.display = 'none';
     }
@@ -448,6 +449,10 @@ export const App = {
 
       case 'prediccion':
         import('./predictionView.js').then(m => m.PredictionView.mount());
+        break;
+
+      case 'tanques':
+        import('./tanques/view.js').then(m => m.TanquesView.mount());
         break;
 
       case 'ajustes-objetivos':
