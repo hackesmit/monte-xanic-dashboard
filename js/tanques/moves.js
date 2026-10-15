@@ -185,7 +185,17 @@ export function planearMovimiento(gesto = {}, bodega = {}, opciones = {}) {
   const hoy = bodega && bodega.estado && typeof bodega.estado === 'object' ? bodega.estado : {};
   const movimientos = Array.isArray(bodega.movimientos) ? bodega.movimientos : [];
   const sinonimos = bodega.sinonimos || {};
-  const fecha = texto(opciones && opciones.fecha) || todayInVineyard();
+  // The date from the caller, else the one the gesture itself carries, else
+  // today. A gesture can state a date because the Tanques inbox (bead xd-qrn.6)
+  // opens this dialog for a trasiego the lab's samples place on a past day; a
+  // re-plan then overrides it with whatever is on the form (see _replanear).
+  const fecha = texto(opciones && opciones.fecha) || texto(gesto && gesto.fecha) || todayInVineyard();
+  // Where the movement comes from, as movimientos_tanque.fuente records it:
+  // 'manual' is a person at the plan, 'lab' is a proposal inferred from
+  // wine_samples.vessel_id that a person confirmed. It rides on the GESTURE so
+  // a re-plan keeps it; anything but 'lab' is manual, never a value from
+  // outside the column's CHECK.
+  const fuente = texto(gesto && gesto.fuente) === 'lab' ? 'lab' : 'manual';
   // Without a catalog there is no log to replay (a caller that hands only the
   // derived state), and today's state is all there is to read.
   const estado = Array.isArray(bodega.catalogo) && bodega.catalogo.length
@@ -229,6 +239,7 @@ export function planearMovimiento(gesto = {}, bodega = {}, opciones = {}) {
     volumen_l: null,
     merma_l: 0,
     pideMerma: clase !== 'salida',
+    fuente,
     fecha,
     // A business date in the past is normal (recording yesterday's trasiego);
     // one in the future would be applied ahead of everything in the replay.
@@ -294,6 +305,14 @@ export function planearMovimiento(gesto = {}, bodega = {}, opciones = {}) {
     : modelo.maximo_l;
   modelo.puedeRegistrar = true;
 
+  // A lab proposal states the two tanks and the day, and nothing else: the
+  // samples carry no volume, so the litres on the form are this planner's
+  // ceiling (what the origin held that day), not a measurement. Say so, because
+  // accepting it unread would file a guess as a reading.
+  if (fuente === 'lab') {
+    avisar('propuesta_lab', 'info', 'Propuesta del laboratorio, de los cambios de tanque en '
+      + 'las muestras. El volumen es lo que el origen tenía ese día: revíselo antes de registrar.');
+  }
   if (clase === 'movimiento' && modelo.destino_partes.length) {
     modelo.tipo = 'ensamble';
     modelo.titulo = 'Ensamble';
@@ -422,7 +441,12 @@ export function movimientoDesdeFormulario(modelo = {}, valores = {}) {
     // volume that left, and the column has a CHECK saying so.
     merma_l: tipo === 'salida' ? 0 : (mermaCampo === '' ? 0 : numeroDeCampo(valores.merma_l)),
     nota: nota || null,
-    fuente: 'manual',
+    // From the MODEL, never from the form: `fuente` says where the movement
+    // came from (a person at the plan, or a lab proposal a person confirmed),
+    // which is not something the user types and must not be something a stale
+    // or tampered form can set. An unknown value falls back to 'manual' rather
+    // than reaching the column's CHECK.
+    fuente: modelo.fuente === 'lab' ? 'lab' : 'manual',
   };
 }
 
@@ -673,6 +697,24 @@ export const TanquesMoves = {
     if (ctx) this._ctx = ctx;
     if (!this._ctx || typeof document === 'undefined') return;
     this._wire();
+  },
+
+  /**
+   * May this session draw write controls? Public because the Tanques inbox
+   * (js/tanques/inbox.js) is a write surface too, and two modules answering
+   * this question their own way would eventually disagree about who sees a
+   * button. The server is still the authority (api/tanques.js, role lab).
+   */
+  puedeEscribir() {
+    return this._puedeEscribir();
+  },
+
+  /**
+   * The tab's toast, with an optional action. Public so the Tanques inbox can
+   * speak in the same place rather than inventing a second status surface.
+   */
+  avisar(mensaje, accion) {
+    this._avisar(mensaje, accion);
   },
 
   /** The tank armed as an origin, so view.js can mark it on the plan. */

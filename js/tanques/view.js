@@ -14,6 +14,7 @@ import { DemoMode } from '../demoMode.js';
 import { escapeHtml } from '../utils.js';
 import { replayMovimientos, historialTanque, recorridoLote, ETAPAS } from './estado.js';
 import { TanquesMoves, etiquetaMovimiento } from './moves.js';
+import { TanquesInbox } from './inbox.js';
 import { PanelCharts } from './panelCharts.js';
 import {
   POSICION_1_AL, GEOMETRIA, construirPlano,
@@ -97,6 +98,14 @@ export const TanquesView = {
       busqueda: () => this.busqueda,
       seleccion: () => this.seleccion,
       seleccionar: (codigo) => { if (codigo) this.seleccion = codigo; },
+    });
+    // The lab inference (bead xd-qrn.6) is a write surface of its own: it draws
+    // its own controls, through the same callbacks, and this file stays the
+    // read-only renderer.
+    TanquesInbox.mount({
+      render: () => this.render(),
+      bodega: () => this._bodega(),
+      busqueda: () => this.busqueda,
     });
     this._quizaCargar();
     this.render();
@@ -235,6 +244,7 @@ export const TanquesView = {
       this._pintarBandeja(plan, estado);
       this._pintarAvisos(avisos);
       TanquesMoves.pintar();
+      TanquesInbox.pintar();
       return;
     }
 
@@ -256,6 +266,8 @@ export const TanquesView = {
     this._pintarBandeja(plan, estado);
     this._pintarAvisos(avisos);
     TanquesMoves.pintar();
+    // After the moves chrome, so the inbox always lands below it in the card.
+    TanquesInbox.pintar({ estado, avisos, plan, catalogo, movimientos, sinonimos });
     this._restaurarFoco(foco);
   },
 
