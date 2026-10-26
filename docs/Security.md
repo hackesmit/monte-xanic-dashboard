@@ -20,7 +20,7 @@
 ## Token Lifecycle
 
 1. **Creation:** `/api/login` creates token after bcrypt password verification
-2. **Verification:** `/api/verify` checks HMAC signature, expiry, and blacklist
+2. **Verification:** `/api/verify` checks HMAC signature, expiry, and blacklist. The blacklist check fails closed: if `token_blacklist` cannot be read (non-2xx, network error, missing Supabase config) every gated endpoint answers 503, never "not revoked".
 3. **Usage:** Sent as `x-session-token` header on all authenticated requests
 4. **Revocation:** `/api/logout` verifies HMAC, then inserts SHA256(token) into `token_blacklist`
 5. **Expiry:** Tokens auto-expire after 2 hours. No refresh mechanism.

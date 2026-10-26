@@ -1,5 +1,5 @@
 // MT.3 — verifyToken() shared module
-// Tests: valid token, expired token, invalid signature, missing token, blacklisted token, fetch failure.
+// Tests: valid token, expired token, invalid signature, missing token, blacklisted token, fetch failure (fails closed).
 
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
@@ -34,7 +34,7 @@ describe('MT.3 — verifyToken()', () => {
   it('accepts a valid, non-expired token', async () => {
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
     // Default now runs the blacklist check; mock an empty (not-revoked) result.
-    globalThis.fetch = async () => ({ json: async () => [] });
+    globalThis.fetch = async () => ({ ok: true, json: async () => [] });
     const result = await verifyToken(token);
     assert.ok(result.payload, 'Should return payload');
     assert.equal(result.payload.user, 'admin');
@@ -100,6 +100,7 @@ describe('MT.3 — verifyToken()', () => {
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
     // Mock fetch to return a blacklist hit
     globalThis.fetch = async () => ({
+      ok: true,
       json: async () => [{ token_hash: 'some-hash' }]
     });
     const result = await verifyToken(token, { checkBlacklist: true });
@@ -110,6 +111,7 @@ describe('MT.3 — verifyToken()', () => {
   it('accepts a valid token when blacklist returns empty', async () => {
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
     globalThis.fetch = async () => ({
+      ok: true,
       json: async () => []
     });
     const result = await verifyToken(token, { checkBlacklist: true });
@@ -117,13 +119,13 @@ describe('MT.3 — verifyToken()', () => {
     assert.equal(result.error, undefined);
   });
 
-  it('fail-open: accepts token when blacklist fetch throws (availability)', async () => {
+  it('fail-closed: refuses token with 503 when blacklist fetch throws (xd-5ua)', async () => {
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
     globalThis.fetch = async () => { throw new Error('Network failure'); };
     const result = await verifyToken(token, { checkBlacklist: true });
-    // Fail-open: should still return payload
-    assert.ok(result.payload, 'Should fail-open and return payload');
-    assert.equal(result.error, undefined);
+    // "Could not check" is not "not revoked": see tests/mt60 for the full matrix.
+    assert.equal(result.payload, undefined);
+    assert.equal(result.status, 503);
   });
 
   it('checks the blacklist by default (no options) and rejects a revoked token', async () => {
@@ -131,7 +133,7 @@ describe('MT.3 — verifyToken()', () => {
     // with no options, so a revoked token must be rejected via the default.
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
     let fetchCalled = false;
-    globalThis.fetch = async () => { fetchCalled = true; return { json: async () => [{ token_hash: 'x' }] }; };
+    globalThis.fetch = async () => { fetchCalled = true; return { ok: true, json: async () => [{ token_hash: 'x' }] }; };
     const result = await verifyToken(token);
     assert.equal(fetchCalled, true, 'fetch should be called by default (blacklist on)');
     assert.equal(result.error, 'Token revoked');
@@ -142,7 +144,7 @@ describe('MT.3 — verifyToken()', () => {
     // Only /api/logout opts out this way (it is about to blacklist the token).
     const token = createToken({ user: 'admin', role: 'admin', exp: Date.now() + 60000 });
     let fetchCalled = false;
-    globalThis.fetch = async () => { fetchCalled = true; return { json: async () => [{ token_hash: 'x' }] }; };
+    globalThis.fetch = async () => { fetchCalled = true; return { ok: true, json: async () => [{ token_hash: 'x' }] }; };
     const result = await verifyToken(token, { checkBlacklist: false });
     assert.ok(result.payload);
     assert.equal(fetchCalled, false, 'fetch should not be called when checkBlacklist is false');
