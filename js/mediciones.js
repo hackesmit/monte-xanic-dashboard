@@ -173,8 +173,8 @@ export function projectSnapshot(snapshot, current) {
 // user who types into the blank turns it into a real edit that saves normally.
 // Factored out as pure functions so the null-preserving contract is unit-
 // testable without a DOM. Do NOT reintroduce a `?? 0` around either side: that
-// is exactly the blank-to-0 fabrication this pair exists to prevent. (The
-// new-medicion FORM's blank-to-0 entry contract is separate and stays in xd-ibi.)
+// is exactly the blank-to-0 fabrication this pair exists to prevent. The
+// new-medicion form follows the same contract (readFormHealthCounts, xd-ibi).
 export function countInputValue(v) {
   return v == null ? '' : String(v);
 }
@@ -183,6 +183,24 @@ export function readCountInput(raw) {
   if (raw === '' || raw == null) return null;
   const n = parseInt(raw, 10);
   return Number.isNaN(n) ? null : n;
+}
+
+// New-medicion form counts (xd-ibi). The same blank-is-null contract as the
+// edit modal: a count the lab left blank is posted as null, a typed 0 stays 0,
+// so a partial sorteo lands in missing[] instead of scoring as a clean reading.
+// valueOf(id) returns the raw input value. berryCountSample is the sum of the
+// counts that were entered, or null when none were.
+export function readFormHealthCounts(valueOf) {
+  const counts = {
+    health_madura:      readCountInput(valueOf('med-h-madura')),
+    health_inmadura:    readCountInput(valueOf('med-h-inmadura')),
+    health_sobremadura: readCountInput(valueOf('med-h-sobremadura')),
+    health_picadura:    readCountInput(valueOf('med-h-picadura')),
+    health_enfermedad:  readCountInput(valueOf('med-h-enfermedad')),
+    health_quemadura:   readCountInput(valueOf('med-h-quemadura')),
+  };
+  const total = Object.values(counts).reduce((sum, n) => sum + (n ?? 0), 0);
+  return { counts, berryCountSample: total || null };
 }
 
 // Adds `value` to a <select> as its own option when the list does not already
@@ -596,19 +614,14 @@ export const Mediciones = {
     const measuredBy = document.getElementById('med-by')?.value.trim() || null;
     const notes = document.getElementById('med-notes')?.value.trim() || null;
 
-    const hMadura = parseInt(document.getElementById('med-h-madura')?.value, 10) || 0;
-    const hInmadura = parseInt(document.getElementById('med-h-inmadura')?.value, 10) || 0;
-    const hSobremadura = parseInt(document.getElementById('med-h-sobremadura')?.value, 10) || 0;
-    const hPicadura = parseInt(document.getElementById('med-h-picadura')?.value, 10) || 0;
-    const hEnfermedad = parseInt(document.getElementById('med-h-enfermedad')?.value, 10) || 0;
-    const hQuemadura = parseInt(document.getElementById('med-h-quemadura')?.value, 10) || 0;
+    // A blank count is null, not 0 (xd-ibi): see readFormHealthCounts.
+    const { counts, berryCountSample } =
+      readFormHealthCounts(id => document.getElementById(id)?.value);
 
     if (!code || !date || !vintage || !variety || !appellation) {
       this._setStatus('Campos obligatorios: codigo, fecha, vendimia, variedad, origen', 'error');
       return;
     }
-
-    const berryTotal = hMadura + hInmadura + hSobremadura + hPicadura + hEnfermedad + hQuemadura;
 
     const row = {
       medicion_code: code,
@@ -619,16 +632,11 @@ export const Mediciones = {
       appellation,
       lot_code: lotCode,
       tons_received: tons,
-      berry_count_sample: berryTotal || null,
+      berry_count_sample: berryCountSample,
       berry_avg_weight_g: weight,
       berry_diameter_mm: diameter,
       health_grade: grade,
-      health_madura: hMadura,
-      health_inmadura: hInmadura,
-      health_sobremadura: hSobremadura,
-      health_picadura: hPicadura,
-      health_enfermedad: hEnfermedad,
-      health_quemadura: hQuemadura,
+      ...counts,
       phenolic_maturity: phenolicMaturity,
       evaluaciones,
       measured_by: measuredBy,

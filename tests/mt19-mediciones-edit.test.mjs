@@ -7,10 +7,10 @@ import {
   collectDirty, ariaSortFor, shouldShowSourceBanner,
   normalizeEvaluadorPanel, compactEvaluadorPanel, evaluadorPanelSummary,
   evaluadorPanelOptions, seedEvaluadorPanel, projectSnapshot,
-  countInputValue, readCountInput, liveScoreMedicion,
+  countInputValue, readCountInput, liveScoreMedicion, readFormHealthCounts,
 } from '../js/mediciones.js';
 import {
-  scoreFromMedicion, averageEvaluations,
+  scoreFromMedicion, averageEvaluations, sanitaryDamagePct,
   consensusSanitaryLabel, consensusMadurezLabel,
 } from '../js/classification.js';
 import { DataStore } from '../js/dataLoader.js';
@@ -115,6 +115,68 @@ describe('MT.19 — edit-modal count round-trip preserves NULL (xd-b0o)', () => 
     const dirty = collectDirty(projectSnapshot(editing, form), form);
     assert.deepEqual(dirty, { healthEnfermedad: 3 },
       'a typed count must still register as a genuine edit');
+  });
+});
+
+// xd-ibi: the new-medicion FORM used `parseInt(...) || 0` and prefilled every
+// count input with value="0", so a count the lab never took was posted as an
+// explicit 0 and the row scored as a clean reading. The DB cannot tell that 0
+// from a real one, so the fix has to be on the write side. readFormHealthCounts
+// is what submitForm posts: a blank input is null, a typed 0 stays 0.
+describe('MT.19 — new-medicion form posts a blank count as NULL (xd-ibi)', () => {
+  const IDS = {
+    madura: 'med-h-madura', inmadura: 'med-h-inmadura',
+    sobremadura: 'med-h-sobremadura', picadura: 'med-h-picadura',
+    enfermedad: 'med-h-enfermedad', quemadura: 'med-h-quemadura',
+  };
+  const formOf = (vals) => (id) => {
+    const key = Object.keys(IDS).find(k => IDS[k] === id);
+    assert.ok(key, `unexpected input id ${id}`);
+    return vals[key] ?? '';
+  };
+
+  it('a blank count is posted as null and scores as missing, not clean', () => {
+    const { counts, berryCountSample } = readFormHealthCounts(formOf({
+      madura: '190', inmadura: '6', sobremadura: '4', picadura: '',
+      enfermedad: '', quemadura: '',
+    }));
+    assert.equal(counts.health_picadura, null);
+    assert.equal(counts.health_enfermedad, null);
+    assert.equal(counts.health_quemadura, null);
+    assert.equal(counts.health_madura, 190);
+    assert.equal(berryCountSample, 200);
+    // The posted row, read back the way the loader reads it, keeps the hole.
+    const loaded = DataStore._rowToMedicion({ medicion_code: 'MT-26-IBI', ...counts });
+    assert.equal(loaded.healthPicadura, null);
+    assert.equal(sanitaryDamagePct(counts), null,
+      'a partial reading must be missing, not the cleanest bucket');
+  });
+
+  it('an explicit 0 is posted as 0 and scores', () => {
+    const { counts } = readFormHealthCounts(formOf({
+      madura: '190', inmadura: '6', sobremadura: '4', picadura: '0',
+      enfermedad: '0', quemadura: '0',
+    }));
+    assert.equal(counts.health_picadura, 0);
+    assert.equal(counts.health_enfermedad, 0);
+    assert.equal(counts.health_quemadura, 0);
+    assert.equal(sanitaryDamagePct(counts), 0);
+  });
+
+  it('an all-blank sorteo posts every count and the sample size as null', () => {
+    const { counts, berryCountSample } = readFormHealthCounts(formOf({}));
+    for (const v of Object.values(counts)) assert.equal(v, null);
+    assert.equal(berryCountSample, null);
+  });
+
+  it('the markup no longer prefills a count input with 0', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const html = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+    for (const id of Object.values(IDS)) {
+      const tag = html.match(new RegExp(`<input[^>]*id="${id}"[^>]*>`));
+      assert.ok(tag, `${id} input exists`);
+      assert.doesNotMatch(tag[0], /\svalue=/, `${id} must start blank, not "0"`);
+    }
   });
 });
 
