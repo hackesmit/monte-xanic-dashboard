@@ -46,5 +46,9 @@ export const MIGRATIONS = [
   'migration_tanques_escritura',
   'migration_tanques_descartes',
   'migration_tanques_etapa',
+  'migration_login_rate_limit_atomic',
+  'migration_login_rate_limit_sweep_isolated',
+  'migration_tanques_etapa_escritura',
+  'migration_tanques_etapa_append_only',
   'migration_sync_lease',
 ];

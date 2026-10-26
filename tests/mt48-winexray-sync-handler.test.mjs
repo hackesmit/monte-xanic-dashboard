@@ -20,6 +20,14 @@ process.env.WINEXRAY_PASSWORD = 'sup3r-s3cret-pw';
 
 const { default: handler, runSync } = await import('../api/winexray-sync.js');
 
+// verifyToken fails closed when it cannot read token_blacklist (xd-5ua), so the
+// handler tests answer that query as "not revoked" instead of letting a DNS
+// failure on stub.invalid stand in for it. Every other request is untouched.
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, opts) => (String(url).includes('token_blacklist')
+  ? { ok: true, status: 200, json: async () => [] }
+  : realFetch(url, opts));
+
 function mintToken(role, ttlMs = 60_000) {
   const payload = Buffer.from(JSON.stringify({ role, exp: Date.now() + ttlMs })).toString('base64url');
   const sig = crypto.createHmac('sha256', process.env.SESSION_SECRET).update(payload).digest('base64url');

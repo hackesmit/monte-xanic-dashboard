@@ -136,35 +136,21 @@ describe('MT.44 — login rate limit falls back to in-memory when Supabase error
     assert.equal(allowed, 10, 'exactly MAX_ATTEMPTS (10) allowed before the fallback blocks');
   });
 
-  it('a failed stale-entry sweep is best-effort and keeps using the persistent limiter', async () => {
-    // The stale-entry sweep DELETE is housekeeping, not load-bearing. A non-2xx on it
-    // must NOT abandon the persistent limiter and drop to the in-memory map (trivially
-    // reset by Vercel cold starts / multiple instances). Here the sweep fails but the
-    // read and increment for this IP succeed: the function must still drive the
-    // persistent PATCH increment. The in-memory fallback makes NO fetch call, so a
-    // recorded PATCH proves the persistent path — not the fallback — ran.
+  it('a successful atomic call is the persistent path, not the in-memory fallback', async () => {
+    // The stale-entry sweep used to be a separate client DELETE whose failure had
+    // to be tolerated. Since xd-tqx it runs inside login_rate_limit_hit (MT.72),
+    // so one rpc call is the whole persistent path. The in-memory fallback makes
+    // NO fetch call, so a recorded rpc POST proves the persistent path ran.
     const calls = [];
     globalThis.fetch = async (url, opts = {}) => {
-      const method = opts.method || 'GET';
-      const u = String(url);
-      calls.push(method);
-      if (method === 'DELETE') {
-        return resp({ ok: false, status: 500, body: { message: 'sweep failed' } });
-      }
-      if (u.includes('select=attempts')) {
-        // Persistent read: this IP has 3 attempts in the current window.
-        return resp({ ok: true, status: 200, body: [{ attempts: 3, window_start: new Date().toISOString() }] });
-      }
-      // Persistent increment (PATCH) succeeds.
-      return resp({ ok: true, status: 204, body: undefined });
+      calls.push(`${opts.method || 'GET'} ${new URL(String(url)).pathname}`);
+      return resp({ ok: true, status: 200, body: true });
     };
 
     const allowed = await checkRateLimit('203.0.113.55');
-    assert.equal(allowed, true, 'a persistent count of 4 is under MAX, so allow');
-    assert.ok(calls.includes('DELETE'), 'the sweep was attempted');
-    assert.ok(calls.includes('GET'), 'the persistent read ran despite the failed sweep');
-    assert.ok(calls.includes('PATCH'),
-      'the persistent increment ran — proves we did NOT fall back to in-memory (which makes no fetch call)');
+    assert.equal(allowed, true, 'the atomic call said allow');
+    assert.deepEqual(calls, ['POST /rest/v1/rpc/login_rate_limit_hit'],
+      'one rpc call, no client-side read, sweep or increment of rate_limits');
   });
 });
 
