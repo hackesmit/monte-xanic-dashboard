@@ -9,7 +9,7 @@
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 10;
 
-// In-memory fallback if the Supabase rate_limits table is unavailable
+// In-memory fallback if the atomic Supabase call is unavailable
 // (per-instance, resets on cold start).
 const localAttempts = new Map();
 
@@ -17,63 +17,27 @@ export async function checkRateLimit(ip) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_KEY;
 
-  // Try persistent rate limiting via Supabase.
+  // Persistent rate limiting: one atomic Postgres call
+  // (sql/migration_login_rate_limit_atomic.sql) creates or increments this
+  // IP's row under its row lock and says whether the attempt is allowed. No
+  // read-modify-write here: overlapping attempts used to all read the same
+  // count and all pass (bead xd-tqx). Its answer, allow or deny, is final;
+  // only a failed call falls through to the in-memory limiter below.
   if (supabaseUrl && serviceKey) {
     try {
-      const headers = {
-        'Content-Type': 'application/json',
-        'apikey': serviceKey,
-        'Authorization': `Bearer ${serviceKey}`
-      };
-      const cutoff = new Date(Date.now() - WINDOW_MS).toISOString();
-
-      // Sweep stale entries. Best-effort housekeeping: a failure here must not
-      // abandon the working persistent limiter and drop to the per-instance
-      // in-memory map (trivially reset by Vercel cold starts / multiple
-      // instances). Log and carry on — only a failed read or increment of the
-      // current IP below falls back.
-      try {
-        const delResp = await fetch(`${supabaseUrl}/rest/v1/rate_limits?window_start=lt.${cutoff}`, {
-          method: 'DELETE', headers
-        });
-        if (!delResp.ok) {
-          console.error(`[login] Rate limit stale-entry sweep failed (${delResp.status}); continuing`);
-        }
-      } catch (err) {
-        console.error('[login] Rate limit stale-entry sweep error; continuing:', err.message);
-      }
-
-      // Check current attempts for this IP.
-      const getResp = await fetch(
-        `${supabaseUrl}/rest/v1/rate_limits?ip=eq.${encodeURIComponent(ip)}&select=attempts,window_start`,
-        { headers }
-      );
-      if (!getResp.ok) throw new Error(`rate_limits get ${getResp.status}`);
-      const rows = await getResp.json();
-      if (!Array.isArray(rows)) throw new Error('rate_limits get: unexpected body');
-
-      if (!rows.length || new Date(rows[0].window_start).getTime() < Date.now() - WINDOW_MS) {
-        // New window — upsert with count 1.
-        const upResp = await fetch(`${supabaseUrl}/rest/v1/rate_limits?on_conflict=ip`, {
-          method: 'POST',
-          headers: { ...headers, 'Prefer': 'resolution=merge-duplicates' },
-          body: JSON.stringify({ ip, attempts: 1, window_start: new Date().toISOString() })
-        });
-        if (!upResp.ok) throw new Error(`rate_limits upsert ${upResp.status}`);
-        return true;
-      }
-
-      const count = rows[0].attempts + 1;
-      if (count > MAX_ATTEMPTS) return false;
-
-      // Increment counter.
-      const patchResp = await fetch(`${supabaseUrl}/rest/v1/rate_limits?ip=eq.${encodeURIComponent(ip)}`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify({ attempts: count })
+      const resp = await fetch(`${supabaseUrl}/rest/v1/rpc/login_rate_limit_hit`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`
+        },
+        body: JSON.stringify({ p_ip: ip, p_window_seconds: WINDOW_MS / 1000, p_max: MAX_ATTEMPTS })
       });
-      if (!patchResp.ok) throw new Error(`rate_limits patch ${patchResp.status}`);
-      return true;
+      if (!resp.ok) throw new Error(`login_rate_limit_hit ${resp.status}`);
+      const allowed = await resp.json();
+      if (typeof allowed !== 'boolean') throw new Error('login_rate_limit_hit: unexpected body');
+      return allowed;
     } catch (err) {
       console.error('[login] Rate limit DB error, falling back to in-memory:', err.message);
     }

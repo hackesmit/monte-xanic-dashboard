@@ -308,10 +308,11 @@ test('the posted movement carries exactly the fields the API whitelists', () => 
     merma_l: 120,
     nota: 'trasiego con aireación',
     fuente: 'manual',
+    etapa: null,
   });
   // Nothing the client has no business setting: the server refuses these by
   // name, and a client_id belongs to DataStore.postMovimiento.
-  for (const k of ['client_id', 'id', 'created_at', 'anulado', 'creado_por', 'etapa']) {
+  for (const k of ['client_id', 'id', 'created_at', 'anulado', 'creado_por']) {
     assert.ok(!(k in mov), `${k} no debe viajar en el cuerpo`);
   }
 });
@@ -579,4 +580,37 @@ test('the vendimia is four digits as typed, never an exponent or hex', () => {
   }
   assert.equal(movimientoDesdeFormulario(m, { ...base, vintage_year: ' 2024 ' }).vintage_year, 2024);
   assert.deepEqual(erroresDeFormulario({ lot_code: 'x', vintage_year: '2e3' }).length, 1);
+});
+
+// --- etapa (xd-qrn.9) ----------------------------------------------------------
+
+test('the etapa field: blank is no change, a chosen one travels, a salida never carries one', () => {
+  const m = planearMovimiento({ origen: 'A1', destino: 'A2' }, bodega(LLENO));
+  assert.equal(m.pideEtapa, true);
+  assert.equal(m.etapa, null, 'the dialog proposes no change');
+  const base = { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 100 };
+  assert.equal(movimientoDesdeFormulario(m, base).etapa, null, 'field absent');
+  assert.equal(movimientoDesdeFormulario(m, { ...base, etapa: '' }).etapa, null, 'Sin cambio');
+  assert.equal(movimientoDesdeFormulario(m, { ...base, etapa: 'fml' }).etapa, 'fml');
+  // A value outside ETAPAS is sent as typed so the gate names it.
+  const raro = movimientoDesdeFormulario(m, { ...base, etapa: 'barrica' });
+  assert.equal(raro.etapa, 'barrica');
+  assert.ok(erroresDeMovimiento(bodega(LLENO), raro).some((e) => /Etapa no reconocida/.test(e)));
+
+  const s = planearMovimiento({ origen: 'A1', tipo: 'salida' }, bodega(LLENO));
+  assert.equal(s.pideEtapa, false);
+  const salida = movimientoDesdeFormulario(s, { tipo: 'salida', fecha: '2026-02-04', volumen_l: 100, etapa: 'emb' });
+  assert.equal(salida.etapa, null);
+});
+
+test('a movement that declares an etapa passes the gate and sets the destination stage', () => {
+  const b = bodega(LLENO);
+  const m = planearMovimiento({ origen: 'A1', destino: 'A2' }, b);
+  const mov = movimientoDesdeFormulario(m, { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 1000, etapa: 'fml' });
+  assert.deepEqual(erroresDeMovimiento(b, mov), []);
+  const { estado } = replayMovimientos(b.catalogo, [...b.movimientos, { ...mov, id: 999 }], { sinonimos: SINONIMOS });
+  assert.equal(estado.A2.etapa, 'fml');
+  // Without one the stage travels with the wine into the empty tank.
+  const sin = movimientoDesdeFormulario(m, { tipo: 'trasiego', fecha: '2026-02-04', volumen_l: 1000 });
+  assert.equal(replayMovimientos(b.catalogo, [...b.movimientos, { ...sin, id: 999 }], { sinonimos: SINONIMOS }).estado.A2.etapa, 'rec');
 });

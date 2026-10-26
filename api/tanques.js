@@ -28,19 +28,19 @@ import { replayMovimientos, validarMovimientoEnLog } from '../js/tanques/estado.
 // Exactly the columns a client may put on a new movement. Anything else is
 // refused by name rather than silently dropped: `creado_por` in a body is a
 // client trying to sign someone else's work, an explicit `id` desyncs the
-// BIGSERIAL, a `created_at` or a pre-set `anulado` backdates or pre-kills a row,
-// and `etapa` is written only by the inventory load (a lab stage statement),
-// not by a client. A silent drop would turn each of those
-// into a bug nobody can see from the response.
+// BIGSERIAL, and a `created_at` or a pre-set `anulado` backdates or pre-kills a
+// row. A silent drop would turn each of those into a bug nobody can see from
+// the response. `etapa` is the stage the wine is in where it arrives (null:
+// it travels with the wine); js/tanques/estado.js judges its value.
 const CAMPOS_MOVIMIENTO = new Set([
   'fecha', 'tipo', 'origen', 'destino', 'lot_code',
-  'vintage_year', 'volumen_l', 'merma_l', 'nota', 'fuente', 'client_id',
+  'vintage_year', 'volumen_l', 'merma_l', 'nota', 'fuente', 'client_id', 'etapa',
 ]);
 
 // Fields that must arrive as JSON strings. An array or an object would be
 // String()-coerced into something like 'A1,A2' or '[object Object]' and then
 // judged as if the client had meant it.
-const CAMPOS_TEXTO = ['fecha', 'tipo', 'origen', 'destino', 'lot_code', 'nota', 'fuente', 'client_id'];
+const CAMPOS_TEXTO = ['fecha', 'tipo', 'origen', 'destino', 'lot_code', 'nota', 'fuente', 'client_id', 'etapa'];
 // Fields that must be a JSON number or a plain decimal string.
 const CAMPOS_NUMERO = ['vintage_year', 'volumen_l', 'merma_l'];
 
@@ -569,6 +569,7 @@ function mismaIntencion(guardada, mov) {
     && num(guardada.volumen_l) === num(mov.volumen_l)
     && litros(guardada.merma_l) === litros(mov.merma_l)
     && textoONulo(guardada.nota) === textoONulo(mov.nota)
+    && textoONulo(guardada.etapa) === textoONulo(mov.etapa)
     && texto(guardada.fuente) === texto(mov.fuente)
     && textoONulo(guardada.creado_por) === textoONulo(mov.creado_por);
 }
@@ -606,6 +607,7 @@ async function crear(req, res, usuario) {
       merma_l: entrada.merma_l == null ? 0 : num(entrada.merma_l),
       nota: entrada.nota == null || entrada.nota === '' ? null : entrada.nota,
       fuente: entrada.fuente == null ? 'manual' : texto(entrada.fuente),
+      etapa: texto(entrada.etapa) || null,
       creado_por: usuario,   // from the verified token, never from the body
       client_id: clientId,
     };
