@@ -18,14 +18,24 @@
 -- `date UNIQUE`, which reads as one weather series for the whole company.
 -- migration_overhaul.sql replaced it with UNIQUE (date, location) long ago,
 -- so each of the three valleys keeps its own series.
+--
+-- Exception: wine_samples below already carries its identity key in the
+-- migrated form (xd-ajy): sample_seq, the composite UNIQUE (sample_id,
+-- sample_date, sample_seq), no single-column UNIQUE on sample_id,
+-- sample_date NOT NULL, and the audit columns. Only those; other columns
+-- later migrations add (wine_samples_brix and the like) still come from
+-- the migrations. Every migration that touches wine_samples is safe to
+-- replay over it: the overhaul adds a two-column key that migration_sample_seq
+-- then drops, and migration_sample_seq only adds its composite key when it is
+-- not there yet.
 -- ==================================================================
 
 CREATE TABLE IF NOT EXISTS wine_samples (
   id               uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  sample_id        text UNIQUE NOT NULL,
+  sample_id        text NOT NULL,
   vessel_id        text,
   sample_type      text,
-  sample_date      date,
+  sample_date      date NOT NULL,
   crush_date       date,
   days_post_crush  integer,
   vintage_year     integer,
@@ -54,9 +64,18 @@ CREATE TABLE IF NOT EXISTS wine_samples (
   berry_sugars_mg  numeric,
   below_detection  boolean DEFAULT false,
   notes            text,
-  uploaded_at      timestamptz DEFAULT now()
+  uploaded_at      timestamptz DEFAULT now(),
+  -- Same-day repeats of one sample (migration_sample_seq).
+  sample_seq       integer NOT NULL DEFAULT 1,
+  -- Who last edited the row in the dashboard (migration_row_audit_columns).
+  last_edited_at   timestamptz,
+  last_edited_by   text,
+  CONSTRAINT wine_samples_sample_id_sample_date_seq_key
+    UNIQUE (sample_id, sample_date, sample_seq)
 );
 
+CREATE INDEX IF NOT EXISTS idx_wine_samples_sample_seq
+  ON wine_samples (sample_id, sample_date, sample_seq);
 CREATE INDEX IF NOT EXISTS wine_samples_vintage_idx    ON wine_samples (vintage_year);
 CREATE INDEX IF NOT EXISTS wine_samples_variety_idx    ON wine_samples (variety);
 CREATE INDEX IF NOT EXISTS wine_samples_type_idx       ON wine_samples (sample_type);
