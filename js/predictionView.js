@@ -38,6 +38,21 @@ export function flagAlertMessages(prediction) {
 // Pure: the HTML fragment for a prediction's flag alerts ('' when none). Styled
 // inline to match the alert palette used by .pred-card-status without adding new
 // CSS surface. Exported so a test can assert both messages render.
+// A card is one (variety, appellation) group and the appellation is
+// ranch-first, so that pair is its identity. The id must be unique per card:
+// Charts.instances is keyed by canvas id and destroys the previous holder.
+// `used` (one Set per render pass) breaks ties between slugs that differ only
+// in punctuation, keeping ids deterministic for a given card order.
+export function predMiniSlug(r, used = new Set()) {
+  const base = `${r.variety}-${r.appellation}`
+    .toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-');
+  let slug = base;
+  for (let n = 2; used.has(slug); n++) slug = `${base}-${n}`;
+  used.add(slug);
+  return slug;
+}
+
 export function renderFlagAlerts(prediction) {
   const msgs = flagAlertMessages(prediction);
   if (msgs.length === 0) return '';
@@ -130,12 +145,13 @@ export const PredictionView = {
       grid.innerHTML = '<p class="empty-state">Sin datos para mostrar.</p>';
       return;
     }
+    const usedSlugs = new Set();
     for (const r of filtered) {
-      grid.appendChild(this.renderCard(r, today));
+      grid.appendChild(this.renderCard(r, today, usedSlugs));
     }
   },
 
-  renderCard(r, today) {
+  renderCard(r, today, usedSlugs = new Set()) {
     const card = document.createElement('div');
     const p = r.prediction;
     const isAlert = ['riesgo-sobremadurez', 'no-alcanzar-A',
@@ -221,8 +237,7 @@ export const PredictionView = {
       // Deterministic canvas ids so Charts.instances replaces (and destroys)
       // the previous render's chart instead of leaking one orphan instance
       // per re-render under a random key.
-      const slug = `${r.variety}-${r.valley || r.appellation}`
-        .toLowerCase().replace(/[^a-z0-9]+/g, '-');
+      const slug = predMiniSlug(r, usedSlugs);
       requestAnimationFrame(() => {
         const brixCanvas = card.querySelector('canvas[data-axis="brix"]');
         if (brixCanvas) {
