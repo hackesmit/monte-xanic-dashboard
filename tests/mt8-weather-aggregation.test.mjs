@@ -194,3 +194,134 @@ describe('MT.8 — x-axis title helper', () => {
     assert.equal(WeatherStore._xAxisTitle(), WeatherStore._xAxisTitle('season'));
   });
 });
+
+describe('MT.8 — sync bootstrap and coverage (xd-fge)', () => {
+  const resetStore = () => {
+    WeatherStore.data = [];
+    WeatherStore._byDate = {};
+    WeatherStore._gddCache = {};
+  };
+  const day = (n) => `2025-07-${String(n).padStart(2, '0')}`;
+  const put = (n, valley, rain) => {
+    const row = { date: day(n), location: valley, temp_avg: 20, rainfall_mm: rain };
+    WeatherStore.data.push(row);
+    (WeatherStore._byDate[row.date] ||= {})[valley] = row;
+  };
+
+  it('empty table with a location column still syncs VON and SV with date,location', async () => {
+    resetStore();
+    const upserts = [];
+    const supa = {
+      from: () => ({
+        select: () => ({ limit: async () => ({ data: [], error: null }) }),
+        upsert: async (rows, opts) => { upserts.push({ rows, opts }); return { error: null }; }
+      })
+    };
+    const { DataStore } = await import('../js/dataLoader.js');
+    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI];
+    DataStore.supabase = supa;
+    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    try {
+      await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
+    } finally {
+      [DataStore.supabase, WeatherStore._fetchFromAPI] = prev;
+    }
+    assert.equal(upserts.length, 3);
+    assert.ok(upserts.every(u => u.opts.onConflict === 'date,location'));
+    assert.deepEqual(upserts.map(u => u.rows[0].location).sort(), ['SV', 'VDG', 'VON']);
+  });
+
+  it('pre-migration table (probe errors) syncs VDG only with onConflict date', async () => {
+    resetStore();
+    const upserts = [];
+    const supa = {
+      from: () => ({
+        select: () => ({ limit: async () => ({ data: null, error: { code: '42703', message: 'column meteorology.location does not exist' } }) }),
+        upsert: async (rows, opts) => { upserts.push(opts); return { error: null }; }
+      })
+    };
+    const { DataStore } = await import('../js/dataLoader.js');
+    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI];
+    DataStore.supabase = supa;
+    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    try {
+      await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
+    } finally {
+      [DataStore.supabase, WeatherStore._fetchFromAPI] = prev;
+    }
+    assert.equal(upserts.length, 1);
+    assert.equal(upserts[0].onConflict, 'date');
+  });
+
+  // Probe answers come from `probe` in order (the last one repeats); a
+  // function entry throws, like a network failure inside supabase-js.
+  const runSync = async (probe) => {
+    resetStore();
+    const upserts = [];
+    let calls = 0;
+    const supa = {
+      from: () => ({
+        select: () => ({ limit: async () => {
+          const r = probe[Math.min(calls++, probe.length - 1)];
+          if (typeof r === 'function') r();
+          return r;
+        } }),
+        upsert: async (rows, opts) => { upserts.push({ rows, opts }); return { error: null }; }
+      })
+    };
+    const { DataStore } = await import('../js/dataLoader.js');
+    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI, WeatherStore._probeRetryMs];
+    DataStore.supabase = supa;
+    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    WeatherStore._probeRetryMs = 0;
+    try {
+      await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
+    } finally {
+      [DataStore.supabase, WeatherStore._fetchFromAPI, WeatherStore._probeRetryMs] = prev;
+    }
+    return { upserts, calls };
+  };
+  const http503 = { data: null, error: { code: '', message: 'Service Unavailable' } };
+  const ok = { data: [], error: null };
+
+  it('a transient 503 on the probe is retried, then a migrated table syncs all valleys', async () => {
+    const { upserts, calls } = await runSync([http503, http503, ok]);
+    assert.equal(calls, 3);
+    assert.equal(upserts.length, 3);
+    assert.ok(upserts.every(u => u.opts.onConflict === 'date,location'));
+  });
+
+  it('a probe that keeps failing aborts the sync instead of assuming the old schema', async () => {
+    const { upserts, calls } = await runSync([http503]);
+    assert.equal(calls, WeatherStore._probeAttempts);
+    assert.equal(upserts.length, 0);
+  });
+
+  it('a network error thrown by the probe is not read as a missing column', async () => {
+    const { upserts } = await runSync([() => { throw new TypeError('Failed to fetch'); }]);
+    assert.equal(upserts.length, 0);
+  });
+
+  it('an auth error on the probe is not read as a missing column', async () => {
+    const { upserts } = await runSync([{ data: null, error: { code: 'PGRST301', message: 'JWT expired' } }]);
+    assert.equal(upserts.length, 0);
+  });
+
+  it('a small gap is no longer treated as a full range', () => {
+    resetStore();
+    for (let n = 1; n <= 14; n++) if (n !== 5 && n !== 6) put(n, 'VDG', 1);
+    assert.equal(WeatherStore._hasFullRange(day(1), day(14), 'VDG'), false);
+    assert.deepEqual(WeatherStore._missingSpan(day(1), day(14), 'VDG'), { start: day(5), end: day(6) });
+    put(5, 'VDG', 1); put(6, 'VDG', 1);
+    assert.equal(WeatherStore._hasFullRange(day(1), day(14), 'VDG'), true);
+  });
+
+  it('cumulative rainfall is null when more than 3 days are missing, summed otherwise', () => {
+    resetStore();
+    for (let n = 1; n <= 30; n++) if (n > 2) put(n, 'VDG', 1);   // 2 missing
+    assert.equal(WeatherStore.getCumulativeRainfall(day(30), 2025, 'Valle de Guadalupe'), 28);
+    resetStore();
+    for (let n = 1; n <= 30; n++) if (n > 5) put(n, 'VDG', 1);   // 5 missing
+    assert.equal(WeatherStore.getCumulativeRainfall(day(30), 2025, 'Valle de Guadalupe'), null);
+  });
+});
