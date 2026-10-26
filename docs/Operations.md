@@ -15,6 +15,7 @@ All required for production. Store in `.env.local` locally, add to Vercel Settin
 | `LAB_USERNAME` | Yes | /api/login | Lab user username |
 | `LAB_PASSWORD_HASH` | Yes | /api/login | Lab user bcrypt hash |
 | `CRON_SECRET` | Yes (Production) | /api/ping | Bearer token Vercel injects on cron-triggered requests. Generate with `openssl rand -hex 32`. Rotate by replacing the value in Vercel and redeploying — old value stops working immediately. |
+| `TOKEN_BLACKLIST_TIMEOUT_MS` | No | Every session-gated /api/* endpoint | Deadline in ms for the `token_blacklist` revocation query, headers and body together (default 3000). Past it the request answers 503. A value that is not a positive number falls back to the default. |
 | `ANTHROPIC_API_KEY` | Yes (for Mona) | /api/mona | Server-side Claude API key. Powers the Mona chat assistant (`claude-sonnet-4-6`). Never exposed to the client — `/api/mona` proxies all traffic. Without it, `/api/mona` returns a Spanish "Mona no está configurada" error and the rest of the dashboard is unaffected. |
 
 **Mona (chat assistant) setup:**

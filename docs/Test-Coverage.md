@@ -69,7 +69,7 @@ Node.js built-in test runner (`node:test`). Run with `npm test` or `node --test 
 | Malformed base64 | Returns 401 "Invalid token" |
 | Blacklisted token | Returns 401 "Token revoked" (mocked fetch) |
 | Not blacklisted | Returns payload (mocked empty fetch) |
-| Blacklist fetch failure | Fail-closed: returns 503 "Revocation check unavailable" (mocked network error; full matrix in MT.60) |
+| Blacklist fetch failure | Fail-closed: returns 503 "Revocation check unavailable" (mocked network error; full matrix in MT.60; a stalled connection or body times out to the same 503 on /api/verify in MT.61) |
 | checkBlacklist=false | Does not call fetch at all |
 | Missing SESSION_SECRET | Returns 401 "Unauthorized" |
 
