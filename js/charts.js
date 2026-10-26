@@ -8,6 +8,7 @@ import { Filters } from './filters.js';
 import { WeatherStore } from './weather.js';
 import { App } from './app.js';
 import { linearFit, trendEndpoints, formatFit } from './trend.js';
+import { hasEnvero, sinEnveroRows, sinEnveroColumn, sinEnveroAxis, fechaMuestra } from './sinEnvero.js';
 
 // Motion-token-aligned global Chart.js defaults. Mirrors CSS --motion-slow
 // (320ms) + an easing close to --ease-entrance. Set once at module load so
@@ -204,7 +205,12 @@ export const Charts = {
           if (r.variety) lines.push(`Varietal: ${r.variety}`);
           if (r.appellation) lines.push(`Origen: ${r.appellation}`);
           lines.push(`${ctx.dataset.label || 'Y'}: ${typeof r.y === 'number' ? r.y.toFixed(2) : r.y}`);
-          if (r.x !== undefined) lines.push(`X: ${typeof r.x === 'number' ? r.x.toFixed(1) : r.x}`);
+          if (r._sinEnvero) {
+            lines.push('Sin fecha de envero');
+            if (r.sampleDate) lines.push(`Fecha: ${r.sampleDate}`);
+          } else if (r.x !== undefined) {
+            lines.push(`X: ${typeof r.x === 'number' ? r.x.toFixed(1) : r.x}`);
+          }
           if (r._isLastPoint) lines.push('★ Punto final');
           return lines;
         }
@@ -297,6 +303,19 @@ export const Charts = {
       };
     });
 
+    // A lot with no envero date has no days-post-envero x. Its readings stand
+    // in a "Sin envero" column left of the timeline instead of vanishing
+    // (xd-ayv); see js/sinEnvero.js.
+    const scales = this.axisOpts(xLabel, yLabel);
+    if (xField === 'daysPostCrush') {
+      const sinEnvero = this._sinEnveroDatasets(data, yField, groupField, resolveColor,
+        Object.values(groups).flat().map(p => p.x));
+      if (sinEnvero) {
+        datasets.push(...sinEnvero.datasets);
+        scales.x = sinEnveroAxis(scales.x, sinEnvero.column);
+      }
+    }
+
     const legendColor = this._getThemeColor('--text') || '#D8D0C4';
     this._createChart(canvasId, canvas, {
       type: 'scatter',
@@ -312,16 +331,71 @@ export const Charts = {
               color: legendColor,
               font: { size: 10, family: 'Sackers Gothic Medium' },
               boxWidth: 10, padding: 6,
-              usePointStyle: true, pointStyle: 'circle'
+              usePointStyle: true, pointStyle: 'circle',
+              // A group's "Sin envero" dataset shares its label and its
+              // visibility; one legend entry toggles both. A group whose every
+              // reading lacks an envero keeps its own entry.
+              filter: (item, chartData) => {
+                const ds = chartData.datasets[item.datasetIndex];
+                return !ds?._sinEnvero || !chartData.datasets.some(o => !o._sinEnvero && o.label === ds.label);
+              }
             },
             onClick: (e, legendItem) => { this.toggleSeries(legendItem.text); }
           },
           tooltip: this.tooltipConfig()
         },
-        scales: this.axisOpts(xLabel, yLabel),
+        scales,
       },
       plugins: []
     });
+  },
+
+  // Datasets for the readings of lots without an envero date, placed in the
+  // "Sin envero" column of a días-post-envero chart. `datedXs` are the x values
+  // already plotted, which decide where the column sits. Returns null when no
+  // reading lacks an envero, so a chart without such lots is unchanged.
+  _sinEnveroDatasets(data, yField, groupField, resolveColor, datedXs) {
+    const rows = sinEnveroRows(data, yField);
+    if (!rows.length) return null;
+    const column = sinEnveroColumn(datedXs);
+    const groups = {};
+    rows.forEach(d => {
+      const g = d[groupField] || 'Unknown';
+      if (!groups[g]) groups[g] = [];
+      groups[g].push({
+        x: _applyDaysJitter(column.x, d),
+        y: d[yField],
+        sampleId: d.sampleId,
+        lotCode: d.lotCode,
+        variety: d.variety,
+        appellation: d.appellation,
+        vintage: d.vintage,
+        sampleDate: fechaMuestra(d),
+        _sinEnvero: true
+      });
+    });
+    const r = this._mobileRadius();
+    const datasets = Object.entries(groups).map(([name, pts]) => {
+      const color = resolveColor(name);
+      return {
+        label: name,
+        data: pts,
+        borderColor: color,
+        backgroundColor: color + '99',
+        pointBackgroundColor: color + '99',
+        pointBorderColor: color,
+        pointStyle: 'rectRot',
+        pointRadius: r + 1,
+        pointHoverRadius: CONFIG.chartDefaults.pointHoverRadius,
+        pointBorderWidth: 1,
+        borderWidth: 0,
+        showLine: false,
+        fill: false,
+        hidden: this.hiddenSeries.has(name),
+        _sinEnvero: true
+      };
+    });
+    return { datasets, column };
   },
 
   // Create a pure scatter chart (no lines, e.g. Brix vs pH)
@@ -2590,12 +2664,15 @@ export const Charts = {
       }
     });
     // Berry points
+    // A berry reading with no envero date is KEPT with daysPostCrush null: the
+    // chart draws it in the "Sin envero" column rather than dropping the lot
+    // (xd-ayv). Wine points still need their own day count.
     berryData.forEach(d => {
-      if (!d.lotCode || d.daysPostCrush === null || d.daysPostCrush === undefined) return;
+      if (!d.lotCode) return;
       if (d.vintage != null && Number(d.vintage) !== latestVintage[d.lotCode]) return;
       if (!lots[d.lotCode]) lots[d.lotCode] = { variety: d.variety, appellation: d.appellation, vintage: latestVintage[d.lotCode] ?? null, points: [] };
       lots[d.lotCode].points.push({
-        daysPostCrush: d.daysPostCrush,
+        daysPostCrush: hasEnvero(d) ? d.daysPostCrush : null,
         sampleId: d.sampleId,
         sampleDate: d.sampleDate,
         tANT: d.tANT, brix: d.brix, pH: d.pH, ta: d.ta,
@@ -2638,8 +2715,14 @@ export const Charts = {
         });
       });
     });
-    // Sort points within each lot
-    Object.values(lots).forEach(lot => lot.points.sort((a, b) => a.daysPostCrush - b.daysPostCrush));
+    // Sort points within each lot: undated (Sin envero) readings first, by
+    // sample date, then the timeline by day count.
+    Object.values(lots).forEach(lot => lot.points.sort((a, b) => {
+      const ua = a.daysPostCrush === null, ub = b.daysPostCrush === null;
+      if (ua !== ub) return ua ? -1 : 1;
+      if (ua) return (fechaMuestra(a) ?? '').localeCompare(fechaMuestra(b) ?? '');
+      return a.daysPostCrush - b.daysPostCrush;
+    }));
     return lots;
   },
 
@@ -2672,6 +2755,25 @@ export const Charts = {
     const datasets = [];
     const lotEntries = Object.entries(lots);
 
+    // Readings of a lot with no envero date stand in the "Sin envero" column
+    // (js/sinEnvero.js) and are never joined into the lot's line: a segment
+    // that touches one is drawn transparent.
+    const allPoints = lotEntries.flatMap(([, lot]) => lot.points);
+    const anySinEnvero = allPoints.some(p => p.daysPostCrush === null);
+    const column = anySinEnvero
+      ? sinEnveroColumn(allPoints.filter(p => p.daysPostCrush !== null).map(p => p.daysPostCrush))
+      : null;
+    const toPoint = (p, lotCode, lot, y) => (p.daysPostCrush === null
+      ? { x: _applyDaysJitter(column.x, { lotCode }), y, sampleId: p.sampleId, variety: lot.variety,
+          appellation: lot.appellation, source: p.source, sampleDate: fechaMuestra(p), _sinEnvero: true }
+      : { x: p.daysPostCrush, y, sampleId: p.sampleId, variety: lot.variety,
+          appellation: lot.appellation, source: p.source });
+    const sinEnveroSegment = (pts) => ({
+      borderColor: (ctx) => (pts[ctx.p0DataIndex]?._sinEnvero || pts[ctx.p1DataIndex]?._sinEnvero
+        ? 'transparent' : undefined)
+    });
+    const sinEnveroStyle = (pts, style) => (column ? pts.map(p => (p._sinEnvero ? 'rectRot' : style)) : style);
+
     lotEntries.forEach(([lotCode, lot]) => {
       const lotColor = resolveColor(lot.appellation, lot.variety);
 
@@ -2679,15 +2781,12 @@ export const Charts = {
       activeCompounds.forEach((compound, ci) => {
         const pts = lot.points
           .filter(p => p[compound] !== null && p[compound] !== undefined && typeof p[compound] === 'number')
-          .map(p => ({
-            x: p.daysPostCrush, y: p[compound],
-            sampleId: p.sampleId, variety: lot.variety, appellation: lot.appellation,
-            source: p.source
-          }));
+          .map(p => toPoint(p, lotCode, lot, p[compound]));
         if (!pts.length) return;
 
         // Identify last point
-        const lastIdx = pts.length - 1;
+        // (a Sin envero reading is never the lot's final point on the timeline)
+        const lastIdx = pts[pts.length - 1]._sinEnvero ? -1 : pts.length - 1;
         const radii = pts.map(() => 4);
         const bdColors = pts.map((_, i) => i === lastIdx ? '#DDB96E' : lotColor);
         const bdWidths = pts.map((_, i) => i === lastIdx ? 3 : 0.5);
@@ -2708,6 +2807,8 @@ export const Charts = {
           fill: false,
           yAxisID: 'y',
           _lotCode: lotCode,
+          pointStyle: sinEnveroStyle(pts, 'circle'),
+          segment: sinEnveroSegment(pts),
           borderDash: ci > 0 ? [5, 3] : []
         });
       });
@@ -2715,11 +2816,7 @@ export const Charts = {
       // Brix on secondary Y-axis (always shown, purple squares)
       const brixPts = lot.points
         .filter(p => p.brix !== null && p.brix !== undefined && typeof p.brix === 'number')
-        .map(p => ({
-          x: p.daysPostCrush, y: p.brix,
-          sampleId: p.sampleId, variety: lot.variety, appellation: lot.appellation,
-          source: p.source
-        }));
+        .map(p => toPoint(p, lotCode, lot, p.brix));
       if (brixPts.length) {
         datasets.push({
           label: `${lotCode} · Brix`,
@@ -2728,7 +2825,8 @@ export const Charts = {
           backgroundColor: '#9B59B6CC',
           pointBackgroundColor: '#9B59B6',
           pointBorderColor: '#9B59B6',
-          pointStyle: 'rect',
+          pointStyle: sinEnveroStyle(brixPts, 'rect'),
+          segment: sinEnveroSegment(brixPts),
           pointRadius: 5,
           pointHoverRadius: 7,
           borderWidth: 1.5,
@@ -2771,6 +2869,13 @@ export const Charts = {
       });
       chart.update();
     };
+    const xAxis = {
+      title: { display: true, text: 'Días Post-Envero', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
+      ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
+      grid: { color: CONFIG.chartDefaults.gridColor }
+    };
+    const xScale = column ? sinEnveroAxis(xAxis, column) : xAxis;
+
     const onDblClick = () => {
       const chart = this.instances[canvasId];
       if (!chart) return;
@@ -2811,18 +2916,19 @@ export const Charts = {
                 if (r.sampleId) lines.push(`Lote: ${r.sampleId}`);
                 if (r.source) lines.push(`Fuente: ${r.source === 'berry' ? 'Baya' : 'Vino'}`);
                 lines.push(`${ctx.dataset.label}: ${typeof r.y === 'number' ? r.y.toFixed(2) : r.y}`);
-                lines.push(`DPE: ${r.x}`);
+                if (r._sinEnvero) {
+                  lines.push('Sin fecha de envero');
+                  if (r.sampleDate) lines.push(`Fecha: ${r.sampleDate}`);
+                } else {
+                  lines.push(`DPE: ${r.x}`);
+                }
                 return lines;
               }
             }
           }
         },
         scales: {
-          x: {
-            title: { display: true, text: 'Días Post-Envero', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },
-            ticks: { color: CONFIG.chartDefaults.tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
-            grid: { color: CONFIG.chartDefaults.gridColor }
-          },
+          x: xScale,
           y: {
             position: 'left',
             title: { display: true, text: 'Fenólicos (ppm)', color: '#6B6B6B', font: { size: 9, family: 'Sackers Gothic Medium' } },

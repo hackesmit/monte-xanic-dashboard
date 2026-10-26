@@ -309,14 +309,16 @@ describe('MT.52 - GET /api/tanques', () => {
     assert.ok(!JSON.stringify(res.body).includes('test-service-key'));
   });
 
-  it('reports 500 when the Supabase env vars are missing', async () => {
+  it('refuses with 503 when the Supabase env vars are missing', async () => {
+    // The session gate cannot check the blacklist without them, so verifyToken
+    // fails closed (xd-5ua) before the handler's own config check is reached.
     mockSupabase();
     const saved = process.env.SUPABASE_SERVICE_KEY;
     delete process.env.SUPABASE_SERVICE_KEY;
     try {
       const res = makeRes();
       await handler(makeReq({ method: 'GET' }), res);
-      assert.equal(res.statusCode, 500);
+      assert.equal(res.statusCode, 503);
     } finally {
       process.env.SUPABASE_SERVICE_KEY = saved;
     }
@@ -407,12 +409,35 @@ describe('MT.52 - POST /api/tanques action crear', () => {
     }
   });
 
-  it('refuses etapa from a client (only the inventory load writes it)', async () => {
-    mockSupabase();
-    const res = makeRes();
-    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ etapa: 'fa' }) } }), res);
-    assert.equal(res.statusCode, 400);
-    assert.match(res.body.error, /etapa/);
+  it('passes a declared etapa to the write, and no etapa as null (xd-qrn.9)', async () => {
+    let calls = mockSupabase();
+    let res = makeRes();
+    await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ etapa: 'fml' }) } }), res);
+    assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+    assert.equal(rpcArgs(calls)[0].p_fila.etapa, 'fml');
+
+    for (const vacia of [undefined, null, '', '  ']) {
+      calls = mockSupabase();
+      res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento({ etapa: vacia }) } }), res);
+      assert.equal(res.statusCode, 200, JSON.stringify(res.body));
+      assert.equal(rpcArgs(calls)[0].p_fila.etapa, null, JSON.stringify(vacia));
+    }
+  });
+
+  it('refuses an etapa outside the seven, a non-text one, and one on a salida, writing nothing', async () => {
+    for (const [over, motivo] of [
+      [{ etapa: 'barrica' }, /Etapa no reconocida: "barrica"/],
+      [{ etapa: ['fa'] }, /"etapa" debe ser texto/],
+      [{ tipo: 'salida', destino: null, etapa: 'emb' }, /Una salida no lleva etapa/],
+    ]) {
+      const calls = mockSupabase();
+      const res = makeRes();
+      await handler(makeReq({ body: { action: 'crear', movimiento: movimiento(over) } }), res);
+      assert.equal(res.statusCode, 400, JSON.stringify(over));
+      assert.match(res.body.error + (res.body.errores || []).join(' '), motivo);
+      assert.equal(escribio(calls), false);
+    }
   });
 
   it('refuses an overdraw with the module Spanish reason and writes nothing', async () => {
@@ -1432,6 +1457,7 @@ describe('MT.52 - a client_id reused with different data is a 409, not duplicado
     ['another date', { volumen_l: 6000, fecha: '2025-09-11' }],
     ['another destination', { volumen_l: 6000, destino: 'TIBOR 13' }],
     ['another note', { volumen_l: 6000, nota: 'otra' }],
+    ['another etapa', { volumen_l: 6000, etapa: 'fml' }],
     ['another user', { volumen_l: 6000 }, 'otrouser'],
   ]) {
     it(`refuses the key with ${nombre} (pre-check, no RPC)`, async () => {

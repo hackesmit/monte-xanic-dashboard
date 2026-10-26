@@ -254,8 +254,9 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 // '30/6/26'. Reading that as 30 June 2026 would be a guess, and this parser's
 // whole contract is that a wrong date lands a reading on a day nobody
 // recorded. So the envero is dropped and the lot is NAMED in a Spanish warning
-// so the lab repairs the cell; its chemistry still ingests, it simply stays off
-// the días-post-envero timeline until the source is fixed.
+// so the lab repairs the cell; its chemistry still ingests and the maturity
+// charts draw it in their "Sin envero" column (js/sinEnvero.js) until the
+// source is fixed.
 //
 // A blank cell is legitimate and silent: lots not yet received have no envero.
 function parseEnvero(raw, lote) {
@@ -279,7 +280,7 @@ function parseEnvero(raw, lote) {
     warning:
       `Lote "${lote}": la fecha de envero "${str}" no es una fecha reconocible (se esperaba una celda ` +
       `con formato de fecha). No se adivinó un valor, así que el lote se guardó sin fecha de envero y ` +
-      `sus mediciones no aparecerán en las gráficas de días post-envero hasta corregir la celda.`,
+      `sus mediciones aparecen en la columna «Sin envero» de las gráficas de días post-envero hasta corregir la celda.`,
   };
 }
 
@@ -925,7 +926,8 @@ export const seguimientoParser = {
             // envero date every 2026 point was silently absent from
             // chartBrix/Ant/PH/TA/Weight/Evolution/Vintage*. A lot with no
             // readable envero still ingests its chemistry (KPIs, table and the
-            // per-variety bars use it); it just stays off the timeline.
+            // per-variety bars use it) and the timeline charts draw it in
+            // their "Sin envero" column instead (xd-ayv, js/sinEnvero.js).
             crush_date: envero.date,
             days_post_crush: daysPostEnvero(envero.date, sampleDate),
           } : {}),
