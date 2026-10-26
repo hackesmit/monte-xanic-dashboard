@@ -3,9 +3,10 @@
 // the API key, the model, max_tokens, the system prompt (plus the approved
 // knowledge block, read here), the tool list (js/mona/toolDefs.js) and a shared
 // daily ceiling per user (api/_lib/monaUsage.js). The client sends messages only.
+import crypto from 'crypto';
 import { verifyToken } from './_lib/verifyToken.js';
 import { validateChatRequest } from './_lib/monaValidate.js';
-import { reserveRequest, recordTokens, createUsageMeter } from './_lib/monaUsage.js';
+import { reserveBudget, settleReservation, createUsageMeter, estimateInputTokens } from './_lib/monaUsage.js';
 import { TOOL_DEFS } from '../js/mona/toolDefs.js';
 import { assembleKnowledgeContext } from '../js/mona/knowledge.js';
 
@@ -76,11 +77,23 @@ async function knowledgeBlock() {
   }
 }
 
+// True once the browser has gone away. Checked after every await before the
+// upstream call, because a 'close' that fired during an await is not replayed.
+const gone = (res, abort) => abort.signal.aborted || res.destroyed;
+
 export default async function handler(req, res) {
+  // Registered before the first await: a tab that closes while the token or the
+  // budget is being checked must still stop the request. 'close' on the response
+  // fires on a client disconnect and also after our own res.end(), so only an
+  // unfinished response counts as a disconnect.
+  const upstreamAbort = new AbortController();
+  res.on('close', () => { if (!res.writableFinished) upstreamAbort.abort(); });
+
   if (req.method !== 'POST') { res.status(405).json({ error: 'Método no permitido' }); return; }
 
   const token = req.headers['x-session-token'];
   const result = await verifyToken(token);
+  if (gone(res, upstreamAbort)) return;
   if (result.error) { res.status(result.status).json({ error: 'No autorizado' }); return; }
   const user = result.payload.user;
   if (typeof user !== 'string' || !user) { res.status(401).json({ error: 'No autorizado' }); return; }
@@ -91,77 +104,98 @@ export default async function handler(req, res) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) { res.status(500).json({ error: 'Mona no está configurada (falta API key)' }); return; }
 
-  const reservation = await reserveRequest(user);
-  if (!reservation.ok) { res.status(reservation.status).json({ error: reservation.error }); return; }
-
-  // Cancel the Anthropic generation when the browser goes away: without this a
-  // closed tab keeps generating, and billing, to max_tokens. 'close' on the
-  // response fires on a client disconnect and also after our own res.end(), so
-  // only an unfinished response counts as a disconnect.
-  const upstreamAbort = new AbortController();
-  res.on('close', () => { if (!res.writableFinished) upstreamAbort.abort(); });
-
   const system = [{ type: 'text', text: BASE_SYSTEM }];
   const knowledge = await knowledgeBlock();
+  if (gone(res, upstreamAbort)) return;
   if (knowledge) system.push({ type: 'text', text: knowledge });
 
-  let upstream;
-  try {
-    upstream = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        stream: true,
-        system,
-        tools: TOOL_DEFS,
-        messages: check.messages,
-      }),
-      signal: upstreamAbort.signal,
-    });
-  } catch (err) {
-    if (!upstreamAbort.signal.aborted) {
-      res.status(502).json({ error: 'No se pudo contactar a Mona', detail: String(err).slice(0, 300) });
-    }
-    return;
-  }
-
-  if (!upstream.ok || !upstream.body) {
-    const detail = await upstream.text().catch(() => '');
-    res.status(502).json({ error: 'Error al contactar a Mona', detail: detail.slice(0, 500) });
-    return;
-  }
-
-  res.writeHead(200, {
-    'content-type': 'text/event-stream',
-    'cache-control': 'no-cache, no-transform',
-    connection: 'keep-alive',
+  const payload = JSON.stringify({
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    stream: true,
+    system,
+    tools: TOOL_DEFS,
+    messages: check.messages,
   });
 
-  const reader = upstream.body.getReader();
-  const decoder = new TextDecoder();
-  const meter = createUsageMeter();
+  // Reserve the worst case before spending: the input bound plus every output
+  // token the call may generate. Open requests hold their reservation, so N
+  // parallel requests cannot all fit under the cap the way N zero counters did.
+  const inputEstimate = estimateInputTokens(payload);
+  const reservationId = crypto.randomUUID();
+  const reservation = await reserveBudget(reservationId, user, inputEstimate + MAX_TOKENS);
+  if (!reservation.ok) {
+    if (!gone(res, upstreamAbort)) res.status(reservation.status).json({ error: reservation.error });
+    return;
+  }
+
+  // From here every exit settles the reservation with what the call may have
+  // cost: 0 when Anthropic was never called or refused it, the input estimate
+  // when the call failed before a response, and the meter's charge for a stream.
+  let charge = 0;
   try {
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const text = decoder.decode(value, { stream: true });
-      meter.push(text);
-      res.write(text);
+    if (gone(res, upstreamAbort)) return;
+
+    let upstream;
+    try {
+      upstream = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: payload,
+        signal: upstreamAbort.signal,
+      });
+    } catch (err) {
+      charge = inputEstimate;
+      if (!gone(res, upstreamAbort)) {
+        res.status(502).json({ error: 'No se pudo contactar a Mona', detail: String(err).slice(0, 300) });
+      }
+      return;
     }
-  } catch (err) {
-    if (!upstreamAbort.signal.aborted) {
-      res.write(`event: error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`);
+
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text().catch(() => '');
+      if (!gone(res, upstreamAbort)) {
+        res.status(502).json({ error: 'Error al contactar a Mona', detail: detail.slice(0, 500) });
+      }
+      return;
+    }
+
+    const meter = createUsageMeter();
+    charge = meter.charge(inputEstimate, MAX_TOKENS);
+    if (gone(res, upstreamAbort)) { upstreamAbort.abort(); return; }
+
+    res.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache, no-transform',
+      connection: 'keep-alive',
+    });
+
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const text = decoder.decode(value, { stream: true });
+        meter.push(text);
+        res.write(text);
+      }
+    } catch (err) {
+      if (!gone(res, upstreamAbort)) {
+        res.write(`event: error\ndata: ${JSON.stringify({ error: String(err) })}\n\n`);
+      }
+    } finally {
+      charge = meter.charge(inputEstimate, MAX_TOKENS);
     }
   } finally {
-    // Charge before ending: on Vercel the function may be frozen once the
-    // response is closed. An aborted stream is charged what it used so far.
-    await recordTokens(user, reservation.dia, meter.total());
-    res.end();
+    // Settle before ending: on Vercel the function may be frozen once the
+    // response is closed. A settle that never lands leaves the reservation
+    // held, so the user is charged the worst case rather than nothing.
+    await settleReservation(reservationId, charge);
+    if (!res.writableEnded && !res.destroyed) res.end();
   }
 }
