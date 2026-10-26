@@ -163,11 +163,13 @@ export function sanitaryDamagePct(medicion) {
   const [madura, inmadura, sobremadura, picadura, enfermedad] = counts;
   const unhealthy = picadura + enfermedad + quemadura;
   const total = madura + inmadura + sobremadura + unhealthy;
-  // Defense-in-depth: parseCount already rejects non-safe integers, so a
-  // non-finite total or pct here would mean the guard above regressed. A NaN
-  // percentage would silently reach bucket selection (NaN <= a is false, NaN <= b
-  // is false → worst bucket, treating a fabricated reading as real damage).
-  if (!Number.isFinite(total) || total === 0) return null;
+  // Each operand is a safe integer, but six of them can still sum past
+  // MAX_SAFE_INTEGER, and then the total rounds: 19999999999999999 becomes 2e16
+  // and the share lands on exactly 0.5 %, one bucket better than the exact ratio
+  // (xd-sr6). An unsafe total is missing. unhealthy <= total, so it is safe too.
+  // This also covers the non-finite case: a NaN percentage would silently reach
+  // bucket selection (NaN <= a is false, NaN <= b is false → worst bucket).
+  if (!Number.isSafeInteger(total) || total === 0) return null;
   const pct = unhealthy / total * 100;
   if (!Number.isFinite(pct)) return null;
   return pct;
