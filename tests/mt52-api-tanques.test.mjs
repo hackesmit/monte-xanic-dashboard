@@ -309,14 +309,16 @@ describe('MT.52 - GET /api/tanques', () => {
     assert.ok(!JSON.stringify(res.body).includes('test-service-key'));
   });
 
-  it('reports 500 when the Supabase env vars are missing', async () => {
+  it('refuses with 503 when the Supabase env vars are missing', async () => {
+    // The session gate cannot check the blacklist without them, so verifyToken
+    // fails closed (xd-5ua) before the handler's own config check is reached.
     mockSupabase();
     const saved = process.env.SUPABASE_SERVICE_KEY;
     delete process.env.SUPABASE_SERVICE_KEY;
     try {
       const res = makeRes();
       await handler(makeReq({ method: 'GET' }), res);
-      assert.equal(res.statusCode, 500);
+      assert.equal(res.statusCode, 503);
     } finally {
       process.env.SUPABASE_SERVICE_KEY = saved;
     }
