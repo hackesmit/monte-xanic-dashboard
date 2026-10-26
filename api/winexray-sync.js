@@ -10,11 +10,13 @@
 // Credentials come from Vercel encrypted environment variables
 // (WINEXRAY_USERNAME / WINEXRAY_PASSWORD), never from Proton Pass: a deployed
 // function has no pp binary and no pp session. See docs/External-APIs.md.
+import crypto from 'node:crypto';
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
 import { upsertRows } from './_lib/upsertRows.js';
 import { ALLOWED_TABLES } from './_lib/allowedTables.js';
 import { WineXRayClient, WineXRayError } from './_lib/winexrayClient.js';
+import { postgresLease } from './_lib/syncLease.js';
 import { winexrayParser } from '../js/upload/winexray.js';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
@@ -42,14 +44,20 @@ const LOOKBACK_DAYS = 7;
 // the requested window so a caller asking for a different range is refused
 // rather than handed someone else's answer.
 //
-// This is per-instance and NOT a distributed lock. Two concurrent requests
-// routed to different Vercel instances still interleave, and the later writer
-// wins. Correctness of the DATA does not depend on this: writes go through the
-// composite unique constraint with on-conflict merge, so a duplicate run
-// converges rather than doubling. What is genuinely not covered is one run
-// overwriting a marginally fresher snapshot from another; the next sync
-// corrects it. A cross-instance lease is tracked as follow-up work.
+// This is per-instance only. What stops two instances is the Postgres lease
+// below (xd-wh7): before this, two requests on different instances each ran
+// a full fetch and the later writer overwrote the fresher snapshot.
 let inFlight = null;
+
+// One lease for every instance, taken before the first WineXRay call and freed
+// in a finally (sql/migration_sync_lease.sql). The TTL has to outlive the
+// longest run, or a live run loses its lease and a second fetch starts: this
+// project's function timeout is 300 s (Vercel project default, nothing in
+// vercel.json overrides it), so 600 s. Raise it with any maxDuration change.
+// A run that crashed before its finally blocks the button for at most the TTL.
+const LEASE_NAME = 'winexray-sync';
+const LEASE_TTL_SECONDS = 600;
+const BUSY = 'Ya hay una sincronización en curso. Espera a que termine e intenta de nuevo.';
 
 function todayInVineyard() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -205,6 +213,40 @@ async function runSync({ from, to }, deps = {}) {
   } };
 }
 
+// runSync under the cross-instance lease. A lease service that cannot answer
+// fails CLOSED: running without knowing whether another instance holds the
+// lease is exactly the interleave the lease exists to stop.
+async function runLeased({ from, to }, deps = {}) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !serviceKey) {
+    return { status: 500, body: { ok: false, error: 'Configuración de base de datos incompleta' } };
+  }
+  const lease = deps.lease || postgresLease({ supabaseUrl, serviceKey });
+  const owner = crypto.randomUUID();
+  let held;
+  try {
+    held = await lease.acquire(LEASE_NAME, owner, LEASE_TTL_SECONDS);
+  } catch (err) {
+    console.error('[winexray-sync] lease acquire failed:', err?.message);
+    return { status: 503, body: { ok: false,
+      error: 'No se pudo reservar la sincronización. Intenta de nuevo en un momento.' } };
+  }
+  if (!held) return { status: 409, body: { ok: false, error: BUSY } };
+  try {
+    return await runSync({ from, to }, deps);
+  } finally {
+    // A failed release only delays the next sync until the TTL passes.
+    try {
+      if (!(await lease.release(LEASE_NAME, owner))) {
+        console.error('[winexray-sync] lease had expired before release');
+      }
+    } catch (err) {
+      console.error('[winexray-sync] lease release failed:', err?.message);
+    }
+  }
+}
+
 // `deps` is a test seam forwarded to runSync; production callers pass nothing.
 export default async function handler(req, res, deps = {}) {
   res.setHeader('Cache-Control', 'no-store');
@@ -245,10 +287,7 @@ export default async function handler(req, res, deps = {}) {
   const rangeKey = `${from || ''}..${to || ''}`;
   if (inFlight) {
     if (inFlight.key !== rangeKey) {
-      return res.status(409).json({
-        ok: false,
-        error: 'Ya hay una sincronización en curso. Espera a que termine e intenta de nuevo.',
-      });
+      return res.status(409).json({ ok: false, error: BUSY });
     }
     try {
       const shared = await inFlight.promise;
@@ -258,7 +297,7 @@ export default async function handler(req, res, deps = {}) {
     }
   }
 
-  inFlight = { key: rangeKey, promise: runSync({ from, to }, deps) };
+  inFlight = { key: rangeKey, promise: runLeased({ from, to }, deps) };
   try {
     const { status, body } = await inFlight.promise;
     return res.status(status).json(body);

@@ -12,9 +12,10 @@ test('el CHECK de la migracion lista exactamente las ETAPAS de estado.js', () =>
   assert.deepEqual(lista, ETAPAS);
 });
 
-test('la migracion se registra en el manifiesto', () => {
+test('la migracion se registra en el manifiesto despues de la de escritura', () => {
   assert.match(sql, /VALUES \('migration_tanques_etapa'\)/);
   assert.ok(MIGRATIONS.includes('migration_tanques_etapa'));
+  assert.ok(MIGRATIONS.indexOf('migration_tanques_etapa') > MIGRATIONS.indexOf('migration_tanques_escritura'));
 });
 
 test('una recepcion con etapa explicita deja esa etapa, sin ella queda rec', () => {
@@ -108,7 +109,7 @@ test('fuera de la etapa, la funcion append-only es la de migration_tanques_escri
   assert.equal(sinEtapa, funcion(original, 'movimientos_tanque_append_only'));
 });
 
-test('la migracion exige la columna, recrea los dos triggers y es la ultima del manifiesto', () => {
+test('la migracion exige la columna, recrea los dos triggers y es la ultima que define la funcion', () => {
   assert.match(congela, /attname = 'etapa' AND NOT attisdropped\n {2}\) THEN\n {4}RAISE EXCEPTION/);
   assert.match(congela, /DROP TRIGGER IF EXISTS movimientos_tanque_append_only ON public\.movimientos_tanque;\nCREATE TRIGGER movimientos_tanque_append_only\n {2}BEFORE UPDATE OR DELETE ON public\.movimientos_tanque\n {2}FOR EACH ROW EXECUTE FUNCTION public\.movimientos_tanque_append_only\(\);/);
   assert.match(congela, /DROP TRIGGER IF EXISTS movimientos_tanque_no_truncate ON public\.movimientos_tanque;\nCREATE TRIGGER movimientos_tanque_no_truncate\n {2}BEFORE TRUNCATE ON public\.movimientos_tanque\n {2}FOR EACH STATEMENT EXECUTE FUNCTION public\.movimientos_tanque_append_only\(\);/);
@@ -116,8 +117,15 @@ test('la migracion exige la columna, recrea los dos triggers y es la ultima del 
   assert.match(congela, /^BEGIN;$/m);
   assert.match(congela, /^COMMIT;\n$/m);
   assert.match(congela, /VALUES \('migration_tanques_etapa_append_only'\)/);
-  // Last among the tanques migrations: a later, unrelated migration (xd-aiz's
-  // migration_mona_uso) may follow it in the manifest.
-  const tanques = MIGRATIONS.filter((m) => m.startsWith('migration_tanques'));
-  assert.equal(tanques[tanques.length - 1], 'migration_tanques_etapa_append_only');
+  // The guard is that no later migration redefines the function without etapa,
+  // not that nothing at all comes after it (migration_sync_lease, xd-wh7).
+  const definen = readdirSync(new URL('../sql/', import.meta.url))
+    .filter((f) => /^migration_.*\.sql$/.test(f))
+    .filter((f) => /FUNCTION public\.movimientos_tanque_append_only\(/
+      .test(readFileSync(new URL(`../sql/${f}`, import.meta.url), 'utf8')))
+    .map((f) => f.replace(/\.sql$/, ''));
+  assert.ok(definen.length >= 2, 'the scan must find the earlier definitions');
+  for (const m of definen) assert.ok(MIGRATIONS.includes(m), `${m} in the manifest`);
+  const ultima = definen.reduce((a, b) => (MIGRATIONS.indexOf(a) > MIGRATIONS.indexOf(b) ? a : b));
+  assert.equal(ultima, 'migration_tanques_etapa_append_only');
 });
