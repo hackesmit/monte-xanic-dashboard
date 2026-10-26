@@ -115,11 +115,12 @@ export function buildAoa({ withOrigen = false } = {}) {
     ...(withOrigen ? ['Origen ', 'Fecha de envero '] : []),
     'Código', 'Cantidad proyectada', 'TONS', 'Análisis', ...DATE_HEADERS,
   ];
-  // Row 6: stray TONS aggregate row with no lot metadata and all-ZERO dated
-  // cells, exactly as in the real file (its 133 date cells are 0). It is a legit
-  // template/aggregate stub that must be skipped: a blank-Lote row of zeros
-  // carries no lot data, so issue SIX must NOT reject it (a zero is treated like
-  // a blank, unlike a real non-zero reading under a missing Lote).
+  // Row 6: stray TONS aggregate row with no lot metadata. Here its dated cells
+  // are all ZERO; the real workbook's row 6 is NOT all zero (it holds the daily
+  // tonnage totals: 23 non-zero cells in the 2026 file, 42 in a later copy).
+  // Either way it is an aggregate stub that must be skipped, not rejected: the
+  // zero case is pinned through this fixture, the real non-zero shape by the
+  // "stray daily-TONS aggregate row" test at the end of mt44.
   aoa[6] = [null, null, null, null, null, ...pad, null, null, null, 'TONS',
     ...DATE_HEADERS.map(() => 0)];
   // Row 7: repeated header inside the data region (note 'Pendiente' + dashes)

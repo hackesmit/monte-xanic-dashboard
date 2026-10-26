@@ -320,18 +320,39 @@ function vintageFromLot(lotCode) {
 // checked AGAINST it and a disagreeing lot is rejected by name. Returns null
 // when no "Vendimia AAAA" can be found anywhere, so the caller refuses the file
 // rather than falling back to a guessed year.
+//
+// Every mention counts, not just the first (xd-ap4): a title saying 2026 and a
+// file name saying 2027 is an ambiguity the winery has to resolve, so the file
+// is refused unless all mentions name the same year. The separator after
+// "Vendimia" may be a space, an underscore, a hyphen or a dot, since a
+// downloaded or renamed file often loses its spaces ("Vendimia_2026").
+const VINTAGE_RE = /vendimia[\s_.-]*(\d{4})/gi;
+
 function extractVintage(rows, filename) {
-  const re = /vendimia\s*(\d{4})/i;
+  const mentions = [];   // { year, source }
   for (let r = 0; r <= HEADER_ROW; r++) {
     for (const cell of (rows[r] || [])) {
       if (cell == null) continue;
-      const m = String(cell).match(re);
-      if (m) return { year: parseInt(m[1], 10), source: `el título de la hoja` };
+      for (const m of String(cell).matchAll(VINTAGE_RE)) {
+        mentions.push({ year: parseInt(m[1], 10), source: 'el título de la hoja' });
+      }
     }
   }
-  const mf = String(filename || '').match(re);
-  if (mf) return { year: parseInt(mf[1], 10), source: `el nombre del archivo` };
-  return null;
+  for (const m of String(filename || '').matchAll(VINTAGE_RE)) {
+    mentions.push({ year: parseInt(m[1], 10), source: 'el nombre del archivo' });
+  }
+  if (mentions.length === 0) return null;
+  const years = [...new Set(mentions.map(m => m.year))];
+  if (years.length > 1) {
+    const detail = mentions.map(m => `${m.year} en ${m.source}`)
+      .filter((d, i, all) => all.indexOf(d) === i).join(', ');
+    throw new Error(
+      `El archivo indica más de una vendimia (${detail}). No se puede saber a qué vendimia pertenece. ` +
+      'Corrija el título de la hoja o el nombre del archivo para que digan la misma vendimia y vuelva a subirlo.',
+    );
+  }
+  // The title is the stronger statement; name it when it is among the sources.
+  return mentions.find(m => m.source === 'el título de la hoja') || mentions[0];
 }
 
 // Excel epoch for serials below the 1900-02-29 phantom leap day. For serial < 60
@@ -617,10 +638,10 @@ function collectBlockField(block, colIdx, label) {
 // Group the seven-rows-per-lot blocks and validate their structure. A block is
 // a run of SEVEN PHYSICALLY CONSECUTIVE rows sharing one Lote code. The known
 // preamble (fully-blank rows, the stray TONS row 6, the repeated header row 7)
-// is allowed ONLY before the first lot block; once the first lot row is seen,
-// every accepted metric row must sit exactly one physical row after the previous
-// (issue THREE) — a blank row, a repeated header or a blank-Lote row between two
-// metric rows would otherwise let seven NON-consecutive rows satisfy the
+// is allowed before the first lot block and between two complete lot blocks;
+// inside a block every accepted metric row must sit exactly one physical row
+// after the previous (issue THREE) — a blank row, a repeated header or a blank-Lote row between two metric rows
+// of one lot would otherwise let seven NON-consecutive rows satisfy the
 // exactly-seven invariant, and the intervening row's data would vanish. Refuses
 // the whole file on: a non-contiguous / duplicate metric row, a duplicate or
 // non-contiguous lot, an unknown Análisis label, or a block missing any metric.
@@ -629,7 +650,6 @@ function buildBlocks(rows, rejected, cols, dateStart) {
   const blocks = [];
   const seenLots = new Set();
   let current = null;
-  let firstLotSeen = false;
   let prevMetricRowIdx = -1;
 
   const assertComplete = (block) => {
@@ -680,9 +700,14 @@ function buildBlocks(rows, rejected, cols, dateStart) {
       );
     }
 
-    // Physical contiguity (issue THREE): once the first lot row is seen, every
-    // accepted metric row must be exactly one row after the previous one.
-    if (firstLotSeen && i !== prevMetricRowIdx + 1) {
+    // Physical contiguity (issue THREE): within a block, every accepted metric
+    // row must be exactly one row after the previous one. BETWEEN two blocks a
+    // blank row or a repeated header is harmless (xd-ap4): the previous block
+    // must already be complete (assertComplete below) and a blank-Lote row with
+    // content still lands in `rejected`, so nothing vanishes. A gap followed by
+    // more rows of the SAME lot is still a mid-block gap and refuses.
+    const continuesBlock = current && current.lote === lote;
+    if (continuesBlock && i !== prevMetricRowIdx + 1) {
       throw new Error(
         `La fila ${i + 1} (lote "${lote}", métrica "${METRIC_LABELS[metric]}") no es contigua con la fila anterior del bloque: ` +
         `una fila en blanco, un encabezado repetido o una fila sin Lote interrumpe las siete filas consecutivas del lote. ` +
@@ -722,7 +747,6 @@ function buildBlocks(rows, rejected, cols, dateStart) {
       );
     }
     current.metricRows[metric] = row;
-    firstLotSeen = true;
     prevMetricRowIdx = i;
   }
   if (current) assertComplete(current);
