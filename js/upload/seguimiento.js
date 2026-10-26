@@ -764,10 +764,6 @@ export const seguimientoParser = {
 
     const rejected = [];
     const warnings = [];
-    // Counted separately from warnings.length: warnings also carries variety and
-    // date-header notices, so reusing the total would make meta.tonsMismatches
-    // report a number that has nothing to do with TONS.
-    let tonsMismatchCount = 0;
 
     // Group + structurally validate the lot blocks (refuses on corruption;
     // blank-Lote rows carrying real content are pushed to `rejected`).
@@ -990,7 +986,6 @@ export const seguimientoParser = {
         else if (Math.abs(cachedNum - tonsSeguimiento) > 0.01) mismatch = true;
       }
       if (mismatch) {
-        tonsMismatchCount++;
         warnings.push(
           tonsSeguimiento === null
             ? `Lote "${block.lote}": la hoja almacena un TONS (${cachedNum}) pero no hay celdas de TONS por fecha para recalcularlo.`
@@ -1035,7 +1030,6 @@ export const seguimientoParser = {
         filename: file.name,
         lots: lotRows.length,
         measurements: berryRows.length,
-        tonsMismatches: tonsMismatchCount,
       },
     };
   },
