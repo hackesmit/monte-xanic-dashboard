@@ -80,7 +80,8 @@ Revokes a session token by adding it to the blacklist.
 **Implementation notes:**
 - Verifies HMAC signature before blacklisting (prevents forged token spam)
 - Stores SHA256 hash of token in `token_blacklist` table (never raw token)
-- Blacklist insert failure is non-fatal (logged, returns 200)
+- Blacklist insert failure is fatal (non-2xx or network error returns 502, missing Supabase config returns 500)
+- After a successful insert, deletes `token_blacklist` rows older than 3 h (deadline 1500 ms). A failed or slow sweep is logged and never changes the response
 
 ## GET /api/config
 
