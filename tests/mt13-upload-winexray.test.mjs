@@ -247,6 +247,37 @@ describe('MT.13 — WineXRay parser', () => {
     assert.equal(berry.crush_date,  '2024-09-01');
   });
 
+  // xd-i40: the conversion above passed only on machines at or west of UTC.
+  // SheetJS turned the slash date into a Date at local midnight and the parser
+  // read it back in UTC, so Tokyo stored 2026-02-26. The zone is switched in
+  // process so this fails on a UTC box too. Tijuana is where the lab opens the
+  // file; the ISO crush date and the evening timestamp are the cases a local
+  // Date moves the other way.
+  for (const tz of ['UTC', 'America/Tijuana', 'Asia/Tokyo', 'Europe/Madrid', 'Asia/Kolkata']) {
+    it(`slash, ISO and timestamped dates keep their calendar day with TZ=${tz}`, async () => {
+      const csv = [
+        'Sample Id,Sample Type,Sample Date,CrushDate (yyyy-mm-dd),Vintage,Variety,Appellation',
+        '25CSMX-100,Aging Wine,2/27/2026,2025-09-15,2025,Cabernet Sauvignon,Valle de Guadalupe',
+        '25CSMX-101,Aging Wine,3/1/2026 20:30,9/15/2025,2025,Cabernet Sauvignon,Valle de Guadalupe',
+        '25CSMX-102,Aging Wine,12/31/2025,2025-09-15,2025,Cabernet Sauvignon,Valle de Guadalupe',
+      ].join('\n');
+      const prev = process.env.TZ;
+      process.env.TZ = tz;
+      try {
+        const result = await winexrayParser.parse(asFakeFile(Buffer.from(csv), 'tz_dates.csv'));
+        const rows = result.targets.find(t => t.table === 'wine_samples').rows
+          .map(r => [r.sample_id, r.sample_date, r.crush_date]);
+        assert.deepEqual(rows, [
+          ['25CSMX-100', '2026-02-27', '2025-09-15'],
+          ['25CSMX-101', '2026-03-01', '2025-09-15'],
+          ['25CSMX-102', '2025-12-31', '2025-09-15'],
+        ], `TZ=${tz}`);
+      } finally {
+        if (prev === undefined) delete process.env.TZ; else process.env.TZ = prev;
+      }
+    });
+  }
+
   // Round 32 Option B — defense-in-depth: a row whose INT-typed column
   // (here days_post_crush=12.5) is fractional must be rejected at the
   // parser layer with a Spanish motivo_rechazo naming the column. Without
