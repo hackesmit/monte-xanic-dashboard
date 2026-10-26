@@ -138,7 +138,7 @@ describe('MT.44 — login rate limit falls back to in-memory when Supabase error
 
   it('a successful atomic call is the persistent path, not the in-memory fallback', async () => {
     // The stale-entry sweep used to be a separate client DELETE whose failure had
-    // to be tolerated. Since xd-tqx it runs inside login_rate_limit_hit (MT.60),
+    // to be tolerated. Since xd-tqx it runs inside login_rate_limit_hit (MT.72),
     // so one rpc call is the whole persistent path. The in-memory fallback makes
     // NO fetch call, so a recorded rpc POST proves the persistent path ran.
     const calls = [];
