@@ -236,7 +236,7 @@ describe('MT.8 — sync bootstrap and coverage (xd-fge)', () => {
     const upserts = [];
     const supa = {
       from: () => ({
-        select: () => ({ limit: async () => ({ data: null, error: { message: 'column location does not exist' } }) }),
+        select: () => ({ limit: async () => ({ data: null, error: { code: '42703', message: 'column meteorology.location does not exist' } }) }),
         upsert: async (rows, opts) => { upserts.push(opts); return { error: null }; }
       })
     };
@@ -251,6 +251,60 @@ describe('MT.8 — sync bootstrap and coverage (xd-fge)', () => {
     }
     assert.equal(upserts.length, 1);
     assert.equal(upserts[0].onConflict, 'date');
+  });
+
+  // Probe answers come from `probe` in order (the last one repeats); a
+  // function entry throws, like a network failure inside supabase-js.
+  const runSync = async (probe) => {
+    resetStore();
+    const upserts = [];
+    let calls = 0;
+    const supa = {
+      from: () => ({
+        select: () => ({ limit: async () => {
+          const r = probe[Math.min(calls++, probe.length - 1)];
+          if (typeof r === 'function') r();
+          return r;
+        } }),
+        upsert: async (rows, opts) => { upserts.push({ rows, opts }); return { error: null }; }
+      })
+    };
+    const { DataStore } = await import('../js/dataLoader.js');
+    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI, WeatherStore._probeRetryMs];
+    DataStore.supabase = supa;
+    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    WeatherStore._probeRetryMs = 0;
+    try {
+      await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
+    } finally {
+      [DataStore.supabase, WeatherStore._fetchFromAPI, WeatherStore._probeRetryMs] = prev;
+    }
+    return { upserts, calls };
+  };
+  const http503 = { data: null, error: { code: '', message: 'Service Unavailable' } };
+  const ok = { data: [], error: null };
+
+  it('a transient 503 on the probe is retried, then a migrated table syncs all valleys', async () => {
+    const { upserts, calls } = await runSync([http503, http503, ok]);
+    assert.equal(calls, 3);
+    assert.equal(upserts.length, 3);
+    assert.ok(upserts.every(u => u.opts.onConflict === 'date,location'));
+  });
+
+  it('a probe that keeps failing aborts the sync instead of assuming the old schema', async () => {
+    const { upserts, calls } = await runSync([http503]);
+    assert.equal(calls, WeatherStore._probeAttempts);
+    assert.equal(upserts.length, 0);
+  });
+
+  it('a network error thrown by the probe is not read as a missing column', async () => {
+    const { upserts } = await runSync([() => { throw new TypeError('Failed to fetch'); }]);
+    assert.equal(upserts.length, 0);
+  });
+
+  it('an auth error on the probe is not read as a missing column', async () => {
+    const { upserts } = await runSync([{ data: null, error: { code: 'PGRST301', message: 'JWT expired' } }]);
+    assert.equal(upserts.length, 0);
   });
 
   it('a small gap is no longer treated as a full range', () => {
