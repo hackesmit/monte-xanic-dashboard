@@ -14,7 +14,6 @@ import assert from 'node:assert/strict';
 
 // Import lazily so the test focuses on the pure helper (no DOM, no fetch).
 const { WeatherStore } = await import('../js/weather.js');
-const { todayInVineyard } = await import('../js/utils.js');
 
 test('MT.33 getForecastRangeEnd: season → vintage-10-31 (uncapped)', () => {
   assert.equal(WeatherStore.getForecastRangeEnd(2026, 'season'), '2026-10-31');
@@ -51,34 +50,39 @@ test('MT.33 forecastWithinRange: forecast rows past today are KEPT when rangeEnd
   // forecast rows for the next 7 days. Pre-fix the caller passed capped end (=today)
   // and the filter excluded all forecast rows. With the new helper, callers pass the
   // uncapped season-end and forecast rows survive.
-  // Tijuana, matching WeatherStore.todayLocal(). Deriving this from
-  // toISOString() compared a UTC date against a Tijuana one and failed every
-  // day between 00:00 and 07:00 UTC.
-  const today = todayInVineyard();
-  const plus = (days) => {
-    const [y, m, d] = today.split('-').map(Number);
-    // Anchored at UTC noon so adding days never slips across a DST edge.
-    const dt = new Date(Date.UTC(y, m - 1, d, 12));
-    dt.setUTCDate(dt.getUTCDate() + days);
-    return dt.toISOString().split('T')[0];
-  };
-  const forecastRows = [
-    { date: plus(1), temp_avg: 28, isForecast: true },
-    { date: plus(3), temp_avg: 30, isForecast: true },
-    { date: plus(7), temp_avg: 27, isForecast: true },
-  ];
-  const lastObs = today;
+  // Pin the clock: the real date made this fail in the last week of the season
+  // (today + 7 days passes the vintage-10-31 bound) and every day after it.
+  const today = '2026-07-15';
+  const realTodayLocal = WeatherStore.todayLocal;
+  WeatherStore.todayLocal = () => today;
+  try {
+    const plus = (days) => {
+      const [y, m, d] = today.split('-').map(Number);
+      // Anchored at UTC noon so adding days never slips across a DST edge.
+      const dt = new Date(Date.UTC(y, m - 1, d, 12));
+      dt.setUTCDate(dt.getUTCDate() + days);
+      return dt.toISOString().split('T')[0];
+    };
+    const forecastRows = [
+      { date: plus(1), temp_avg: 28, isForecast: true },
+      { date: plus(3), temp_avg: 30, isForecast: true },
+      { date: plus(7), temp_avg: 27, isForecast: true },
+    ];
+    const lastObs = today;
 
-  // Pre-fix shape: rangeEnd capped at today → empty.
-  const buggy = WeatherStore.forecastWithinRange(forecastRows, lastObs, today);
-  assert.equal(buggy.length, 0, 'sanity-check: capped rangeEnd reproduces the bug');
+    // Pre-fix shape: rangeEnd capped at today → empty.
+    const buggy = WeatherStore.forecastWithinRange(forecastRows, lastObs, today);
+    assert.equal(buggy.length, 0, 'sanity-check: capped rangeEnd reproduces the bug');
 
-  // Post-fix shape: uncapped season-end → all three rows survive.
-  const year = parseInt(today.slice(0, 4), 10);
-  const fixed = WeatherStore.forecastWithinRange(
-    forecastRows,
-    lastObs,
-    WeatherStore.getForecastRangeEnd(year, 'season')
-  );
-  assert.equal(fixed.length, 3, 'fix: uncapped rangeEnd keeps forecast rows');
+    // Post-fix shape: uncapped season-end → all three rows survive.
+    const year = parseInt(today.slice(0, 4), 10);
+    const fixed = WeatherStore.forecastWithinRange(
+      forecastRows,
+      lastObs,
+      WeatherStore.getForecastRangeEnd(year, 'season')
+    );
+    assert.equal(fixed.length, 3, 'fix: uncapped rangeEnd keeps forecast rows');
+  } finally {
+    WeatherStore.todayLocal = realTodayLocal;
+  }
 });
