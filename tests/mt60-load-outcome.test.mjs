@@ -101,3 +101,57 @@ test('the green badge needs a fetch that answered, not a client object', () => {
   assert.notEqual(estadoDatos({ lastFetch: null, dataTs: null, hayDatos: false }).estado, 'live');
   assert.notEqual(estadoDatos({ lastFetch: { outcome: 'error', at: 1 }, dataTs: 5, hayDatos: true }).estado, 'live');
 });
+
+// lucy (2026-10-26): a confirmed empty answer left the older cache in place,
+// so the next visit during an outage resurrected rows the database had
+// already dropped. An empty answer is cached like any other, and an empty
+// cache loads as a real (dated) result instead of falling through to the
+// bundled JSON files.
+function memoryStorage() {
+  const m = new Map();
+  return {
+    getItem: k => (m.has(k) ? m.get(k) : null),
+    setItem: (k, v) => { m.set(k, String(v)); },
+    removeItem: k => { m.delete(k); },
+  };
+}
+
+test('a confirmed empty answer replaces the cached rows, and that empty cache loads', async () => {
+  const realStorage = globalThis.localStorage;
+  globalThis.localStorage = memoryStorage();
+  try {
+    reset(fakeClient({ wine_samples: [berryRow, wineRow] }));
+    assert.equal(await DataStore.loadFromSupabase(), 'ok');
+    assert.equal(JSON.parse(localStorage.getItem('xanic_data_cache')).berry.length, 1);
+
+    reset(fakeClient({ wine_samples: [] }));
+    assert.equal(await DataStore.loadFromSupabase(), 'empty');
+    const cache = JSON.parse(localStorage.getItem('xanic_data_cache'));
+    assert.equal(cache.berry.length, 0, 'the old berry rows must not survive in the cache');
+    assert.equal(cache.wineR.length, 0, 'the old wine rows must not survive in the cache');
+
+    // Next visit, Supabase down: the cache is the empty answer, and it counts.
+    reset(null);
+    DataStore.berryData = [{ sampleId: 'STALE' }];
+    assert.equal(DataStore.loadCache(), true, 'an empty cache is a result, not a miss');
+    assert.equal(DataStore.berryData.length, 0);
+    assert.equal(DataStore.dataTs, cache.ts);
+  } finally {
+    globalThis.localStorage = realStorage;
+  }
+});
+
+test('a failed fetch leaves the cache as it was', async () => {
+  const realStorage = globalThis.localStorage;
+  globalThis.localStorage = memoryStorage();
+  try {
+    reset(fakeClient({ wine_samples: [berryRow, wineRow] }));
+    await DataStore.loadFromSupabase();
+    const before = localStorage.getItem('xanic_data_cache');
+    reset(fakeClient({ wine_samples: new Error('fetch failed') }));
+    assert.equal(await DataStore.loadFromSupabase(), 'error');
+    assert.equal(localStorage.getItem('xanic_data_cache'), before);
+  } finally {
+    globalThis.localStorage = realStorage;
+  }
+});

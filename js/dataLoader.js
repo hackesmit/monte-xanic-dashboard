@@ -339,7 +339,11 @@ export const DataStore = {
       // Re-enrich so receptions join into berry rows
       this._enrichData();
 
-      if (this.loaded.berry || this.loaded.wine) this.cacheData();
+      // Cache every answer the database gave, an empty one included. Caching
+      // only non-empty results left an older cache in place after the table
+      // was emptied, and the next visit during an outage showed rows the
+      // database had already dropped.
+      this.cacheData();
       return done((samples || []).length ? 'ok' : 'empty');
     } catch (e) {
       console.warn('[DataStore] loadFromSupabase error:', e);
@@ -1133,7 +1137,9 @@ export const DataStore = {
     }
   },
 
-  // Load from cache
+  // Load from cache. True for any fresh cache, an empty one included: an
+  // empty cache is a dated answer from the database ("nothing there"), and
+  // reporting it as missing sent init() to the bundled JSON files.
   loadCache() {
     try {
       const raw = localStorage.getItem('xanic_data_cache');
@@ -1150,7 +1156,7 @@ export const DataStore = {
       this._enrichData();
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine = this.wineRecepcion.length > 0;
-      return this.loaded.berry;
+      return true;
     } catch (e) {
       return false;
     }

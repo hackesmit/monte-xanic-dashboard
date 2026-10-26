@@ -4,7 +4,10 @@ import { test, expect } from '@playwright/test';
 // persistent stale-data banner carrying the cache date, and a badge that is
 // not green. Before the fix the badge went green on client existence alone.
 
-const CACHE_TS = Date.UTC(2026, 9, 19, 21, 5);   // 19 oct 2026, 14:05 Tijuana
+// Two days old, never a fixed date: loadCache drops a cache older than 7 days,
+// so a fixed 19 Oct stamp turned this test red on 26 Oct.
+const CACHE_TS = Date.now() - 2 * 24 * 60 * 60 * 1000;
+const CACHE_DIA = new Date(CACHE_TS).toLocaleString('es-MX', { day: 'numeric', month: 'short' });
 const CACHE = {
   berry: [{ sampleId: '25CSKMP-4', sampleDate: '2025-08-20', variety: 'Cabernet Sauvignon', appellation: 'Kompali (VDG)', brix: 23.4, vintage: 2025, lotCode: 'CSKMP-4', grapeType: 'red' }],
   wineR: [], wineP: [], recs: [], recL: [],
@@ -37,7 +40,7 @@ test.describe('Stale cache indicator', () => {
     }));
     const banner = page.locator('#stale-banner');
     await expect(banner).toBeVisible();
-    await expect(banner).toContainText('datos en caché del 19 oct');
+    await expect(banner).toContainText(`datos en caché del ${CACHE_DIA}`);
     const badge = page.locator('#db-status-badge');
     await expect(badge).toHaveClass(/db-badge-stale/);
     await expect(badge).not.toHaveClass(/db-badge-ok/);
