@@ -194,3 +194,80 @@ describe('MT.8 — x-axis title helper', () => {
     assert.equal(WeatherStore._xAxisTitle(), WeatherStore._xAxisTitle('season'));
   });
 });
+
+describe('MT.8 — sync bootstrap and coverage (xd-fge)', () => {
+  const resetStore = () => {
+    WeatherStore.data = [];
+    WeatherStore._byDate = {};
+    WeatherStore._gddCache = {};
+  };
+  const day = (n) => `2025-07-${String(n).padStart(2, '0')}`;
+  const put = (n, valley, rain) => {
+    const row = { date: day(n), location: valley, temp_avg: 20, rainfall_mm: rain };
+    WeatherStore.data.push(row);
+    (WeatherStore._byDate[row.date] ||= {})[valley] = row;
+  };
+
+  it('empty table with a location column still syncs VON and SV with date,location', async () => {
+    resetStore();
+    const upserts = [];
+    const supa = {
+      from: () => ({
+        select: () => ({ limit: async () => ({ data: [], error: null }) }),
+        upsert: async (rows, opts) => { upserts.push({ rows, opts }); return { error: null }; }
+      })
+    };
+    const { DataStore } = await import('../js/dataLoader.js');
+    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI];
+    DataStore.supabase = supa;
+    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    try {
+      await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
+    } finally {
+      [DataStore.supabase, WeatherStore._fetchFromAPI] = prev;
+    }
+    assert.equal(upserts.length, 3);
+    assert.ok(upserts.every(u => u.opts.onConflict === 'date,location'));
+    assert.deepEqual(upserts.map(u => u.rows[0].location).sort(), ['SV', 'VDG', 'VON']);
+  });
+
+  it('pre-migration table (probe errors) syncs VDG only with onConflict date', async () => {
+    resetStore();
+    const upserts = [];
+    const supa = {
+      from: () => ({
+        select: () => ({ limit: async () => ({ data: null, error: { message: 'column location does not exist' } }) }),
+        upsert: async (rows, opts) => { upserts.push(opts); return { error: null }; }
+      })
+    };
+    const { DataStore } = await import('../js/dataLoader.js');
+    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI];
+    DataStore.supabase = supa;
+    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    try {
+      await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
+    } finally {
+      [DataStore.supabase, WeatherStore._fetchFromAPI] = prev;
+    }
+    assert.equal(upserts.length, 1);
+    assert.equal(upserts[0].onConflict, 'date');
+  });
+
+  it('a small gap is no longer treated as a full range', () => {
+    resetStore();
+    for (let n = 1; n <= 14; n++) if (n !== 5 && n !== 6) put(n, 'VDG', 1);
+    assert.equal(WeatherStore._hasFullRange(day(1), day(14), 'VDG'), false);
+    assert.deepEqual(WeatherStore._missingSpan(day(1), day(14), 'VDG'), { start: day(5), end: day(6) });
+    put(5, 'VDG', 1); put(6, 'VDG', 1);
+    assert.equal(WeatherStore._hasFullRange(day(1), day(14), 'VDG'), true);
+  });
+
+  it('cumulative rainfall is null when more than 3 days are missing, summed otherwise', () => {
+    resetStore();
+    for (let n = 1; n <= 30; n++) if (n > 2) put(n, 'VDG', 1);   // 2 missing
+    assert.equal(WeatherStore.getCumulativeRainfall(day(30), 2025, 'Valle de Guadalupe'), 28);
+    resetStore();
+    for (let n = 1; n <= 30; n++) if (n > 5) put(n, 'VDG', 1);   // 5 missing
+    assert.equal(WeatherStore.getCumulativeRainfall(day(30), 2025, 'Valle de Guadalupe'), null);
+  });
+});
