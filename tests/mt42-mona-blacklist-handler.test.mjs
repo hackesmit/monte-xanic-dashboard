@@ -46,6 +46,7 @@ function makeRes() {
     json(b) { this.body = b; return this; },
     write() {},
     end() {},
+    on() { return this; }, // /api/mona listens for "close" before its first await (xd-aiz)
   };
 }
 

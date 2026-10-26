@@ -4,12 +4,24 @@ export const MAX_MESSAGES = 40;
 export const MAX_MSG_BYTES = 40_000;
 
 const ROLES = new Set(['user', 'assistant']);
-// The only content blocks the Mona client ever sends (js/mona/chat.js).
-const BLOCK_TYPES = new Set(['text', 'tool_use', 'tool_result']);
+// The only content blocks the Mona client ever sends (js/mona/chat.js), and
+// all of them text: a tool_result carries the tool's string output, never an
+// image or a document. Text-only is what lets api/_lib/monaUsage.js bound the
+// input tokens by the body's byte length before the call.
+const isText = (b) => b && typeof b === 'object' && b.type === 'text' && typeof b.text === 'string';
+const BLOCK_OK = {
+  text: isText,
+  tool_use: (b) => typeof b.id === 'string' && typeof b.name === 'string'
+    && b.input !== null && typeof b.input === 'object' && !Array.isArray(b.input),
+  tool_result: (b) => typeof b.tool_use_id === 'string'
+    && (b.content === undefined || typeof b.content === 'string'
+      || (Array.isArray(b.content) && b.content.every(isText))),
+};
 
 function contentOk(content) {
   if (typeof content === 'string') return true;
-  return Array.isArray(content) && content.every(b => b && typeof b === 'object' && BLOCK_TYPES.has(b.type));
+  return Array.isArray(content) && content.every(b => b && typeof b === 'object'
+    && Object.hasOwn(BLOCK_OK, b.type) && BLOCK_OK[b.type](b));
 }
 
 // The server owns the system prompt and the tool list (xd-aiz). A request that

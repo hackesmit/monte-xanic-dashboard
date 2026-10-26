@@ -72,3 +72,22 @@ test('content blocks: accepts what the client sends, rejects other block types',
     assert.equal(validateChatRequest({ messages: [{ role: 'user', content }] }).ok, false);
   }
 });
+
+test('content blocks are text only, nested tool_result content included (xd-aiz r2)', () => {
+  const bad = [
+    [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'image', source: { type: 'url', url: 'https://x/y.png' } }] }],
+    [{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'document', source: {} }] }],
+    [{ type: 'tool_result', tool_use_id: 't1', content: { text: 'x' } }],
+    [{ type: 'tool_result', content: '[]' }],
+    [{ type: 'text', text: 5 }],
+    [{ type: 'tool_use', id: 't1', name: 'list_fields', input: [] }],
+    [{ type: 'tool_use', name: 'list_fields', input: {} }],
+  ];
+  for (const content of bad) {
+    assert.equal(validateChatRequest({ messages: [{ role: 'user', content }] }).ok, false, JSON.stringify(content));
+  }
+  const ok = validateChatRequest({ messages: [{ role: 'user', content: [
+    { type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: '[]' }] },
+  ] }] });
+  assert.equal(ok.ok, true);
+});
