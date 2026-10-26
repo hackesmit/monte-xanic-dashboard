@@ -46,4 +46,5 @@ export const MIGRATIONS = [
   'migration_tanques_escritura',
   'migration_tanques_descartes',
   'migration_tanques_etapa',
+  'migration_sync_lease',
 ];

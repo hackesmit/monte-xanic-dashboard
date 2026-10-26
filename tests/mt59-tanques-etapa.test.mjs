@@ -14,7 +14,10 @@ test('el CHECK de la migracion lista exactamente las ETAPAS de estado.js', () =>
 
 test('la migracion se registra y es la ultima del manifiesto', () => {
   assert.match(sql, /VALUES \('migration_tanques_etapa'\)/);
-  assert.equal(MIGRATIONS[MIGRATIONS.length - 1], 'migration_tanques_etapa');
+  // Registered after the migration it extends. Not "last": that broke the
+  // moment any later migration was added (migration_sync_lease, xd-wh7).
+  assert.ok(MIGRATIONS.indexOf('migration_tanques_etapa') > MIGRATIONS.indexOf('migration_tanques_descartes')
+    && MIGRATIONS.indexOf('migration_tanques_descartes') >= 0);
 });
 
 test('una recepcion con etapa explicita deja esa etapa, sin ella queda rec', () => {

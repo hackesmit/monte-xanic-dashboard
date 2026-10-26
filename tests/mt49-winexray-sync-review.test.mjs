@@ -34,6 +34,12 @@ function mintToken(role) {
   const p = Buffer.from(JSON.stringify({ role, exp: Date.now() + 60000 })).toString('base64url');
   return `${p}.${crypto.createHmac('sha256', process.env.SESSION_SECRET).update(p).digest('base64url')}`;
 }
+// These tests drive the handler past the cross-instance lease (xd-wh7, covered
+// in mt61). An in-memory lease that is always free keeps their fetch stubs
+// about the cursor and WineXRay only.
+function freeLease() {
+  return { async acquire() { return true; }, async release() { return true; } };
+}
 function httpRes() {
   const out = { statusCode: null, body: null };
   return { out, setHeader() {}, status(c) { out.statusCode = c; return this; }, json(b) { out.body = b; return this; } };
@@ -111,7 +117,8 @@ test('MT.49 — a Supabase cursor failure fails the run instead of syncing a wro
   globalThis.fetch = async () => mkRes({ status: 500, headers: { 'content-type': 'application/json' }, body: '{}' });
   try {
     const res = httpRes();
-    await handler({ method: 'POST', headers: { 'x-session-token': mintToken('lab') }, body: {}, socket: {} }, res);
+    await handler({ method: 'POST', headers: { 'x-session-token': mintToken('lab') }, body: {}, socket: {} }, res,
+      { lease: freeLease() });
     assert.equal(res.out.statusCode, 502);
     assert.equal(res.out.body.ok, false);
     assert.match(res.out.body.error, /no se pudo consultar|base de datos/i,
@@ -145,14 +152,14 @@ test('MT.49 — a concurrent request for a different window is refused, not join
 
   const resA = httpRes();
   const a = handler({ method: 'POST', headers: { 'x-session-token': mintToken('lab') },
-    body: { from: '2026-01-01', to: '2026-01-31' }, socket: {} }, resA, { makeClient: slow });
+    body: { from: '2026-01-01', to: '2026-01-31' }, socket: {} }, resA, { makeClient: slow, lease: freeLease() });
 
   // Give A a tick to register itself as in flight.
   await new Promise(r => setImmediate(r));
 
   const resB = httpRes();
   await handler({ method: 'POST', headers: { 'x-session-token': mintToken('lab') },
-    body: { from: '2026-08-01', to: '2026-08-31' }, socket: {} }, resB);
+    body: { from: '2026-08-01', to: '2026-08-31' }, socket: {} }, resB, { lease: freeLease() });
 
   assert.equal(resB.out.statusCode, 409, 'August must not receive January’s answer');
   assert.match(resB.out.body.error, /sincronizaci[oó]n en curso/i);
@@ -231,7 +238,7 @@ test('MT.49 — a cursor body that stalls times out in Spanish, not a hung run',
   try {
     const res = httpRes();
     await handler({ method: 'POST', headers: { 'x-real-ip': '10.9.9.9', 'x-session-token': mintToken('lab') },
-      body: {}, socket: {} }, res);
+      body: {}, socket: {} }, res, { lease: freeLease() });
     assert.equal(res.out.statusCode, 502);
     assert.match(res.out.body.error, /no respondió a tiempo|no se pudo consultar/i);
   } finally { globalThis.fetch = realFetch; }
