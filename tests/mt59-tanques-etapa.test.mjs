@@ -69,5 +69,50 @@ test('la migracion de escritura asegura la columna y el CHECK, repite permisos y
   assert.match(esc, /GRANT\s+EXECUTE ON FUNCTION public\.tanques_escribir\(BIGINT, TEXT, JSONB, BIGINT\) TO service_role/);
   assert.match(esc, /REVOKE EXECUTE ON FUNCTION public\.tanques_escribir\(BIGINT, TEXT, JSONB, BIGINT\) FROM PUBLIC, anon, authenticated/);
   assert.match(esc, /VALUES \('migration_tanques_etapa_escritura'\)/);
-  assert.equal(MIGRATIONS[MIGRATIONS.length - 1], 'migration_tanques_etapa_escritura');
+  assert.ok(MIGRATIONS.includes('migration_tanques_etapa_escritura'));
+});
+
+// --- la etapa queda congelada (migration_tanques_etapa_append_only) ----------
+
+const congela = readFileSync(new URL('../sql/migration_tanques_etapa_append_only.sql', import.meta.url), 'utf8');
+const tupla = (texto) => funcion(texto, 'movimientos_tanque_append_only').match(/IF (\(NEW\.id,[\s\S]*?)\n {2}THEN/)[1];
+
+test('el trigger append-only congela todas las columnas de movimientos_tanque menos anulado', () => {
+  // Every column of the original CREATE TABLE plus every column a later
+  // migration adds, so the next new column fails here until it is frozen too.
+  const base = readFileSync(new URL('../sql/migration_tanques.sql', import.meta.url), 'utf8');
+  const columnas = base.match(/CREATE TABLE IF NOT EXISTS public\.movimientos_tanque \(\n([\s\S]*?)\n\);/)[1]
+    .split('\n').map((l) => l.match(/^ {2}(\w+)\s{2,}/)?.[1]).filter(Boolean);
+  for (const texto of [original, sql, esc, congela]) {
+    for (const [, col] of texto.matchAll(/ALTER TABLE public\.movimientos_tanque ADD COLUMN IF NOT EXISTS (\w+)/g)) {
+      if (!columnas.includes(col)) columnas.push(col);
+    }
+  }
+  assert.ok(columnas.includes('client_id') && columnas.includes('etapa'));
+  const t = tupla(congela);
+  for (const col of columnas) {
+    if (col === 'anulado') {
+      assert.ok(!t.includes('NEW.anulado'));
+      continue;
+    }
+    assert.ok(t.includes(`NEW.${col}`), `el trigger no compara NEW.${col}`);
+    assert.ok(t.includes(`OLD.${col}`), `el trigger no compara OLD.${col}`);
+  }
+});
+
+test('fuera de la etapa, la funcion append-only es la de migration_tanques_escritura', () => {
+  const sinEtapa = funcion(congela, 'movimientos_tanque_append_only')
+    .replace(/, NEW\.etapa\)/, ')').replace(/, OLD\.etapa\)/, ')');
+  assert.equal(sinEtapa, funcion(original, 'movimientos_tanque_append_only'));
+});
+
+test('la migracion exige la columna, recrea los dos triggers y es la ultima del manifiesto', () => {
+  assert.match(congela, /attname = 'etapa' AND NOT attisdropped\n {2}\) THEN\n {4}RAISE EXCEPTION/);
+  assert.match(congela, /DROP TRIGGER IF EXISTS movimientos_tanque_append_only ON public\.movimientos_tanque;\nCREATE TRIGGER movimientos_tanque_append_only\n {2}BEFORE UPDATE OR DELETE ON public\.movimientos_tanque\n {2}FOR EACH ROW EXECUTE FUNCTION public\.movimientos_tanque_append_only\(\);/);
+  assert.match(congela, /DROP TRIGGER IF EXISTS movimientos_tanque_no_truncate ON public\.movimientos_tanque;\nCREATE TRIGGER movimientos_tanque_no_truncate\n {2}BEFORE TRUNCATE ON public\.movimientos_tanque\n {2}FOR EACH STATEMENT EXECUTE FUNCTION public\.movimientos_tanque_append_only\(\);/);
+  assert.match(congela, /REVOKE ALL ON FUNCTION public\.movimientos_tanque_append_only\(\) FROM anon, authenticated;/);
+  assert.match(congela, /^BEGIN;$/m);
+  assert.match(congela, /^COMMIT;\n$/m);
+  assert.match(congela, /VALUES \('migration_tanques_etapa_append_only'\)/);
+  assert.equal(MIGRATIONS[MIGRATIONS.length - 1], 'migration_tanques_etapa_append_only');
 });
