@@ -86,11 +86,35 @@ async function fileToRows(file) {
                 (bytes[2] === 0x03 || bytes[2] === 0x05 || bytes[2] === 0x07);
   // Parse from repaired text (type:'string'), matching dataLoader.loadFile, so
   // the IPT header repair above is applied before SheetJS collapses field counts.
+  //
+  //
+  // cellDates stays OFF (xd-i40): with it on, SheetJS turns "2/27/2026" (and
+  // even "2026-02-27") into a Date at LOCAL midnight, and the ISO conversion
+  // after it reads UTC, so every machine east of UTC stored the day before
+  // (and Tijuana a timestamp after 16:00 as the day after). cellNF keeps the
+  // date format on the cell so isoDateCells can find it.
   const wb = isZip
-    ? XLSX.read(buf, { type: 'array', cellDates: true })
-    : XLSX.read(decodeCsv(buf), { type: 'string', cellDates: true });
-  const sheetName = wb.SheetNames[0];
-  return XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { header: 1, defval: null, raw: true });
+    ? XLSX.read(buf, { type: 'array', cellDates: false, cellNF: true })
+    : XLSX.read(decodeCsv(buf), { type: 'string', cellDates: false, cellNF: true });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  isoDateCells(sheet);
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
+}
+
+// A date cell holds its serial number. Rewrite it as the YYYY-MM-DD string a
+// UTC machine used to see, decoded by calendar arithmetic (parse_date_code)
+// so the machine's zone never enters. Doing it on the cell, not on the mapped
+// column, keeps every consumer (the date columns, the rejected-row download)
+// reading a date rather than a bare serial.
+function isoDateCells(sheet) {
+  for (const ref of Object.keys(sheet)) {
+    if (ref[0] === '!') continue;
+    const cell = sheet[ref];
+    if (cell.t !== 'n' || !cell.z || !XLSX.SSF.is_date(cell.z)) continue;
+    const iso = normalizeDate(cell.v);
+    // Drop the format too: sheet_to_json re-reads a dated cell as a Date.
+    if (iso) { cell.t = 's'; cell.v = iso; delete cell.z; delete cell.w; }
+  }
 }
 
 function shapeRow(headers, row, columnMap) {
