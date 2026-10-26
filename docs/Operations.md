@@ -25,7 +25,7 @@ All required for production. Store in `.env.local` locally, add to Vercel Settin
    - `migration_mona_chat.sql` — `mona_conversations`, `mona_messages`
    - `migration_mona_views_knowledge.sql` — `mona_saved_views`, `mona_knowledge`
    All four tables are server-only (RLS on, no anon policies); every read/write goes through `/api/mona-data`.
-3. Endpoints added: `/api/mona` (SSE Claude proxy, session-gated + rate-limited) and `/api/mona-data` (token-gated persistence CRUD). Total serverless functions: 10 (Vercel hobby limit 12).
+3. Endpoints added: `/api/mona` (SSE Claude proxy, session-gated, shared daily cap per user in `mona_uso`) and `/api/mona-data` (token-gated persistence CRUD). Total serverless functions: 10 (Vercel hobby limit 12).
 
 **Generate a bcrypt hash:**
 ```bash
