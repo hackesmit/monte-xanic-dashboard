@@ -19,10 +19,12 @@
 -- migration_overhaul.sql replaced it with UNIQUE (date, location) long ago,
 -- so each of the three valleys keeps its own series.
 --
--- Exception: wine_samples below is already in its post-migration shape
--- (xd-ajy): sample_seq, the composite UNIQUE (sample_id, sample_date,
--- sample_seq), no single-column UNIQUE on sample_id, sample_date NOT NULL,
--- and the audit columns. Every migration that touches wine_samples is safe to
+-- Exception: wine_samples below already carries its identity key in the
+-- migrated form (xd-ajy): sample_seq, the composite UNIQUE (sample_id,
+-- sample_date, sample_seq), no single-column UNIQUE on sample_id,
+-- sample_date NOT NULL, and the audit columns. Only those; other columns
+-- later migrations add (wine_samples_brix and the like) still come from
+-- the migrations. Every migration that touches wine_samples is safe to
 -- replay over it: the overhaul adds a two-column key that migration_sample_seq
 -- then drops, and migration_sample_seq only adds its composite key when it is
 -- not there yet.
