@@ -129,21 +129,17 @@ explicit ask of the recon; the dual-header caveat is new.)
 
 ## 5. Filed as beads — latent, fix is a judgment call beyond this audit
 
-### 5a. Recepción header detection is density-based, not content-scored (xd-55v)
+### 5a. Recepción header detection was density-based, not content-scored (xd-55v, resolved 2026-10-26)
 
-**Where:** `js/upload/recepcion.js:25` `findHeaderRow(rows, minNonNull = 5)` —
-picks the FIRST row in the first 10 with ≥5 non-null cells.
-
-`prerecepcion.js` was hardened (Vendimia 2026) against exactly this: a dense
-banner/title row above the real header now scores zero because its cells don't
-resolve to known columns, so the *scored* `findHeaderRow` there ignores it. The
-Recepción parser still uses the old **pure-density** rule for BOTH its sheets
-(lines 67, 133). If a future Recepción or Prefermentativos workbook grows a dense
-title/banner row (as the pre-recepción sheet did), density picks the wrong row
-and the parse fails with every required header "missing," or worse, mis-maps.
-The real fixtures don't trigger it today, so this is latent, not live — filed
-rather than fixed here because porting the scored detector is its own change with
-its own tests.
+**Where:** `js/upload/recepcion.js` picked the FIRST row in the first 10 with
+≥5 non-null cells, for BOTH its sheets. A dense title/banner row above the real
+header (as the pre-recepción sheet grew in Vendimia 2026) would have won, every
+column would have been unmapped, and the sheet would have parsed to nothing
+without an error. **Resolved:** the scored `findHeaderRow` that `prerecepcion.js`
+already used now lives in `js/upload/normalize.js` and both parsers call it,
+Recepción with `CONFIG.recepcionToSupabase` and Prefermentativos with
+`CONFIG.prefermentToSupabase`. A banner row scores zero however wide it grows.
+Pinned by `tests/mt14-upload-recepcion.test.mjs` (banner above both headers).
 
 ### 5b. `-` / `NA` do not set `below_detection` (xd-2ae, resolved 2026-10-26)
 
