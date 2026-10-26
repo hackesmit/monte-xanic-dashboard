@@ -73,7 +73,13 @@ export const WeatherStore = {
 
     // Capability comes from the schema, not from which rows happen to be loaded
     // (an empty table has no rows to inspect).
+    // A probe that cannot reach the schema (network, auth, 5xx) answers null:
+    // syncing on a guessed schema would pick the wrong columns and conflict key.
     const hasLocationCol = await this._probeLocationColumn();
+    if (hasLocationCol === null) {
+      console.warn('[WeatherStore] sync skipped: could not read the meteorology schema');
+      return;
+    }
 
     for (const valley of this._VALLEYS) {
       // Only sync non-VDG valleys if the location column exists in DB
@@ -121,18 +127,33 @@ export const WeatherStore = {
     this.data.sort((a, b) => a.date.localeCompare(b.date));
   },
 
-  // Explicit probe: does meteorology have the `location` column? A select of
-  // that column errors on a pre-migration table and succeeds on an empty one.
+  // Explicit probe: does meteorology have the `location` column? true when a
+  // select of that column succeeds (an empty table included), false only on
+  // Postgres undefined_column (42703, what PostgREST returns for a
+  // pre-migration table), null when the schema could not be read after
+  // retries: a network, auth or server error says nothing about the schema.
+  _probeAttempts: 3,
+  _probeRetryMs: 500,
+
   async _probeLocationColumn() {
-    try {
-      const { error } = await DataStore.supabase
-        .from('meteorology')
-        .select('location')
-        .limit(1);
-      return !error;
-    } catch (e) {
-      return false;
+    for (let attempt = 1; attempt <= this._probeAttempts; attempt++) {
+      let error;
+      try {
+        ({ error } = await DataStore.supabase
+          .from('meteorology')
+          .select('location')
+          .limit(1));
+      } catch (e) {
+        error = e;
+      }
+      if (!error) return true;
+      if (error.code === '42703') return false;
+      console.warn(`[WeatherStore] schema probe failed (attempt ${attempt}):`, error.message);
+      if (attempt < this._probeAttempts) {
+        await new Promise(r => setTimeout(r, this._probeRetryMs * attempt));
+      }
     }
+    return null;
   },
 
   // First and last day in [start, end] with no stored row for `location`,
