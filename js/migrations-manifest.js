@@ -48,4 +48,5 @@ export const MIGRATIONS = [
   'migration_tanques_etapa',
   'migration_tanques_etapa_escritura',
   'migration_tanques_etapa_append_only',
+  'migration_mona_uso',
 ];

@@ -116,5 +116,8 @@ test('la migracion exige la columna, recrea los dos triggers y es la ultima del 
   assert.match(congela, /^BEGIN;$/m);
   assert.match(congela, /^COMMIT;\n$/m);
   assert.match(congela, /VALUES \('migration_tanques_etapa_append_only'\)/);
-  assert.equal(MIGRATIONS[MIGRATIONS.length - 1], 'migration_tanques_etapa_append_only');
+  // Last among the tanques migrations: a later, unrelated migration (xd-aiz's
+  // migration_mona_uso) may follow it in the manifest.
+  const tanques = MIGRATIONS.filter((m) => m.startsWith('migration_tanques'));
+  assert.equal(tanques[tanques.length - 1], 'migration_tanques_etapa_append_only');
 });

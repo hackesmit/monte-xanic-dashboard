@@ -7,6 +7,7 @@ const MAX_FACTS = 100;
 const MAX_CHARS = 8000;
 
 // Pure: format approved facts into a Spanish system-appendix block. No I/O.
+// api/mona.js calls it server-side; the client never sends it (xd-aiz).
 export function assembleKnowledgeContext(facts) {
   const approved = (facts || []).filter(f => f && f.status === 'approved').slice(0, MAX_FACTS);
   if (!approved.length) return '';
@@ -34,7 +35,6 @@ export const MonaKnowledge = {
     return this.facts;
   },
 
-  approvedContext() { return assembleKnowledgeContext(this.facts); },
 
   async proposeFact(fact) { return api('proposeFact', { fact }); },
   async approve(id) { await api('approveFact', { id }); await this.load(); this.renderPanel(); },
