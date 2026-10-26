@@ -29,8 +29,8 @@
 import { DataStore, mismaIntencion } from '../dataLoader.js';
 import { DemoMode } from '../demoMode.js';
 import { escapeHtml, todayInVineyard } from '../utils.js';
-import { validarMovimientoEnLog, estadoEnPosicion } from './estado.js';
-import { variedadDeLote, tokenVariedad, fechaCorta } from './plan.js';
+import { validarMovimientoEnLog, estadoEnPosicion, ETAPAS } from './estado.js';
+import { variedadDeLote, tokenVariedad, fechaCorta, ETAPA_ETIQUETAS } from './plan.js';
 
 // --- labels ------------------------------------------------------------------
 
@@ -59,7 +59,7 @@ export function etiquetaMovimiento(tipo) {
 // DataStore.postMovimiento (one key per user intent, reused on a retry).
 export const CAMPOS_ENVIADOS = [
   'fecha', 'tipo', 'origen', 'destino', 'lot_code',
-  'vintage_year', 'volumen_l', 'merma_l', 'nota', 'fuente',
+  'vintage_year', 'volumen_l', 'merma_l', 'nota', 'fuente', 'etapa',
 ];
 
 // A tank-to-tank gesture can be any of these. `recepcion` is excluded because
@@ -235,6 +235,12 @@ export function planearMovimiento(gesto = {}, bodega = {}, opciones = {}) {
     mezcla_origen: etiqueta.mezcla,
     disponible_l: clase === 'recepcion' ? null : (origen ? mili(origen.litros) : null),
     libres_l: clase === 'salida' ? null : (destino ? Math.max(0, mili(destino.libres)) : null),
+    // The stage the destination is in at this fecha. The dialog's Etapa field
+    // proposes no change (null): the replay then keeps it, or carries the
+    // origin's into an empty tank. Only a stage the user picks is stored.
+    etapa_destino: destino ? destino.etapa || null : null,
+    etapa: null,
+    pideEtapa: clase !== 'salida',
     maximo_l: 0,
     volumen_l: null,
     merma_l: 0,
@@ -441,6 +447,11 @@ export function movimientoDesdeFormulario(modelo = {}, valores = {}) {
     // volume that left, and the column has a CHECK saying so.
     merma_l: tipo === 'salida' ? 0 : (mermaCampo === '' ? 0 : numeroDeCampo(valores.merma_l)),
     nota: nota || null,
+    // Blank means "no change" and is sent as null. A value outside ETAPAS is a
+    // stale or tampered form: it is sent as typed so the gate names it, never
+    // quietly dropped into "no change". A salida has no destination to put a
+    // stage on, so it never carries one.
+    etapa: tipo === 'salida' ? null : (texto(valores.etapa) || null),
     // From the MODEL, never from the form: `fuente` says where the movement
     // came from (a person at the plan, or a lab proposal a person confirmed),
     // which is not something the user types and must not be something a stale
@@ -506,7 +517,7 @@ export function erroresDeFormulario(mov) {
  * the moment someone presses Reintentar on the old entry (lucy, 2026-10-15).
  * Same movement means every field the row stores (mismaIntencion: tipo,
  * origen, destino, lot_code, volumen_l, merma_l, fecha, vintage_year, nota,
- * fuente), with tank synonyms resolved.
+ * fuente, etapa), with tank synonyms resolved.
  * @returns {Object|null} the pending entry ({intento, mensaje, guardado})
  */
 export function pendienteIgual(pendientes, mov, sinonimos = {}) {
@@ -1659,6 +1670,16 @@ export const TanquesMoves = {
       + ' inputmode="numeric" autocomplete="off"'
       + ` value="${m.vintage_year == null ? '' : m.vintage_year}"></label>`
       + '</div>';
+    if (m.pideEtapa) {
+      const actual = m.etapa_destino ? ETAPA_ETIQUETAS[m.etapa_destino] || m.etapa_destino : '';
+      const etapas = ETAPAS.map((e) =>
+        `<option value="${escapeHtml(e)}"${e === m.etapa ? ' selected' : ''}>`
+        + `${escapeHtml(ETAPA_ETIQUETAS[e] || e)}</option>`).join('');
+      s += '<label class="tanques-campo">Etapa del vino en el destino<select name="etapa">'
+        + `<option value=""${m.etapa ? '' : ' selected'}>Sin cambio</option>${etapas}</select>`
+        + `<small>${actual ? `Etapa de ${escapeHtml(m.destino || '')} en esa fecha: ${escapeHtml(actual)}`
+          : 'Sin cambio: la etapa sale del movimiento o viaja con el vino.'}</small></label>`;
+    }
     s += '<label class="tanques-campo">Nota<input name="nota" type="text" maxlength="2000"'
       + ' placeholder="Ej. trasiego con aireación, lías gruesas"></label>';
     s += '<div class="tanques-dialog-errores" role="alert"></div>';
@@ -1688,7 +1709,7 @@ export const TanquesMoves = {
     if (!dlg || !modelo) return null;
     const form = dlg.querySelector('form');
     const valores = {};
-    for (const n of ['tipo', 'fecha', 'volumen_l', 'merma_l', 'vintage_year', 'nota']) {
+    for (const n of ['tipo', 'fecha', 'volumen_l', 'merma_l', 'vintage_year', 'nota', 'etapa']) {
       const el = form.querySelector(`[name="${n}"]`);
       if (el) valores[n] = el.value;
     }
