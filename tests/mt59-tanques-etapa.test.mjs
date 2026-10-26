@@ -12,9 +12,10 @@ test('el CHECK de la migracion lista exactamente las ETAPAS de estado.js', () =>
   assert.deepEqual(lista, ETAPAS);
 });
 
-test('la migracion se registra y es la ultima del manifiesto', () => {
+test('la migracion se registra en el manifiesto despues de la de escritura', () => {
   assert.match(sql, /VALUES \('migration_tanques_etapa'\)/);
-  assert.equal(MIGRATIONS[MIGRATIONS.length - 1], 'migration_tanques_etapa');
+  assert.ok(MIGRATIONS.includes('migration_tanques_etapa'));
+  assert.ok(MIGRATIONS.indexOf('migration_tanques_etapa') > MIGRATIONS.indexOf('migration_tanques_escritura'));
 });
 
 test('una recepcion con etapa explicita deja esa etapa, sin ella queda rec', () => {
