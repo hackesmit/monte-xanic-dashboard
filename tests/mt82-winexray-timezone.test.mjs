@@ -1,4 +1,4 @@
-// MT.60 - the WineXRay parser's dates must not depend on the machine's time
+// MT.82 - the WineXRay parser's dates must not depend on the machine's time
 // zone (xd-a6i, xd-i40).
 //
 // SheetJS with cellDates built each date cell as a Date at LOCAL midnight and
@@ -64,7 +64,7 @@ async function runIn(tz) {
   return JSON.parse(stdout);
 }
 
-describe('MT.60 - WineXRay dates are time-zone independent (fresh process)', () => {
+describe('MT.82 - WineXRay dates are time-zone independent (fresh process)', () => {
   const runs = new Map();
   for (const tz of ZONES) {
     it(`keeps every calendar day with TZ=${tz}`, async () => {

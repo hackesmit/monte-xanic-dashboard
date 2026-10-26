@@ -1,4 +1,4 @@
-// MT.61 - the WineXRay sync takes a cross-instance lease (xd-wh7).
+// MT.83 - the WineXRay sync takes a cross-instance lease (xd-wh7).
 //
 // The in-memory in-flight guard only collapses requests on ONE warm Vercel
 // instance. Two instances each ran a full WineXRay fetch and the later writer
@@ -15,7 +15,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 
-process.env.SESSION_SECRET = 'test-secret-for-mt61';
+process.env.SESSION_SECRET = 'test-secret-for-mt83';
 process.env.SUPABASE_URL = 'https://stub.invalid';
 process.env.SUPABASE_SERVICE_KEY = 'stub-service-key';
 process.env.WINEXRAY_USERNAME = 'lab-user';
@@ -77,9 +77,19 @@ function countingClient() {
   };
 }
 
-const noNetwork = async u => { throw new Error(`test must not hit the network: ${u}`); };
+// verifyToken fails closed when it cannot read token_blacklist (xd-5ua), so the
+// only request a test may make is that query, answered as "not revoked".
+// Installed for the whole file: a case that forgets to stub fetch still never
+// reaches the network.
+const noNetwork = async u => {
+  if (String(u).includes('/rest/v1/token_blacklist')) {
+    return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+  }
+  throw new Error(`test must not hit the network: ${u}`);
+};
+globalThis.fetch = noNetwork;
 
-test('MT.61 - a second instance is refused while the first holds the lease, and never fetches', { timeout: 5000 }, async () => {
+test('MT.83 - a second instance is refused while the first holds the lease, and never fetches', { timeout: 5000 }, async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = noNetwork;
   try {
@@ -112,7 +122,7 @@ test('MT.61 - a second instance is refused while the first holds the lease, and 
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('MT.61 - the lease is taken before WineXRay and released in a finally when the run throws', async () => {
+test('MT.83 - the lease is taken before WineXRay and released in a finally when the run throws', async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = noNetwork;
   try {
@@ -137,7 +147,7 @@ test('MT.61 - the lease is taken before WineXRay and released in a finally when 
   } finally { globalThis.fetch = realFetch; }
 });
 
-test('MT.61 - every run uses a fresh owner id', async () => {
+test('MT.83 - every run uses a fresh owner id', async () => {
   const lease = sharedLease();
   for (let i = 0; i < 2; i++) {
     await handler(mkReq({ from: '2026-10-01', to: '2026-10-02' }), httpRes(), {
@@ -149,7 +159,7 @@ test('MT.61 - every run uses a fresh owner id', async () => {
   assert.notEqual(owners[0], owners[1]);
 });
 
-test('MT.61 - a crashed run does not wedge the lease: it is taken over once expired', async () => {
+test('MT.83 - a crashed run does not wedge the lease: it is taken over once expired', async () => {
   let now = 1_000_000;
   const lease = sharedLease(() => now);
   assert.equal(await lease.acquire('winexray-sync', 'crashed', 600), true);
@@ -171,7 +181,7 @@ test('MT.61 - a crashed run does not wedge the lease: it is taken over once expi
   assert.equal(await lease.release('winexray-sync', 'crashed'), false);
 });
 
-test('MT.61 - a lease service that cannot answer fails closed in Spanish, with no fetch', async () => {
+test('MT.83 - a lease service that cannot answer fails closed in Spanish, with no fetch', async () => {
   let fetched = 0;
   for (const acquire of [
     async () => { throw new LeaseError('sync_lease_acquire answered 404'); },
@@ -188,7 +198,7 @@ test('MT.61 - a lease service that cannot answer fails closed in Spanish, with n
   assert.equal(fetched, 0);
 });
 
-test('MT.61 - a failed release does not change a successful answer', async () => {
+test('MT.83 - a failed release does not change a successful answer', async () => {
   const res = httpRes();
   await handler(mkReq({ from: '2026-10-01', to: '2026-10-02' }), res, {
     lease: { async acquire() { return true; }, async release() { throw new Error('db gone'); } },
@@ -209,7 +219,7 @@ function fakeFetch(answer) {
   return { calls, impl };
 }
 
-test('MT.61 - postgresLease posts the RPC with the service key and returns its boolean', async () => {
+test('MT.83 - postgresLease posts the RPC with the service key and returns its boolean', async () => {
   for (const body of [true, false]) {
     const f = fakeFetch({ status: 200, body });
     const lease = postgresLease({ supabaseUrl: 'https://db.example', serviceKey: 'svc', fetchImpl: f.impl });
@@ -226,7 +236,7 @@ test('MT.61 - postgresLease posts the RPC with the service key and returns its b
   assert.deepEqual(JSON.parse(f.calls[0].opts.body), { p_name: 'winexray-sync', p_owner: 'o1' });
 });
 
-test('MT.61 - postgresLease never reads an unclear answer as held', async () => {
+test('MT.83 - postgresLease never reads an unclear answer as held', async () => {
   for (const answer of [
     { status: 404, body: { message: 'function not found' } },
     { status: 500, body: {} },
@@ -243,7 +253,7 @@ test('MT.61 - postgresLease never reads an unclear answer as held', async () => 
 
 // Round 36 guardrail: the migration self-registers and is in the manifest, so
 // the banner names it if a deploy outruns the SQL Editor.
-test('MT.61 - migration_sync_lease registers itself and is in the manifest', async () => {
+test('MT.83 - migration_sync_lease registers itself and is in the manifest', async () => {
   const sql = await readFile(new URL('../sql/migration_sync_lease.sql', import.meta.url), 'utf8');
   assert.match(sql, /INSERT INTO public\.applied_migrations \(name\) VALUES \('migration_sync_lease'\)/);
   assert.ok(MIGRATIONS.includes('migration_sync_lease'));
