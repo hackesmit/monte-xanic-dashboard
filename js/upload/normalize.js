@@ -170,3 +170,43 @@ export function validateColumnTypes(obj, { intCols, numericCols, dateCols } = {}
   }
   return null;
 }
+
+export function normalizeHeader(h) {
+  return String(h ?? '').trim().replace(/\s+/g, ' ');
+}
+
+// Picks the real header row by content, not by density. Shared by the
+// Pre-recepción and Recepción parsers (xd-55v); columnLookup maps a
+// normalized header label to its column.
+//
+// Counting non-null cells is not enough: Vendimia 2026 added seven evaluator
+// labels to the banner row, pushing it over any density threshold, so the
+// first-row-with-N-cells rule selected the banner and the parse failed with
+// every required header missing. Scoring candidates by how many cells actually
+// resolve to a known column makes the choice about meaning instead, and a
+// banner row scores zero however wide it grows.
+export function findHeaderRow(rows, columnLookup, minNonNull = 5) {
+  let bestIdx = -1;
+  let bestScore = 0;
+  let fallbackIdx = -1;
+
+  for (let i = 0; i < Math.min(10, rows.length); i++) {
+    const row = rows[i] || [];
+    const nn = row.filter(v => v !== null && String(v).trim() !== '').length;
+    if (nn < minNonNull) continue;
+    if (fallbackIdx < 0) fallbackIdx = i;
+
+    const score = row.reduce((acc, cell) => {
+      const h = normalizeHeader(cell);
+      return acc + (h && columnLookup[h] ? 1 : 0);
+    }, 0);
+    if (score > bestScore) { bestScore = score; bestIdx = i; }
+  }
+
+  // A recognised header row must carry several known columns, not one stray
+  // match. Below that, fall back to the old density rule so an unfamiliar
+  // workbook still reaches the explicit required-headers error, which names
+  // what is missing, rather than a bare "no header row found".
+  if (bestScore >= minNonNull) return bestIdx;
+  return fallbackIdx;
+}

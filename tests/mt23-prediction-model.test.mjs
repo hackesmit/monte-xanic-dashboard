@@ -242,7 +242,11 @@ test('MT.23 bayesianCombine: precision-sum overflow does not silently drop the p
   // Equal precisions ⇒ midpoint, NOT the raw current fit (0.2).
   assert.ok(Math.abs(out.betaPost - 0.4) < 1e-9,
     `betaPost=${out.betaPost} — prior was silently discarded on overflow`);
-  assert.equal(out.sigmaBeta2Post, 0);
+  // xd-e2y: the variance takes the same rescale. One over the overflowed sum
+  // was 0, which collapsed the confidence band; 1 / 2e308 is about 5e-309.
+  assert.ok(out.sigmaBeta2Post > 0, `sigmaBeta2Post=${out.sigmaBeta2Post} collapsed to 0`);
+  assert.ok(Math.abs(out.sigmaBeta2Post / 5e-309 - 1) < 1e-3,
+    `sigmaBeta2Post=${out.sigmaBeta2Post}, expected about 5e-309`);
 });
 
 import { etaDays, confidenceBand } from '../js/prediction.js';

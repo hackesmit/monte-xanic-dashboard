@@ -52,3 +52,30 @@ test('re-rendering Prediccion does not leak chart instances', async ({ page, con
   expect(after.instances).toBe(before.instances);
   expect(after.blank).toBe(0);
 });
+
+// xd-e2y: a past vintage whose Brix slope is impossible is dropped from the
+// prior, and the card says so instead of looking like a lot with no history.
+test('a corrupt past vintage shows a data-quality line on its card', async ({ page, context }) => {
+  await boot(page, context);
+  const shown = await page.evaluate(async () => {
+    const { DataStore } = await import('/js/dataLoader.js');
+    const { PredictionView } = await import('/js/predictionView.js');
+    const rows = DataStore.berryData;
+    const ref = rows.find(r => r.variety && r.appellation && Number.isFinite(Number(r.brix)));
+    const years = rows.map(r => r.vintage).filter(Number.isFinite);
+    const corruptYear = Math.min(...years) - 1;
+    for (let d = 0; d < 5; d++) {
+      rows.push({ ...ref, vintage: corruptYear,
+        sampleDate: new Date(Date.UTC(corruptYear, 7, 1 + 5 * d)).toISOString().slice(0, 10),
+        brix: 18 + 100 * 5 * d });
+    }
+    PredictionView.render();
+    await new Promise(r => setTimeout(r, 400));
+    return [...document.querySelectorAll('#prediccion-grid .pred-card-flags li')]
+      .map(li => li.textContent).filter(t => t.includes('descartados'));
+  });
+  expect(shown.length).toBe(1);
+  expect(shown[0]).toContain('Brix: 1');
+  const card = page.locator('#prediccion-grid .pred-card', { hasText: 'descartados' });
+  await card.screenshot({ path: 'test-results/prediccion-descartados.png' });
+});

@@ -3,7 +3,8 @@
 //
 // Reads one sheet named "Pre-recepción" (case-insensitive substring match).
 // Header row is NOT at row 0 in the source files — it's typically row 2.
-// Parser scans the first ~10 rows for a row with ≥5 non-null cells as header.
+// Parser picks the header row in the first ~10 rows by content (findHeaderRow in
+// normalize.js scores how many cells resolve to a known column).
 //
 // Rejects rows where medicion_code is missing or 'PENDIENTE'.
 // Round 35: target is mediciones_tecnicas (unified with the form). Every
@@ -11,51 +12,13 @@
 
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
-import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
+import { normalizeValue, normalizeDate, validateColumnTypes, normalizeHeader, findHeaderRow } from './normalize.js';
 import { COLUMN_TYPES } from '../validation.js';
 import { panelConsensus } from '../classification.js';
 
 // mediciones_tecnicas columns whose values must be ISO YYYY-MM-DD.
 const DATE_COLUMNS = new Set(['reception_date', 'medicion_date', 'lab_date']);
 
-
-function normalizeHeader(h) {
-  return String(h ?? '').trim().replace(/\s+/g, ' ');
-}
-
-// Picks the real header row by content, not by density.
-//
-// Counting non-null cells is not enough: Vendimia 2026 added seven evaluator
-// labels to the banner row, pushing it over any density threshold, so the
-// first-row-with-N-cells rule selected the banner and the parse failed with
-// every required header missing. Scoring candidates by how many cells actually
-// resolve to a known column makes the choice about meaning instead, and a
-// banner row scores zero however wide it grows.
-function findHeaderRow(rows, columnLookup, minNonNull = 5) {
-  let bestIdx = -1;
-  let bestScore = 0;
-  let fallbackIdx = -1;
-
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const row = rows[i] || [];
-    const nn = row.filter(v => v !== null && String(v).trim() !== '').length;
-    if (nn < minNonNull) continue;
-    if (fallbackIdx < 0) fallbackIdx = i;
-
-    const score = row.reduce((acc, cell) => {
-      const h = normalizeHeader(cell);
-      return acc + (h && columnLookup[h] ? 1 : 0);
-    }, 0);
-    if (score > bestScore) { bestScore = score; bestIdx = i; }
-  }
-
-  // A recognised header row must carry several known columns, not one stray
-  // match. Below that, fall back to the old density rule so an unfamiliar
-  // workbook still reaches the explicit required-headers error, which names
-  // what is missing, rather than a bare "no header row found".
-  if (bestScore >= minNonNull) return bestIdx;
-  return fallbackIdx;
-}
 
 // Vendimia 2026 heads the evaluator columns on the banner row above the main
 // header row, leaving the main header blank underneath them. Fill each blank

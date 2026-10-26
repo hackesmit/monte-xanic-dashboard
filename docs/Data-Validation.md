@@ -17,7 +17,9 @@ Values matching `/^<\s*\d+(\.\d+)?$/` (e.g. `<50`, `<10`, `< 5.0`) are:
 - Displayed with dagger mark in tables
 
 ### Null Handling
-These string values are treated as NULL: `-`, `--`, `NA`, `N/A`, empty string.
+These string values are treated as NULL: `-`, `—`, `NA`, `N/A`, empty string.
+They mean an empty cell (not measured) and do **not** set `below_detection`;
+WineXRay writes `-` in every blank cell (decision 2026-10-26, xd-2ae).
 
 ### Excluded Samples (filtered on upload)
 

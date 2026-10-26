@@ -92,6 +92,42 @@ describe('MT.13 — WineXRay parser', () => {
     assert.ok(wine.every(r => r.below_detection === false));
   });
 
+  // xd-2ae: '-' and 'NA' mean an empty cell (not measured), not below detection.
+  // WineXRay writes '-' in every blank cell, so flagging it would mark almost
+  // every row and hide the real '<50' / '<10' detection-limit values.
+  describe("empty markers versus the below-detection form (xd-2ae)", () => {
+    function csvWith(phCell, taCell) {
+      const header = 'Sample Id,Sample Type,Sample Date,tANT (ppm ME),pH (pH units),Titratable Acidity (TA gr/l)';
+      const row = `25CSMX-6,Berries,2/27/2026,623,${phCell},${taCell}`;
+      return asFakeFile(Buffer.from(`${header}\n${row}\n`, 'utf8'), 'x.csv');
+    }
+    async function onlyRow(file) {
+      const result = await winexrayParser.parse(file);
+      const rows = result.targets.find(t => t.table === 'berry_samples').rows;
+      assert.equal(rows.length, 1, 'the row must parse');
+      return rows[0];
+    }
+
+    for (const [ph, ta] of [['-', '-'], ['NA', 'N/A'], ['—', '']]) {
+      it(`nulls '${ph}' / '${ta}' without setting below_detection`, async () => {
+        const r = await onlyRow(csvWith(ph, ta));
+        assert.equal(r.ph, null);
+        assert.equal(r.ta, null);
+        assert.equal(r.tant, 623, 'the measured value next to the empty cells survives');
+        assert.equal(r.below_detection, false);
+      });
+    }
+
+    for (const marker of ['<50', '<10', '< 5.0']) {
+      it(`nulls '${marker}' and sets below_detection`, async () => {
+        const r = await onlyRow(csvWith(marker, '-'));
+        assert.equal(r.ph, null);
+        assert.equal(r.ta, null);
+        assert.equal(r.below_detection, true);
+      });
+    }
+  });
+
   it('shapes berry rows with berry-specific columns populated', async () => {
     const file = await loadFixture();
     const result = await winexrayParser.parse(file);

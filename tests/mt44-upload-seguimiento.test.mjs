@@ -12,6 +12,7 @@ import { readFile } from 'node:fs/promises';
 import * as XLSX from 'xlsx';
 import { seguimientoParser } from '../js/upload/seguimiento.js';
 import { ALLOWED_TABLES } from '../api/upload.js';
+import { UploadManager } from '../js/upload.js';
 import { CONFIG } from '../js/config.js';
 import { buildAoa } from './fixtures/make-seguimiento-fixture.mjs';
 
@@ -518,4 +519,124 @@ describe('MT.44 — round-2 review fixes (xd-6r7)', () => {
       'the stray daily-TONS aggregate row must be skipped, not rejected');
     assert.equal(res.targets[1].rows.length, 4, 'still exactly the 4 real lots');
   });
+});
+
+// ── xd-ap4: follow-ups carried out of xd-6r7 ──
+describe('MT.44 — parser follow-ups (xd-ap4)', () => {
+  const build = (mutate, name = 'seguimiento_sin_nombre.xlsx') => {
+    const aoa = buildAoa().map(r => (r ? [...r] : r));
+    const hdr = aoa[5];
+    hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
+    if (mutate) mutate(aoa);
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    return asFakeFile(Buffer.from(buf), name);
+  };
+  const LOT_B_FIRST_ROW = 15;   // lot A occupies rows 8..14
+  const TONS_COL = 7;           // Variedad, Status, Proveedor, Lote, ANT, Código, Proyectada, TONS
+
+  // Collects every textContent the preview card writes, with a DOM stub just
+  // big enough for _renderPreviewCard.
+  function renderPreviewTexts(pending) {
+    const node = () => ({
+      children: [], dataset: {}, textContent: '', className: '',
+      appendChild(c) { this.children.push(c); return c; },
+      get firstChild() { return this.children[0] || null; },
+      removeChild(c) { this.children.splice(this.children.indexOf(c), 1); },
+      addEventListener() {},
+      setAttribute() {},
+    });
+    const prevDoc = globalThis.document;
+    globalThis.document = { createElement: () => node(), getElementById: () => null };
+    try {
+      const statusEl = node();
+      UploadManager._pendingUpload = pending;
+      UploadManager._renderPreviewCard(statusEl);
+      const out = [];
+      const walk = (n) => { if (n.textContent) out.push({ text: n.textContent, cls: n.className }); n.children.forEach(walk); };
+      walk(statusEl);
+      return out;
+    } finally {
+      UploadManager._pendingUpload = null;
+      if (prevDoc === undefined) delete globalThis.document; else globalThis.document = prevDoc;
+    }
+  }
+
+  // ── 1: warnings reach the confirm card ──
+  it('1: a TONS mismatch is a parser warning and renders in the upload preview', async () => {
+    const file = build((aoa) => { aoa[8][TONS_COL] = 99; }); // lot A recomputes to 10
+    const res = await seguimientoParser.parse(file);
+    const tonsWarn = res.warnings.find(w => /TONS recalculado \(10\) no coincide .*\(99\)/.test(w));
+    assert.ok(tonsWarn, `expected a TONS mismatch warning; got ${JSON.stringify(res.warnings)}`);
+    const texts = renderPreviewTexts({ parser: seguimientoParser, file, ...res });
+    assert.ok(texts.some(t => /^Avisos/.test(t.text)), 'the warnings heading must render');
+    assert.ok(texts.some(t => t.text === tonsWarn && /upload-preview-warning/.test(t.cls)),
+      'the TONS warning text must render as a warning row');
+  });
+
+  // ── 2: vintage ambiguity refuses ──
+  it('2: a title and a file name that name different vintages refuse the file', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(build(null, 'Seguimiento Vendimia 2027.xlsx')),
+      (err) => /más de una vendimia/.test(err.message) && /2026/.test(err.message) && /2027/.test(err.message));
+  });
+
+  it('2: two preamble cells that name different vintages refuse the file', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(build((aoa) => { aoa[1] = ['Vendimia 2025']; })),
+      /más de una vendimia/);
+  });
+
+  it('2: a title and a file name that agree are accepted', async () => {
+    const res = await seguimientoParser.parse(build(null, 'Seguimiento Vendimia 2026.xlsx'));
+    assert.ok(res.targets[1].rows.length > 0);
+    assert.ok(res.targets[1].rows.every(r => r.vintage_year === 2026));
+  });
+
+  // ── 3: separators between complete blocks are accepted ──
+  it('3: a blank row between two complete lot blocks is accepted', async () => {
+    const res = await seguimientoParser.parse(build((aoa) => {
+      aoa.splice(LOT_B_FIRST_ROW, 0, new Array(aoa[5].length).fill(null));
+    }));
+    assert.equal(res.targets[1].rows.length, 4, 'all four lots still land');
+  });
+
+  it('3: a repeated header row between two complete lot blocks is accepted', async () => {
+    const baseline = await seguimientoParser.parse(build());
+    const res = await seguimientoParser.parse(build((aoa) => {
+      aoa.splice(LOT_B_FIRST_ROW, 0, [...aoa[7]]);
+    }));
+    assert.deepEqual(res.targets.map(t => t.rows), baseline.targets.map(t => t.rows),
+      'a separator between blocks changes nothing that is written');
+  });
+
+  it('3: a separator between blocks after an INCOMPLETE block still refuses', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(build((aoa) => {
+        aoa[LOT_B_FIRST_ROW - 1] = new Array(aoa[5].length).fill(null); // lot A loses Antocianos
+      })),
+      /no tiene la métrica/);
+  });
+
+  it('3: a gap followed by more rows of the SAME lot still refuses', async () => {
+    await assert.rejects(
+      () => seguimientoParser.parse(build((aoa) => {
+        aoa.splice(11, 0, new Array(aoa[5].length).fill(null)); // inside lot A
+      })),
+      /no es contigua/);
+  });
+
+  // ── 4: filename separators ──
+  for (const name of ['Seguimiento Vendimia_2026.xlsx', 'Seguimiento_Vendimia-2026.xlsx',
+    'Seguimiento.Vendimia.2026.xlsx', 'SeguimientoVendimia2026.xlsx']) {
+    it(`4: the vintage is read from the file name "${name}"`, async () => {
+      const res = await seguimientoParser.parse(build((aoa) => {
+        aoa[0] = ['SEGUIMIENTO DE MADURACIÓN   FL 8.5.1  REV 5']; // no year in the title
+      }, name));
+      assert.ok(res.targets[1].rows.length > 0);
+      assert.ok(res.targets[1].rows.every(r => r.vintage_year === 2026));
+    });
+  }
 });

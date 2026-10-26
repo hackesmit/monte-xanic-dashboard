@@ -183,4 +183,40 @@ describe('MT.14 — Recepción parser', () => {
     const pref201 = prefRows.find(r => r.report_code === 'RRT-201');
     assert.equal(pref201.vintage_year, null);
   });
+
+  // xd-55v — header detection is scored by content. A dense title/banner row
+  // above the real header (as Pre-recepción grew in Vendimia 2026) used to win
+  // the first-row-with-5-cells rule, so every column was unmapped and the
+  // sheet parsed to nothing, silently.
+  it('skips a dense banner row above the header on both sheets', async () => {
+    const XLSX = await import('xlsx');
+    const banner = ['FL 8.5.8 rev 2', 'Monte Xanic', 'ANÁLISIS', 'Vendimia 2026', 'Bodega', 'Laboratorio', 'Rev. 3'];
+
+    const recSheet = XLSX.utils.aoa_to_sheet([
+      banner,
+      ['Reporte','Fecha','Lote de viñedo 1','Código (lote de bodega)','Tanque','Variedad'],
+      ['RRT-300', new Date(Date.UTC(2026, 7, 8)), 'SBMX-2A', '26SBVDG-300', 'TK-A', 'Sauvignon Blanc'],
+    ]);
+    const prefSheet = XLSX.utils.aoa_to_sheet([
+      banner,
+      ['Reporte','Fecha','Código (lote de bodega)','Tanque','Variedad'],
+      ['RRT-300', new Date(Date.UTC(2026, 7, 11)), '26SBVDG-300', 'TK-A', 'Sauvignon Blanc'],
+    ]);
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, recSheet,  'Recepción 2026');
+    XLSX.utils.book_append_sheet(wb, prefSheet, 'Prefermentativos 2026');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx', cellDates: true });
+    const result = await recepcionParser.parse(asFakeFile(Buffer.from(buf), 'banner.xlsx'));
+
+    const rec = result.targets[0].rows;
+    assert.equal(rec.length, 1, 'the Recepción row must parse under the real header');
+    assert.equal(rec[0].report_code, 'RRT-300');
+    assert.equal(rec[0].tank_id, 'TK-A');
+    assert.deepEqual(result.targets[1].rows.map(l => l.lot_position), [1]);
+
+    const pref = result.targets[2].rows;
+    assert.equal(pref.length, 1, 'the Prefermentativos row must parse under the real header');
+    assert.equal(pref[0].batch_code, '26SBVDG-300');
+  });
 });

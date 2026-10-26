@@ -10,7 +10,7 @@
 
 import * as XLSX from 'xlsx';
 import { CONFIG } from '../config.js';
-import { normalizeValue, normalizeDate, validateColumnTypes } from './normalize.js';
+import { normalizeValue, normalizeDate, validateColumnTypes, normalizeHeader, findHeaderRow } from './normalize.js';
 import { COLUMN_TYPES } from '../validation.js';
 
 // Date columns in tank_receptions and prefermentativos tables.
@@ -20,14 +20,6 @@ const PREFERMENT_DATE_COLUMNS = new Set(['measurement_date']);
 
 function sheetToArray(wb, name) {
   return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null, raw: true });
-}
-
-function findHeaderRow(rows, minNonNull = 5) {
-  for (let i = 0; i < Math.min(10, rows.length); i++) {
-    const nn = rows[i].filter(v => v !== null && String(v).trim() !== '').length;
-    if (nn >= minNonNull) return i;
-  }
-  return -1;
 }
 
 export const recepcionParser = {
@@ -64,9 +56,11 @@ export const recepcionParser = {
 
     // ── Recepción sheet ──
     const recRows = sheetToArray(wb, recepcionSheet);
-    const recHeaderIdx = findHeaderRow(recRows);
+    // Scored by content (xd-55v): a dense title or banner row above the real
+    // header scores zero, so it can no longer be taken for the header.
+    const recHeaderIdx = findHeaderRow(recRows, CONFIG.recepcionToSupabase);
     if (recHeaderIdx < 0) throw new Error('No se encontró la fila de encabezados en la hoja Recepción.');
-    const recHeaders = recRows[recHeaderIdx].map(h => String(h ?? '').trim().replace(/\s+/g, ' '));
+    const recHeaders = recRows[recHeaderIdx].map(normalizeHeader);
 
     for (let i = recHeaderIdx + 1; i < recRows.length; i++) {
       const row = recRows[i];
@@ -130,9 +124,9 @@ export const recepcionParser = {
     // the Recepción branch above). Headers also get whitespace collapsed so
     // a column like 'Reporte ' (trailing space) still matches the config.
     const prefRows = sheetToArray(wb, prefermSheet);
-    const prefHeaderIdx = findHeaderRow(prefRows);
+    const prefHeaderIdx = findHeaderRow(prefRows, CONFIG.prefermentToSupabase);
     if (prefHeaderIdx >= 0) {
-      const prefHeaders = prefRows[prefHeaderIdx].map(h => String(h ?? '').trim().replace(/\s+/g, ' '));
+      const prefHeaders = prefRows[prefHeaderIdx].map(normalizeHeader);
       for (let i = prefHeaderIdx + 1; i < prefRows.length; i++) {
         const row = prefRows[i];
         if (!row || row.every(c => c === null || String(c).trim() === '')) continue;
