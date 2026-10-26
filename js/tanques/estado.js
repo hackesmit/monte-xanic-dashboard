@@ -491,8 +491,11 @@ export function validarMovimiento(estado, mov, opciones = {}) {
 
   if (!fechaValida(m.fecha)) errores.push('El movimiento necesita una fecha valida (AAAA-MM-DD).');
 
+  // The stage is what the wine is in where it ARRIVES, so a row with nowhere
+  // to arrive cannot carry one: stored, it would say nothing about any tank.
   const etapa = texto(m.etapa);
   if (etapa && !ETAPAS.includes(etapa)) errores.push(`Etapa no reconocida: "${etapa}".`);
+  else if (etapa && SIN_DESTINO.has(tipo)) errores.push(`Una ${tipo} no lleva etapa: el vino sale de la bodega.`);
 
   const volumen = litros(m.volumen_l);
   const volumenOk = !Number.isNaN(volumen) && volumen > 0;

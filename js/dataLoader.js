@@ -25,7 +25,7 @@ const _tanque = (v, sinonimos) => {
 };
 export function mismaIntencion(fila, intento, sinonimos) {
   if (!fila || !intento) return false;
-  for (const k of ['tipo', 'fecha', 'lot_code', 'nota', 'fuente']) {
+  for (const k of ['tipo', 'fecha', 'lot_code', 'nota', 'fuente', 'etapa']) {
     if (_txt(fila[k]).slice(0, k === 'fecha' ? 10 : undefined) !== _txt(intento[k])) return false;
   }
   for (const k of ['origen', 'destino']) {
