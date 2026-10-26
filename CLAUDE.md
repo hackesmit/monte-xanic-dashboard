@@ -59,7 +59,11 @@ Do not add chart rendering to dataLoader.js. Do not add data queries to charts.j
 ## Upload Pipeline Rules
 
 - `.csv` = WineXRay, `.xlsx` = Recepcion de Tanque
-- WineXRay: values `<50`, `<10`, `-`, `NA` -> NULL with `below_detection = true`
+- WineXRay: values `<50`, `<10` -> NULL with `below_detection = true`
+- WineXRay: `-`, `—`, `NA`, `N/A` and blank -> NULL with NO flag. They mean empty,
+  not measured. Decision 2026-10-26 (xd-2ae): WineXRay writes `-` in every blank
+  cell, so flagging it would mark almost every row and hide the real
+  detection-limit values. Pinned by `tests/mt13-upload-winexray.test.mjs`.
 - WineXRay: skip Control Wine, EXP/EXPERIMENTO/NORMAL, California, lab tests
 - Recepcion: read BOTH sheets (Recepcion + Prefermentativos)
 - Recepcion: split up to 4 lot columns into `reception_lots` rows
