@@ -1,4 +1,4 @@
-// MT.60 — the login rate limiter is one atomic server-side call (bead xd-tqx).
+// MT.72 — the login rate limiter is one atomic server-side call (bead xd-tqx).
 //
 // checkRateLimit() used to GET the rate_limits row, add 1 in JS, then PATCH (or
 // upsert a new window). N overlapping logins from one IP all read the same
@@ -78,7 +78,7 @@ function fakeBackend() {
   return { fetch, rows, calls };
 }
 
-describe('MT.60 — concurrent login attempts cannot exceed MAX_ATTEMPTS', () => {
+describe('MT.72 — concurrent login attempts cannot exceed MAX_ATTEMPTS', () => {
   let originalFetch;
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(()  => { globalThis.fetch = originalFetch; });
@@ -118,7 +118,7 @@ describe('MT.60 — concurrent login attempts cannot exceed MAX_ATTEMPTS', () =>
   });
 });
 
-describe('MT.60 — the in-memory fallback applies only when the atomic call fails', () => {
+describe('MT.72 — the in-memory fallback applies only when the atomic call fails', () => {
   let originalFetch;
   beforeEach(() => { originalFetch = globalThis.fetch; });
   afterEach(()  => { globalThis.fetch = originalFetch; });
@@ -150,7 +150,7 @@ describe('MT.60 — the in-memory fallback applies only when the atomic call fai
   });
 });
 
-describe('MT.60 — the migration is a single atomic upsert, server-only', () => {
+describe('MT.72 — the migration is a single atomic upsert, server-only', () => {
   const sql = fs.readFileSync(new URL('../sql/migration_login_rate_limit_atomic.sql', import.meta.url), 'utf8');
   const manifest = fs.readFileSync(new URL('../js/migrations-manifest.js', import.meta.url), 'utf8');
 
