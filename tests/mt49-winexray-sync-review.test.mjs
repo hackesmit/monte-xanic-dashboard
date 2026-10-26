@@ -40,7 +40,7 @@ function mintToken(role) {
   return `${p}.${crypto.createHmac('sha256', process.env.SESSION_SECRET).update(p).digest('base64url')}`;
 }
 // These tests drive the handler past the cross-instance lease (xd-wh7, covered
-// in mt61). An in-memory lease that is always free keeps their fetch stubs
+// in mt83). An in-memory lease that is always free keeps their fetch stubs
 // about the cursor and WineXRay only.
 function freeLease() {
   return { async acquire() { return true; }, async release() { return true; } };
