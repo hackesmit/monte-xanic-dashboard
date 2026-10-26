@@ -88,7 +88,7 @@ function servidor() {
       fecha: mov.fecha, tipo: mov.tipo, origen: mov.origen ?? null, destino: mov.destino ?? null,
       lot_code: mov.lot_code, vintage_year: mov.vintage_year, volumen_l: mov.volumen_l,
       merma_l: mov.merma_l ?? 0, nota: mov.nota ?? null, fuente: mov.fuente ?? 'manual',
-      creado_por: 'daniel', client_id: mov.client_id, anulado: false,
+      etapa: mov.etapa ?? null, creado_por: 'daniel', client_id: mov.client_id, anulado: false,
       id: (s.proximoId += 1), created_at: new Date().toISOString(),
     };
     const errores = validarMovimientoEnLog(TANQUES, s.movimientos, fila, { sinonimos: SINONIMOS });
@@ -276,9 +276,11 @@ test.describe('Tanques: registrar movimientos', () => {
     });
     expect(enviado.client_id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(Object.keys(enviado).sort()).toEqual([
-      'client_id', 'destino', 'fecha', 'fuente', 'lot_code', 'merma_l',
+      'client_id', 'destino', 'etapa', 'fecha', 'fuente', 'lot_code', 'merma_l',
       'nota', 'origen', 'tipo', 'vintage_year', 'volumen_l',
     ]);
+    // Etapa left on Sin cambio: no stage is stated, it travels with the wine.
+    expect(enviado.etapa).toBeNull();
 
     // The plan and the panel now read the server's log, not a local guess.
     await expect(page.locator('#tanques-panel h2')).toHaveText('B2');
@@ -316,6 +318,39 @@ test.describe('Tanques: registrar movimientos', () => {
     // 12 700 + (6 000 - 100) = 18 600 L, as two lotes.
     await expect(page.locator('#tanques-panel')).toContainText('18,600 L');
     await expect(page.locator('#tanques-panel .tanques-comp div')).toHaveCount(2);
+  });
+
+  test('a movement can state the stage of the wine where it arrives, and the panel shows it (xd-qrn.9)', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+
+    await arrastrar(page, tanque('A5'), tanque('B2'));
+    const etapa = dialogo(page).locator('select[name="etapa"]');
+    await expect(etapa).toHaveValue('');
+    await expect(etapa.locator('option')).toHaveText([
+      'Sin cambio', 'Recepción', 'Maceración', 'Ferm. alcohólica', 'Descube', 'FML', 'Crianza', 'Listo embot.',
+    ]);
+    await etapa.selectOption('fml');
+    await dialogo(page).locator('button[type="submit"]').click();
+
+    await expect(dialogo(page)).toBeHidden();
+    const enviado = s.cuerpos.filter((c) => c.action === 'crear')[0].movimiento;
+    console.log('payload etapa:', JSON.stringify(enviado));
+    expect(enviado).toMatchObject({ tipo: 'trasiego', origen: 'A5', destino: 'B2', etapa: 'fml' });
+
+    // The side panel's seven-step bar now reaches FML: four steps done, the fifth current.
+    await expect(page.locator('#tanques-panel h2')).toHaveText('B2');
+    await expect(page.locator('#tanques-panel .tanques-stages div.on')).toHaveCount(4);
+    await expect(page.locator('#tanques-panel .tanques-stages div.now')).toHaveAttribute('title', 'FML');
+  });
+
+  test('a salida asks for no stage', async ({ page }) => {
+    const s = servidor();
+    await montar(page, s);
+    await page.locator(tanque('A5')).click();
+    await page.locator('[data-accion="salida"]').click();
+    await expect(dialogo(page).locator('h2')).toHaveText('Registrar salida');
+    await expect(dialogo(page).locator('[name="etapa"]')).toHaveCount(0);
   });
 
   test('a tray lote is assigned by drag and posted as a recepcion', async ({ page }) => {
