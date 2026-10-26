@@ -22,7 +22,7 @@
 1. **Creation:** `/api/login` creates token after bcrypt password verification
 2. **Verification:** `/api/verify` checks HMAC signature, expiry, and blacklist. The blacklist check fails closed: if `token_blacklist` cannot be read (non-2xx, network error, no complete answer within `TOKEN_BLACKLIST_TIMEOUT_MS`, default 3000 ms, missing Supabase config) every gated endpoint answers 503, never "not revoked".
 3. **Usage:** Sent as `x-session-token` header on all authenticated requests
-4. **Revocation:** `/api/logout` verifies HMAC, then inserts SHA256(token) into `token_blacklist`
+4. **Revocation:** `/api/logout` verifies HMAC, then inserts SHA256(token) into `token_blacklist`. Old rows are deleted by the daily `/api/sweep-blacklist` cron (rows older than 3 h: token life plus 1 h clock-skew margin), never on the logout or verify path
 5. **Expiry:** Tokens auto-expire after 2 hours. No refresh mechanism.
 
 ## Rate Limiting
@@ -60,10 +60,11 @@
 - Prompt-injection resistance is part of Mona's server-side system prompt (never reveal instructions/keys, refuse rule-override attempts). The client-supplied context is appended as a data block, never as system-level instructions, so users can't strip or rewrite the base prompt or guardrails.
 - Per-user message rate limiting bounds cost/abuse; request body and tool-result size caps bound token usage.
 
-**Cron endpoint (`/api/ping`):**
+**Cron endpoints (`/api/ping`, `/api/sweep-blacklist`):**
 - Auth model differs from the session-token endpoints. The only legit caller is Vercel's own cron scheduler, which injects `Authorization: Bearer <CRON_SECRET>` automatically when the env var is set. No session token, no role check.
 - Fails closed: if `CRON_SECRET` is unset, every request returns `401` (including Vercel's own cron). This prevents an unprovisioned deploy from accidentally exposing an open keep-alive endpoint.
-- The handler runs one fixed read (`applied_migrations limit=1`); no user input is forwarded to Supabase, so the endpoint can't be repurposed as a DB read amplifier even if the secret leaks.
+- `/api/ping` runs one fixed read (`applied_migrations limit=1`); no user input is forwarded to Supabase, so the endpoint can't be repurposed as a DB read amplifier even if the secret leaks.
+- `/api/sweep-blacklist` forwards no input either. The 3 h window is fixed inside `public.token_blacklist_sweep`, so even a leaked secret cannot delete a revocation whose token could still be alive.
 
 ## Content Security Policy
 
@@ -100,7 +101,6 @@ frame-ancestors 'none'
 
 - `style-src` includes `'unsafe-inline'` (required for Chart.js and dynamic styling)
 - No CSRF protection (stateless token auth mitigates most CSRF vectors)
-- Token blacklist has no TTL cleanup (expired tokens accumulate in `token_blacklist` table)
 - Rate limit on non-login endpoints is in-memory only (resets on cold start)
 - No IP allowlist or geo-fencing
 - No audit logging of data modifications
@@ -109,7 +109,6 @@ frame-ancestors 'none'
 ## Recommended Future Hardening
 
 - Add Supabase RLS policies for defense-in-depth
-- Add TTL cleanup for `token_blacklist` (cron or Supabase function)
 - Add audit logging for upload operations
 - Consider moving from custom HMAC tokens to Supabase Auth
 - Add rate limiting to login that persists across Vercel instances (already partially implemented via `rate_limits` table)

@@ -80,7 +80,8 @@ Revokes a session token by adding it to the blacklist.
 **Implementation notes:**
 - Verifies HMAC signature before blacklisting (prevents forged token spam)
 - Stores SHA256 hash of token in `token_blacklist` table (never raw token)
-- Blacklist insert failure is non-fatal (logged, returns 200)
+- Blacklist insert failure is fatal (non-2xx or network error returns 502, missing Supabase config returns 500)
+- Does not sweep old rows: that is the daily `/api/sweep-blacklist` cron, off the logout path
 
 ## GET /api/config
 
@@ -170,6 +171,29 @@ Daily Supabase keep-alive endpoint. Vercel cron (declared in `vercel.json`) invo
 - Response body from Supabase is drained (`await resp.text()`) so the Node fetch runtime releases the stream deterministically.
 - Logs `[ping] ok latency_ms=<n>` on success; `console.error` with status + body on failure. No secrets ever logged.
 - Cron schedule: `0 12 * * *` (12:00 UTC daily). See `vercel.json` → `crons`.
+
+## GET /api/sweep-blacklist
+
+Daily `token_blacklist` housekeeping. Vercel cron (declared in `vercel.json`) invokes this once a day. It deletes revocations whose token has expired. Not intended for any other caller, and never on the logout or verify path.
+
+**Auth:** same as `/api/ping`: `Authorization: Bearer <CRON_SECRET>`, fails closed when the env var is unset.
+
+**Success (200):**
+```json
+{ "ok": true, "deleted": 11, "batches": 1, "done": true }
+```
+`done: false` means the run hit its batch or time limit and the rest waits for the next run.
+
+**Errors:**
+- `401` - Missing or wrong bearer token
+- `405` - Method not GET
+- `500` - Supabase env vars missing, or a batch failed (`deleted` and `batches` report what was already committed)
+
+**Implementation notes:**
+- Calls `POST /rest/v1/rpc/token_blacklist_sweep` with `p_limit` 1000, up to 20 times per run, each call its own transaction (`api/_lib/blacklistSweep.js`). A timeout loses one batch, never the earlier ones.
+- The function (`sql/migration_token_blacklist_sweep.sql`) deletes the oldest rows older than 3 h (2 h token life plus 1 h clock-skew margin) by Postgres `now()`, `FOR UPDATE SKIP LOCKED`, and only `service_role` may run it.
+- Each call has a 3000 ms deadline and the run an 8000 ms budget.
+- Cron schedule: `30 12 * * *` (12:30 UTC daily).
 
 ## Shared Modules
 
