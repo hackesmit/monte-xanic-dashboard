@@ -28,7 +28,8 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
 // Prints one JSON line: the dated fields of every parsed row, for the
 // committed fixture, an inline CSV with the shapes that used to move, and a
-// workbook whose Sample Date is a real date cell (serial 46080, 2026-02-27).
+// workbook whose Sample Date is a real date cell: the same day, 2026-02-27, as
+// serial 46080 on the 1900 calendar and as serial 44618 on the 1904 one.
 const SCRIPT = `
   import { readFile } from 'node:fs/promises';
   import * as XLSX from 'xlsx';
@@ -48,11 +49,16 @@ const SCRIPT = `
     ['Sample Id', 'Sample Type', 'Sample Date', 'Vintage', 'Variety', 'Appellation'],
     ['25CSMX-200', 'Aging Wine', 0, 2025, 'Cabernet Sauvignon', 'Valle de Guadalupe'],
   ]);
-  ws.C2 = { t: 'n', v: 46080, z: 'm/d/yy' };
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Export');
-  const book = await winexrayParser.parse(asFile(Buffer.from(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), 'b.csv'));
-  process.stdout.write(JSON.stringify({ fixture: dated(fixture), inline: dated(inline), book: dated(book) }));
+  const parseBook = async (serial, date1904) => {
+    ws.C2 = { t: 'n', v: serial, z: 'm/d/yy' };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Export');
+    wb.Workbook = { ...wb.Workbook, WBProps: { ...wb.Workbook?.WBProps, date1904 } };
+    return dated(await winexrayParser.parse(asFile(Buffer.from(XLSX.write(wb, { type: 'array', bookType: 'xlsx' })), 'b.csv')));
+  };
+  const book = await parseBook(46080, false);
+  const book1904 = await parseBook(44618, true);
+  process.stdout.write(JSON.stringify({ fixture: dated(fixture), inline: dated(inline), book, book1904 }));
 `;
 
 async function runIn(tz) {
@@ -77,6 +83,8 @@ describe('MT.82 - WineXRay dates are time-zone independent (fresh process)', () 
       ], `TZ=${tz}: inline CSV`);
       assert.deepEqual(got.book, [['wine_samples', '25CSMX-200', '2026-02-27', null]],
         `TZ=${tz}: a real date cell in a workbook`);
+      assert.deepEqual(got.book1904, [['wine_samples', '25CSMX-200', '2026-02-27', null]],
+        `TZ=${tz}: the same day in a workbook on the 1904 calendar`);
       assert.ok(got.fixture.length > 0, `TZ=${tz}: the fixture must parse rows`);
     });
   }
