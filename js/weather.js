@@ -71,8 +71,15 @@ export const WeatherStore = {
       end: `${year}-10-31` <= today ? `${year}-10-31` : today
     }));
 
-    // Detect if location column exists by checking if any loaded row has it
-    const hasLocationCol = this.data.some(r => r.location !== undefined);
+    // Capability comes from the schema, not from which rows happen to be loaded
+    // (an empty table has no rows to inspect).
+    // A probe that cannot reach the schema (network, auth, 5xx) answers null:
+    // syncing on a guessed schema would pick the wrong columns and conflict key.
+    const hasLocationCol = await this._probeLocationColumn();
+    if (hasLocationCol === null) {
+      console.warn('[WeatherStore] sync skipped: could not read the meteorology schema');
+      return;
+    }
 
     for (const valley of this._VALLEYS) {
       // Only sync non-VDG valleys if the location column exists in DB
@@ -84,10 +91,11 @@ export const WeatherStore = {
       for (const year of vintages) {
         const { start, end } = rangeFn(year);
         if (start > today) continue;
-        if (this._hasFullRange(start, end, valley)) continue;
+        const gap = this._missingSpan(start, end, valley);
+        if (!gap) continue;
 
         try {
-          const rows = await this._fetchFromAPI(start, end, coord.lat, coord.lon);
+          const rows = await this._fetchFromAPI(gap.start, gap.end, coord.lat, coord.lon);
           if (!rows.length) continue;
 
           // Persist to Supabase
@@ -119,19 +127,56 @@ export const WeatherStore = {
     this.data.sort((a, b) => a.date.localeCompare(b.date));
   },
 
-  _hasFullRange(start, end, location) {
+  // Explicit probe: does meteorology have the `location` column? true when a
+  // select of that column succeeds (an empty table included), false only on
+  // Postgres undefined_column (42703, what PostgREST returns for a
+  // pre-migration table), null when the schema could not be read after
+  // retries: a network, auth or server error says nothing about the schema.
+  _probeAttempts: 3,
+  _probeRetryMs: 500,
+
+  async _probeLocationColumn() {
+    for (let attempt = 1; attempt <= this._probeAttempts; attempt++) {
+      let error;
+      try {
+        ({ error } = await DataStore.supabase
+          .from('meteorology')
+          .select('location')
+          .limit(1));
+      } catch (e) {
+        error = e;
+      }
+      if (!error) return true;
+      if (error.code === '42703') return false;
+      console.warn(`[WeatherStore] schema probe failed (attempt ${attempt}):`, error.message);
+      if (attempt < this._probeAttempts) {
+        await new Promise(r => setTimeout(r, this._probeRetryMs * attempt));
+      }
+    }
+    return null;
+  },
+
+  // First and last day in [start, end] with no stored row for `location`,
+  // or null when the range is complete.
+  _missingSpan(start, end, location) {
     const sp = start.split('-').map(Number);
     const ep = end.split('-').map(Number);
     let cur = Date.UTC(sp[0], sp[1] - 1, sp[2]);
     const endMs = Date.UTC(ep[0], ep[1] - 1, ep[2]);
-    const totalDays = Math.floor((endMs - cur) / 86400000) + 1;
-    let present = 0;
+    let first = null, last = null;
     while (cur <= endMs) {
       const iso = new Date(cur).toISOString().split('T')[0];
-      if (this._byDate[iso] && this._byDate[iso][location]) present++;
+      if (!(this._byDate[iso] && this._byDate[iso][location])) {
+        if (!first) first = iso;
+        last = iso;
+      }
       cur += 86400000;
     }
-    return (totalDays - present) <= 3;
+    return first ? { start: first, end: last } : null;
+  },
+
+  _hasFullRange(start, end, location) {
+    return this._missingSpan(start, end, location) === null;
   },
 
   // ── Open-Meteo fetch ───────────────────────────────────────────
@@ -302,16 +347,25 @@ export const WeatherStore = {
     const start  = `${year}-07-01`;
     const endD   = new Date(iso);
     let total    = 0;
-    let hasAny   = false;
+    let totalDays = 0;
+    let missingDays = 0;
     const cur    = new Date(start);
     while (cur <= endD) {
+      totalDays++;
       const d = cur.toISOString().split('T')[0];
       const dayData = this._byDate[d];
       const row = dayData ? (dayData[valley] || dayData['VDG']) : null;
-      if (row && row.rainfall_mm !== null && row.rainfall_mm >= 0) { total += row.rainfall_mm; hasAny = true; }
+      if (row && row.rainfall_mm !== null && row.rainfall_mm >= 0) total += row.rainfall_mm;
+      else missingDays++;
       cur.setDate(cur.getDate() + 1);
     }
-    return hasAny ? total : null;
+    // Same coverage guard as GDD: a partial sum would silently under-report.
+    return this._coverageOk(totalDays, missingDays) ? total : null;
+  },
+
+  // Cumulative aggregates need nearly every day: null beyond 3 missing days or 10%.
+  _coverageOk(totalDays, missingDays) {
+    return totalDays > 0 && missingDays <= 3 && missingDays / totalDays <= 0.1;
   },
 
   getCumulativeGDD(dateStr, appellation) {
@@ -340,8 +394,8 @@ export const WeatherStore = {
       cur.setDate(cur.getDate() + 1);
     }
     // Return null if too many days missing (>3 or >10% of range)
-    const result = (totalDays === 0 || missingDays > 3 || missingDays / totalDays > 0.1)
-      ? null : Math.round(total * 10) / 10;
+    const result = this._coverageOk(totalDays, missingDays)
+      ? Math.round(total * 10) / 10 : null;
     this._gddCache[cacheKey] = result;
     return result;
   },
