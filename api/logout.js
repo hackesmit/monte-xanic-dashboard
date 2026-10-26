@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
+import { sweepExpiredRevocations } from './_lib/blacklistSweep.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -64,6 +65,11 @@ export default async function handler(req, res) {
       return res.status(502).json({ ok: false, error: 'No se pudo revocar la sesión' });
     }
   }
+
+  // The revoke is done; drop rows whose tokens have expired. Rows only appear
+  // on logout, so sweeping here keeps the table bounded without a cron. It
+  // never throws and its outcome never changes this answer (tests/mt74).
+  await sweepExpiredRevocations(supabaseUrl, serviceKey);
 
   res.status(200).json({ ok: true });
 }

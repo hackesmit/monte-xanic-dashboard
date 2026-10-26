@@ -22,7 +22,7 @@
 1. **Creation:** `/api/login` creates token after bcrypt password verification
 2. **Verification:** `/api/verify` checks HMAC signature, expiry, and blacklist. The blacklist check fails closed: if `token_blacklist` cannot be read (non-2xx, network error, no complete answer within `TOKEN_BLACKLIST_TIMEOUT_MS`, default 3000 ms, missing Supabase config) every gated endpoint answers 503, never "not revoked".
 3. **Usage:** Sent as `x-session-token` header on all authenticated requests
-4. **Revocation:** `/api/logout` verifies HMAC, then inserts SHA256(token) into `token_blacklist`
+4. **Revocation:** `/api/logout` verifies HMAC, then inserts SHA256(token) into `token_blacklist`, then sweeps rows older than 3 h (token life plus 1 h clock-skew margin); the sweep never affects the response
 5. **Expiry:** Tokens auto-expire after 2 hours. No refresh mechanism.
 
 ## Rate Limiting
@@ -100,7 +100,6 @@ frame-ancestors 'none'
 
 - `style-src` includes `'unsafe-inline'` (required for Chart.js and dynamic styling)
 - No CSRF protection (stateless token auth mitigates most CSRF vectors)
-- Token blacklist has no TTL cleanup (expired tokens accumulate in `token_blacklist` table)
 - Rate limit on non-login endpoints is in-memory only (resets on cold start)
 - No IP allowlist or geo-fencing
 - No audit logging of data modifications
@@ -109,7 +108,6 @@ frame-ancestors 'none'
 ## Recommended Future Hardening
 
 - Add Supabase RLS policies for defense-in-depth
-- Add TTL cleanup for `token_blacklist` (cron or Supabase function)
 - Add audit logging for upload operations
 - Consider moving from custom HMAC tokens to Supabase Auth
 - Add rate limiting to login that persists across Vercel instances (already partially implemented via `rate_limits` table)

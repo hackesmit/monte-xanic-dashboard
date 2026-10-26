@@ -232,7 +232,7 @@ Persistent login rate limiting. Used by /api/login.
 
 ## token_blacklist
 
-Revoked session tokens.
+Revoked session tokens. `/api/logout` deletes rows older than 3 h after each revoke (`api/_lib/blacklistSweep.js`), so the table holds only tokens that could still be alive.
 
 | Column | Type | Nullable | Purpose |
 |--------|------|----------|---------|
@@ -370,6 +370,5 @@ not. A deliberate correction means
 
 - Add foreign key constraint: `reception_lots.reception_id` -> `tank_receptions.id`
 - Add RLS policies for row-level security (currently bypassed via service key)
-- Add TTL cleanup for `token_blacklist` (expired tokens are harmless but accumulate)
 - Add TTL cleanup for `rate_limits` (stale entries accumulate)
 - Consider partitioning `wine_samples` by `vintage_year` if table exceeds 50k rows
