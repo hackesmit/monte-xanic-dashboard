@@ -209,12 +209,11 @@ export const CONFIG = {
   },
 
   // Varietal abbreviations (code → full name).
-  // NOTE (audit xd-3k4): reference data only. No caller currently expands
-  // variety codes through this map — every real source file (WineXRay CSV,
-  // recepción/pre-recepción workbooks) carries full variety names, which
-  // normalizeVariety passes through unchanged. Kept for a future code-input
-  // path and to document the canonical code↔name pairing; if you wire it in,
-  // add a test asserting each value is a key of varietyColors.
+  // The Seguimiento de Maduración workbook writes its Variedad as these codes
+  // (SB, CS, CH...), and js/upload/seguimiento.js expands them through this
+  // map before any row is written, so wine_samples only ever holds the full
+  // names the other sources (WineXRay CSV, recepción/pre-recepción) carry.
+  // mt44 pins that every code resolves to a grapeTypes varietal.
   varietyAbbr: {
     'CS':'Cabernet Sauvignon','CF':'Cabernet Franc','SY':'Syrah','ME':'Merlot',
     'MA':'Malbec','MAL':'Malbec','GRE':'Grenache','GR':'Grenache','PV':'Petit Verdot',

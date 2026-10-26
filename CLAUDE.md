@@ -34,6 +34,7 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `app.js` | View routing, refresh orchestration, init |
 | `maps.js` | SVG vineyard map |
 | `classification.js` | Quality rubric scoring and percentile only |
+| `sinEnvero.js` | The "Sin envero" column of the días-post-envero charts: which readings lack an envero, where the column sits, its axis ticks. Pure, no DOM. |
 | `utils.js` | Shared pure helpers (HTML escaping, etc.) — no DOM, no I/O, no imports |
 | `demoMode.js` | In-memory demo-data overlay (no DB/cache writes while active) |
 | `api/ping.js` | Daily Supabase keep-alive (Vercel cron, `CRON_SECRET`-gated). One read against `applied_migrations`. Nothing else. |

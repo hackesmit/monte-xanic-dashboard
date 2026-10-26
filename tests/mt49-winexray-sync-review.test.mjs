@@ -26,6 +26,11 @@ function mkRes({ status = 200, headers = {}, body = '', setCookie = [] } = {}) {
 }
 const LOGIN_OK = mkRes({ status: 303, setCookie: ['_ncfa=abc; path=/; HttpOnly'] });
 const json = o => mkRes({ headers: { 'content-type': 'application/json' }, body: JSON.stringify(o) });
+// verifyToken fails closed when it cannot read token_blacklist (xd-5ua): a test
+// that drives the handler answers that query as "not revoked" and hands every
+// other request to its own stub.
+const notRevoked = stub => async (url, opts) =>
+  (String(url).includes('token_blacklist') ? json([]) : stub(url, opts));
 
 // The login body is a urlencoded form, not JSON.
 function safeJson(body) { try { return JSON.parse(body); } catch { return null; } }
@@ -114,7 +119,7 @@ test('MT.49 — the resume cursor tracks the table furthest behind', async () =>
 
 test('MT.49 — a Supabase cursor failure fails the run instead of syncing a wrong window', async () => {
   const realFetch = globalThis.fetch;
-  globalThis.fetch = async () => mkRes({ status: 500, headers: { 'content-type': 'application/json' }, body: '{}' });
+  globalThis.fetch = notRevoked(async () => mkRes({ status: 500, headers: { 'content-type': 'application/json' }, body: '{}' }));
   try {
     const res = httpRes();
     await handler({ method: 'POST', headers: { 'x-session-token': mintToken('lab') }, body: {}, socket: {} }, res,
@@ -148,7 +153,7 @@ test('MT.49 — a concurrent request for a different window is refused, not join
 
   // Any real network call here is a test bug: fail loudly rather than reach out.
   const realFetch = globalThis.fetch;
-  globalThis.fetch = async u => { throw new Error(`test must not hit the network: ${u}`); };
+  globalThis.fetch = notRevoked(async u => { throw new Error(`test must not hit the network: ${u}`); });
 
   const resA = httpRes();
   const a = handler({ method: 'POST', headers: { 'x-session-token': mintToken('lab') },
@@ -226,7 +231,7 @@ test('MT.49 — fewer rows than the server reports is an error, not a green part
 test('MT.49 — a cursor body that stalls times out in Spanish, not a hung run', async () => {
   const realFetch = globalThis.fetch;
   // Headers arrive promptly; the body never settles unless the signal aborts.
-  globalThis.fetch = async (url, opts) => ({
+  globalThis.fetch = notRevoked(async (url, opts) => ({
     ok: true, status: 200,
     headers: { get: () => 'application/json' },
     json: () => new Promise((_, reject) => {
@@ -234,7 +239,7 @@ test('MT.49 — a cursor body that stalls times out in Spanish, not a hung run',
         const e = new Error('aborted'); e.name = 'AbortError'; reject(e);
       });
     }),
-  });
+  }));
   try {
     const res = httpRes();
     await handler({ method: 'POST', headers: { 'x-real-ip': '10.9.9.9', 'x-session-token': mintToken('lab') },
