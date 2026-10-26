@@ -1,7 +1,7 @@
 // ── Main Application Logic ──
 import { CONFIG } from './config.js';
 import { Auth } from './auth.js';
-import { DataStore } from './dataLoader.js';
+import { DataStore, estadoDatos } from './dataLoader.js';
 import { Filters } from './filters.js';
 import { Charts } from './charts.js';
 import { KPIs } from './kpis.js';
@@ -34,18 +34,17 @@ export const App = {
     // 1 - Try localStorage cache (instant render)
     if (DataStore.loadCache()) {
       this.onDataLoaded();
-      // Refresh from Supabase in background; silently update if new data arrives
+      // Refresh from Supabase in background. Neither call rejects: a failure
+      // comes back as the 'error' outcome, and the badge plus the stale-data
+      // banner say so for as long as the cached rows stay on screen.
       DataStore.initSupabase().then(() => {
-        DataStore.loadFromSupabase().then(loaded => {
-          if (loaded && this.initialized) {
+        DataStore.loadFromSupabase().then(outcome => {
+          if (outcome !== 'error' && this.initialized) {
             Filters.buildMapVintageOptions();
             Filters.initMapVintage();
             this.refresh();
           }
           this._updateDbStatus();
-        }).catch(err => {
-          console.error('Supabase load failed:', err);
-          this._showOfflineToast();
         });
 
         // Mediciones power the Calidad (classification) scoring on the map.
@@ -64,23 +63,21 @@ export const App = {
           });
           if (hasCache && this.currentView === 'vintage') this.refresh();
         });
-      }).catch(err => {
-        console.error('Supabase init failed:', err);
-        this._showOfflineToast();
       });
     } else {
       // 2 - Try Supabase (first visit or stale cache)
       await DataStore.initSupabase();
-      const supaLoaded = await DataStore.loadFromSupabase();
-      // Re-render when mediciones land (same as the cached path) - otherwise
+      const outcome = await DataStore.loadFromSupabase();
+      // Re-render when mediciones land (same as the cached path) — otherwise
       // first-visit users see "Sin clasificar" on the Calidad map until they
       // happen to trigger a refresh.
       DataStore.loadMediciones().then(() => {
         if (this.initialized) this.refresh();
       });
       DataStore.loadHarvestTargetOverrides();
-      this._updateDbStatus();
-      if (supaLoaded) {
+      // An empty but reachable database is a real answer, not a failure: the
+      // legacy JSON files must not paper over it.
+      if (outcome !== 'error') {
         this.onDataLoaded();
       } else {
         // 3 - Fall back to pre-extracted JSON files (legacy / offline)
@@ -92,6 +89,7 @@ export const App = {
           this.onDataLoaded();
         }
       }
+      this._updateDbStatus();
     }
     this.bindGlobalEvents();
 
@@ -99,18 +97,39 @@ export const App = {
     if (chipPred && !CONFIG.harvestPredictorEnabled) chipPred.hidden = true;
   },
 
-  // Update the DB status badge in the header
+  // Header badge plus the stale-data banner, driven by the last fetch
+  // outcome (estadoDatos), never by whether a Supabase client object exists.
   _updateDbStatus() {
+    const { estado, ts } = estadoDatos({
+      lastFetch: DataStore.lastFetch,
+      dataTs: DataStore.dataTs,
+      hayDatos: DataStore.berryData.length > 0 || DataStore.wineRecepcion.length > 0,
+    });
+    const cuando = ts
+      ? new Date(ts).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+      : '';
     const badge = document.getElementById('db-status-badge');
-    if (!badge) return;
-    if (DataStore.supabase) {
-      badge.textContent = 'DB ✓';
-      badge.title = 'Conectado a Supabase';
-      badge.className = 'db-badge db-badge-ok';
-    } else {
-      badge.textContent = 'DB -';
-      badge.title = 'Sin conexión a base de datos (modo local)';
-      badge.className = 'db-badge db-badge-off';
+    if (badge) {
+      if (estado === 'live') {
+        badge.textContent = 'DB ✓';
+        badge.title = 'Conectado a Supabase';
+        badge.className = 'db-badge db-badge-ok';
+      } else if (estado === 'cached') {
+        badge.textContent = 'Caché';
+        badge.title = `Sin conexión a Supabase. Datos en caché del ${cuando}`;
+        badge.className = 'db-badge db-badge-stale';
+      } else {
+        badge.textContent = 'DB —';
+        badge.title = 'Sin conexión a base de datos (modo local)';
+        badge.className = 'db-badge db-badge-off';
+      }
+    }
+    const banner = document.getElementById('stale-banner');
+    if (banner) {
+      banner.hidden = estado !== 'cached';
+      banner.textContent = estado === 'cached'
+        ? `Sin conexión a la base de datos. Mostrando datos en caché del ${cuando}; pueden estar desactualizados.`
+        : '';
     }
   },
 
@@ -236,25 +255,6 @@ export const App = {
     if (spinner) spinner.style.display = 'none';
   },
 
-  _showOfflineToast() {
-    const raw = localStorage.getItem('xanic_data_cache');
-    let ts = '';
-    if (raw) {
-      try {
-        const cache = JSON.parse(raw);
-        if (cache.ts) ts = new Date(cache.ts).toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-      } catch (_) {}
-    }
-    const msg = ts
-      ? `Usando datos en caché (última actualización: ${ts})`
-      : 'Usando datos en caché';
-    const toast = document.getElementById('offline-toast');
-    if (!toast) return;
-    toast.textContent = msg;
-    toast.classList.add('show');
-    setTimeout(() => toast.classList.remove('show'), 6000);
-  },
-
   onDataLoaded() {
     this.hideDataLoader();
     this._hideSpinner();
@@ -339,6 +339,9 @@ export const App = {
 
   refresh() {
     if (!this.initialized) return;
+    // Upload and row-editor reloads refetch and then refresh; keep the badge
+    // in step with whatever that fetch returned.
+    if (DataStore.lastFetch) this._updateDbStatus();
     if (this._refreshInProgress) { this._refreshPending = true; return; }
     this._refreshInProgress = true;
     try {

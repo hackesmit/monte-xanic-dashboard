@@ -1129,6 +1129,7 @@ body.demo-mode-active .demo-banner { display: block; }
   white-space: nowrap;
 }
 .db-badge-ok  { background: rgba(126,200,122,0.15); color: #7EC87A; border: 1px solid rgba(126,200,122,0.3); }
+.db-badge-stale { background: var(--surface); color: var(--flag-warning); border: 1px solid var(--flag-warning); }
 .db-badge-off { background: rgba(255,255,255,0.04); color: var(--muted); border: 1px solid var(--border); }
 
 /* Upload status messages */
@@ -1712,6 +1713,18 @@ canvas { max-width: 100%; }
 @media (prefers-reduced-motion: reduce) {
   .kpi-skel { animation: none; }
 }
+
+/* ── Stale-data banner: cached rows on screen, last fetch failed ── */
+.stale-banner {
+  background: var(--surface);
+  color: var(--flag-warning);
+  border-bottom: 1px solid var(--flag-warning);
+  padding: 10px 20px;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  text-align: left;
+}
+.stale-banner[hidden] { display: none; }
 
 /* ── Offline Toast ── */
 .offline-toast {

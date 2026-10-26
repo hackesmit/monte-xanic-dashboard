@@ -55,6 +55,11 @@ export const DataStore = {
   tanquesDesactualizado: false,  // true when a write landed but the re-read failed
   _tanquesGen: 0,                // load generation; an older GET never wins
   loaded: { berry: false, wine: false },
+  // Outcome of the last loadFromSupabase: {outcome:'ok'|'empty'|'error', at}.
+  // null until one has finished. The header badge reads this, never the mere
+  // existence of a client (createClient does no I/O, so a client is no proof).
+  lastFetch: null,
+  dataTs: null,          // when the rows in memory were fetched (cache ts or live)
   supabase: null,        // Supabase client instance (set by initSupabase)
   _supabaseReady: false, // true once credentials have been fetched
 
@@ -277,9 +282,19 @@ export const DataStore = {
   },
 
   // Query Supabase and populate berryData / wineRecepcion / winePreferment.
-  // Returns true if berry data was loaded successfully.
+  // Resolves to one of three outcomes, recorded on this.lastFetch, and never
+  // rejects:
+  //   'ok'    wine_samples answered with rows (berry, wine, or both)
+  //   'empty' wine_samples answered with zero rows: reachable, nothing in it
+  //   'error' no client, or the wine_samples query failed; memory untouched
+  // Every caller must compare against a string: 'error' is truthy.
   async loadFromSupabase() {
-    if (!this.supabase) return false;
+    const done = (outcome) => {
+      this.lastFetch = { outcome, at: Date.now() };
+      if (outcome !== 'error') this.dataTs = this.lastFetch.at;
+      return outcome;
+    };
+    if (!this.supabase) return done('error');
     try {
       const samples = await this._fetchAll('wine_samples');
 
@@ -301,7 +316,7 @@ export const DataStore = {
 
       // Demo mode may have been enabled while these fetches were in flight -
       // discard the result rather than clobbering the demo overlay.
-      if (this._demoActive) return true;
+      if (this._demoActive) return done('ok');
 
       this.berryData    = (samples || []).filter(r => r.sample_type === 'Berries' || r.sample_type === 'Berry').map(r => this._rowToBerry(r)).filter(Boolean);
       this.wineRecepcion = (samples || []).filter(r => r.sample_type !== 'Berries' && r.sample_type !== 'Berry').map(r => this._rowToWine(r)).filter(Boolean);
@@ -325,10 +340,10 @@ export const DataStore = {
       this._enrichData();
 
       if (this.loaded.berry || this.loaded.wine) this.cacheData();
-      return this.loaded.berry;
+      return done((samples || []).length ? 'ok' : 'empty');
     } catch (e) {
       console.warn('[DataStore] loadFromSupabase error:', e);
-      return false;
+      return done('error');
     }
   },
 
@@ -1131,6 +1146,7 @@ export const DataStore = {
       this.winePreferment = cache.wineP || [];
       this.receptionData = cache.recs || [];
       this.receptionLotsData = cache.recL || [];
+      this.dataTs = typeof cache.ts === 'number' ? cache.ts : null;
       this._enrichData();
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine = this.wineRecepcion.length > 0;
@@ -1155,6 +1171,7 @@ export const DataStore = {
       this.berryData = berryRes;
       this.wineRecepcion = wineRRes;
       this.winePreferment = winePRes;
+      this.dataTs = null;   // bundled files carry no fetch date
       this._enrichData();
       this.loaded.berry = this.berryData.length > 0;
       this.loaded.wine = this.wineRecepcion.length > 0;
@@ -1166,3 +1183,16 @@ export const DataStore = {
     }
   }
 };
+
+// What the header can honestly say about the data on screen. Pure, so the
+// three states are testable without a DOM:
+//   'live'   the last fetch answered (rows or an empty table)
+//   'cached' the last fetch failed, or none has finished, and the rows on
+//            screen are older ones (localStorage, or an earlier fetch); `ts`
+//            is when those rows were fetched
+//   'none'   the last fetch failed and there is nothing dated to fall back on
+export function estadoDatos({ lastFetch, dataTs, hayDatos }) {
+  if (lastFetch && lastFetch.outcome !== 'error') return { estado: 'live', ts: lastFetch.at };
+  if (hayDatos && typeof dataTs === 'number') return { estado: 'cached', ts: dataTs };
+  return { estado: 'none', ts: null };
+}
