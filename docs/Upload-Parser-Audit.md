@@ -145,18 +145,18 @@ The real fixtures don't trigger it today, so this is latent, not live — filed
 rather than fixed here because porting the scored detector is its own change with
 its own tests.
 
-### 5b. `-` / `NA` do not set `below_detection`, contradicting the documented rule (xd-2ae)
+### 5b. `-` / `NA` do not set `below_detection` (xd-2ae, resolved 2026-10-26)
 
-**Where:** `js/upload/winexray.js:66–75` + `js/upload/normalize.js:14`.
+**Where:** `js/upload/winexray.js` `shapeRow` + `js/upload/normalize.js` `EMPTY_MARKERS`.
 
-CLAUDE.md's Upload Pipeline Rules say: *"values `<50`, `<10`, `-`, `NA` → NULL
-with `below_detection = true`."* The code only sets `below_detection = true` for
-the `<N` form; `-`, `—`, `NA`, `N/A` fall through to `normalizeValue`, which NULLs
-them via `EMPTY_MARKERS` **without** setting the flag. Arguably the code is more
-correct (a `-` means "not measured," not "below the detection limit"), but code
-and the written rule disagree, which is a silent trap for the next agent. Filed
-to reconcile the two — either fix the code or fix the rule — because it needs a
-domain decision, not just an edit.
+CLAUDE.md's Upload Pipeline Rules used to say *"values `<50`, `<10`, `-`, `NA` →
+NULL with `below_detection = true`."* The code only sets the flag for the `<N`
+form; `-`, `—`, `NA`, `N/A` go through `normalizeValue`, which NULLs them without
+the flag. **Resolved by fixing the rule, not the code:** these markers mean an
+empty cell (not measured). WineXRay writes `-` in every blank cell, so flagging
+it would mark almost every row and hide the real detection-limit values. The
+rule in CLAUDE.md and docs/Data-Validation.md now matches the code, and
+`tests/mt13-upload-winexray.test.mjs` pins both halves.
 
 ---
 
