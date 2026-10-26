@@ -45,9 +45,8 @@ export const Mona = {
       onProposeFact: (fact) => MonaKnowledge.proposeFact(fact),
     });
 
-    // Knowledge base → Mona's context (the "gets smarter" loop).
+    // Knowledge base for the panel. api/mona.js reads the approved facts itself.
     await MonaKnowledge.load();
-    MonaChat.ctx.systemExtra = MonaKnowledge.approvedContext();
 
     // Boot conversation history.
     await MonaChat.ensureConversation();

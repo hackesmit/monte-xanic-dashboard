@@ -1,7 +1,7 @@
 // js/mona/chat.js — conversation state and client-side agent loop.
 // Runs the tool loop in the browser: streams from /api/mona, executes tool_use
 // blocks locally via executeTool, resubmits until end_turn. Persists to /api/mona-data.
-import { TOOL_DEFS, executeTool } from './tools.js';
+import { executeTool } from './tools.js';
 
 const token = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('xanic_session_token') : null);
 
@@ -20,7 +20,7 @@ export const MonaChat = {
   conversationId: null,
   conversations: [],
   running: false,
-  ctx: {},               // tool-effect callbacks + systemExtra (set by UI / knowledge)
+  ctx: {},               // tool-effect callbacks (set by UI)
   hooks: {},             // UI render callbacks
 
   reset() { this.messages = []; this.conversationId = null; },
@@ -90,7 +90,8 @@ export const MonaChat = {
     const res = await fetch('/api/mona', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-session-token': token() },
-      body: JSON.stringify({ messages: this.messages, tools: TOOL_DEFS, system: this.ctx.systemExtra || '' }),
+      // The server owns the system prompt, the knowledge block and the tool list (xd-aiz).
+      body: JSON.stringify({ messages: this.messages }),
     });
     if (!res.ok || !res.body) {
       this.hooks.onError?.((await res.json().catch(() => ({}))).error || 'Error de red');
