@@ -14,7 +14,7 @@ All required for production. Store in `.env.local` locally, add to Vercel Settin
 | `AUTH_PASSWORD_HASH` | Yes | /api/login | Admin bcrypt hash |
 | `LAB_USERNAME` | Yes | /api/login | Lab user username |
 | `LAB_PASSWORD_HASH` | Yes | /api/login | Lab user bcrypt hash |
-| `CRON_SECRET` | Yes (Production) | /api/ping | Bearer token Vercel injects on cron-triggered requests. Generate with `openssl rand -hex 32`. Rotate by replacing the value in Vercel and redeploying — old value stops working immediately. |
+| `CRON_SECRET` | Yes (Production) | /api/ping, /api/sweep-blacklist | Bearer token Vercel injects on cron-triggered requests. Generate with `openssl rand -hex 32`. Rotate by replacing the value in Vercel and redeploying — old value stops working immediately. |
 | `TOKEN_BLACKLIST_TIMEOUT_MS` | No | Every session-gated /api/* endpoint | Deadline in ms for the `token_blacklist` revocation query, headers and body together (default 3000). Past it the request answers 503. A value that is not a positive number falls back to the default. |
 | `ANTHROPIC_API_KEY` | Yes (for Mona) | /api/mona | Server-side Claude API key. Powers the Mona chat assistant (`claude-sonnet-4-6`). Never exposed to the client — `/api/mona` proxies all traffic. Without it, `/api/mona` returns a Spanish "Mona no está configurada" error and the rest of the dashboard is unaffected. |
 
@@ -68,6 +68,7 @@ This bypasses /api/config. Auth will not work in this mode.
 
 **Scheduled jobs (`crons` in `vercel.json`):**
 - `/api/ping` daily at `0 12 * * *` (12:00 UTC, ~07:00 Mexico City) — keep-alive ping that runs one read against `applied_migrations` so Supabase doesn't auto-pause the free-tier project after 7 idle days. Gated by `CRON_SECRET` bearer auth; unauthorized callers get `401` before any DB work. Cron run history visible in Vercel dashboard → Settings → Cron Jobs.
+- `/api/sweep-blacklist` daily at `30 12 * * *` (12:30 UTC): deletes expired `token_blacklist` rows in bounded batches. Same `CRON_SECRET` gate. A `500` in the cron history means a batch failed; the rows wait for the next run and no auth decision changes.
 
 **Files excluded from deploy** (via `.vercelignore`):
 ```

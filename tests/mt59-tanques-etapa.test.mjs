@@ -109,7 +109,7 @@ test('fuera de la etapa, la funcion append-only es la de migration_tanques_escri
   assert.equal(sinEtapa, funcion(original, 'movimientos_tanque_append_only'));
 });
 
-test('la migracion exige la columna, recrea los dos triggers y es la ultima del manifiesto', () => {
+test('la migracion exige la columna, recrea los dos triggers y ninguna posterior la redefine', () => {
   assert.match(congela, /attname = 'etapa' AND NOT attisdropped\n {2}\) THEN\n {4}RAISE EXCEPTION/);
   assert.match(congela, /DROP TRIGGER IF EXISTS movimientos_tanque_append_only ON public\.movimientos_tanque;\nCREATE TRIGGER movimientos_tanque_append_only\n {2}BEFORE UPDATE OR DELETE ON public\.movimientos_tanque\n {2}FOR EACH ROW EXECUTE FUNCTION public\.movimientos_tanque_append_only\(\);/);
   assert.match(congela, /DROP TRIGGER IF EXISTS movimientos_tanque_no_truncate ON public\.movimientos_tanque;\nCREATE TRIGGER movimientos_tanque_no_truncate\n {2}BEFORE TRUNCATE ON public\.movimientos_tanque\n {2}FOR EACH STATEMENT EXECUTE FUNCTION public\.movimientos_tanque_append_only\(\);/);
@@ -117,5 +117,11 @@ test('la migracion exige la columna, recrea los dos triggers y es la ultima del 
   assert.match(congela, /^BEGIN;$/m);
   assert.match(congela, /^COMMIT;\n$/m);
   assert.match(congela, /VALUES \('migration_tanques_etapa_append_only'\)/);
-  assert.equal(MIGRATIONS[MIGRATIONS.length - 1], 'migration_tanques_etapa_append_only');
+  // A later migration that redefines the function must move this guard to it.
+  const despues = MIGRATIONS.slice(MIGRATIONS.indexOf('migration_tanques_etapa_append_only') + 1);
+  assert.ok(MIGRATIONS.includes('migration_tanques_etapa_append_only'));
+  for (const m of despues) {
+    const texto = readFileSync(new URL(`../sql/${m}.sql`, import.meta.url), 'utf8');
+    assert.ok(!texto.includes('movimientos_tanque_append_only'), `${m} redefine movimientos_tanque_append_only`);
+  }
 });

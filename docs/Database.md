@@ -232,7 +232,7 @@ Persistent login rate limiting. Used by /api/login.
 
 ## token_blacklist
 
-Revoked session tokens. `/api/logout` deletes rows older than 3 h after each revoke (`api/_lib/blacklistSweep.js`), so the table holds only tokens that could still be alive.
+Revoked session tokens. The daily `/api/sweep-blacklist` cron deletes rows older than 3 h in batches of 1000 through `public.token_blacklist_sweep(p_limit)` (`sql/migration_token_blacklist_sweep.sql`, service_role only), so the table holds about one day of revocations.
 
 | Column | Type | Nullable | Purpose |
 |--------|------|----------|---------|
