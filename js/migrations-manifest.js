@@ -52,4 +52,5 @@ export const MIGRATIONS = [
   'migration_tanques_etapa_escritura',
   'migration_tanques_etapa_append_only',
   'migration_sync_lease',
+  'migration_token_blacklist_sweep',
 ];

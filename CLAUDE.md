@@ -38,6 +38,7 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `utils.js` | Shared pure helpers (HTML escaping, etc.) — no DOM, no I/O, no imports |
 | `demoMode.js` | In-memory demo-data overlay (no DB/cache writes while active) |
 | `api/ping.js` | Daily Supabase keep-alive (Vercel cron, `CRON_SECRET`-gated). One read against `applied_migrations`. Nothing else. |
+| `api/sweep-blacklist.js` | Daily `token_blacklist` cleanup (Vercel cron, `CRON_SECRET`-gated). Calls `public.token_blacklist_sweep` in bounded batches via `api/_lib/blacklistSweep.js`. Never called from logout or verify. |
 | `mona/dataAccess.js` | Pure query/aggregate over row arrays. No DOM, no imports. |
 | `mona/chartSpec.js` | Declarative chart/table spec validation + Chart.js rendering (themed). |
 | `mona/tools.js` | Mona tool schemas + executors. Calls only public DataStore/KPIs APIs; DOM/app effects via ctx callbacks. |
