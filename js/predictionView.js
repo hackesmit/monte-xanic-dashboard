@@ -32,7 +32,23 @@ export function flagAlertMessages(prediction) {
   const out = [];
   if (flags.brixOverRipe) out.push(FLAG_ALERT_MESSAGES.brixOverRipe);
   if (flags.antTargetUnreachable) out.push(FLAG_ALERT_MESSAGES.antTargetUnreachable);
+  const excluded = excludedVintagesMessage(prediction);
+  if (excluded) out.push(excluded);
   return out;
+}
+
+// Pure: the data-quality line for historical vintages the model discarded as
+// metric-impossible ('' when none). V alone cannot tell "no history" from
+// "history thrown out as corrupt", so the discard is named here (xd-e2y).
+const EXCLUDED_METRIC_LABELS = [['brix', 'Brix'], ['ant', 'antocianinas'], ['pH', 'pH']];
+export function excludedVintagesMessage(prediction) {
+  const ex = prediction?.excludedHistoricalSlopes || {};
+  const parts = EXCLUDED_METRIC_LABELS
+    .filter(([key]) => Array.isArray(ex[key]) && ex[key].length > 0)
+    .map(([key, label]) => `${label}: ${ex[key].length}`);
+  if (parts.length === 0) return '';
+  return `Vintages históricos descartados por pendiente imposible (${parts.join(', ')}). `
+    + 'Revisa los datos de esas vendimias.';
 }
 
 // Pure: the HTML fragment for a prediction's flag alerts ('' when none). Styled
@@ -208,7 +224,8 @@ export const PredictionView = {
         <div style="margin:24px 0;text-align:center;color:#9b9388;font-size:12px">
           Pocos datos esta temporada<br>
           <span style="font-size:10px">se requiere n ≥ 2</span>
-        </div>` : `
+        </div>
+        ${renderFlagAlerts(p)}` : `
         <div class="${dateClass}">${dateText ? escapeHtml(dateText) : '—'}</div>
         <div class="pred-card-sub">
           ${horizonDays != null ? `±${Math.round(p.bandDays)} d · faltan ${horizonDays} d` : ''}

@@ -201,8 +201,10 @@ export function bayesianCombine({ betaHat, sigmaBeta2, betaHist, tau2Hist }) {
       && dataPrec > 0 && priorPrec > 0 && !Number.isFinite(dataPrec + priorPrec)) {
     const s = Math.max(dataPrec, priorPrec);
     const dp = dataPrec / s, pp = priorPrec / s;
+    // The variance takes the same scaling: 1 / (s * (dp + pp)). One over the
+    // overflowed sum is 0, which collapsed the confidence band to nothing.
     return { betaPost: (betaHat * dp + betaHist * pp) / (dp + pp),
-             sigmaBeta2Post: 1 / (dataPrec + priorPrec) };
+             sigmaBeta2Post: (1 / s) / (dp + pp) };
   }
   const totPrec = dataPrec + priorPrec;
   if (!Number.isFinite(totPrec) || totPrec === 0) {
@@ -371,6 +373,37 @@ export function computeOne({
   recencyBoostWindow = 14,
 }) {
   const nCurrent = current.length;
+  // Historical priors depend only on past vintages, so they are computed before
+  // any early return: a corrupt vintage must be reported even on a card that
+  // has too few current samples to predict (xd-e2y).
+  const noPrior = { V: 0, tau2Hist: Infinity, betaHist: null, excludedSlopes: [] };
+  const brixPrior = historicalSlopePrior(
+    historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.brix }))),
+    { slopeScale: BRIX_SLOPE_SCALE, slopeMax: BRIX_SLOPE_MAX }
+  );
+  const antPrior = target.antTarget != null
+    ? historicalSlopePrior(
+        historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.ant }))),
+        { slopeScale: ANT_SLOPE_SCALE, slopeMax: ANT_SLOPE_MAX }
+      )
+    : noPrior;
+  const phPrior = target.phTarget != null
+    ? historicalSlopePrior(
+        historicalByVintage.map(v => v
+          .filter(s => Number.isFinite(s.pH))
+          .map(s => ({ t: s.tDays, y: s.pH }))
+        ),
+        { slopeScale: PH_SLOPE_SCALE, slopeMax: PH_SLOPE_MAX }
+      )
+    : noPrior;
+  // Slopes historicalSlopePrior threw out as metric-impossible, per metric.
+  // Without this the card shows only V, and a lot whose past vintages were
+  // discarded as corrupt looks exactly like a lot with no history (xd-e2y).
+  const excludedHistoricalSlopes = {
+    brix: brixPrior.excludedSlopes,
+    ant: antPrior.excludedSlopes,
+    pH: phPrior.excludedSlopes,
+  };
   // FINDING 4: the DISPLAYED current reading must be deterministic regardless of
   // input row order. The old fallback took `sorted[last]` and read its raw brix/
   // ant/pH, but a stable sort leaves same-timestamp rows in input order, so a
@@ -394,7 +427,7 @@ export function computeOne({
       reason: 'pocos-datos-temporada',
       recommendedDate: null, brixWindowCloses: null,
       bandDays: Infinity, label: 'Baja',
-      nCurrent, V: 0,
+      nCurrent, V: 0, excludedHistoricalSlopes,
       brixHoy: r.brix, antHoy: r.ant, phHoy: r.pH,
       samplesProjected: { brixEta: null, antEta: null, phEta: null },
     };
@@ -422,17 +455,12 @@ export function computeOne({
       || !(brixFit.sumWttBar2 > 0)) {
     return pocosDatos(sorted);
   }
-  const brixPrior = historicalSlopePrior(
-    historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.brix }))),
-    { slopeScale: BRIX_SLOPE_SCALE, slopeMax: BRIX_SLOPE_MAX }
-  );
   const brixComb = bayesianCombine({
     betaHat: brixFit.beta, sigmaBeta2: brixFit.sigmaBeta2,
     betaHist: brixPrior.betaHist, tau2Hist: brixPrior.tau2Hist,
   });
 
-  let antFit = null, antPrior = { V: 0, tau2Hist: Infinity, betaHist: null },
-      antComb = { betaPost: NaN, sigmaBeta2Post: NaN };
+  let antFit = null, antComb = { betaPost: NaN, sigmaBeta2Post: NaN };
   if (target.antTarget != null) {
     // Drop samples without an anthocyanin reading (mirrors the pH path) —
     // a single NaN otherwise poisons every regression sum.
@@ -440,30 +468,18 @@ export function computeOne({
       .filter(s => Number.isFinite(s.ant))
       .map(s => ({ t: s.tDays, y: s.ant, w: wOf(s) }));
     antFit = weightedRegression(antSamples);
-    antPrior = historicalSlopePrior(
-      historicalByVintage.map(v => v.map(s => ({ t: s.tDays, y: s.ant }))),
-      { slopeScale: ANT_SLOPE_SCALE, slopeMax: ANT_SLOPE_MAX }
-    );
     antComb = bayesianCombine({
       betaHat: antFit.beta, sigmaBeta2: antFit.sigmaBeta2,
       betaHist: antPrior.betaHist, tau2Hist: antPrior.tau2Hist,
     });
   }
 
-  let phFit = null, phPrior = { V: 0, tau2Hist: Infinity, betaHist: null },
-      phComb = { betaPost: NaN, sigmaBeta2Post: NaN };
+  let phFit = null, phComb = { betaPost: NaN, sigmaBeta2Post: NaN };
   if (target.phTarget != null) {
     const phSamples = sorted
       .filter(s => Number.isFinite(s.pH))
       .map(s => ({ t: s.tDays, y: s.pH, w: wOf(s) }));
     phFit = weightedRegression(phSamples);
-    phPrior = historicalSlopePrior(
-      historicalByVintage.map(v => v
-        .filter(s => Number.isFinite(s.pH))
-        .map(s => ({ t: s.tDays, y: s.pH }))
-      ),
-      { slopeScale: PH_SLOPE_SCALE, slopeMax: PH_SLOPE_MAX }
-    );
     phComb = bayesianCombine({
       betaHat: phFit.beta, sigmaBeta2: phFit.sigmaBeta2,
       betaHist: phPrior.betaHist, tau2Hist: phPrior.tau2Hist,
@@ -575,7 +591,7 @@ export function computeOne({
   return {
     reason, flags, recommendedDate, brixWindowCloses,
     bandDays, label,
-    nCurrent, V: brixPrior.V,
+    nCurrent, V: brixPrior.V, excludedHistoricalSlopes,
     brixHoy: yhatBrixToday, antHoy: yhatAntToday, phHoy: yhatPhToday,
     samplesProjected: {
       brixEta: brixMidEta, antEta, phEta,

@@ -53,7 +53,10 @@ describe('MT.45 — seguimiento tonnage can never act as a weight', () => {
   it('parser berry rows carry no tonnage or forecast key under any name', async () => {
     const aoa = buildAoa().map(r => (r ? [...r] : r));
     const hdr = aoa[5]; hdr[hdr.findIndex(v => v instanceof Date)] = '07.07';
-    const ws = XLSX.utils.aoa_to_sheet(aoa); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    // UTC:true even though no Date survives the line above (xd-6fc): without it
+    // this test turns zone-dependent the moment someone stops replacing the
+    // header, as mt44 and the fixture builder already learned.
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true }); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Uva');
     const b = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
     const res = await seguimientoParser.parse({ name: 'x.xlsx', size: b.byteLength, async arrayBuffer() { return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); } });
     // Chemistry now targets wine_samples (sample_type='Berries').
