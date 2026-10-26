@@ -22,7 +22,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
@@ -207,5 +207,24 @@ describe('MT.46 - npm test runs under America/Tijuana as well as UTC (xd-6fc)', 
     assert.ok(zones, 'TEST_ZONES must be declared as a literal list');
     assert.match(zones[1], /'Etc\/UTC'/);
     assert.match(zones[1], /'America\/Tijuana'/);
+  });
+
+  // CI runs Node 20, whose --test does not expand globs, and the runner spawns
+  // node with no shell: a literal pattern there runs zero tests (xd-6fc r2).
+  it('the runner hands node real test files, never a glob', async () => {
+    const { testTargets } = await import('../scripts/test-zones.mjs');
+    const targets = testTargets([]);
+    const onDisk = (await readdir(new URL('../tests/', import.meta.url)))
+      .filter((name) => name.endsWith('.test.mjs'));
+    assert.ok(targets.length > 0);
+    for (const t of targets) assert.doesNotMatch(t, /[*?[{]/, `glob reached node: ${t}`);
+    assert.deepEqual(targets, onDisk.sort().map((name) => `tests/${name}`));
+    assert.ok(targets.includes('tests/mt46-seguimiento-timezone.test.mjs'));
+  });
+
+  it('files named on the command line pass through unchanged', async () => {
+    const { testTargets } = await import('../scripts/test-zones.mjs');
+    assert.deepEqual(testTargets(['tests/mt46-seguimiento-timezone.test.mjs']),
+      ['tests/mt46-seguimiento-timezone.test.mjs']);
   });
 });
