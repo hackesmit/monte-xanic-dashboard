@@ -97,7 +97,7 @@ async function fileToRows(file) {
     ? XLSX.read(buf, { type: 'array', cellDates: false, cellNF: true })
     : XLSX.read(decodeCsv(buf), { type: 'string', cellDates: false, cellNF: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  isoDateCells(sheet);
+  isoDateCells(sheet, { date1904: Boolean(wb.Workbook?.WBProps?.date1904) });
   return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
 }
 
@@ -105,16 +105,26 @@ async function fileToRows(file) {
 // UTC machine used to see, decoded by calendar arithmetic (parse_date_code)
 // so the machine's zone never enters. Doing it on the cell, not on the mapped
 // column, keeps every consumer (the date columns, the rejected-row download)
-// reading a date rather than a bare serial.
-function isoDateCells(sheet) {
+// reading a date rather than a bare serial. A workbook saved with the 1904
+// calendar (Excel for Mac) counts its serials from 1904-01-01, 1462 days off
+// the 1900 calendar, so the book's own setting decides how a serial is read.
+function isoDateCells(sheet, { date1904 = false } = {}) {
   for (const ref of Object.keys(sheet)) {
     if (ref[0] === '!') continue;
     const cell = sheet[ref];
     if (cell.t !== 'n' || !cell.z || !XLSX.SSF.is_date(cell.z)) continue;
-    const iso = normalizeDate(cell.v);
+    const iso = serialToIso(cell.v, date1904);
     // Drop the format too: sheet_to_json re-reads a dated cell as a Date.
     if (iso) { cell.t = 's'; cell.v = iso; delete cell.z; delete cell.w; }
   }
+}
+
+function serialToIso(serial, date1904) {
+  if (!Number.isFinite(serial) || serial <= 0) return null;
+  const parsed = XLSX.SSF.parse_date_code(serial, { date1904 });
+  if (!parsed) return null;
+  const { y, m, d } = parsed;
+  return `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 }
 
 function shapeRow(headers, row, columnMap) {
