@@ -46,4 +46,5 @@ export const MIGRATIONS = [
   'migration_tanques_escritura',
   'migration_tanques_descartes',
   'migration_tanques_etapa',
+  'migration_sample_date_not_null',
 ];

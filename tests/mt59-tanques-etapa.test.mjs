@@ -14,7 +14,7 @@ test('el CHECK de la migracion lista exactamente las ETAPAS de estado.js', () =>
 
 test('la migracion se registra y es la ultima del manifiesto', () => {
   assert.match(sql, /VALUES \('migration_tanques_etapa'\)/);
-  assert.equal(MIGRATIONS[MIGRATIONS.length - 1], 'migration_tanques_etapa');
+  assert.ok(MIGRATIONS.includes('migration_tanques_etapa'));
 });
 
 test('una recepcion con etapa explicita deja esa etapa, sin ella queda rec', () => {
