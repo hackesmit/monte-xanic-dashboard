@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   scoreParam,
+  sanitaryDamagePct,
   scoreLot,
   scoreAll,
   resolveRubric,
@@ -417,6 +418,31 @@ test('MT.11 scoreLot: a value just above Number.MAX_SAFE_INTEGER → sanitary_pc
       `health_madura=${JSON.stringify(bad)} must reject as missing`);
     assert.equal(r.buckets?.sanitary_pct, undefined);
   }
+});
+
+test('MT.11 scoreLot: six safe counts whose SUM is unsafe → sanitary_pct missing', () => {
+  // xd-sr6: each operand passes parseCount, but the exact total is
+  // 19999999999999999, above MAX_SAFE_INTEGER, and rounds to 2e16 as a double.
+  // The damage share then lands on exactly 0.5 % and picks bucket 3, where the
+  // exact ratio (1e14 / 19999999999999999 > 0.5 %) is bucket 2. An unsafe
+  // aggregate is missing, never a rounded percentage.
+  const counts = {
+    health_madura: 9000000000000000, health_inmadura: 9000000000000000,
+    health_sobremadura: 1899999999999999, health_picadura: 50000000000000,
+    health_enfermedad: 25000000000000, health_quemadura: 25000000000000,
+  };
+  for (const v of Object.values(counts)) assert.ok(Number.isSafeInteger(v));
+  const exact = Object.values(counts).reduce((s, v) => s + BigInt(v), 0n);
+  assert.equal(exact, 19999999999999999n);
+  assert.equal(sanitaryDamagePct(counts), null);
+  const lot = mkLot({
+    medicion: { health_grade: 'Excelente', ...counts,
+                tons_received: 5, phenolic_maturity: null }
+  });
+  const r = scoreLot(lot);
+  assert.ok(r.missing.includes('sanitary_pct'),
+    'an unsafe aggregate must be missing, not rounded into bucket 3');
+  assert.equal(r.buckets?.sanitary_pct, undefined);
 });
 
 test('MT.11 scoreLot: a trimmed decimal-integer string count is accepted', () => {
