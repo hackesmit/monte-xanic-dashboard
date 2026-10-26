@@ -1,7 +1,7 @@
 // mt59 - la columna etapa de movimientos_tanque (xd-qrn.9).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { ETAPAS, replayMovimientos } from '../js/tanques/estado.js';
 import { MIGRATIONS } from '../js/migrations-manifest.js';
 
@@ -83,7 +83,9 @@ test('el trigger append-only congela todas las columnas de movimientos_tanque me
   const base = readFileSync(new URL('../sql/migration_tanques.sql', import.meta.url), 'utf8');
   const columnas = base.match(/CREATE TABLE IF NOT EXISTS public\.movimientos_tanque \(\n([\s\S]*?)\n\);/)[1]
     .split('\n').map((l) => l.match(/^ {2}(\w+)\s{2,}/)?.[1]).filter(Boolean);
-  for (const texto of [original, sql, esc, congela]) {
+  const dir = new URL('../sql/', import.meta.url);
+  const migraciones = readdirSync(dir).filter((f) => /^migration_tanques\w*\.sql$/.test(f));
+  for (const texto of migraciones.map((f) => readFileSync(new URL(f, dir), 'utf8'))) {
     for (const [, col] of texto.matchAll(/ALTER TABLE public\.movimientos_tanque ADD COLUMN IF NOT EXISTS (\w+)/g)) {
       if (!columnas.includes(col)) columnas.push(col);
     }
