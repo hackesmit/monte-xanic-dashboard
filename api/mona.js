@@ -108,6 +108,8 @@ export default async function handler(req, res) {
   const knowledge = await knowledgeBlock();
   if (gone(res, upstreamAbort)) return;
   if (knowledge) system.push({ type: 'text', text: knowledge });
+  // Cache everything up to and including the last system block (tools precede it).
+  system[system.length - 1].cache_control = { type: 'ephemeral' };
 
   const payload = JSON.stringify({
     model: MODEL,
