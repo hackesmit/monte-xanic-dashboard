@@ -16,6 +16,7 @@ Node.js built-in test runner (`node:test`). Run with `npm test` or `node --test 
 | `tests/mona-chartSpec.test.mjs` | Chart/table spec validation — type/series/point caps, numeric coercion, categorical-x preservation |
 | `tests/mona-validate.test.mjs` | `/api/mona` request validation — size/count/role limits |
 | `tests/mona-knowledge.test.mjs` | Knowledge-base context assembly (approved-only, 100-fact cap) |
+| `tests/mona-eval.mjs` | Behaviour eval, run by hand (real model, real data, this tree's `api/mona.js`): identity, grounded figures, out-of-scope refusals, prompt injection; writes the merge receipt for `evals/prompt-files.txt` only when all pass |
 | `tests/e2e/mona.spec.js` | Chat stream → chart render → pin → Guardados; floating widget sync (mocked SSE + `/api/mona-data`) |
 
 ## Test Suites
