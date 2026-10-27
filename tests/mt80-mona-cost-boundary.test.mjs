@@ -158,6 +158,8 @@ describe('MT.80 — /api/mona spend boundary', () => {
     assert.match(b.system[0].text, /Guardarraíles/);
     assert.match(b.system[1].text, /^Conocimiento acumulado/);
     assert.match(b.system[1].text, /25CSMX-1/);
+    assert.equal(b.system[0].cache_control, undefined);
+    assert.deepEqual(b.system[1].cache_control, { type: 'ephemeral' });
     assert.deepEqual(b.messages, MSG.messages);
   });
 
