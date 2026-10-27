@@ -22,7 +22,8 @@ function atLeast(version, floor) {
   for (let i = 0; i < floor.length; i++) {
     if (parts[i] !== floor[i]) return parts[i] > floor[i];
   }
-  return true;
+  // equal to the floor: a prerelease (3.4.17-rc.0) sorts below the release
+  return !version.includes('-');
 }
 
 describe('MT.84 dompurify floor', () => {
@@ -31,6 +32,8 @@ describe('MT.84 dompurify floor', () => {
     assert.equal(atLeast('3.10.0', FIXED), true);
     assert.equal(atLeast('3.4.16', FIXED), false);
     assert.equal(atLeast('3.4.9', FIXED), false);
+    assert.equal(atLeast('3.4.17-rc.0', FIXED), false);
+    assert.equal(atLeast('3.4.18-rc.0', FIXED), true);
   });
 
   it('every locked dompurify is 3.4.17 or later', () => {
