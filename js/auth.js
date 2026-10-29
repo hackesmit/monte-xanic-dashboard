@@ -1,6 +1,7 @@
 // ── Authentication Module ──
 import { DataStore } from './dataLoader.js';
 import { App } from './app.js';
+import { Mona } from './mona/index.js';
 
 export const Auth = {
   _tokenKey: 'xanic_session_token',
@@ -125,6 +126,7 @@ export const Auth = {
     this.role = 'viewer';
     this._applyRoleClasses();
     DataStore.clearCache();
+    Mona.reset();
     App.initialized = false;
     const dashboard = document.getElementById('dashboard-content');
     if (dashboard) dashboard.style.display = 'none';
