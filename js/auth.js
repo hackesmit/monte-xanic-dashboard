@@ -117,7 +117,9 @@ export const Auth = {
       fetch('/api/logout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({ token }),
+        // keepalive: the reload below must not cancel the revoke.
+        keepalive: true
       }).catch(() => {});
     }
     localStorage.removeItem(this._tokenKey);
@@ -126,14 +128,10 @@ export const Auth = {
     this._applyRoleClasses();
     DataStore.clearCache();
     App.initialized = false;
-    const dashboard = document.getElementById('dashboard-content');
-    if (dashboard) dashboard.style.display = 'none';
-    this.showLoginScreen();
-    // Clear login form
-    const form = document.getElementById('login-form');
-    if (form) form.reset();
-    const errorEl = document.getElementById('login-error');
-    if (errorEl) errorEl.textContent = '';
+    // Reload the document: this discards every in-flight request (Mona chat,
+    // data loads) and every module-level per-user cache (Mona conversations,
+    // KB modal), so nothing of this account can reach the next login (xd-0lt.5).
+    location.reload();
   },
 
   getToken() {

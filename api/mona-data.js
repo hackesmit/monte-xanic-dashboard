@@ -23,6 +23,12 @@ async function sb(path, opts = {}) {
 }
 
 const enc = encodeURIComponent;
+// Persisted-content caps (xd-0lt.5). The service key bypasses RLS, so the only
+// bound on what one session can store is here.
+const MAX_MESSAGE_BYTES = 256 * 1024;
+const MAX_SPEC_BYTES = 128 * 1024;
+const MESSAGE_ROLES = new Set(['user', 'assistant']);
+const jsonBytes = (v) => { try { return Buffer.byteLength(JSON.stringify(v) ?? 'null'); } catch { return Infinity; } };
 const isStaff = (role) => role === 'lab' || role === 'admin';
 
 export default async function handler(req, res) {
@@ -79,6 +85,8 @@ export default async function handler(req, res) {
         return res.status(200).json(r.json || []);
       }
       case 'appendMessage': {
+        if (!MESSAGE_ROLES.has(b.role)) return res.status(400).json({ error: 'Rol de mensaje inválido' });
+        if (jsonBytes(b.content) > MAX_MESSAGE_BYTES) return res.status(413).json({ error: 'Mensaje demasiado grande' });
         if (!(await ownsConversation(b.conversationId))) return res.status(404).json({ error: 'No encontrada' });
         await sb('mona_messages', {
           method: 'POST',
@@ -96,6 +104,7 @@ export default async function handler(req, res) {
         return res.status(200).json(r.json || []);
       }
       case 'saveView': {
+        if (jsonBytes(b.spec || {}) > MAX_SPEC_BYTES) return res.status(413).json({ error: 'Vista demasiado grande' });
         const row = {
           username: user,
           title: String(b.title || 'Vista').slice(0, 120),
