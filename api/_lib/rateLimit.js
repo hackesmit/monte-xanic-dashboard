@@ -10,10 +10,14 @@ const DEFAULTS = {
 };
 
 // Client IP for rate limiting. Trust only platform-set values: Vercel sets
-// x-real-ip, and appends the true client IP as the RIGHT-most entry of
-// x-forwarded-for. The left-most entry is attacker-supplied — keying on it
-// would give a fresh bucket per spoofed header, nullifying the limiter.
+// x-vercel-forwarded-for itself and drops any copy the client sends, so it
+// wins over x-real-ip and x-forwarded-for, which a client can forge wherever
+// the platform does not overwrite them. The remaining headers are only a
+// fallback for local runs and tests; in x-forwarded-for the left-most entry
+// is attacker-supplied, so only the RIGHT-most one is read.
 export function clientIp(req) {
+  const vercel = req.headers['x-vercel-forwarded-for'];
+  if (vercel) return String(vercel).split(',')[0].trim() || 'unknown';
   const real = req.headers['x-real-ip'];
   if (real) return real;
   const fwd = req.headers['x-forwarded-for'];
@@ -27,7 +31,9 @@ export function clientIp(req) {
 export function rateLimit(req, res, opts = {}) {
   const { windowMs, maxRequests } = { ...DEFAULTS, ...opts };
   const ip = clientIp(req);
-  const key = `${req.url}:${ip}`;
+  // Route path only: a query string would give a fresh bucket per request.
+  const path = String(req.url || '').split('?')[0];
+  const key = `${path}:${ip}`;
   const now = Date.now();
 
   // Sweep stale entries every 100 inserts
