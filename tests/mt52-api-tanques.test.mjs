@@ -42,12 +42,13 @@ function makeRes() {
 
 let _url = 0;
 function makeReq({ method = 'POST', body = {}, role = 'lab', user = 'labuser' } = {}) {
-  // A unique url per request keeps the in-memory rate limiter (keyed on
-  // `${url}:${ip}`) from leaking a bucket between tests in this file.
+  // A unique client IP per request keeps the in-memory rate limiter (keyed on
+  // `${path}:${ip}`, query string ignored) from leaking a bucket between tests.
+  const n = _url++;
   return {
     method,
-    url: `/api/tanques?t=${_url++}`,
-    headers: { 'x-session-token': token(role, user) },
+    url: '/api/tanques',
+    headers: { 'x-session-token': token(role, user), 'x-real-ip': `10.52.${n >> 8}.${n & 255}` },
     body,
     socket: { remoteAddress: '127.0.0.1' },
   };
