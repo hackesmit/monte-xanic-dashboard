@@ -56,4 +56,5 @@ export const MIGRATIONS = [
   'migration_mona_uso',
   'migration_mona_uso_reserva',
   'migration_lectura_por_sesion',
+  'migration_meteorologia_sin_escritura_anon',
 ];

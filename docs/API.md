@@ -279,6 +279,25 @@ revocation and secret rotation end reads at once (xd-0lt.1).
 
 A table outside the list is a 400; a failed Supabase read is a 502, never an empty table.
 
+## /api/meteorologia
+
+Session-checked Open-Meteo sync into `meteorology` (xd-0lt.2). The server
+fetches the archive API for the valley's coordinates (`CONFIG.valleyCoordinates`),
+drops any day with a value out of range or not a number, and upserts on
+`(date, location)` with the service key. `sql/migration_meteorologia_sin_escritura_anon.sql`
+drops the anon `anon_insert` and `anon_update` policies and revokes the write
+grants; the anon read stays (public weather data).
+
+**Auth:** `x-session-token`, any valid session, checked against the blacklist.
+**Rate limit:** 300 requests per 15 minutes per IP and URL.
+**Cache:** `private, no-store`.
+
+- `POST /api/meteorologia` with `{ "valle": "VDG|VON|SV", "desde": "YYYY-MM-DD", "hasta": "YYYY-MM-DD" }`
+  returns `{ ok, filas }`, the rows written. `hasta` is capped at today in the
+  vineyard; the span is at most 1100 days and starts no earlier than 1940-01-01.
+
+A bad valley or span is a 400; a failed Open-Meteo call or write is a 502.
+
 ## /api/tanques
 
 Token-gated access to the tank catalog and the movement log. `dim_tanque`,
