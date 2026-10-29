@@ -11,7 +11,6 @@ export const WeatherStore = {
   _byDate: {},   // YYYY-MM-DD → { VDG: row, VON: row, SV: row }
   _gddCache: {},
 
-  _API_BASE: 'https://archive-api.open-meteo.com/v1/archive',
   _FORECAST_API: 'https://api.open-meteo.com/v1/forecast',
   _TZ:       VINEYARD_TZ,   // the Open-Meteo query timezone, same one definition
   _VALLEYS:  ['VDG', 'VON', 'SV'],
@@ -80,11 +79,14 @@ export const WeatherStore = {
       console.warn('[WeatherStore] sync skipped: could not read the meteorology schema');
       return;
     }
+    // /api/meteorologia writes on (date, location); a pre-migration table
+    // (migration_overhaul unrun) has nothing it can write to.
+    if (!hasLocationCol) {
+      console.warn('[WeatherStore] sync skipped: meteorology has no location column');
+      return;
+    }
 
     for (const valley of this._VALLEYS) {
-      // Only sync non-VDG valleys if the location column exists in DB
-      if (valley !== 'VDG' && !hasLocationCol) continue;
-
       const coord = coords[valley];
       if (!coord) continue;
 
@@ -95,23 +97,10 @@ export const WeatherStore = {
         if (!gap) continue;
 
         try {
-          const rows = await this._fetchFromAPI(gap.start, gap.end, coord.lat, coord.lon);
+          // The server fetches Open-Meteo, range-checks and writes; the anon
+          // key has no write on meteorology (xd-0lt.2).
+          const rows = await this._syncViaRoute(valley, gap.start, gap.end);
           if (!rows.length) continue;
-
-          // Persist to Supabase
-          if (hasLocationCol) {
-            rows.forEach(r => { r.location = valley; });
-            const { error: upsertErr } = await DataStore.supabase
-              .from('meteorology')
-              .upsert(rows, { onConflict: 'date,location' });
-            if (upsertErr) { console.warn(`[WeatherStore] upsert failed for ${valley}:`, upsertErr.message); continue; }
-          } else {
-            // Pre-migration: no location column, use old single-column conflict
-            const { error: upsertErr } = await DataStore.supabase
-              .from('meteorology')
-              .upsert(rows, { onConflict: 'date' });
-            if (upsertErr) { console.warn('[WeatherStore] upsert failed:', upsertErr.message); continue; }
-          }
 
           // Only update in-memory state after confirmed DB upsert
           rows.forEach(r => {
@@ -179,52 +168,23 @@ export const WeatherStore = {
     return this._missingSpan(start, end, location) === null;
   },
 
-  // ── Open-Meteo fetch ───────────────────────────────────────────
+  // ── Sync route ─────────────────────────────────────────────────
 
-  async _fetchFromAPI(startDate, endDate, lat, lon) {
-    const params = new URLSearchParams({
-      latitude:   lat,
-      longitude:  lon,
-      start_date: startDate,
-      end_date:   endDate,
-      daily: [
-        'temperature_2m_max',
-        'temperature_2m_min',
-        'temperature_2m_mean',
-        'precipitation_sum',
-        'relative_humidity_2m_mean',
-        'uv_index_max',
-        'wind_speed_10m_max'
-      ].join(','),
-      timezone: this._TZ
+  // POST /api/meteorologia: the server fetches Open-Meteo for the valley,
+  // range-checks the values and upserts them with the service key, then
+  // answers the rows it wrote. Throws on any failure.
+  async _syncViaRoute(valley, start, end) {
+    const res = await fetch('/api/meteorologia', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-session-token': DataStore._sessionToken() },
+      body: JSON.stringify({ valle: valley, desde: start, hasta: end }),
     });
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    let res;
-    try {
-      res = await fetch(`${this._API_BASE}?${params}`, { signal: controller.signal });
-    } finally {
-      clearTimeout(timeout);
+    let body = null;
+    try { body = await res.json(); } catch { /* not JSON */ }
+    if (!res.ok || !body?.ok || !Array.isArray(body.filas)) {
+      throw new Error(body?.error || `HTTP ${res.status}`);
     }
-    if (!res.ok) throw new Error(`Open-Meteo HTTP ${res.status}`);
-    const json = await res.json();
-    const d    = json.daily;
-    if (!d || !Array.isArray(d.time)) {
-      console.error('[WeatherStore] Respuesta inesperada de Open-Meteo:', d);
-      return [];
-    }
-
-    return d.time.map((date, i) => ({
-      date,
-      temp_max:     d.temperature_2m_max?.[i]        ?? null,
-      temp_min:     d.temperature_2m_min?.[i]        ?? null,
-      temp_avg:     d.temperature_2m_mean?.[i]       ?? null,
-      rainfall_mm:  d.precipitation_sum?.[i]         ?? null,
-      humidity_pct: d.relative_humidity_2m_mean?.[i] ?? null,
-      uv_index:     d.uv_index_max?.[i]              ?? null,
-      wind_speed:   d.wind_speed_10m_max?.[i]        ?? null
-    }));
+    return body.filas;
   },
 
   // ── Forecast (Open-Meteo forecast API) ─────────────────────────
