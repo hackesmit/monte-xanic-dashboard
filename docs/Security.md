@@ -51,6 +51,7 @@
 - `SUPABASE_SERVICE_KEY` (bypasses RLS): used only in `/api/*` server functions
 - `SUPABASE_ANON_KEY`: used by frontend Supabase JS SDK
 - The anon key reads none of the confidential lab tables (`wine_samples`, `tank_receptions`, `reception_lots`, `prefermentativos`, `berry_samples`, `mediciones_tecnicas`, `harvest_target_overrides`): RLS on, no policies, grants revoked (`migration_lectura_por_sesion`). The dashboard reads them through `/api/datos`, which checks the session and the blacklist on every request, so a revoked or expired session stops reading at once (xd-0lt.1).
+- The anon key writes no weather: `meteorology` has no anon insert or update policy and no write grant (`migration_meteorologia_sin_escritura_anon`). The Open-Meteo sync runs in `/api/meteorologia`, which checks the session and the blacklist, fetches Open-Meteo on the server and range-checks every value before the service-key upsert (xd-0lt.2).
 - `SESSION_SECRET`: used only server-side for HMAC signing
 - `CRON_SECRET`: used only server-side to gate `/api/ping` against non-Vercel callers; rotate by replacing in Vercel env vars and redeploying — old value stops working immediately
 - `ANTHROPIC_API_KEY`: used only server-side in `/api/mona`; never sent to the client
