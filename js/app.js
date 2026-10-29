@@ -646,7 +646,7 @@ export const App = {
       const byYear = {};
       years.forEach(y => { byYear[y] = data.filter(d => d.variety === v && Number(d.vintage) === y); });
 
-      let row = `<td style="text-align:left"><span class="badge badge-variety" style="border-color:${color}55;color:${color}">${v}</span></td>`;
+      let row = `<td style="text-align:left"><span class="badge badge-variety" style="border-color:${color}55;color:${color}">${escapeHtml(v)}</span></td>`;
 
       paramCols.forEach(p => {
         years.forEach(y => {
@@ -724,10 +724,10 @@ export const App = {
         ? `class="row-clickable" data-sample-id="${esc(r.berrySampleId)}" data-sample-date="${esc(r.berrySampleDate)}" data-sample-seq="${esc(r.berrySampleSeq)}"`
         : '';
       return `<tr ${trAttrs}>
-        <td style="font-weight:400;color:var(--gold-lt)">${r.berryLot}</td>
-        <td>${r.wineLot}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${r.variety || '—'}</span></td>
-        <td>${r.appellation || '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${esc(r.berryLot)}</td>
+        <td>${esc(r.wineLot)}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${esc(r.variety) || '—'}</span></td>
+        <td>${esc(r.appellation) || '—'}</td>
         <td>${r.berryTANT !== null ? Math.round(r.berryTANT) : '—'}</td>
         <td>${r.wineTANT !== null && r.wineTANT !== undefined ? Math.round(r.wineTANT) : '—'}</td>
         <td style="color:${extColor};font-weight:400">${r.extraction !== null ? r.extraction.toFixed(1) + '%' : '—'}</td>
