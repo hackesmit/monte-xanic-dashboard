@@ -214,43 +214,42 @@ describe('MT.8 — sync bootstrap and coverage (xd-fge)', () => {
     const supa = {
       from: () => ({
         select: () => ({ limit: async () => ({ data: [], error: null }) }),
-        upsert: async (rows, opts) => { upserts.push({ rows, opts }); return { error: null }; }
+        upsert: async () => { throw new Error('anon upsert'); }
       })
     };
     const { DataStore } = await import('../js/dataLoader.js');
-    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI];
+    const prev = [DataStore.supabase, WeatherStore._syncViaRoute];
     DataStore.supabase = supa;
-    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    WeatherStore._syncViaRoute = async (v, s, e) => { upserts.push({ v, s, e }); return [{ date: s, location: v, rainfall_mm: 0 }]; };
     try {
       await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
     } finally {
-      [DataStore.supabase, WeatherStore._fetchFromAPI] = prev;
+      [DataStore.supabase, WeatherStore._syncViaRoute] = prev;
     }
     assert.equal(upserts.length, 3);
-    assert.ok(upserts.every(u => u.opts.onConflict === 'date,location'));
-    assert.deepEqual(upserts.map(u => u.rows[0].location).sort(), ['SV', 'VDG', 'VON']);
+    assert.deepEqual(upserts.map(u => u.v).sort(), ['SV', 'VDG', 'VON']);
+    assert.ok(upserts.every(u => u.s === '2020-07-01' && u.e === '2020-07-05'));
+    assert.equal(WeatherStore._byDate['2020-07-01'].VON.location, 'VON');
   });
 
-  it('pre-migration table (probe errors) syncs VDG only with onConflict date', async () => {
+  it('pre-migration table (probe 42703) syncs nothing: the route writes on (date, location)', async () => {
     resetStore();
     const upserts = [];
     const supa = {
       from: () => ({
         select: () => ({ limit: async () => ({ data: null, error: { code: '42703', message: 'column meteorology.location does not exist' } }) }),
-        upsert: async (rows, opts) => { upserts.push(opts); return { error: null }; }
       })
     };
     const { DataStore } = await import('../js/dataLoader.js');
-    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI];
+    const prev = [DataStore.supabase, WeatherStore._syncViaRoute];
     DataStore.supabase = supa;
-    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    WeatherStore._syncViaRoute = async (v) => { upserts.push(v); return []; };
     try {
       await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
     } finally {
-      [DataStore.supabase, WeatherStore._fetchFromAPI] = prev;
+      [DataStore.supabase, WeatherStore._syncViaRoute] = prev;
     }
-    assert.equal(upserts.length, 1);
-    assert.equal(upserts[0].onConflict, 'date');
+    assert.equal(upserts.length, 0);
   });
 
   // Probe answers come from `probe` in order (the last one repeats); a
@@ -266,18 +265,17 @@ describe('MT.8 — sync bootstrap and coverage (xd-fge)', () => {
           if (typeof r === 'function') r();
           return r;
         } }),
-        upsert: async (rows, opts) => { upserts.push({ rows, opts }); return { error: null }; }
       })
     };
     const { DataStore } = await import('../js/dataLoader.js');
-    const prev = [DataStore.supabase, WeatherStore._fetchFromAPI, WeatherStore._probeRetryMs];
+    const prev = [DataStore.supabase, WeatherStore._syncViaRoute, WeatherStore._probeRetryMs];
     DataStore.supabase = supa;
-    WeatherStore._fetchFromAPI = async (s) => [{ date: s, rainfall_mm: 0 }];
+    WeatherStore._syncViaRoute = async (v, s) => { upserts.push(v); return [{ date: s, location: v, rainfall_mm: 0 }]; };
     WeatherStore._probeRetryMs = 0;
     try {
       await WeatherStore._syncInner([2020], () => ({ start: '2020-07-01', end: '2020-07-05' }));
     } finally {
-      [DataStore.supabase, WeatherStore._fetchFromAPI, WeatherStore._probeRetryMs] = prev;
+      [DataStore.supabase, WeatherStore._syncViaRoute, WeatherStore._probeRetryMs] = prev;
     }
     return { upserts, calls };
   };
@@ -288,7 +286,6 @@ describe('MT.8 — sync bootstrap and coverage (xd-fge)', () => {
     const { upserts, calls } = await runSync([http503, http503, ok]);
     assert.equal(calls, 3);
     assert.equal(upserts.length, 3);
-    assert.ok(upserts.every(u => u.opts.onConflict === 'date,location'));
   });
 
   it('a probe that keeps failing aborts the sync instead of assuming the old schema', async () => {
