@@ -48,6 +48,11 @@ async function abrir(page) {
     headers: { 'content-range': `0-${WINE_SAMPLES.length - 1}/${WINE_SAMPLES.length}` },
     body: JSON.stringify(WINE_SAMPLES),
   }));
+  // The lab tables come through /api/datos (xd-0lt.1), one page per table.
+  await page.route('**/api/datos?*', (route) => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ ok: true, filas: new URL(route.request().url()).searchParams.get('tabla') === 'wine_samples' ? WINE_SAMPLES : [] }),
+  }));
   await page.goto('/');
   await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
   // Boot renders once before the rows arrive; wait for the render that has them.

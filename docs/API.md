@@ -256,6 +256,29 @@ In-memory rate limiter for all authenticated endpoints.
 - Resets on Vercel cold start (acceptable for serverless)
 - Returns 429 with Spanish error message when exceeded
 
+## /api/datos
+
+Session-checked reads of the confidential lab tables: `wine_samples`,
+`tank_receptions`, `reception_lots`, `prefermentativos`, `berry_samples`,
+`mediciones_tecnicas` and `harvest_target_overrides`. `sql/migration_lectura_por_sesion.sql`
+drops their anon `public_read` policies and revokes the `anon` and
+`authenticated` grants, so the anon key from `/api/config` reads none of them.
+The token is checked against the blacklist on every request, so logout,
+revocation and secret rotation end reads at once (xd-0lt.1).
+
+**Auth:** `x-session-token`, any valid session. Read-only, service key.
+**Rate limit:** 600 requests per 15 minutes per IP and URL.
+**Cache:** `private, no-store`.
+
+- `GET /api/datos?tabla=<t>&desde=<n>` returns `{ ok, filas }`: up to 1000 rows
+  from offset `n`, in the table's fixed order. The client pages until a short page.
+- `POST /api/datos` with `{ "tabla": "<t>", "claves": [...] }` returns `{ ok, filas }`:
+  the conflict-key columns (from `api/_lib/allowedTables.js`) of the rows whose
+  first conflict column is in `claves` (1 to 1000 strings or numbers). The upload
+  preview uses it to count new rows.
+
+A table outside the list is a 400; a failed Supabase read is a 502, never an empty table.
+
 ## /api/tanques
 
 Token-gated access to the tank catalog and the movement log. `dim_tanque`,
