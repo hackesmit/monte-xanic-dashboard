@@ -3,7 +3,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'crypto';
-import { readFileSync } from 'node:fs';
 
 const SECRET = 'test-session-secret-for-unit-tests';
 process.env.SESSION_SECRET = SECRET;
@@ -11,7 +10,6 @@ process.env.SUPABASE_URL = 'https://test.supabase.co';
 process.env.SUPABASE_SERVICE_KEY = 'test-service-key';
 
 const handler = (await import('../api/mona-data.js')).default;
-const { MonaChat } = await import('../js/mona/chat.js');
 
 function token(role = 'lab', user = 'labuser') {
   const p = Buffer.from(JSON.stringify({ exp: Date.now() + 60_000, role, user, nonce: 'n' })).toString('base64url');
@@ -19,27 +17,25 @@ function token(role = 'lab', user = 'labuser') {
 }
 const makeRes = () => ({ statusCode: 200, body: null, status(c) { this.statusCode = c; return this; }, json(b) { this.body = b; return this; } });
 
-describe('MT.90 — logout clears Mona client state', () => {
-  it('MonaChat.clearAll drops messages, conversation id and conversation list', () => {
-    MonaChat.messages = [{ role: 'user', content: 'secreto de la cuenta A' }];
-    MonaChat.conversationId = 'c1';
-    MonaChat.conversations = [{ id: 'c1', title: 'A' }];
-    MonaChat.clearAll();
-    assert.deepEqual(MonaChat.messages, []);
-    assert.equal(MonaChat.conversationId, null);
-    assert.deepEqual(MonaChat.conversations, []);
-  });
-
-  it('Auth.logout calls Mona.reset, which allows a fresh init', () => {
-    const auth = readFileSync(new URL('../js/auth.js', import.meta.url), 'utf8');
-    const start = auth.indexOf('logout() {');
-    const logout = auth.slice(start, auth.indexOf('getToken() {', start));
-    assert.match(logout, /Mona\.reset\(\)/);
-    const idx = readFileSync(new URL('../js/mona/index.js', import.meta.url), 'utf8');
-    const rs = idx.indexOf('reset() {');
-    const reset = idx.slice(rs, idx.indexOf('updateKbButton() {', rs));
-    assert.match(reset, /initialized = false/);
-    assert.match(reset, /MonaChat\.clearAll\(\)/);
+describe('MT.90 - logout discards in-flight Mona work by reloading the document', () => {
+  it('Auth.logout clears the session, reloads, and no Mona write is issued afterwards', async () => {
+    const store = { xanic_session_token: 'TOKEN_A', xanic_user_role: 'lab' };
+    let reloads = 0;
+    globalThis.localStorage = { getItem: k => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
+    globalThis.location = { reload() { reloads++; } };
+    const origFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, opts = {}) => { calls.push({ url: String(url), body: opts.body ? JSON.parse(opts.body) : {} }); return { ok: true, json: async () => ({}) }; };
+    try {
+      const { Auth } = await import('../js/auth.js');
+      Auth.logout();
+      assert.equal(store.xanic_session_token, undefined, 'token removed');
+      assert.equal(store.xanic_user_role, undefined, 'role removed');
+      assert.equal(reloads, 1, 'logout must reload the document');
+      assert.ok(calls.some(c => c.url === '/api/logout'), 'token revoked server-side');
+      // Nothing talks to mona-data as part of logout itself.
+      assert.equal(calls.filter(c => c.url.includes('mona')).length, 0);
+    } finally { globalThis.fetch = origFetch; }
   });
 });
 
