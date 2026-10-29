@@ -55,4 +55,5 @@ export const MIGRATIONS = [
   'migration_token_blacklist_sweep',
   'migration_mona_uso',
   'migration_mona_uso_reserva',
+  'migration_lectura_por_sesion',
 ];
