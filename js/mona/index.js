@@ -64,21 +64,6 @@ export const Mona = {
     if (view === 'guardados') MonaSaved.render();
   },
 
-  // Logout: wipe the previous account's conversations from memory and the DOM,
-  // so the next login re-inits Mona from scratch (xd-0lt.5).
-  reset() {
-    MonaChat.clearAll();
-    MonaKnowledge.facts = [];
-    MonaUI.surfaces = [];
-    MonaUI._pendingDisplays = [];
-    const tab = document.getElementById('view-mona');
-    if (tab) tab.innerHTML = '';
-    const saved = document.getElementById('view-guardados');
-    if (saved) saved.innerHTML = '';
-    document.getElementById('mona-widget-root')?.remove();
-    this.initialized = false;
-  },
-
   updateKbButton() {
     const isStaff = Auth.role === 'lab' || Auth.role === 'admin';
     const sidebar = document.querySelector('.mona-sidebar');
