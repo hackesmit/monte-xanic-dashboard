@@ -25,6 +25,9 @@ export const MonaChat = {
 
   reset() { this.messages = []; this.conversationId = null; },
 
+  // Logout: drop every trace of the previous account's conversations.
+  clearAll() { this.reset(); this.conversations = []; this.running = false; },
+
   // ── Conversation lifecycle ──
   async listConversations() {
     try { this.conversations = await api('listConversations'); } catch { this.conversations = []; }
