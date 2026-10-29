@@ -25,7 +25,7 @@ describe('MT.90 - logout discards in-flight Mona work by reloading the document'
     globalThis.location = { reload() { reloads++; } };
     const origFetch = globalThis.fetch;
     const calls = [];
-    globalThis.fetch = async (url, opts = {}) => { calls.push({ url: String(url), body: opts.body ? JSON.parse(opts.body) : {} }); return { ok: true, json: async () => ({}) }; };
+    globalThis.fetch = async (url, opts = {}) => { calls.push({ url: String(url), opts, body: opts.body ? JSON.parse(opts.body) : {} }); return { ok: true, json: async () => ({}) }; };
     try {
       const { Auth } = await import('../js/auth.js');
       Auth.logout();
@@ -33,6 +33,7 @@ describe('MT.90 - logout discards in-flight Mona work by reloading the document'
       assert.equal(store.xanic_user_role, undefined, 'role removed');
       assert.equal(reloads, 1, 'logout must reload the document');
       assert.ok(calls.some(c => c.url === '/api/logout'), 'token revoked server-side');
+      assert.ok(calls.some(c => c.url === '/api/logout' && c.opts && c.opts.keepalive === true), 'revoke survives the reload');
       // Nothing talks to mona-data as part of logout itself.
       assert.equal(calls.filter(c => c.url.includes('mona')).length, 0);
     } finally { globalThis.fetch = origFetch; }

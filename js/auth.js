@@ -117,7 +117,9 @@ export const Auth = {
       fetch('/api/logout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({ token }),
+        // keepalive: the reload below must not cancel the revoke.
+        keepalive: true
       }).catch(() => {});
     }
     localStorage.removeItem(this._tokenKey);
