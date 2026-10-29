@@ -254,16 +254,20 @@ export const DataStore = {
     };
   },
 
-  // Paginated fetch — Supabase defaults to 1000 rows max per query
-  async _fetchAll(table, orderCol = 'id') {
+  // Paginated fetch through /api/datos, 1000 rows per page. The confidential
+  // lab tables are not readable with the anon key (xd-0lt.1): the route checks
+  // the session on every page and reads with the service key, so logout or a
+  // revoked token ends the reads. The order column is fixed server-side.
+  async _fetchAll(table) {
     const PAGE = 1000;
     let all = [], from = 0;
     while (true) {
-      const { data, error } = await this.supabase
-        .from(table).select('*')
-        .order(orderCol, { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw error;
+      const res = await fetch(`/api/datos?tabla=${encodeURIComponent(table)}&desde=${from}`, {
+        headers: { 'x-session-token': this._sessionToken() },
+      });
+      const body = await res.json();
+      if (!body?.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+      const data = body.filas;
       if (!data || data.length === 0) break;
       all = all.concat(data);
       if (data.length < PAGE) break;
@@ -277,11 +281,11 @@ export const DataStore = {
   async loadFromSupabase() {
     if (!this.supabase) return false;
     try {
-      const samples = await this._fetchAll('wine_samples', 'sample_date');
+      const samples = await this._fetchAll('wine_samples');
 
       // Fetch prefermentativos for winePreferment supplement
       let prefs = [], pErr = null;
-      try { prefs = await this._fetchAll('prefermentativos', 'measurement_date'); }
+      try { prefs = await this._fetchAll('prefermentativos'); }
       catch (e) { pErr = e; }
 
       // Fetch tank_receptions + reception_lots for the quality-classification
@@ -289,10 +293,10 @@ export const DataStore = {
       // partial-data guard handles missing params gracefully.
       let receptions = [], receptionLots = [];
       try {
-        receptions = await this._fetchAll('tank_receptions', 'reception_date');
+        receptions = await this._fetchAll('tank_receptions');
       } catch (_) { receptions = []; }
       try {
-        receptionLots = await this._fetchAll('reception_lots', 'reception_id');
+        receptionLots = await this._fetchAll('reception_lots');
       } catch (_) { receptionLots = []; }
 
       // Demo mode may have been enabled while these fetches were in flight —
@@ -331,7 +335,7 @@ export const DataStore = {
   async loadMediciones() {
     if (!this.supabase) return;
     try {
-      const rows = await this._fetchAll('mediciones_tecnicas', 'medicion_date');
+      const rows = await this._fetchAll('mediciones_tecnicas');
       if (this._demoActive) return;  // demo enabled mid-fetch — keep overlay
       this.medicionesData = (rows || []).map(r => this._rowToMedicion(r))
         .filter(m => !CONFIG.isForeignAppellation(m.appellation));
@@ -349,7 +353,7 @@ export const DataStore = {
   async loadHarvestTargetOverrides() {
     if (!this.supabase) { this.harvestTargetOverrides = []; return; }
     try {
-      const rows = await this._fetchAll('harvest_target_overrides', 'id');
+      const rows = await this._fetchAll('harvest_target_overrides');
       if (this._demoActive) return;  // demo enabled mid-fetch — keep overlay
       this.harvestTargetOverrides = rows || [];
     } catch (e) {
@@ -833,14 +837,21 @@ export const DataStore = {
   // Get unique sorted values from berry data
   // Read-only existence probe for the upload preview: returns the key
   // columns of rows whose primary key column matches one of `primaryKeys`,
-  // or null on error. Keeps Supabase access inside dataLoader.
+  // or null on error. Goes through /api/datos (xd-0lt.1), which picks the
+  // key columns from the table's conflict key, the same `keyCols` upload uses.
   async fetchExistingKeys(table, keyCols, primaryKeys) {
     if (!this.supabase) return null;
-    const { data, error } = await this.supabase
-      .from(table)
-      .select(keyCols.join(','))
-      .in(keyCols[0], primaryKeys);
-    return (error || !data) ? null : data;
+    try {
+      const res = await fetch('/api/datos', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-session-token': this._sessionToken() },
+        body: JSON.stringify({ tabla: table, claves: primaryKeys }),
+      });
+      const body = await res.json();
+      return (body?.ok && Array.isArray(body.filas)) ? body.filas : null;
+    } catch (_) {
+      return null;
+    }
   },
 
   getUniqueValues(field) {
