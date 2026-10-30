@@ -979,6 +979,13 @@ body.demo-mode-active .demo-banner { display: block; }
   color: var(--text);
   white-space: nowrap;
   font-weight: 300;
+  /* Digits of equal width so columns of figures align. SackersGothicMedium
+     has no tnum feature, so cells use the body font (Daniel, hq-ik6v0.6).
+     The KPI values keep SackersGothicMedium and are left unchanged. */
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  /* Kerning pairs such as "11" would still narrow a run of digits. */
+  font-kerning: none;
 }
 .data-table tr:hover td {
   background: rgba(196,160,96,0.04);
@@ -1699,6 +1706,25 @@ canvas { max-width: 100%; }
   justify-content: center;
   background: var(--black);
   gap: 20px;
+  padding: 24px;
+}
+/* Skeleton KPI row shown while data loads: six gray cards, no text. */
+.kpi-skel {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+  width: min(100%, 960px);
+}
+.kpi-skel-card {
+  height: 96px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sharp);
+  animation: kpi-skel-pulse 1.4s ease-in-out infinite;
+}
+@keyframes kpi-skel-pulse { 50% { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) {
+  .kpi-skel-card { animation: none; }
 }
 .spinner-ring {
   width: 36px;
