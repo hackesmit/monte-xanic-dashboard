@@ -100,13 +100,13 @@
   </div>
 </div>
 
-<!-- Loading spinner (shown between login and data ready) -->
-<!-- dotlottie-wc renders the Lottie animation; .spinner-ring is a CSS fallback
-     shown only while the web component is still registering (see styles.css). -->
-<div id="loading-spinner" class="loading-spinner">
-  <dotlottie-wc class="lottie-loader" src="/animations/wine-grapes-loader.json" autoplay loop></dotlottie-wc>
-  <div class="spinner-ring spinner-fallback"></div>
-  <div class="spinner-text">Cargando datos...</div>
+<!-- Loading skeleton (shown between login and data ready). A KPI-row placeholder
+     with no text; app.js _hideSpinner() hides it by id. -->
+<div id="loading-spinner" class="loading-spinner" role="status" aria-busy="true" aria-label="Cargando datos">
+  <div class="kpi-skel-row" aria-hidden="true">
+    <div class="kpi-skel"></div><div class="kpi-skel"></div><div class="kpi-skel"></div>
+    <div class="kpi-skel"></div><div class="kpi-skel"></div><div class="kpi-skel"></div>
+  </div>
 </div>
 
 <!-- Dashboard -->
