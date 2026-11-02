@@ -110,12 +110,15 @@ function buildDatasets(spec) {
 }
 
 // Labels come from the first series' x values (categorical/line/bar/area).
+// Display only: the empty-group key stays U+2014 in the data, shown as '-'.
+const sinRaya = (v) => (typeof v === 'string' ? v.replace(/\u2014/g, '-') : v);
+
 function buildLabels(spec) {
   if (spec.type === 'scatter' || spec.type === 'pie') {
-    return spec.type === 'pie' ? spec.series.map(s => s.label) : undefined;
+    return spec.type === 'pie' ? spec.series.map(s => sinRaya(s.label)) : undefined;
   }
   const first = spec.series[0];
-  return first ? first.points.map(p => p.x) : [];
+  return first ? first.points.map(p => sinRaya(p.x)) : [];
 }
 
 export async function renderChart(canvasEl, spec) {

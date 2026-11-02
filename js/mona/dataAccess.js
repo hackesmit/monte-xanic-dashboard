@@ -42,7 +42,7 @@ export function aggregateData(rows, { groupBy = null, metric = 'avg', field = nu
   const filtered = applyFilters(rows || [], filters);
   const buckets = new Map();
   for (const r of filtered) {
-    const key = groupBy == null ? 'Total' : String(r[groupBy] ?? '-');
+    const key = groupBy == null ? 'Total' : String(r[groupBy] ?? '\u2014');
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(r);
   }
