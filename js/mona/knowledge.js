@@ -1,4 +1,4 @@
-// js/mona/knowledge.js — Mona's knowledge base: pure context assembly (Node-safe)
+// js/mona/knowledge.js - Mona's knowledge base: pure context assembly (Node-safe)
 // plus the "Conocimiento" panel (lab/admin curate facts; Mona proposes them).
 const token = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('xanic_session_token') : null);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false });
   }
 
-  // Verify HMAC signature before blacklisting — prevents forged token spam
+  // Verify HMAC signature before blacklisting - prevents forged token spam
   const result = await verifyToken(token, { checkBlacklist: false });
   if (result.error) {
     return res.status(result.status).json({ ok: false });
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
   const serviceKey = process.env.SUPABASE_SERVICE_KEY;
 
   // The token_blacklist is the only revocation mechanism, and SUPABASE_SERVICE_KEY
-  // is a required env var for /api/logout (docs/Operations.md — "All required for
+  // is a required env var for /api/logout (docs/Operations.md - "All required for
   // production"); a blacklist-free deployment is a misconfiguration, not a supported
   // mode. Without it we cannot revoke the token, so report failure rather than a
   // false { ok: true } that leaves the token usable for its remaining life.

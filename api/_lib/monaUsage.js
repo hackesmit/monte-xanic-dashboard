@@ -1,4 +1,4 @@
-// api/_lib/monaUsage.js — the shared daily spend ceiling for /api/mona (xd-aiz).
+// api/_lib/monaUsage.js - the shared daily spend ceiling for /api/mona (xd-aiz).
 // The counter lives in public.mona_uso (sql/migration_mona_uso.sql and
 // migration_mona_uso_reserva.sql), so every Vercel instance sees the same count: a per-instance Map could not enforce a
 // ceiling. Keyed by the verified username, not the session, so logging in again

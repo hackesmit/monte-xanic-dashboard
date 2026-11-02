@@ -1,8 +1,8 @@
-// js/mona/saved.js — "Guardados" tab: user-saved Mona charts/tables, live-rendered.
+// js/mona/saved.js - "Guardados" tab: user-saved Mona charts/tables, live-rendered.
 import { renderChart, renderTable } from './chartSpec.js';
 
 const token = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('xanic_session_token') : null);
-const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const esc = (s) => String(s ?? '').replace(/ ?\u2014 ?/g, ' - ').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 async function api(action, payload = {}) {
   const res = await fetch('/api/mona-data', {

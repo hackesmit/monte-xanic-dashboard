@@ -11,7 +11,7 @@
 import * as XLSX from 'xlsx';
 
 // Empty/blank markers shared by every parser.
-const EMPTY_MARKERS = new Set(['', '-', '—', 'NA', 'N/A']);
+const EMPTY_MARKERS = new Set(['', '-', '\u2014', 'NA', 'N/A']);
 
 /**
  * Normalize a single non-date cell value coming out of XLSX.utils.sheet_to_json
@@ -77,7 +77,7 @@ export function normalizeDate(val, { dateOrder = 'dmy' } = {}) {
   // ISO prefix: YYYY-MM-DD optionally followed by Thh:mm:ss[.frac][tz].
   // Postgres `date` columns only need the date component, so we drop any
   // trailing timestamp (this also sidesteps WineXRay's UploadDate which
-  // emits 7-digit fractional seconds — beyond Postgres' 6-digit limit).
+  // emits 7-digit fractional seconds - beyond Postgres' 6-digit limit).
   const isoMatch = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
 
@@ -114,7 +114,7 @@ function pad4(n) { return String(n).padStart(4, '0'); }
  * Postgres rejects bad numeric input with opaque "invalid input syntax for
  * type numeric/integer" errors that abort the entire batch upsert. Round 32
  * caught fractional values in INT columns at the parser; Round 34 generalizes
- * that to also reject non-numeric strings in INT or NUMERIC columns — e.g. a
+ * that to also reject non-numeric strings in INT or NUMERIC columns - e.g. a
  * lab user typing "SEGUIMIENTO MADURACIÓN" into a brix cell. Surfacing the
  * offending row+column lets the user fix the source spreadsheet while the
  * rest of the batch lands cleanly.
@@ -126,8 +126,8 @@ function pad4(n) { return String(n).padStart(4, '0'); }
  * First-offender-wins so the rejection message is deterministic across runs.
  */
 // A date column must be an ISO calendar date (YYYY-MM-DD) that actually exists.
-// Anything else — a Date object, an Excel serial, a DD/MM/YYYY string, a typo
-// like '30/6/269' — is refused rather than coerced, because a coerced date on a
+// Anything else - a Date object, an Excel serial, a DD/MM/YYYY string, a typo
+// like '30/6/269' - is refused rather than coerced, because a coerced date on a
 // maturity series lands a reading on a day nobody recorded. A UTC round-trip
 // rejects impossible calendar dates (2026-02-30, 2026-13-01) that the regex
 // alone would pass.

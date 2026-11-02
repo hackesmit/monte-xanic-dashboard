@@ -8,20 +8,20 @@ export const Auth = {
   role: 'viewer',
 
   /**
-   * Initialize auth — called on DOMContentLoaded before App.init()
+   * Initialize auth - called on DOMContentLoaded before App.init()
    * Returns true if authenticated, false if login screen shown
    */
   async init() {
     this.bindForm();
     const token = this.getToken();
 
-    // No token — show login immediately (no API call needed)
+    // No token - show login immediately (no API call needed)
     if (!token) {
       this.showLoginScreen();
       return false;
     }
 
-    // Token exists — validate server-side
+    // Token exists - validate server-side
     try {
       const resp = await fetch('/api/verify', {
         method: 'POST',
@@ -208,7 +208,7 @@ export const Auth = {
 
       banner.style.display = 'none';
     } catch (_) {
-      // Endpoint unreachable (local dev without Vercel) — silent.
+      // Endpoint unreachable (local dev without Vercel) - silent.
     }
   },
 
