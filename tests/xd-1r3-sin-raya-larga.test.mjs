@@ -9,3 +9,11 @@ test('xd-1r3: null and "-" stay separate groups', () => {
   assert.equal(r.groups.length, 2);
   assert.ok(r.groups.every(g => g.count === 1));
 });
+
+test('xd-1r3: a Mona table shows the empty-group key as "-"', async () => {
+  const { renderTable } = await import('../js/mona/chartSpec.js');
+  const el = { innerHTML: '' };
+  renderTable(el, { title: 'Conteo — variedad', columns: [{ key: 'k', label: 'Variedad' }], rows: [{ k: '—' }] });
+  assert.ok(!el.innerHTML.includes('—'));
+  assert.match(el.innerHTML, /<td>-<\/td>/);
+});
