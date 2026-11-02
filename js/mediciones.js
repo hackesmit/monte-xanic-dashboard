@@ -1055,9 +1055,7 @@ export const Mediciones = {
     // quote could smuggle in, so this was never XSS, but escapeHtml handles
     // all five significant characters and is already imported right here
     // (reviewer N3, 2026-09-15).
-    // '-' is the dash this table has always rendered for an empty cell,
-    // written as an escape because the repo guard rejects the literal glyph in
-    // source. The rendered output is unchanged.
+    // '-' marks an empty cell (an em dash until xd-1r3, Daniel 2026-11-02).
     const esc = (s) => (s === null || s === undefined) ? '-' : escapeHtml(s);
 
     tbody.innerHTML = sorted.map(d => {
