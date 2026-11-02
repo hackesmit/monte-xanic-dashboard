@@ -2,7 +2,7 @@
 // "Seguimiento de Maduración Vendimia 2026" XLSX parser.
 //
 // Replaces WineXRay as the 2026 berry-maturity source (the WineXRay parser
-// stays in the tree, working and unused — do not remove it). The workbook's
+// stays in the tree, working and unused - do not remove it). The workbook's
 // "Uva" sheet is a PIVOTED CALENDAR, not the one-row-per-sample shape WineXRay
 // used, so this parser unpivots it.
 //
@@ -132,7 +132,7 @@ function resolveColumns(header) {
   // the hole this rewrite closed: rename 'Origen' to 'Origin' in Excel and the
   // column resolves to -1, the file is happily accepted, and every lot's origin
   // is silently dropped. Absent is only legitimate for a column that ISN'T
-  // THERE — so any metadata column that carries data but whose header we cannot
+  // THERE - so any metadata column that carries data but whose header we cannot
   // name is refused, and so is a metadata column with data and no header at all.
   //
   // This also catches the general case that started this bead: a NEW column the
@@ -159,7 +159,7 @@ function assertNoUnclaimedMetaData(rows, unknownMetaCols, header, cols) {
       const row = rows[r];
       if (!row) continue;
       // The repeated header row inside the data region is not data. Identify it
-      // through the RESOLVED columns, not a hard-coded index — hard-coding one
+      // through the RESOLVED columns, not a hard-coded index - hard-coding one
       // here would defeat the point of this whole function, and would misread a
       // repeated header label as lot data if Variedad ever moves off column A.
       if (normHeader(row[cols.variedad]) === 'variedad' ||
@@ -191,7 +191,7 @@ function normMetric(s) {
 // Expand a workbook Variedad code (SB, CS, MAL…) to the full varietal name the
 // dashboard's read path expects. Historical wine_samples rows carry full names
 // (Sauvignon Blanc, Cabernet Sauvignon…) and DataStore.getGrapeType / the
-// Tintas-Blancas toggle / the variety chips all key on those names —
+// Tintas-Blancas toggle / the variety chips all key on those names -
 // CONFIG.normalizeVariety on the read side only maps Petite Sirah, it does NOT
 // expand abbreviations. So the parser must store the full name, or every 2026
 // lot splits from history and mis-classifies (SB → 'red', hidden under Blancas).
@@ -315,7 +315,7 @@ function vintageFromLot(lotCode) {
 // Derive the workbook's vintage from the workbook ITSELF, not from a vote over
 // the lot prefixes (issue TWO). A majority/first-seen vote breaks on a tie and
 // lets a single mistyped prefix become authoritative; the winery's own workbook
-// states the vintage as "Vendimia AAAA" — in the preamble title of the Uva sheet
+// states the vintage as "Vendimia AAAA" - in the preamble title of the Uva sheet
 // and in the file name. That string is authoritative; every lot prefix is then
 // checked AGAINST it and a disagreeing lot is rejected by name. Returns null
 // when no "Vendimia AAAA" can be found anywhere, so the caller refuses the file
@@ -573,7 +573,7 @@ function metaCols(cols) {
 }
 
 // Does a blank-Lote row carry a MEANINGFUL dated value? The real file's stray
-// TONS row (row 6) is a template aggregate whose dated cells are all 0 — that
+// TONS row (row 6) is a template aggregate whose dated cells are all 0 - that
 // carries no lot data to lose, so a 0 (like a blank/dash) does not count as
 // content; only a non-zero number or a non-numeric string does. A genuine data
 // row with a real reading under a missing Lote is thus still surfaced.
@@ -587,11 +587,11 @@ function hasDatedValue(row, dateStart) {
 
 // Classify a blank-Lote row's payload for issue SIX. Two blank-Lote shapes are
 // LEGITIMATE in this workbook and must be skipped: the stray per-day TONS totals
-// row (row 6 — no lot metadata, a known "TONS" label, and dated total cells) and
+// row (row 6 - no lot metadata, a known "TONS" label, and dated total cells) and
 // the trailing empty template blocks (a known label, nothing else). Every real
 // lot row repeats its full metadata (Variedad/Status/Proveedor/forecast) on all
 // seven rows, so a genuine data row whose Lote was dropped still carries that
-// metadata — which is how it is told apart from the aggregate stub. A blank-Lote
+// metadata - which is how it is told apart from the aggregate stub. A blank-Lote
 // row is therefore an anomaly to surface (not silently drop) only when it carries
 // lot metadata, an UNKNOWN Análisis label, or dated values under NO recognizable
 // metric label (data that cannot be attributed to any metric or lot).
@@ -606,13 +606,13 @@ function blankLoteAnomaly(row, cols, dateStart) {
 
 // Read one per-lot metadata cell that is NOT repeated reliably across the
 // block. Origen repeats on all seven rows in the real file, but Fecha de
-// envero appears only on the first — and nothing in the workbook guarantees
+// envero appears only on the first - and nothing in the workbook guarantees
 // which row the winery will use next time. Reading only row 0 (as this parser
 // first did) silently loses the value the moment it moves, which for envero
 // means the lot drops off the timeline with no error at all.
 //
 // So scan every row of the block: ignore blanks, take the single non-blank
-// value wherever it sits, and REFUSE the file when two rows disagree — a lot
+// value wherever it sits, and REFUSE the file when two rows disagree - a lot
 // cannot have two origins or two envero dates, and guessing which one is
 // authoritative would mis-attribute the whole lot.
 function collectBlockField(block, colIdx, label) {
@@ -640,7 +640,7 @@ function collectBlockField(block, colIdx, label) {
 // preamble (fully-blank rows, the stray TONS row 6, the repeated header row 7)
 // is allowed before the first lot block and between two complete lot blocks;
 // inside a block every accepted metric row must sit exactly one physical row
-// after the previous (issue THREE) — a blank row, a repeated header or a blank-Lote row between two metric rows
+// after the previous (issue THREE) - a blank row, a repeated header or a blank-Lote row between two metric rows
 // of one lot would otherwise let seven NON-consecutive rows satisfy the
 // exactly-seven invariant, and the intervening row's data would vanish. Refuses
 // the whole file on: a non-contiguous / duplicate metric row, a duplicate or
@@ -668,7 +668,7 @@ function buildBlocks(rows, rejected, cols, dateStart) {
     const row = rows[i];
     if (!row || row.every(c => c === null || String(c).trim() === '')) continue;
 
-    // Repeated header row (row 7 and any like it) — a non-metric row; skipping
+    // Repeated header row (row 7 and any like it) - a non-metric row; skipping
     // it does not advance prevMetricRowIdx, so if it sits inside the data region
     // the contiguity check below refuses the file at the next metric row.
     if (normHeader(row[cols.variedad]) === 'variedad' || normMetric(row[cols.analisis]) === 'analisis') continue;
@@ -769,7 +769,7 @@ export const seguimientoParser = {
       throw new Error('Falta la hoja "Uva" en el archivo de Seguimiento de Maduración.');
     }
     // 'Flujo Tons' (empty) and 'SUMMARY' (a derived pivot) are intentionally
-    // ignored — only 'Uva' is a source of truth.
+    // ignored - only 'Uva' is a source of truth.
 
     const rows = sheetToArray(wb, uvaName);
     const header = rows[HEADER_ROW];
@@ -870,8 +870,8 @@ export const seguimientoParser = {
       // not know passes through unchanged. That is right for the read path but
       // means a genuinely new ranch would land in the database as raw workbook
       // text and create an uncatalogued origin group. We do not refuse the file
-      // over it — a new supplier is normal business and must not block the
-      // harvest's chemistry — but it is never silent: the lot and the
+      // over it - a new supplier is normal business and must not block the
+      // harvest's chemistry - but it is never silent: the lot and the
       // unrecognized value are named so the catalog gets updated. This mirrors
       // how an unknown Variedad abbreviation is handled a few lines below.
       let appellation = null;
@@ -931,7 +931,7 @@ export const seguimientoParser = {
           // has them (see hasOrigen / hasEnvero). This is an upsert on
           // (sample_id, sample_date, sample_seq), so emitting them as explicit
           // nulls from a pre-Origen workbook would ERASE origin and timeline
-          // data written by a newer file — re-uploading an archived copy would
+          // data written by a newer file - re-uploading an archived copy would
           // silently undo the current vintage. Absent column means "this file
           // says nothing", not "this file says empty".
           //
@@ -965,7 +965,7 @@ export const seguimientoParser = {
       // ── seguimiento_lotes: one row per lot ──
       // Recompute the TONS running total from the dated cells rather than
       // trusting the cached +SUM(...) formula result (a workbook can be saved
-      // stale). A non-numeric dated TONS cell is a corruption, not an absence —
+      // stale). A non-numeric dated TONS cell is a corruption, not an absence -
       // refuse the file rather than silently drop it.
       let recomputed = 0;
       let sawTons = false;
@@ -973,7 +973,7 @@ export const seguimientoParser = {
       if (tonsRow) {
         for (const dc of dateCols) {
           const raw = tonsRow[dc.colIdx];
-          const v = normalizeValue(raw); // blank / '-' / '—' / NA → null
+          const v = normalizeValue(raw); // blank / '-' / '-' / NA → null
           if (v === null) continue;
           if (typeof v !== 'number' || !Number.isFinite(v)) {
             throw new Error(
@@ -1002,7 +1002,7 @@ export const seguimientoParser = {
         ? block.tons_cached : null;
       // A disagreement is: recomputed != cached (cent tolerance so a rounded sum
       // does not fight the cached value), OR a NON-ZERO cached total with no
-      // dated cells to recompute from (a stale cache with nothing to back it —
+      // dated cells to recompute from (a stale cache with nothing to back it -
       // a cached 0 with no cells is consistent, not a disagreement).
       let mismatch = false;
       if (cachedNum !== null) {

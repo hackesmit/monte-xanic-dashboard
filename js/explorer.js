@@ -270,7 +270,7 @@ export const Explorer = {
       } else {
         out.gdd = null;
       }
-      // ANT Extractability — requires wine match
+      // ANT Extractability - requires wine match
       out.antExtractability = null;
       if (typeof d.tANT === 'number' && d.lotCode && CONFIG.berryToWine[d.lotCode]) {
         const wineLots = CONFIG.berryToWine[d.lotCode];
@@ -312,9 +312,9 @@ export const Explorer = {
     if (slot.chartType === 'bar') {
       const groups = CONFIG.explorerGroupBy[slot.source] || [];
       const groupMeta = groups.find(g => g.value === slot.groupBy);
-      el.textContent = `${yMeta.label} por ${groupMeta ? groupMeta.label : slot.groupBy} \u2014 ${typeLabel}`;
+      el.textContent = `${yMeta.label} por ${groupMeta ? groupMeta.label : slot.groupBy} - ${typeLabel}`;
     } else {
-      el.textContent = `${yMeta.label} vs ${xMeta.label} \u2014 ${typeLabel}`;
+      el.textContent = `${yMeta.label} vs ${xMeta.label} - ${typeLabel}`;
     }
   },
 

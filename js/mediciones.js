@@ -1,4 +1,4 @@
-// ── Mediciones Tecnicas — form, table, charts ──
+// ── Mediciones Tecnicas - form, table, charts ──
 import Chart from 'chart.js/auto';
 import { CONFIG } from './config.js';
 import { DataStore } from './dataLoader.js';
@@ -167,8 +167,8 @@ export function projectSnapshot(snapshot, current) {
 // where an ABSENT value (null) must survive an untouched edit unchanged instead
 // of being populated as a fabricated 0 that a save then writes over the DB NULL,
 // permanently pinning a partial row to the clean bucket. countInputValue seeds
-// the input as blank ('') for an absent count — a genuine stored 0 still shows
-// "0" — and readCountInput reads a blank back as null, so projectSnapshot's
+// the input as blank ('') for an absent count - a genuine stored 0 still shows
+// "0" - and readCountInput reads a blank back as null, so projectSnapshot's
 // snapshot-null lines up with a form-null and collectDirty sees no change. A
 // user who types into the blank turns it into a real edit that saves normally.
 // Factored out as pure functions so the null-preserving contract is unit-
@@ -449,7 +449,7 @@ export const Mediciones = {
   _sortField: 'date',
   _sortAsc: false,
 
-  // Search state — populated by events.js on input.
+  // Search state - populated by events.js on input.
   _searchTerm: '',
 
   // Evaluator panel state, keyed by the container id so the new-medicion form
@@ -573,11 +573,11 @@ export const Mediciones = {
     if (!varietyEl || !originEl) return;
 
     const allVarieties = [...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white].sort();
-    varietyEl.innerHTML = '<option value="">— Seleccionar —</option>' +
+    varietyEl.innerHTML = '<option value="">- Seleccionar -</option>' +
       allVarieties.map(v => `<option value="${v}">${v}</option>`).join('');
 
     const origins = Object.keys(CONFIG.originColors).sort();
-    originEl.innerHTML = '<option value="">— Seleccionar —</option>' +
+    originEl.innerHTML = '<option value="">- Seleccionar -</option>' +
       origins.map(o => `<option value="${o}">${o}</option>`).join('');
 
     const dateEl = document.getElementById('med-date');
@@ -591,7 +591,7 @@ export const Mediciones = {
 
   async submitForm() {
     if (DemoMode.isActive()) {
-      this._setStatus('Modo demo — no se pueden guardar cambios', 'error');
+      this._setStatus('Modo demo - no se pueden guardar cambios', 'error');
       return;
     }
     const code = document.getElementById('med-code')?.value.trim();
@@ -785,10 +785,10 @@ export const Mediciones = {
     const originEl  = document.getElementById('med-edit-origin');
     if (!varietyEl.options.length || varietyEl.options.length < 2) {
       const allVarieties = [...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white].sort();
-      varietyEl.innerHTML = '<option value="">— Seleccionar —</option>' +
+      varietyEl.innerHTML = '<option value="">- Seleccionar -</option>' +
         allVarieties.map(v => `<option value="${v}">${v}</option>`).join('');
       const origins = Object.keys(CONFIG.originColors).sort();
-      originEl.innerHTML = '<option value="">— Seleccionar —</option>' +
+      originEl.innerHTML = '<option value="">- Seleccionar -</option>' +
         origins.map(o => `<option value="${o}">${o}</option>`).join('');
     }
     // A stored value that is not among the options would leave the select
@@ -917,7 +917,7 @@ export const Mediciones = {
   async submitEdit() {
     if (!this._editingId) return;
     if (DemoMode.isActive()) {
-      this._editStatus('Modo demo — no se pueden guardar cambios', 'error');
+      this._editStatus('Modo demo - no se pueden guardar cambios', 'error');
       return;
     }
     const dirty = this._collectFormDirty();
@@ -982,7 +982,7 @@ export const Mediciones = {
   async submitDelete() {
     if (!this._editingId) return;
     if (DemoMode.isActive()) {
-      this._editStatus('Modo demo — no se pueden guardar cambios', 'error');
+      this._editStatus('Modo demo - no se pueden guardar cambios', 'error');
       return;
     }
     if (!confirm(`¿Eliminar medición ${this._editingId}? Esta acción no se puede deshacer.`)) return;
@@ -1031,7 +1031,7 @@ export const Mediciones = {
         : 'No hay mediciones registradas. Use el formulario para agregar la primera.';
     }
 
-    // Sort indicator — driven by aria-sort, styled in CSS
+    // Sort indicator - driven by aria-sort, styled in CSS
     const table = document.getElementById('mediciones-table');
     if (table) {
       table.querySelectorAll('th[data-sort]').forEach(th => th.removeAttribute('aria-sort'));
@@ -1055,10 +1055,10 @@ export const Mediciones = {
     // quote could smuggle in, so this was never XSS, but escapeHtml handles
     // all five significant characters and is already imported right here
     // (reviewer N3, 2026-09-15).
-    // '\u2014' is the dash this table has always rendered for an empty cell,
+    // '-' is the dash this table has always rendered for an empty cell,
     // written as an escape because the repo guard rejects the literal glyph in
     // source. The rendered output is unchanged.
-    const esc = (s) => (s === null || s === undefined) ? '\u2014' : escapeHtml(s);
+    const esc = (s) => (s === null || s === undefined) ? '-' : escapeHtml(s);
 
     tbody.innerHTML = sorted.map(d => {
       const total = d.healthMadura + d.healthInmadura + d.healthSobremadura +
@@ -1073,7 +1073,7 @@ export const Mediciones = {
           `<span class="hb-enfermedad" style="width:${pct(d.healthEnfermedad)}%"></span>` +
           `<span class="hb-quemadura" style="width:${pct(d.healthQuemadura)}%"></span>` +
           `</div>`
-        : '—';
+        : '-';
       const detailId = `med-detail-${encodeURIComponent(String(d.code ?? ''))}`;
       return `<tr class="${Auth.canWrite() && !DemoMode.isActive() ? 'row-clickable' : ''}" data-code="${esc(d.code)}">
         <td class="med-expand-cell"><button type="button" class="med-expand-btn"
@@ -1083,9 +1083,9 @@ export const Mediciones = {
         <td>${esc(d.date)}</td>
         <td>${esc(d.variety)}</td>
         <td>${esc(d.appellation)}</td>
-        <td>${d.tons !== null ? d.tons.toFixed(2) : '—'}</td>
-        <td>${d.berryWeight !== null ? d.berryWeight.toFixed(2) : '—'}</td>
-        <td>${d.berryDiameter !== null ? d.berryDiameter.toFixed(1) : '—'}</td>
+        <td>${d.tons !== null ? d.tons.toFixed(2) : '-'}</td>
+        <td>${d.berryWeight !== null ? d.berryWeight.toFixed(2) : '-'}</td>
+        <td>${d.berryDiameter !== null ? d.berryDiameter.toFixed(1) : '-'}</td>
         <td>${bar}</td>
         <td>${esc(d.healthGrade)}</td>
         <td>${esc(this._madurezShort(d.phenolicMaturity))}</td>
@@ -1303,13 +1303,13 @@ export const Mediciones = {
   },
 
   _renderGradeBadge(score) {
-    if (!score || score.grade === null) return '<span class="muted">—</span>';
+    if (!score || score.grade === null) return '<span class="muted">-</span>';
     const grade = score.grade;
     const cls = grade === 'A+' ? 'a-plus'
               : grade === 'A'  ? 'a'
               : grade === 'B'  ? 'b'
               :                  'c';
-    const num = score.score36 != null ? score.score36.toFixed(0) : '—';
+    const num = score.score36 != null ? score.score36.toFixed(0) : '-';
     // Partial grade (reception chemistry still missing) → asterisk + tooltip
     // The missing axes are named from the score itself rather than guessed.
     // With the medicion's own chemistry as the primary source, av and ag now
@@ -1327,7 +1327,7 @@ export const Mediciones = {
     if (v === 'Sobresaliente')    return 'Sobr.';
     if (v === 'Parcial')          return 'Parc.';
     if (v === 'No sobresaliente') return 'No sobr.';
-    return '—';
+    return '-';
   },
 
   sortBy(field) {
@@ -1348,14 +1348,14 @@ export const Mediciones = {
     const weightEl = document.getElementById('med-kpi-weight');
     const healthEl = document.getElementById('med-kpi-health');
 
-    if (countEl) countEl.textContent = data.length || '—';
+    if (countEl) countEl.textContent = data.length || '-';
 
     const totalTons = data.reduce((s, d) => s + (d.tons || 0), 0);
-    if (tonsEl) tonsEl.textContent = totalTons > 0 ? totalTons.toFixed(1) + ' t' : '—';
+    if (tonsEl) tonsEl.textContent = totalTons > 0 ? totalTons.toFixed(1) + ' t' : '-';
 
     const weights = data.filter(d => d.berryWeight > 0).map(d => d.berryWeight);
     if (weightEl) weightEl.textContent = weights.length
-      ? (weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(2) + ' g' : '—';
+      ? (weights.reduce((a, b) => a + b, 0) / weights.length).toFixed(2) + ' g' : '-';
 
     const maduraPcts = data.map(d => {
       const total = d.healthMadura + d.healthInmadura + d.healthSobremadura +
@@ -1363,7 +1363,7 @@ export const Mediciones = {
       return total > 0 ? (d.healthMadura / total) * 100 : null;
     }).filter(v => v !== null);
     if (healthEl) healthEl.textContent = maduraPcts.length
-      ? (maduraPcts.reduce((a, b) => a + b, 0) / maduraPcts.length).toFixed(0) + '%' : '—';
+      ? (maduraPcts.reduce((a, b) => a + b, 0) / maduraPcts.length).toFixed(0) + '%' : '-';
   },
 
   // ── Refresh ──
@@ -1377,7 +1377,7 @@ export const Mediciones = {
     for (const b of (DataStore.berryData || [])) {
       if (b.lotCode && b.vintage != null) {
         const key = `${b.lotCode}||${b.vintage}`;
-        // Multiple berries per lot is normal — first match wins; any of them
+        // Multiple berries per lot is normal - first match wins; any of them
         // carries the same chemistry context for scoring.
         if (!berryByLot.has(key)) berryByLot.set(key, b);
       }
@@ -1394,7 +1394,7 @@ export const Mediciones = {
   _applyGlobalFilters(rows) {
     const s = Filters.state || {};
     // Filters.state.vintages holds NUMBERS (Supabase vintage_year) and
-    // state.lots holds sampleIds — compare on the same types/keys, or any
+    // state.lots holds sampleIds - compare on the same types/keys, or any
     // berry-view selection silently blanks the whole Mediciones view.
     const lotCodes = s.lots?.size
       ? new Set([...s.lots].map(id => Identity.extractLotCode(id)).filter(Boolean))

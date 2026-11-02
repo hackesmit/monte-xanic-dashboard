@@ -227,9 +227,9 @@ export const MapStore = {
       if (this.currentMetric === 'calidad' && data && data.grade) {
         const scoredLots = (this.sectionScoredLots[sectionId] || [])
           .filter(l => l.grade !== null);
-        const header = `${sectionId} — ${section.variety}\nGrado: ${data.grade} (${data.score36?.toFixed(1) ?? '—'} / 36) — ${scoredLots.length} lote${scoredLots.length === 1 ? '' : 's'}`;
+        const header = `${sectionId} - ${section.variety}\nGrado: ${data.grade} (${data.score36?.toFixed(1) ?? '-'} / 36) - ${scoredLots.length} lote${scoredLots.length === 1 ? '' : 's'}`;
         const lines = scoredLots.slice(0, 6)
-          .map(l => `  • ${l.lotCode} ${l.grade} ${l.score36?.toFixed(1) ?? '—'}`);
+          .map(l => `  • ${l.lotCode} ${l.grade} ${l.score36?.toFixed(1) ?? '-'}`);
         const tipText = [header, ...lines].join('\n');
         svg += `<title>${this._esc(tipText)}</title>`;
       }
@@ -313,7 +313,7 @@ export const MapStore = {
     const breakdown = lots.map(l => `
       <li>
         <span class="grade-chip ${this._gradeCssClass(l.grade)}">${this._esc(l.grade)}</span>
-        ${this._esc(l.lotCode || '—')}${l.partial ? '*' : ''} — ${l.score36?.toFixed(1) ?? '—'}
+        ${this._esc(l.lotCode || '-')}${l.partial ? '*' : ''} - ${l.score36?.toFixed(1) ?? '-'}
         ${l.percentile != null ? ` · P${l.percentile}` : ''}
       </li>
     `).join('');
@@ -331,7 +331,7 @@ export const MapStore = {
     }
     const partialWarn = missingSet.size
       ? `<div class="detail-grade-partial" style="font-size:10px;color:#C4A060;margin-top:4px">
-           ⚠ Clasificación parcial — faltan: ${this._esc([...missingSet].join(', '))}
+           ⚠ Clasificación parcial - faltan: ${this._esc([...missingSet].join(', '))}
          </div>`
       : '';
 
@@ -364,7 +364,7 @@ export const MapStore = {
 
     if (!section) { this.hideDetail(); return; }
 
-    const fmt = (v, dec) => v !== null && v !== undefined && !isNaN(v) ? (dec === 0 ? Math.round(v) : Number(v).toFixed(dec)) : '—';
+    const fmt = (v, dec) => v !== null && v !== undefined && !isNaN(v) ? (dec === 0 ? Math.round(v) : Number(v).toFixed(dec)) : '-';
 
     let html = `
       <div class="detail-header">
@@ -401,7 +401,7 @@ export const MapStore = {
       html += '<div class="detail-lots-table"><table class="data-table"><thead><tr><th>Lote</th><th>Brix</th><th>pH</th><th>AT</th><th>tANT</th></tr></thead><tbody>';
       for (const lot of lots) {
         html += `<tr>
-          <td style="color:var(--gold-lt)">${this._esc(lot.fieldLot || lot.field_lot || lot.lotCode || lot.sampleId || '—')}</td>
+          <td style="color:var(--gold-lt)">${this._esc(lot.fieldLot || lot.field_lot || lot.lotCode || lot.sampleId || '-')}</td>
           <td>${fmt(lot.brix, 1)}</td>
           <td>${fmt(lot.pH, 2)}</td>
           <td>${fmt(lot.ta, 2)}</td>
@@ -511,7 +511,7 @@ export const MapStore = {
 
   _updateKPIs() {
     const kpis = this.getRanchKPIs(this.currentRanch);
-    const fmt = (v, d) => v !== null && v !== undefined ? (d === 0 ? Math.round(v) : Number(v).toFixed(d)) : '—';
+    const fmt = (v, d) => v !== null && v !== undefined ? (d === 0 ? Math.round(v) : Number(v).toFixed(d)) : '-';
 
     const el = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
     el('map-kpi-samples', kpis.totalSamples);

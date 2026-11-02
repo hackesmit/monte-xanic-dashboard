@@ -1,4 +1,4 @@
-// js/mona/saved.js — "Guardados" tab: user-saved Mona charts/tables, live-rendered.
+// js/mona/saved.js - "Guardados" tab: user-saved Mona charts/tables, live-rendered.
 import { renderChart, renderTable } from './chartSpec.js';
 
 const token = () => (typeof localStorage !== 'undefined' ? localStorage.getItem('xanic_session_token') : null);

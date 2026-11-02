@@ -1619,11 +1619,11 @@ export const TanquesMoves = {
           : 'sin tanque',
         m.vintage_year ? `vendimia ${m.vintage_year}` : 'sin vendimia',
       ])
-      : caja(m.origen || '—', [partes(m.origen_partes), `${fmtL(m.disponible_l || 0)} L`]);
+      : caja(m.origen || '-', [partes(m.origen_partes), `${fmtL(m.disponible_l || 0)} L`]);
     s += '<span class="tanques-mv-chev"></span>';
     s += m.clase === 'salida'
       ? caja('Fuera de bodega', ['embotellado o salida', 'sin merma propia'])
-      : caja(m.destino || '—', [
+      : caja(m.destino || '-', [
         partes(m.destino_partes),
         `libre ${fmtL(m.libres_l || 0)} de ${fmtL(m.capacidad_destino_l || 0)} L`,
       ]);

@@ -1,4 +1,4 @@
-// api/mona-data.js — token-gated persistence for Mona (service-key Supabase REST).
+// api/mona-data.js - token-gated persistence for Mona (service-key Supabase REST).
 // All mona_* tables are server-only (RLS on, no anon policies), so every read/write
 // goes through here. Username/role come from the verified token, never the body.
 import { verifyToken } from './_lib/verifyToken.js';

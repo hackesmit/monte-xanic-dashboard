@@ -91,7 +91,7 @@ export function scoreParam(spec, value) {
 // The berry-count breakdown the sanitary percentage is computed from. The five
 // required counts are the WineXRay set config.js maps on upload
 // (preReceptionsToSupabase); every one must be present, or the percentage is
-// off a fabricated total. health_quemadura is optional — upload rows never
+// off a fabricated total. health_quemadura is optional - upload rows never
 // carry it, so requiring it would regress every uploaded lot into missing[].
 // When burn was not collected the metric is FIVE-FIELD: quemadura is excluded,
 // not defaulted to a fabricated 0 (see scoreSanitaryPct + mt11 identity test).
@@ -105,7 +105,7 @@ const SANITARY_COUNT_FIELDS = [
 // Number('') and Number('  ') return a finite 0, Number(true) returns 1, and
 // Number([]) returns 0, so blank, whitespace, boolean, and other coercible
 // non-numbers must be rejected BEFORE any coercion rather than fabricating a
-// clean 0 — the identical defect class fixed in the predictor (xd-6jg). A
+// clean 0 - the identical defect class fixed in the predictor (xd-6jg). A
 // negative or fractional value cannot be a berry tally and rejects too:
 // a negative health_picadura would otherwise yield a negative damage share and
 // win the cleanest bucket. Both branches also require a SAFE integer (≤ 2^53-1):
@@ -135,7 +135,7 @@ export function sanitaryDamagePct(medicion) {
   if (!medicion) return null;
   // A medicion where staff filled only some counts (e.g. health_madura) used
   // to read the blanks as 0 and score the BEST bucket off a 100%-clean total
-  // that was never counted — partial data outscoring complete data. Require
+  // that was never counted - partial data outscoring complete data. Require
   // the whole required count set present and valid; otherwise it is missing,
   // not clean. parseCount also stops a poisoned count (NaN, negative, string
   // garbage) from picking a bucket.
@@ -146,7 +146,7 @@ export function sanitaryDamagePct(medicion) {
     counts.push(n);
   }
   // Optional burn count. When it was never collected it is ABSENT (null /
-  // undefined) and EXCLUDED — the metric is five-field. Excluding it is
+  // undefined) and EXCLUDED - the metric is five-field. Excluding it is
   // arithmetically identical to adding 0 here: a 0 count adds nothing to either
   // the unhealthy numerator or the total denominator, so two rows with the same
   // five counts score identically whether or not burn was recorded as 0. mt11
@@ -249,7 +249,7 @@ export function scoreLot(lot) {
   // Partial-data guard
   // Partial-data guard: the core berry chemistry (brix + pH + ta, Imp 25)
   // must be present. Heavier lab params (av/ag/polifenoles/antocianinas,
-  // from the tank reception) may be missing — the grade is then flagged
+  // from the tank reception) may be missing - the grade is then flagged
   // `partial` so the UI can warn it will refine when that chemistry lands.
   const hasCore = 'brix' in buckets && 'pH' in buckets && 'ta' in buckets;
   if (!hasCore || impSum < 25) {

@@ -1,4 +1,4 @@
-// js/mona/ui.js — Mona's rendering layer: full tab, floating widget, message
+// js/mona/ui.js - Mona's rendering layer: full tab, floating widget, message
 // bubbles, streaming, tool chips, chart/table cards, and the pin-to-Guardados flow.
 // A single conversation (MonaChat.messages) is mirrored to every mounted "surface"
 // (tab thread + widget thread), so both stay in sync automatically.
@@ -26,7 +26,8 @@ const el = (tag, cls, html) => {
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 // Minimal, safe markdown: bold, italics, inline code, line breaks.
 function mdToHtml(text) {
-  let h = esc(text);
+  // Daniel 2026-11-02: no em dashes on screen, even when the model writes one.
+  let h = esc(String(text ?? '').replace(/ ?— ?/g, ' - '));
   h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
   h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
   h = h.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
@@ -130,7 +131,7 @@ export const MonaUI = {
     for (const m of messages) {
       if (m.role === 'user') {
         if (typeof m.content === 'string') this.addUserBubble(m.content);
-        // tool_result arrays are internal — not shown
+        // tool_result arrays are internal - not shown
       } else if (m.role === 'assistant' && Array.isArray(m.content)) {
         for (const blk of m.content) {
           if (blk.type === 'text' && blk.text) {

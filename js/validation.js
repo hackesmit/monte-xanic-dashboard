@@ -1,4 +1,4 @@
-// Shared validation module — used by api/row.js (server-authoritative gate)
+// Shared validation module - used by api/row.js (server-authoritative gate)
 // and by the mediciones edit modal (client UX). Pure ESM so it runs in both
 // Node and the browser without polyfills.
 //
@@ -101,7 +101,7 @@ export const COLUMN_TYPES = {
       'ant_target', 'cantidad_proyectada',
       'tons_seguimiento', 'tons_seguimiento_cached',
     ]),
-    // xd-49p.2 — the 2026 workbook's "Fecha de envero" column. Nullable by
+    // xd-49p.2 - the 2026 workbook's "Fecha de envero" column. Nullable by
     // design: lots not yet received legitimately have no envero, and their
     // chemistry must still ingest.
     dateCols: new Set(['fecha_envero']),
