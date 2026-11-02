@@ -1,4 +1,4 @@
-// js/mona/dataAccess.js — pure data query/aggregate helpers (no DOM, no imports)
+// js/mona/dataAccess.js - pure data query/aggregate helpers (no DOM, no imports)
 // Operates on plain row arrays (DataStore.berryData, etc.). Kept side-effect free
 // so it imports cleanly under `node --test`.
 
@@ -42,7 +42,7 @@ export function aggregateData(rows, { groupBy = null, metric = 'avg', field = nu
   const filtered = applyFilters(rows || [], filters);
   const buckets = new Map();
   for (const r of filtered) {
-    const key = groupBy == null ? 'Total' : String(r[groupBy] ?? '—');
+    const key = groupBy == null ? 'Total' : String(r[groupBy] ?? '-');
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key).push(r);
   }

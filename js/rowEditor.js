@@ -1,9 +1,9 @@
-// ── RowEditor — table-agnostic edit/delete glue for /api/row ──────
+// ── RowEditor - table-agnostic edit/delete glue for /api/row ──────
 //
 // Shared modal helper used by berryEdit / wineEdit / prefermentEdit. Keeps
 // per-table knowledge in the *descriptor* the caller passes in: DOM ids,
 // JS↔DB column map, conflict keys, and the populate/read/reload callbacks.
-// The helper itself owns only DOM + fetch glue — it never touches DataStore,
+// The helper itself owns only DOM + fetch glue - it never touches DataStore,
 // DemoMode, or any per-table shape directly. Mediciones is intentionally
 // not refactored onto this helper (Phase 10 plan: kept as the proven
 // reference). See PLAN.md "Stage 7.2".
@@ -25,7 +25,7 @@ export function collectDirty(initial, current) {
 }
 
 // Pure helper: translate JS-shape keys to DB column names via the descriptor
-// map. Keys absent from the map are dropped — that's how ghost-dirty keys
+// map. Keys absent from the map are dropped - that's how ghost-dirty keys
 // from the snapshot (id, derived fields, audit columns) never reach the API.
 export function jsRowToDbRow(jsRow, jsToDbMap) {
   const out = {};
@@ -148,7 +148,7 @@ export const RowEditor = {
   async submit(descriptor) {
     if (!descriptor || !descriptor._state) return;
     if (typeof descriptor.isDemoMode === 'function' && descriptor.isDemoMode()) {
-      setStatus(descriptor, 'Modo demo — no se pueden guardar cambios', 'error');
+      setStatus(descriptor, 'Modo demo - no se pueden guardar cambios', 'error');
       return;
     }
     const dirty = this._currentDirty(descriptor);
@@ -186,7 +186,7 @@ export const RowEditor = {
   async remove(descriptor) {
     if (!descriptor || !descriptor._state) return;
     if (typeof descriptor.isDemoMode === 'function' && descriptor.isDemoMode()) {
-      setStatus(descriptor, 'Modo demo — no se pueden guardar cambios', 'error');
+      setStatus(descriptor, 'Modo demo - no se pueden guardar cambios', 'error');
       return;
     }
     const label = (typeof descriptor.formatRowLabel === 'function')

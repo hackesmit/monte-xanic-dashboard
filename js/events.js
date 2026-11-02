@@ -1,4 +1,4 @@
-// ── Event Binding (CSP-safe — no inline handlers) ──
+// ── Event Binding (CSP-safe - no inline handlers) ──
 import { Auth } from './auth.js';
 import { App } from './app.js';
 import { Filters } from './filters.js';
@@ -119,7 +119,7 @@ export const Events = {
     if (mapMetric) mapMetric.addEventListener('change', () => MapStore.setMetric(mapMetric.value));
 
     // Mapa view's single-vintage picker. Writes Filters.state.mapVintage and
-    // triggers a refresh — App.refresh() flows the new value into the map
+    // triggers a refresh - App.refresh() flows the new value into the map
     // branch via Filters.state.mapVintage (see app.js).
     const mapVintageSel = document.getElementById('map-vintage-select');
     if (mapVintageSel) mapVintageSel.addEventListener('change', () => {
@@ -128,7 +128,7 @@ export const Events = {
       App.refresh();
     });
 
-    // Shared weather chart renderer — reads current filter state
+    // Shared weather chart renderer - reads current filter state
     const _renderWeatherCharts = () => {
       const vintages = WeatherStore.getVintagesFromData();
       const loc = Filters.state.weatherLocation || 'VDG';
@@ -146,8 +146,8 @@ export const Events = {
     const _weatherTitleMap = {
       season: 'Clima durante la Vendimia',
       year: 'Clima Anual',
-      '30d': 'Clima — Últimos 30 Días',
-      custom: 'Clima — Rango Personalizado'
+      '30d': 'Clima - Últimos 30 Días',
+      custom: 'Clima - Rango Personalizado'
     };
     const _valleyNames = { VDG: 'Valle de Guadalupe', VON: 'Valle de Ojos Negros', SV: 'San Vicente' };
 
@@ -155,7 +155,7 @@ export const Events = {
       const tf = Filters.state.weatherTimeframe || 'season';
       const loc = Filters.state.weatherLocation || 'VDG';
       const title = document.getElementById('weather-section-title');
-      if (title) title.textContent = `${_weatherTitleMap[tf] || _weatherTitleMap.season} — ${_valleyNames[loc] || loc}`;
+      if (title) title.textContent = `${_weatherTitleMap[tf] || _weatherTitleMap.season} - ${_valleyNames[loc] || loc}`;
     };
 
     // Valley selector
@@ -220,7 +220,7 @@ export const Events = {
     if (customStart) customStart.addEventListener('change', onCustomDateChange);
     if (customEnd) customEnd.addEventListener('change', onCustomDateChange);
 
-    // Forecast toggle + horizon (F8). On-demand API call — never auto-fetches.
+    // Forecast toggle + horizon (F8). On-demand API call - never auto-fetches.
     const forecastBtn = document.getElementById('weather-forecast-toggle');
     const horizonSel = document.getElementById('weather-forecast-horizon');
     const _forecastSyncAndRender = () => {
@@ -246,7 +246,7 @@ export const Events = {
     });
   },
 
-  // ── Auth (1 handler — login form handled by Auth.bindForm()) ──
+  // ── Auth (1 handler - login form handled by Auth.bindForm()) ──
   _bindAuth() {
     const logoutBtn = document.getElementById('logout-btn');
     if (logoutBtn) logoutBtn.addEventListener('click', () => Auth.logout());
@@ -278,7 +278,7 @@ export const Events = {
     const mobileToggle = document.getElementById('mobile-filter-toggle');
     if (mobileToggle) mobileToggle.addEventListener('click', () => App.toggleMobileFilters());
 
-    // Mobile section toggles (2) — delegation
+    // Mobile section toggles (2) - delegation
     document.querySelectorAll('.mobile-section-toggle').forEach(btn => {
       btn.addEventListener('click', () => {
         const section = btn.dataset.section;
@@ -389,7 +389,7 @@ export const Events = {
     });
   },
 
-  // ── Table Sorting (11 handlers — delegation on thead) ──
+  // ── Table Sorting (11 handlers - delegation on thead) ──
   _bindTableSorting() {
     const tbody = document.getElementById('berry-table-body');
     const thead = tbody && tbody.closest('table') && tbody.closest('table').querySelector('thead');
@@ -413,7 +413,7 @@ export const Events = {
     }
   },
 
-  // ── Map Delegation (3 handlers — SVG sections, detail close, ranch tabs) ──
+  // ── Map Delegation (3 handlers - SVG sections, detail close, ranch tabs) ──
   _bindMapDelegation() {
     const mapContainer = document.getElementById('map-svg-container');
     if (mapContainer) mapContainer.addEventListener('click', (e) => {
@@ -433,7 +433,7 @@ export const Events = {
     });
   },
 
-  // ── Explorer Delegation (5 handlers — toggle, remove, source, type, render) ──
+  // ── Explorer Delegation (5 handlers - toggle, remove, source, type, render) ──
   _bindExplorerDelegation() {
     const container = document.getElementById('explorer-charts');
     if (!container) return;
@@ -573,7 +573,7 @@ export const Events = {
       if (code) Mediciones.openEditModal(code);
     });
 
-    // Modal close — close button, Cancel button, ESC (native via <dialog>),
+    // Modal close - close button, Cancel button, ESC (native via <dialog>),
     // backdrop click. Each path routes through closeEditModal so the
     // discard-confirm fires on dirty state.
     document.getElementById('med-edit-close')?.addEventListener('click',
@@ -583,7 +583,7 @@ export const Events = {
     const modal = document.getElementById('med-edit-modal');
     if (modal) {
       modal.addEventListener('cancel', (e) => {
-        // ESC fires this — intercept so we can run the dirty-discard check
+        // ESC fires this - intercept so we can run the dirty-discard check
         e.preventDefault();
         Mediciones.closeEditModal();
       });
@@ -600,7 +600,7 @@ export const Events = {
     document.getElementById('med-edit-delete')?.addEventListener('click',
       () => Mediciones.submitDelete());
 
-    // Live dirty tracking — every input inside the modal triggers a refresh
+    // Live dirty tracking - every input inside the modal triggers a refresh
     document.getElementById('med-edit-form')?.addEventListener('input',
       () => Mediciones._refreshDirtyState());
     // Selects fire `change`, not `input`, in enough browsers to matter, and
@@ -742,7 +742,7 @@ export const Events = {
   // ── Prefermentativos row editing (Phase 10 / Stage 7.5) ──
   // The preferment table is a merged dataset: wine_samples Must rows
   // (data-sample-id|date|seq) plus prefermentativos rows
-  // (data-pref-code). Each shape routes to its own modal — wine_samples
+  // (data-pref-code). Each shape routes to its own modal - wine_samples
   // Must rows reuse WineEdit; prefermentativos rows go to PrefermentEdit.
   _bindPrefermentEdit() {
     const tbody = document.getElementById('preferment-table-body');
@@ -800,7 +800,7 @@ export const Events = {
   // ── Extraction-row redirect (Phase 10 / Stage 7.7) ──
   // The extraction table is a join row (berry side + wine side). Clicking
   // a row opens the BerryEdit modal pre-populated with the underlying
-  // berry sample — the user can then re-click into the wine row from
+  // berry sample - the user can then re-click into the wine row from
   // the Wine view if they want to edit the wine side. Avoids inventing
   // a third "join edit" path.
   _bindExtractionEdit() {

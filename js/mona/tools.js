@@ -1,4 +1,4 @@
-// js/mona/tools.js — Mona tool executors (the schemas live in toolDefs.js).
+// js/mona/tools.js - Mona tool executors (the schemas live in toolDefs.js).
 // Executors call ONLY public APIs of DataStore/KPIs and delegate DOM/app effects
 // to ctx callbacks, so this module stays free of direct DOM access.
 import { DataStore } from '../dataLoader.js';

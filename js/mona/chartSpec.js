@@ -1,4 +1,4 @@
-// js/mona/chartSpec.js — declarative chart/table spec validation + rendering.
+// js/mona/chartSpec.js - declarative chart/table spec validation + rendering.
 // Validation is pure (safe under `node --test`). Rendering (renderChart/renderTable)
 // touches Chart.js/DOM only when invoked, never at import time.
 

@@ -448,7 +448,7 @@ export const WeatherStore = {
   // `end` is capped at today for the current vintage because no future observations
   // exist; but forecast rows ARE future-dated, so passing the capped end to
   // forecastWithinRange would always return empty. Charts that overlay forecasts
-  // use this helper for the filter bound instead. 30d is intentionally null —
+  // use this helper for the filter bound instead. 30d is intentionally null -
   // forecastEligible already rejects '30d'. (#7 fix)
   getForecastRangeEnd(vintage, timeframe, customRange) {
     switch (timeframe) {

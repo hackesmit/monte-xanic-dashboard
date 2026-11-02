@@ -80,7 +80,7 @@ export const recepcionParser = {
 
       if (!hasData || !obj.report_code) continue;
 
-      // Initialize vintage_year so every row shares the same key set —
+      // Initialize vintage_year so every row shares the same key set -
       // PostgREST rejects bulk inserts with "All object keys must match"
       // when keys differ (Round 33). The block below overwrites it when
       // batch_code yields a derivable year.
@@ -146,7 +146,7 @@ export const recepcionParser = {
         if (!hasData || !obj.report_code) continue;
 
         // Initialize vintage_year for the same reason as the recepción
-        // branch above — uniform key set across rows (Round 33).
+        // branch above - uniform key set across rows (Round 33).
         obj.vintage_year = null;
         if (obj.batch_code) {
           const m = String(obj.batch_code).match(/^(\d{2})/);

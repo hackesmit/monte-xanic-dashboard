@@ -140,7 +140,7 @@ export const CONFIG = {
     // Dominio de las Abejas: spreadsheets say UC, berries say DA
     c = c.replace(/^([A-Z]{2,4})UC-/, '$1DA-');
     // Per-lot aliases that can't be derived mechanically (evidence: berry
-    // codes KCF-S1-PA/PB ↔ medición codes CFKMP-PA/PB — the sheet omits S1)
+    // codes KCF-S1-PA/PB ↔ medición codes CFKMP-PA/PB - the sheet omits S1)
     const LOT_ALIASES = { 'KCF-PA': 'KCF-S1-PA', 'KCF-PB': 'KCF-S1-PB' };
     return LOT_ALIASES[c] || c;
   },
@@ -634,7 +634,7 @@ export const CONFIG = {
 
   // ── Pre-recepción XLSX headers → mediciones_tecnicas columns ─────
   // Used by js/upload/prerecepcion.js. Round 35 unified pre_receptions
-  // into mediciones_tecnicas — uploads now land in the same canonical
+  // into mediciones_tecnicas - uploads now land in the same canonical
   // table as the form, distinguished by source='upload' vs source='form'.
   // Note: 'Longitud promedio de 10 bayas (cm)' is deliberately not
   // mapped; the per-baya average carries the same info.
@@ -827,10 +827,10 @@ export const CONFIG = {
 
   // Explicit lot code → section ID (override pattern-based resolution)
   fieldLotToSection: {
-    // Monte Xanic (MX) — known berry lot codes
+    // Monte Xanic (MX) - known berry lot codes
     'CALMX-1E':  'MX-1E',
     'CSMX-5B':   'MX-5B',  'CSMX-7B':  'MX-7B',  'CSMX-11A': 'MX-11A',
-    // Kompali (K) — known berry lot codes
+    // Kompali (K) - known berry lot codes
     'KCA-S3B':       'K-S3B',  'KCA-S4':        'K-S4',
     'KCF-S1-PA':     'K-S1',   'KCF-S1-PB':     'K-S1',
     'KME-S6-1':      'K-S6',   'KME-S6-2':      'K-S6',
@@ -856,7 +856,7 @@ export const CONFIG = {
     'MAON-2':    'ON-2',   'GREON-6':  'ON-6',   'TEON-5':  'ON-5',
     // Siete Leguas (7L)
     'SY7L-2':    '7L-2',  'CB7L-A1,A2': '7L-1',
-    // Olé (OLE) — incl. 2025 trial sub-lots (CP/SP = con/sin protección)
+    // Olé (OLE) - incl. 2025 trial sub-lots (CP/SP = con/sin protección)
     'CSOLE-1':   'OLE-1',  'CSOLE-2':  'OLE-2',  'CSOLE-3': 'OLE-3',
     'CSOLE-1PVCP': 'OLE-1', 'CSOLE-1CP': 'OLE-1',
     'CSOLE-2PVSP': 'OLE-2', 'CSOLE-2SP': 'OLE-2',
@@ -907,7 +907,7 @@ export const CONFIG = {
 
   // Vineyard section definitions (with polygon points for SVG rendering)
   vineyardSections: [
-    // ── Monte Xanic (VDG) — MX ──
+    // ── Monte Xanic (VDG) - MX ──
     // Layout: CS sections on the left (irregular western hillside), SB sections on the right (grid)
     // ViewBox: 600 × 500. West = CS irregular shapes, East = SB rectangular grid
     { sectionId: 'MX-1A', ranchCode: 'MX', variety: 'Sauvignon Blanc', sectionLabel: '1A', hectares: 2.02, ranch: 'Monte Xanic (VDG)',
@@ -959,7 +959,7 @@ export const CONFIG = {
     { sectionId: 'MX-12', ranchCode: 'MX', variety: 'Plantas Madre', sectionLabel: '12', hectares: null, ranch: 'Monte Xanic (VDG)',
       points: [[80,30],[180,20],[190,75],[100,80]] },
 
-    // ── Kompali (VON) — K ──
+    // ── Kompali (VON) - K ──
     // Layout: north-south strip, upper zone (S1-S4) and lower zone (S5-S8) split by arroyo
     // ViewBox: 460 × 680
     { sectionId: 'K-S1',  ranchCode: 'K', variety: 'Cab. Franc / Temp.', sectionLabel: 'S1',  hectares: null, ranch: 'Kompali (VON)',
@@ -983,7 +983,7 @@ export const CONFIG = {
     { sectionId: 'K-S8',  ranchCode: 'K', variety: 'Cabernet Sauvignon', sectionLabel: 'S8',  hectares: null, ranch: 'Kompali (VON)',
       points: [[225,495],[440,495],[440,580],[225,580]] },
 
-    // ── Viña Alta (VON) — VA ──
+    // ── Viña Alta (VON) - VA ──
     // Layout: 5 rows × 4 cols grid. Row 1 (bottom) → Row 5 (top).
     // Cols: A(left), B(center-left), C(center-right), D(right)
     // ViewBox: 500 × 480. Cell ~115w × 85h with 5px gaps
@@ -1029,7 +1029,7 @@ export const CONFIG = {
     { sectionId: 'VA-1E', ranchCode: 'VA', variety: 'Syrah',            sectionLabel: '1E', hectares: null, ranch: 'Viña Alta (VON)',
       points: [[10,435],[120,435],[120,470],[10,470]] },
 
-    // ── Ojos Negros (VON) — ON ──
+    // ── Ojos Negros (VON) - ON ──
     // Layout: 6 diagonal parallelogram strips, NW→SE staircase
     // ViewBox: 480 × 420. Strips tilted ~25° from horizontal
     { sectionId: 'ON-1', ranchCode: 'ON', variety: 'Merlot',              sectionLabel: '1', hectares: 1.8,  ranch: 'Ojos Negros (VON)',
@@ -1045,7 +1045,7 @@ export const CONFIG = {
     { sectionId: 'ON-6', ranchCode: 'ON', variety: 'Grenache',            sectionLabel: '6', hectares: 1.11, ranch: 'Ojos Negros (VON)',
       points: [[10,155],[55,142],[65,360],[15,370]] },
 
-    // ── Olé (VDG) — OLE ──
+    // ── Olé (VDG) - OLE ──
     // Layout: 2 large CS blocks side-by-side + 2 small sections upper-right
     // ViewBox: 400 × 260
     { sectionId: 'OLE-1', ranchCode: 'OLE', variety: 'Cabernet Sauvignon', sectionLabel: '1', hectares: 4.04, ranch: 'Olé (VDG)',
@@ -1057,7 +1057,7 @@ export const CONFIG = {
     { sectionId: 'OLE-4', ranchCode: 'OLE', variety: 'Syrah',              sectionLabel: '4', hectares: null, ranch: 'Olé (VDG)',
       points: [[375,50],[390,50],[390,120],[375,120]] },
 
-    // ── Siete Leguas (VDG) — 7L ──
+    // ── Siete Leguas (VDG) - 7L ──
     // Layout: 2 sections side-by-side, left is large trapezoid (CB), right is smaller rect (Syrah)
     // ViewBox: 400 × 200
     { sectionId: '7L-1', ranchCode: '7L', variety: 'Chenin Blanc', sectionLabel: '1', hectares: 5.48, ranch: 'Siete Leguas (VDG)',
@@ -1065,11 +1065,11 @@ export const CONFIG = {
     { sectionId: '7L-2', ranchCode: '7L', variety: 'Syrah',        sectionLabel: '2', hectares: 1.70, ranch: 'Siete Leguas (VDG)',
       points: [[255,10],[380,10],[380,190],[255,190]] },
 
-    // ── Dubacano (SV) — DUB ──
+    // ── Dubacano (SV) - DUB ──
     { sectionId: 'DUB-1', ranchCode: 'DUB', variety: 'Malbec / Syrah', sectionLabel: '1', hectares: null, ranch: 'Dubacano (SV)',
       points: [[10,10],[190,10],[190,110],[10,110]] },
 
-    // ── Dominio de las Abejas (VON) — DA ──
+    // ── Dominio de las Abejas (VON) - DA ──
     { sectionId: 'DA-L5',  ranchCode: 'DA', variety: 'Syrah', sectionLabel: 'L5',  hectares: null, ranch: 'Dominio de las Abejas (VON)',
       points: [[10,10],[120,10],[120,90],[10,90]] },
     { sectionId: 'DA-L13', ranchCode: 'DA', variety: 'Syrah', sectionLabel: 'L13', hectares: null, ranch: 'Dominio de las Abejas (VON)',
@@ -1123,10 +1123,10 @@ export const CONFIG = {
   // ── Quality rubrics ─────────────────────────────────────────────────────
   // Each rubric defines thresholds per parameter for one variety-group + valley.
   // Params not listed (sanitary-pct, visual, madurez) are derived identically
-  // across all rubrics — logic lives in classification.js, not here.
+  // across all rubrics - logic lives in classification.js, not here.
   rubrics: {
     'PV-DUR-VON': {
-      name: 'Petit Verdot y Durif — Valle de Ojos Negros',
+      name: 'Petit Verdot y Durif - Valle de Ojos Negros',
       params: {
         brix:         { kind: 'range', a: [23.5, 24.2], b: [[22.1, 23.4],[24.3, 25.5]], imp: 4 },
         pH:           { kind: 'le-a-le-b', a: 3.67, b: 3.80, imp: 12 },
@@ -1140,7 +1140,7 @@ export const CONFIG = {
     },
 
     'CS-SY-MAL-MRS-TEM-VON': {
-      name: 'Cabernet Sauvignon, Syrah, Malbec, Marselan, Tempranillo — Valle de Ojos Negros',
+      name: 'Cabernet Sauvignon, Syrah, Malbec, Marselan, Tempranillo - Valle de Ojos Negros',
       params: {
         brix:         { kind: 'range', a: [23.5, 24.2], b: [[22.1, 23.4],[24.3, 25.5]], imp: 4 },
         pH:           { kind: 'le-a-le-b', a: 3.67, b: 3.80, imp: 12 },
@@ -1157,7 +1157,7 @@ export const CONFIG = {
     },
 
     'CS-SY-VDG': {
-      name: 'Cabernet Sauvignon, Syrah — Valle de Guadalupe',
+      name: 'Cabernet Sauvignon, Syrah - Valle de Guadalupe',
       params: {
         brix:         { kind: 'range', a: [23.8, 24.5], b: [[22.1, 23.8],[24.6, 25.9]], imp: 4 },
         pH:           { kind: 'le-a-le-b', a: 3.60, b: 3.73, imp: 12 },
@@ -1174,7 +1174,7 @@ export const CONFIG = {
     },
 
     'MER-CF-GRE-CALADOC-VON': {
-      name: 'Merlot, Cabernet Franc, Grenache, Caladoc — Valle de Ojos Negros',
+      name: 'Merlot, Cabernet Franc, Grenache, Caladoc - Valle de Ojos Negros',
       params: {
         brix:         { kind: 'range', a: [22.8, 23.5], b: [[22.0, 22.7],[23.7, 24.4]], imp: 4 },
         pH:           { kind: 'le-a-le-b', a: 3.67, b: 3.80, imp: 12 },
@@ -1192,7 +1192,7 @@ export const CONFIG = {
     },
 
     'GRE-CALADOC-VDG-VSV': {
-      name: 'Grenache, Caladoc — Valle de Guadalupe / Valle de San Vicente',
+      name: 'Grenache, Caladoc - Valle de Guadalupe / Valle de San Vicente',
       params: {
         brix:         { kind: 'range', a: [23.0, 23.7], b: [[22.1, 22.9],[23.8, 24.5]], imp: 4 },
         pH:           { kind: 'le-a-le-b', a: 3.60, b: 3.73, imp: 12 },
@@ -1206,7 +1206,7 @@ export const CONFIG = {
     },
 
     'SB-VDG-VON': {
-      name: 'Sauvignon Blanc — Valle de Guadalupe / Valle de Ojos Negros',
+      name: 'Sauvignon Blanc - Valle de Guadalupe / Valle de Ojos Negros',
       // Whites have a different Imp distribution than reds (95 base, not 100).
       // Engine normalizes via (3 * Σ imp_present); no special-case needed.
       params: {
@@ -1221,7 +1221,7 @@ export const CONFIG = {
     },
 
     'CH-CB-SBGR-VDG-VON': {
-      name: 'Chardonnay, Chenin Blanc, Sauvignon Blanc (Gran Ricardo) — VDG / VON',
+      name: 'Chardonnay, Chenin Blanc, Sauvignon Blanc (Gran Ricardo) - VDG / VON',
       params: {
         brix:         { kind: 'range', a: [22.5, 23.5], b: [[21.5, 22.4],[23.6, 24.5]], imp: 10 },
         pH:           { kind: 'le-a-le-b', a: 3.35, b: 3.50, imp: 20 },
@@ -1311,7 +1311,7 @@ export const CONFIG = {
     }
   },
 
-  // Valley-name extraction from appellation strings — ordered, first match wins.
+  // Valley-name extraction from appellation strings - ordered, first match wins.
   valleyPatterns: [
     { re: /Valle de Ojos Negros|\(VON\)/i,   valley: 'Valle de Ojos Negros' },
     { re: /Valle de Guadalupe|\(VDG\)|VDG/i, valley: 'Valle de Guadalupe' },
@@ -1336,10 +1336,10 @@ export const CONFIG = {
 // Used by js/rowEditor.js descriptors to translate dirty JS-shape rows
 // back to the column names expected by /api/row's table whitelist
 // (see api/upload.js ALLOWED_TABLES). Audit columns last_edited_at /
-// last_edited_by are intentionally absent — the server is the only writer.
+// last_edited_by are intentionally absent - the server is the only writer.
 
 export const JS_TO_DB_BERRY = {
-  // composite key — read-only on the form; helper builds the WHERE clause
+  // composite key - read-only on the form; helper builds the WHERE clause
   // from the snapshot of these.
   sampleId:       'sample_id',
   sampleDate:     'sample_date',
@@ -1372,7 +1372,7 @@ export const JS_TO_DB_WINE = {
   fecha:         'sample_date',
   sampleSeq:     'sample_seq',
   // editable wine_samples columns (tank_receptions joined fields are
-  // intentionally excluded — Stage 7.6 deferral)
+  // intentionally excluded - Stage 7.6 deferral)
   vintage:       'vintage_year',
   variedad:      'variety',
   proveedor:     'appellation',
@@ -1397,7 +1397,7 @@ export const JS_TO_DB_WINE = {
 };
 
 export const JS_TO_DB_PREF = {
-  // single conflict key — much simpler than wine_samples
+  // single conflict key - much simpler than wine_samples
   reportCode:    'report_code',
   // editable prefermentativos columns
   fecha:         'measurement_date',

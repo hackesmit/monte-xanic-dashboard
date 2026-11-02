@@ -7,10 +7,10 @@
 /**
  * Weighted arithmetic mean.
  * @param {Array<object>} rows
- * @param {string} valueKey — property name to average (e.g. 'brix')
- * @param {string} [weightKey='_weight'] — property name for the weight
+ * @param {string} valueKey - property name to average (e.g. 'brix')
+ * @param {string} [weightKey='_weight'] - property name for the weight
  * @param {object} [opts]
- * @param {number} [opts.fallbackWeight=1] — used when row[weightKey] is null/0/NaN
+ * @param {number} [opts.fallbackWeight=1] - used when row[weightKey] is null/0/NaN
  * @returns {number|null} weighted mean, or null if no valid rows
  */
 export function weightedMean(rows, valueKey, weightKey = '_weight', { fallbackWeight = 1 } = {}) {

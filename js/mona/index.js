@@ -1,4 +1,4 @@
-// js/mona/index.js — Mona facade: builds the UI, wires tool-effect callbacks to
+// js/mona/index.js - Mona facade: builds the UI, wires tool-effect callbacks to
 // the app, injects the knowledge base, and boots the conversation. Imported by app.js.
 import { App } from '../app.js';
 import { Filters } from '../filters.js';

@@ -1,5 +1,5 @@
 // js/demoMode.js
-// "Modo Demo" — in-memory data overlay for demonstrations.
+// "Modo Demo" - in-memory data overlay for demonstrations.
 // Snapshots the real DataStore arrays, overlays a generated dataset,
 // blocks cache writes and Supabase reloads while active, then restores
 // everything cleanly on toggle off. Never writes to Supabase or localStorage.
@@ -189,7 +189,7 @@ function valueForPts(spec, pts, r) {
         const range = spec.b[Math.floor(r() * spec.b.length)];
         return range[0] + r() * (range[1] - range[0]);
       }
-      // Outside both A and B — land just above the upper B band so the value
+      // Outside both A and B - land just above the upper B band so the value
       // is still physiologically plausible (e.g. berryFW stays > 0).
       const maxB = spec.b.reduce((m, rng) => Math.max(m, rng[1]), hi);
       return maxB + 0.05 + r() * (maxB * 0.2);
@@ -200,7 +200,7 @@ function valueForPts(spec, pts, r) {
 
 // Pick a distribution of per-param points such that the overall score36 lands
 // in the target grade band. We bias each param's pts to match, accepting that
-// partial overlays (madurez/sanitary) may nudge the final grade slightly —
+// partial overlays (madurez/sanitary) may nudge the final grade slightly -
 // that's desirable for a demo that shows the full machinery in action.
 function pointsForGrade(grade, r) {
   switch (grade) {
@@ -265,7 +265,7 @@ function healthForGrade(grade, r) {
 // Resolve the rubric id a (variety, appellation) would use, so we can assign
 // threshold-matching parameter values.
 function demoRubricFor(variety, appellation) {
-  // Cheap duplicate of resolveRubric — we want to stay dependency-free here.
+  // Cheap duplicate of resolveRubric - we want to stay dependency-free here.
   let valley = null;
   const s = String(appellation || '');
   if (/Valle de Ojos Negros|\(VON\)/i.test(s)) valley = 'Valle de Ojos Negros';
@@ -284,10 +284,10 @@ function demoRubricFor(variety, appellation) {
 // Year-character profiles for the two historical vintages. The demo spans
 // 3 vendimias (currentYear-2, currentYear-1, currentYear) so vintage
 // comparison charts overlay distinct, realistic seasons:
-//  - currentYear-2: cool/late year — envero in early August, slower 8-day
+//  - currentYear-2: cool/late year - envero in early August, slower 8-day
 //    sampling cadence, anthocyanins still climbing at harvest (antCenter
 //    late), lower grade mix, lighter yields.
-//  - currentYear-1: warm/early year — envero mid-July, weekly sampling,
+//  - currentYear-1: warm/early year - envero mid-July, weekly sampling,
 //    anthocyanins plateau before harvest (antCenter early), better grades.
 // The divergent late-season anthocyanin slopes also keep the predictor's
 // historicalSlopePrior variance (τ²) high, so the Bayesian prior stays weak
@@ -295,7 +295,7 @@ function demoRubricFor(variety, appellation) {
 // brixC / phC set each year's riseShape exponent: the cool year saturates
 // early (flat late-season slope), the warm year keeps climbing into harvest.
 // Like antCenter, this divergence keeps the slope prior's between-vintage
-// variance honest — two generator-identical years would make τ² ≈ 0 and let
+// variance honest - two generator-identical years would make τ² ≈ 0 and let
 // the prior crush the current-season fit.
 function yearProfiles(currentYear) {
   return [
@@ -317,7 +317,7 @@ function generateDemoData() {
   // Berry now concatenates ALL three vintages so the vintage comparison
   // charts (brix/tANT/pH/AT vs días post-envero) overlay 3 vendimias.
   // The historical berries feed the predictor's historicalSlopePrior (V=2),
-  // but the prior stays weak by design — see yearProfiles() above — so the
+  // but the prior stays weak by design - see yearProfiles() above - so the
   // current-season scenarios still land on their calibrated `reason`s.
   //
   // Mediciones / receptions / wine concatenate all vintages so that:
@@ -349,13 +349,13 @@ const SCENARIO_QUOTAS = [
   ['ph-temprano',               0.05],
 ];
 
-// Scenarios that require ANT machinery — reassigned to 'eta-media' when
+// Scenarios that require ANT machinery - reassigned to 'eta-media' when
 // the group's rubric has no anthocyanins target (white varieties).
 const ANT_DEPENDENT_SCENARIOS = new Set([
   'no-alcanzar-A', 'antocianinas-estancadas',
 ]);
 
-// Scenarios that require pH-as-deadline machinery — reassigned to 'eta-media'
+// Scenarios that require pH-as-deadline machinery - reassigned to 'eta-media'
 // when the group's rubric has no pH target (i.e., reds in current ruleset).
 const PH_DEPENDENT_SCENARIOS = new Set([
   'riesgo-ph', 'ph-temprano',
@@ -425,7 +425,7 @@ function scenarioParams(scenario, target, r) {
 // render a grade (otherwise N sections sharing a variety/appellation collapse
 // into 1 demo lot and N-1 polygons stay grey). Each section's scenario is
 // assigned independently downstream, so the same variety in two sections may
-// surface different grades — visually closer to a realistic sampling week.
+// surface different grades - visually closer to a realistic sampling week.
 // Stable sort by (appellation, variety, lotCode) for deterministic scenario
 // assignment.
 function buildCurrentSeasonGroups() {
@@ -452,7 +452,7 @@ function buildCurrentSeasonGroups() {
     const ranchCode = section.ranchCode;
     const prefix = VARIETY_PREFIX[variety] || 'XX';
     // Lot code must round-trip through MapStore.resolveSection back to this
-    // section's sectionId — otherwise the SVG polygon can't find its data.
+    // section's sectionId - otherwise the SVG polygon can't find its data.
     // Kompali puts K first ("KCS-S8"); every other ranch puts the variety
     // prefix first ("CSMX-1A").
     const suffix = section.sectionLabel;
@@ -506,7 +506,7 @@ function generateCurrentSeason(currentYear, today, r) {
   // Assign ONE scenario per (variety, appellation) prediction group, not per
   // section: Prediction.computeAll pools every section sharing variety +
   // appellation into a single regression, so per-section scenarios mixed
-  // lines up to ~5 Bx apart in one fit — the inflated residual variance let
+  // lines up to ~5 Bx apart in one fit - the inflated residual variance let
   // the historical slope prior dominate the posterior and dragged every ETA
   // out by weeks. Sections of the same group share scenario params (adjacent
   // same-variety blocks ripening together is also closer to a real week).
@@ -564,7 +564,7 @@ function generateCurrentSeason(currentYear, today, r) {
     paramsByKey.set(keys[i], scenarioParams(scenario, target, r));
   }
 
-  // 7 samples every 4 days over a 24-day window — nCurrent ≥ 6 keeps the
+  // 7 samples every 4 days over a 24-day window - nCurrent ≥ 6 keeps the
   // confidence label's freshness score at 1.0 now that historical vintages
   // make V=2, and the short window keeps the scenario's linear segment
   // dominant in the regression (a longer back-cast at scenario slopes would
@@ -581,7 +581,7 @@ function generateCurrentSeason(currentYear, today, r) {
     const isWhite = g.target.phTarget != null && g.target.antTarget == null;
     // Per-lot green-fruit baselines. Early samples are floored at these
     // physiological values so the back-cast scenario lines can't drop below
-    // envero chemistry — the current vintage keeps the same flat-start →
+    // envero chemistry - the current vintage keeps the same flat-start →
     // ripening-ramp shape as the historical sigmoids. The floors only bind
     // on the oldest samples (outside the 14-day recency-boost window), so
     // the weighted regression stays on each scenario's calibrated line.
@@ -602,7 +602,7 @@ function generateCurrentSeason(currentYear, today, r) {
       const ant  = p.yAnt != null
         ? Math.max(p.yAnt + p.bAnt * t, baseAnt + 3.5 * dpc) + (r() - 0.5) * 24
         : null;
-      // Red pH rises gently through the season (cosmetic only — the predictor
+      // Red pH rises gently through the season (cosmetic only - the predictor
       // ignores pH when antTarget is set); whites keep scenario calibration.
       const pH = isWhite && p.yPh != null
         ? Math.max(2.5, Math.min(4.5,
@@ -634,10 +634,10 @@ function generateCurrentSeason(currentYear, today, r) {
     // NOTE: chemistry/health values below are hand-calibrated to the rubric's
     // 3-pts thresholds (see CONFIG.rubrics). If rubric thresholds shift, this
     // demo will silently drift to lower grades. Follow-up: refactor to use
-    // valueForPts(spec, 3, r) like generateHistoricalSeason — out of scope
+    // valueForPts(spec, 3, r) like generateHistoricalSeason - out of scope
     // for the Wave 1 #2 fix.
 
-    // Current-season mediciones row — targets a "good" grade so the demo
+    // Current-season mediciones row - targets a "good" grade so the demo
     // calidad map renders colors. Health distribution heavy on madura/buena.
     const totalBerries = 100;
     // One draw, shared by the scalar and the panel, so the consensus label the
@@ -668,7 +668,7 @@ function generateCurrentSeason(currentYear, today, r) {
       notes: null
     });
 
-    // Current-season tank reception — supplies av/ag/polyphenols via
+    // Current-season tank reception - supplies av/ag/polyphenols via
     // joinBerryWithReceptions so the rubric's chemistry params fill.
     const rid = receptionId++;
     receptions.push({
@@ -741,7 +741,7 @@ function generateHistoricalSeason(profile, r) {
 
     // Lot code convention matches fieldLotRanchPatterns: e.g. CSMX-5B, SYDA-L5.
     // Kompali ('K') puts the ranch code FIRST: KCS-S2B (regex /^K[A-Z]{2,3}-/),
-    // so the variety prefix has to follow K — otherwise the resolver returns
+    // so the variety prefix has to follow K - otherwise the resolver returns
     // null and historical Kompali lots never map to a section.
     const lotCode = ranchCode === 'K'
       ? `K${prefix}-${suffix}`
@@ -764,7 +764,7 @@ function generateHistoricalSeason(profile, r) {
 
     const health = healthForGrade(target, r);
 
-    // Phenolic maturity overlay — mirrored to the grade target
+    // Phenolic maturity overlay - mirrored to the grade target
     const madurezMap = { 'A+': 'Sobresaliente', 'A': 'Buena', 'B': 'Parcial', 'C': r() < 0.5 ? 'Baja' : 'No sobresaliente' };
     const phenolicMaturity = madurezMap[target];
     const tons = Math.round((5 + r() * 40) * profile.tonsFactor * 10) / 10;
@@ -894,7 +894,7 @@ function generateHistoricalSeason(profile, r) {
       lot_position: 1
     });
 
-    // Wine reception row — some downstream views (tables, explorer) read it
+    // Wine reception row - some downstream views (tables, explorer) read it
     wine.push({
       codigoBodega: `${yy}${lotCode}-W`,
       fecha: berryRow.sampleDate,
