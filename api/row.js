@@ -51,7 +51,7 @@ export default async function handler(req, res) {
       if (!tableConfig.columns.has(k)) delete row[k];
     }
   }
-  // Server-authoritative audit fields. Strip explicitly — even if a future
+  // Server-authoritative audit fields. Strip explicitly - even if a future
   // schema adds them to the whitelist, the server is the only writer.
   delete row.last_edited_at;
   delete row.last_edited_by;
@@ -188,6 +188,6 @@ export default async function handler(req, res) {
     }
   }
 
-  // Should be unreachable — ALLOWED_ACTIONS guards above.
+  // Should be unreachable - ALLOWED_ACTIONS guards above.
   return res.status(400).json({ ok: false, error: 'Acción no válida' });
 }

@@ -67,12 +67,12 @@ function populateDropdowns(row) {
   const origin  = document.getElementById('wine-edit-origin');
   if (variety && (!variety.options.length || variety.options.length < 2)) {
     const allVarieties = [...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white].sort();
-    variety.innerHTML = '<option value="">— Seleccionar —</option>' +
+    variety.innerHTML = '<option value="">- Seleccionar -</option>' +
       allVarieties.map(v => `<option value="${v}">${v}</option>`).join('');
   }
   if (origin && (!origin.options.length || origin.options.length < 2)) {
     const origins = Object.keys(CONFIG.originColors).sort();
-    origin.innerHTML = '<option value="">— Seleccionar —</option>' +
+    origin.innerHTML = '<option value="">- Seleccionar -</option>' +
       origins.map(o => `<option value="${o}">${o}</option>`).join('');
   }
   if (variety) variety.value = row.variedad  || '';
@@ -99,7 +99,7 @@ export const WineEdit = {
       };
       const setText = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.textContent = (val === null || val === undefined) ? '—' : val;
+        if (el) el.textContent = (val === null || val === undefined) ? '-' : val;
       };
 
       setText('wine-edit-code',           row.codigoBodega);

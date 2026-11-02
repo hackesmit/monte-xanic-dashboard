@@ -87,7 +87,7 @@ export function weightedRegression(samples) {
 
 // A lone historical vintage gives no way to estimate between-vintage slope
 // variability, so its prior variance cannot be a real sample variance. The old
-// code used a tiny epsilon (1e-6) there — a prior precision of 1e6 that pinned
+// code used a tiny epsilon (1e-6) there - a prior precision of 1e6 that pinned
 // the posterior to the single historical slope and discarded the current season
 // entirely. Instead treat one vintage as a *weak* prior: its slope standard
 // deviation is ~1.5× the slope magnitude itself (CV ≈ 150%). Because it scales
@@ -96,14 +96,14 @@ export function weightedRegression(samples) {
 const SINGLE_VINTAGE_SLOPE_CV = 1.5;
 //
 // FINDING 1 (variance floor still pinned the posterior). The earlier fix floored
-// the ≥2-vintage variance at (0.05·mean)² — a 5 % CV, which is an *extremely
+// the ≥2-vintage variance at (0.05·mean)² - a 5 % CV, which is an *extremely
 // strong* prior, not a robustness floor: two vintages that both fit to slope
 // 0.05 gave τ²≈6.25e-6 (precision 160 000) and re-pinned the posterior to
 // 0.050094, the very failure this bead exists to prevent. That floor is removed.
 // The anti-pinning guarantee now lives in bayesianCombine, which BOUNDS the
 // prior's precision by the current season's own precision (chosen option 3 of
 // the three the reviewer offered: it preserves genuinely diverse multi-vintage
-// information — a variance floor or dedup throws that away — while capping the
+// information - a variance floor or dedup throws that away - while capping the
 // degenerate case). With ≥2 vintages we now use the raw Bessel sample variance;
 // a collapsed variance from near-duplicate vintages can no longer dominate.
 //
@@ -122,7 +122,7 @@ export function historicalSlopePrior(vintages, { slopeScale = 0, slopeMax = Infi
   // magnitude beyond any real ripening rate. Left in, they take ~half the
   // posterior weight and drag it to a meaningless ~50 Bx/day. Reject any slope
   // whose magnitude exceeds the metric's plausible bound (slopeMax, supplied by
-  // the caller — see the *_SLOPE_MAX constants) BEFORE it can inform the prior,
+  // the caller - see the *_SLOPE_MAX constants) BEFORE it can inform the prior,
   // and report the rejected slopes so the exclusion is visible, not silent.
   const excludedSlopes = [];
   for (const rawSamples of vintages) {
@@ -185,7 +185,7 @@ export function bayesianCombine({ betaHat, sigmaBeta2, betaHist, tau2Hist }) {
   // so the historical prior can INFORM the posterior but never DOMINATE it. A
   // degenerate between-vintage variance (near-duplicate or copied vintages)
   // otherwise yields an arbitrarily large prior precision that pins the posterior
-  // to the historical slope and discards the current season — exactly what this
+  // to the historical slope and discards the current season - exactly what this
   // bead prevents. Capping at dataPrec guarantees the current season keeps ≥50 %
   // of the posterior weight. When dataPrec is Infinity (a perfect current fit)
   // the data already dominates, so no cap is applied.
@@ -349,8 +349,8 @@ const ANT_SLOPE_SCALE  = 0.1;     // mg/L/day (real accrual ≈ 5–20)
 const PH_SLOPE_SCALE   = 0.0005;  // pH/day   (real rise ≈ 0.005–0.02)
 
 // Per-metric UPPER plausible daily-slope bounds (FINDING, round 2). A historical
-// mean slope whose magnitude exceeds these is metric-impossible — a corrupt
-// vintage, not a ripening trend — and is rejected in historicalSlopePrior before
+// mean slope whose magnitude exceeds these is metric-impossible - a corrupt
+// vintage, not a ripening trend - and is rejected in historicalSlopePrior before
 // it can inform the prior (passed as `slopeMax`). Set several times above the
 // fastest genuine trend each metric shows, so a real fast vintage is never
 // dropped, but orders of magnitude below the corrupt values this guards against.
@@ -407,7 +407,7 @@ export function computeOne({
   // FINDING 4: the DISPLAYED current reading must be deterministic regardless of
   // input row order. The old fallback took `sorted[last]` and read its raw brix/
   // ant/pH, but a stable sort leaves same-timestamp rows in input order, so a
-  // duplicate-date pair (22.0, 22.5) surfaced whichever row happened to be last —
+  // duplicate-date pair (22.0, 22.5) surfaced whichever row happened to be last -
   // 22.5 in one order, 22.0 in the other. Resolve every reading at the latest
   // timestamp by mean: order-independent and representative of the day.
   const latestReading = (samples) => {
@@ -445,7 +445,7 @@ export function computeOne({
   const brixFit = weightedRegression(brixSamples);
   // Degenerate season: all samples share one timestamp (Σw(t−t̄)² = 0, e.g. two
   // readings on the same date) or the regression is otherwise non-finite. The
-  // slope is then undefined and every downstream ETA/date becomes NaN/Infinity —
+  // slope is then undefined and every downstream ETA/date becomes NaN/Infinity -
   // producing an 'Invalid Date' recommendation with nothing flagging it. Require
   // ≥2 distinct timestamps and a finite fit; otherwise treat as too-few-data.
   const distinctTimestamps = new Set(sorted.map(s => s.tDays)).size;
@@ -462,7 +462,7 @@ export function computeOne({
 
   let antFit = null, antComb = { betaPost: NaN, sigmaBeta2Post: NaN };
   if (target.antTarget != null) {
-    // Drop samples without an anthocyanin reading (mirrors the pH path) —
+    // Drop samples without an anthocyanin reading (mirrors the pH path) -
     // a single NaN otherwise poisons every regression sum.
     const antSamples = sorted
       .filter(s => Number.isFinite(s.ant))
@@ -573,7 +573,7 @@ export function computeOne({
   const isSoftWhiteAlert = isWhite
     && (reason === 'riesgo-ph' || reason === 'riesgo-sobremadurez');
   // ETAs are measured from the LAST SAMPLE's t (tToday), so calendar dates
-  // must anchor there too — anchoring at actual `today` shifted every date
+  // must anchor there too - anchoring at actual `today` shifted every date
   // late by however stale the latest sample was.
   const lastSample = sorted[sorted.length - 1];
   const lastSampleMs = lastSample.sampleDate instanceof Date
@@ -597,7 +597,7 @@ export function computeOne({
       brixEta: brixMidEta, antEta, phEta,
       brixWindowOpensDays, brixWindowClosesDays,
     },
-    // Diagnostics passthrough — view needs these for the chart
+    // Diagnostics passthrough - view needs these for the chart
     brixFit, brixComb, antFit, antComb, phFit, phComb,
   };
 }

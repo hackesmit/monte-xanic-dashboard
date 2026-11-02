@@ -114,7 +114,7 @@ export const Charts = {
     }
   },
 
-  // Safe Chart.js instantiation — one broken chart won't cascade-fail the view
+  // Safe Chart.js instantiation - one broken chart won't cascade-fail the view
   _createChart(canvasId, canvas, config) {
     try {
       this.instances[canvasId] = new Chart(canvas, config);
@@ -229,7 +229,7 @@ export const Charts = {
 
   // Group data by a field and return datasets
   groupScatterData(data, xField, yField, groupField) {
-    // Pre-compute last points — only for lots with 2+ measurements
+    // Pre-compute last points - only for lots with 2+ measurements
     const lastPointMap = this._identifyLastPoints(data);
 
     const groups = {};
@@ -957,7 +957,7 @@ export const Charts = {
     });
   },
 
-  // Extraction percentage horizontal bar — color-coded by quality band
+  // Extraction percentage horizontal bar - color-coded by quality band
   createExtractionPctChart(canvasId, berryData, wineData) {
     this.destroy(canvasId);
     const canvas = document.getElementById(canvasId);
@@ -1019,7 +1019,7 @@ export const Charts = {
                 if (!p) return '';
                 return [
                   `Varietal: ${p.variety}`,
-                  `Origen: ${p.appellation || '—'}`,
+                  `Origen: ${p.appellation || '-'}`,
                   `tANT Baya: ${p.berryTANT} ppm`,
                   `tANT Vino: ${p.wineTANT} ppm`,
                   `Extracción: ${p.pct}%`
@@ -1058,7 +1058,7 @@ export const Charts = {
       { key: 'iptSpica', label: 'IPT', color: '#60A8C0' }
     ];
 
-    // Group by variety — keep rows array for weighted means (Wave 1 #1) plus
+    // Group by variety - keep rows array for weighted means (Wave 1 #1) plus
     // per-compound numeric arrays for the populated-key filter below.
     const byVar = {};
     wineData.forEach(d => {
@@ -1304,7 +1304,7 @@ export const Charts = {
             backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
             titleColor: '#DDB96E', bodyColor: '#D8D0C4',
             callbacks: {
-              title: (items) => `Día ${items[0].raw.x} — ${items[0].dataset.label}`,
+              title: (items) => `Día ${items[0].raw.x} - ${items[0].dataset.label}`,
               label: (ctx) => `Temp: ${ctx.raw.y?.toFixed(1)}°C`
             }
           }
@@ -1400,7 +1400,7 @@ export const Charts = {
             backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
             titleColor: '#DDB96E', bodyColor: '#D8D0C4',
             callbacks: {
-              title: (items) => `Día ${items[0].raw.x} — ${items[0].dataset.label}`,
+              title: (items) => `Día ${items[0].raw.x} - ${items[0].dataset.label}`,
               label: (ctx)   => `Temp: ${ctx.raw.y?.toFixed(1)}°C`
             }
           }
@@ -1497,7 +1497,7 @@ export const Charts = {
             backgroundColor: '#1C1C1C', borderColor: 'rgba(196,160,96,0.5)', borderWidth: 1,
             titleColor: '#DDB96E', bodyColor: '#D8D0C4',
             callbacks: {
-              title: (items) => `Día ${items[0].raw.x} — ${items[0].dataset.label}`,
+              title: (items) => `Día ${items[0].raw.x} - ${items[0].dataset.label}`,
               label: (ctx)   => `Lluvia: ${ctx.raw.y?.toFixed(1)} mm`
             }
           }
@@ -1839,7 +1839,7 @@ export const Charts = {
     });
   },
 
-  // Brix vs Temperature on sample date — scatter by variety/origin
+  // Brix vs Temperature on sample date - scatter by variety/origin
   createTempCorrelation(canvasId, berryData) {
     if (!WeatherStore) return;
     this.destroy(canvasId);
@@ -1888,7 +1888,7 @@ export const Charts = {
     });
   },
 
-  // tANT vs Cumulative Rainfall since July 1 — scatter by variety/origin
+  // tANT vs Cumulative Rainfall since July 1 - scatter by variety/origin
   createRainCorrelation(canvasId, berryData) {
     if (!WeatherStore) return;
     this.destroy(canvasId);
@@ -2138,7 +2138,7 @@ export const Charts = {
       ctx.fillStyle = 'rgba(196,160,96,0.4)';
       ctx.font = '10px "Sackers Gothic Medium", sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText('Monte Xanic \u2014 Vendimia', totalW - pad, totalH - 12);
+      ctx.fillText('Monte Xanic - Vendimia', totalW - pad, totalH - 12);
 
       // Trigger download
       const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
@@ -2181,7 +2181,7 @@ export const Charts = {
       pdf.setLineWidth(0.3);
       pdf.line(15, 22, pw - 15, 22);
 
-      // Chart image — preserve aspect ratio, shrink to leave room for legend
+      // Chart image - preserve aspect ratio, shrink to leave room for legend
       const legendItems = this._getLegendItems(canvasId);
       const legendMM = legendItems.length ? 12 : 0;
       const imgData = chart.toBase64Image('image/png', 1);
@@ -2202,7 +2202,7 @@ export const Charts = {
       // Watermark
       pdf.setTextColor(...pdfColors.gold);
       pdf.setFontSize(8);
-      pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
+      pdf.text('Monte Xanic - Vendimia', pw - 15, ph - 6, { align: 'right' });
 
       const safeName = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
       pdf.save(`monte-xanic-${safeName}.pdf`);
@@ -2258,7 +2258,7 @@ export const Charts = {
     ctx.fillStyle = titleColor;
     ctx.font = '18px "Sackers Gothic Medium", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`${viewTitle} \u2014 Monte Xanic`, pad, pad + 6);
+    ctx.fillText(`${viewTitle} - Monte Xanic`, pad, pad + 6);
     ctx.fillStyle = mutedColor;
     ctx.font = '11px "Sackers Gothic Medium", sans-serif';
     ctx.fillText(date, pad, pad + 22);
@@ -2299,7 +2299,7 @@ export const Charts = {
             ctx.fillStyle = 'rgba(196,160,96,0.4)';
             ctx.font = '10px "Sackers Gothic Medium", sans-serif';
             ctx.textAlign = 'right';
-            ctx.fillText('Monte Xanic \u2014 Vendimia', totalW - pad, totalH - 12);
+            ctx.fillText('Monte Xanic - Vendimia', totalW - pad, totalH - 12);
 
             const safeName = viewTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
             const link = document.createElement('a');
@@ -2343,16 +2343,16 @@ export const Charts = {
       pdf.rect(0, 0, pw, ph, 'F');
       pdf.setTextColor(...pdfColors.title);
       pdf.setFontSize(20);
-      pdf.text(`${viewTitle} \u2014 Monte Xanic`, pw / 2, ph / 2 - 10, { align: 'center' });
+      pdf.text(`${viewTitle} - Monte Xanic`, pw / 2, ph / 2 - 10, { align: 'center' });
       const date = new Date().toLocaleDateString('es-MX', { year: 'numeric', month: 'long', day: 'numeric' });
       pdf.setFontSize(12);
       pdf.setTextColor(...pdfColors.muted);
       pdf.text(date, pw / 2, ph / 2 + 5, { align: 'center' });
       pdf.setTextColor(...pdfColors.gold);
       pdf.setFontSize(8);
-      pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
+      pdf.text('Monte Xanic - Vendimia', pw - 15, ph - 6, { align: 'right' });
 
-      // One page per chart — preserve aspect ratio, include legend
+      // One page per chart - preserve aspect ratio, include legend
       canvases.forEach(c => {
         const chart = this.instances[c.id];
         if (!chart) return;
@@ -2392,7 +2392,7 @@ export const Charts = {
 
         pdf.setTextColor(...pdfColors.gold);
         pdf.setFontSize(8);
-        pdf.text('Monte Xanic \u2014 Vendimia', pw - 15, ph - 6, { align: 'right' });
+        pdf.text('Monte Xanic - Vendimia', pw - 15, ph - 6, { align: 'right' });
       });
 
       const safeName = viewTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/-+$/, '');
@@ -2626,7 +2626,7 @@ export const Charts = {
     }
   },
 
-  // Update all berry charts (lazy — only renders visible ones immediately)
+  // Update all berry charts (lazy - only renders visible ones immediately)
   updateBerryCharts(data) {
     this.updateLegend(data);
     // Top charts render immediately
@@ -2968,7 +2968,7 @@ export const Charts = {
 
   // Render a small forecast chart for one varietal-ranch card.
   // `axis` is 'brix' or 'ant'. `ctx` contains { prediction, target, today, current }
-  // — uses prediction.brixFit/brixComb (or antFit/antComb), target.brixTarget /
+  // - uses prediction.brixFit/brixComb (or antFit/antComb), target.brixTarget /
   // target.antTarget, and the raw current-vintage sample list to draw the
   // observed line, dashed projection, translucent gray confidence cone, and
   // dashed green target line. Reuses CONFIG.predictionColors.

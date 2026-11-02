@@ -1,6 +1,6 @@
 // ── Prefermentativos row edit descriptor (Phase 10 / Stage 7.5) ────
 //
-// Edits prefermentativos rows. Single conflict key (report_code) — much
+// Edits prefermentativos rows. Single conflict key (report_code) - much
 // simpler than the composite-key path the berry/wine modals use.
 //
 // DataStore.winePreferment is a *merged* dataset: wine_samples Must rows
@@ -55,7 +55,7 @@ function populateVarietyDropdown(row) {
   const variety = document.getElementById('pref-edit-variety');
   if (variety && (!variety.options.length || variety.options.length < 2)) {
     const allVarieties = [...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white].sort();
-    variety.innerHTML = '<option value="">— Seleccionar —</option>' +
+    variety.innerHTML = '<option value="">- Seleccionar -</option>' +
       allVarieties.map(v => `<option value="${v}">${v}</option>`).join('');
   }
   if (variety) variety.value = row.variedad || '';
@@ -81,7 +81,7 @@ export const PrefermentEdit = {
       };
       const setText = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.textContent = (val === null || val === undefined) ? '—' : val;
+        if (el) el.textContent = (val === null || val === undefined) ? '-' : val;
       };
 
       setText('pref-edit-code',     row.reportCode);

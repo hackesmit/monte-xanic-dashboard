@@ -8,7 +8,7 @@ export const ALLOWED_TABLES = {
     conflict: 'sample_id,sample_date,sample_seq',
     // sample_seq carries a deterministic DB default (1); it may be omitted from
     // the payload without breaking upsert dedup. sample_id + sample_date are the
-    // meaningful key and must be present — see the key-integrity guard below.
+    // meaningful key and must be present - see the key-integrity guard below.
     keyDefault: new Set(['sample_seq']),
     maxRows: 500,
     required: ['sample_id'],
@@ -57,7 +57,7 @@ export const ALLOWED_TABLES = {
   // pivoted workbook's per-(lot,date) chemistry goes to wine_samples (the table
   // the dashboard reads, sample_type='Berries'); this holds the per-lot data
   // wine_samples has no columns for. tons_seguimiento and
-  // cantidad_proyectada are PROVISIONAL/forecast — never authoritative harvested
+  // cantidad_proyectada are PROVISIONAL/forecast - never authoritative harvested
   // tonnage (see sql/migration_seguimiento_lotes.sql).
   seguimiento_lotes: {
     conflict: 'lot_code,vintage_year',
@@ -66,7 +66,7 @@ export const ALLOWED_TABLES = {
     columns: new Set([
       'lot_code','vintage_year','variety','proveedor','status',
       'ant_target','codigo','cantidad_proyectada',
-      // xd-49p — the 2026-08-31 workbook revision's two new per-lot columns.
+      // xd-49p - the 2026-08-31 workbook revision's two new per-lot columns.
       // origen is the NORMALIZED ranch-first name, not the raw workbook string.
       'origen','fecha_envero',
       'tons_seguimiento','tons_seguimiento_cached','tons_mismatch',
@@ -109,7 +109,7 @@ export const ALLOWED_TABLES = {
       'brix','ph','ta','temperature','tant','notes','vintage_year'
     ])
   },
-  // Round 35: unified table — accepts both form-entered (source='form') and
+  // Round 35: unified table - accepts both form-entered (source='form') and
   // Pre-recepción upload-entered (source='upload') rows. Schema expanded to
   // a superset of the legacy pre_receptions table by
   // sql/migration_unify_mediciones.sql.
@@ -128,7 +128,7 @@ export const ALLOWED_TABLES = {
       'health_quemadura','phenolic_maturity','measured_by','notes',
       // Vendimia 2026: evaluator panel [{evaluador, sanidad, madurez}]
       'evaluaciones',
-      // Round 35 — absorbed from pre_receptions
+      // Round 35 - absorbed from pre_receptions
       'vintrace','reception_date','supplier',
       'total_bins','bin_unit','bin_temp_c','truck_temp_c',
       'bunch_avg_weight_g','berry_length_avg_cm','berries_200_weight_g',

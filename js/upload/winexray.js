@@ -16,7 +16,7 @@ import { Identity } from '../identity.js';
 
 const BELOW_DETECTION_RE = /^<\s*\d+(\.\d+)?$/;
 const ABOVE_DETECTION_RE = /^>\s*(\d+(\.\d+)?)$/;
-// Matches lab-test markers anywhere in sample_id (no word boundary — handles compounds like WATERBLUEBERRY)
+// Matches lab-test markers anywhere in sample_id (no word boundary - handles compounds like WATERBLUEBERRY)
 const LAB_TEST_RE = /(COLORPRO|CRUSH|WATER|BLUEBERRY|RASPBERRY|RASBERRY|BLKBERRY|BLACKBERRY)/i;
 
 // WineXRay CSV columns whose values must be ISO YYYY-MM-DD. The tool emits
@@ -30,11 +30,11 @@ const DATE_COLUMNS = new Set(['sample_date', 'crush_date']);
 // row, the header and data-row field counts stay equal (e.g. 59 == 59) while
 // every column after IPT silently shifts one position: tANT reads fANT's
 // number, fANT reads bANT's, and so on down the phenolics/color/berry columns.
-// The result is plausible-but-wrong berry chemistry with no visible error — the
+// The result is plausible-but-wrong berry chemistry with no visible error - the
 // worst failure mode on this surface. dataLoader.loadFile guards the legacy
 // path by quoting the header in the raw CSV text before it reaches SheetJS;
 // this parser reads the bytes directly, so it must apply the same repair. Note
-// a field-count check would NOT catch this — the counts match after padding;
+// a field-count check would NOT catch this - the counts match after padding;
 // the repair has to happen on the raw text, before the split is normalized away.
 const IPT_MALFORMED_HEADER = 'Total Phenolics Index (IPT, d-less)';
 
@@ -156,7 +156,7 @@ function applyNormalization(obj) {
   if (obj.appellation !== undefined) {
     obj.appellation = CONFIG.normalizeAppellation(obj.appellation, obj.sample_id);
   }
-  // Ensure vintage_year is always a key on obj — PostgREST rejects bulk
+  // Ensure vintage_year is always a key on obj - PostgREST rejects bulk
   // inserts with "All object keys must match" if rows differ (Round 33).
   // Covers the case where the CSV has no `Vintage` column at all.
   if (obj.vintage_year === undefined) obj.vintage_year = null;
@@ -273,7 +273,7 @@ export const winexrayParser = {
     // Assign the upsert-key disambiguator. The natural key is
     // (sample_id, sample_date, sample_seq); without this every row lands on the
     // DB default (1 for wine_samples, 0 for berry_samples), so two genuinely
-    // distinct same-day samples sharing a sample_id collide — PostgREST aborts
+    // distinct same-day samples sharing a sample_id collide - PostgREST aborts
     // the batch (ON CONFLICT twice, 21000), or a later upload silently
     // overwrites an earlier one. canonicalSeqAssign numbers each
     // (sample_id, sample_date) group deterministically (a re-upload in any row

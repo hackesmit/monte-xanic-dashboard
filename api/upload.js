@@ -25,7 +25,7 @@ export default async function handler(req, res) {
     return res.status(result.status).json({ ok: false, error: 'No autorizado' });
   }
 
-  // 2. Check role — only lab can upload (admin = view+export only, Round 37)
+  // 2. Check role - only lab can upload (admin = view+export only, Round 37)
   const role = result.payload.role || 'viewer';
   if (role !== 'lab') {
     return res.status(403).json({ ok: false, error: 'Sin permisos para subir datos' });
