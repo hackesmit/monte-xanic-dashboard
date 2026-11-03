@@ -4,13 +4,22 @@
 // clicks controls that already exist, so it adds no route and no logic.
 
 const ACTIONS = [
-  ['demo-toggle-btn', 'Modo Demo'],
-  ['theme-toggle-btn', 'Cambiar tema'],
-  ['help-toggle-btn', 'Ayuda'],
+  ['demo-toggle-btn', 'Modo Demo', false],
+  ['theme-toggle-btn', 'Cambiar tema', false],
+  ['help-toggle-btn', 'Ayuda', '#help-modal .help-close'], // opens its own modal, which takes the focus
 ];
 
 function visible(el) {
   return !!el && !el.hidden && el.getClientRects().length > 0;
+}
+
+// A text field keeps its own Ctrl-K (search boxes, textareas, contenteditable).
+const NON_TEXT = /^(checkbox|radio|button|submit|reset|image|file|range|color)$/;
+function editable(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  if (el.tagName === 'TEXTAREA') return true;
+  return el.tagName === 'INPUT' && !NON_TEXT.test(el.type) && el !== input;
 }
 
 function norm(s) {
@@ -22,9 +31,9 @@ function entries() {
   document.querySelectorAll('#nav-tabs .nav-tab[data-view]').forEach((el) => {
     if (visible(el)) out.push({ label: el.textContent.trim(), kind: 'Vista', el });
   });
-  for (const [id, label] of ACTIONS) {
+  for (const [id, label, ownsFocus] of ACTIONS) {
     const el = document.getElementById(id);
-    if (el) out.push({ label, kind: 'Acción', el });
+    if (visible(el)) out.push({ label, kind: 'Acción', el, ownsFocus });
   }
   return out;
 }
@@ -33,6 +42,7 @@ let dlg = null;
 let input = null;
 let list = null;
 let opener = null;
+let handoff = null;
 let shown = [];
 let active = 0;
 
@@ -75,7 +85,10 @@ function build() {
   });
   dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
   dlg.addEventListener('close', () => {
-    if (opener && opener.isConnected) opener.focus();
+    const target = handoff && document.querySelector(handoff);
+    handoff = null;
+    if (target && visible(target)) target.focus();
+    else if (opener && opener.isConnected) opener.focus();
     opener = null;
   });
 }
@@ -84,6 +97,7 @@ function render() {
   const q = norm(input.value.trim());
   shown = entries().filter((it) => norm(it.label).includes(q));
   active = 0;
+  input.setAttribute('aria-expanded', String(shown.length > 0));
   list.replaceChildren(...shown.map((it, i) => {
     const li = document.createElement('li');
     li.id = `comando-op-${i}`;
@@ -116,6 +130,11 @@ function paint() {
 function run(it) {
   if (!it) return;
   close();
+  // The close event fires after this task: clearing the opener keeps focus
+  // inside the modal the action opens instead of dropping it behind.
+  // The native dialog also restores focus to the old element on close, so the
+  // close handler moves it into the new modal instead.
+  if (it.ownsFocus) { opener = null; handoff = it.ownsFocus; }
   it.el.click();
 }
 
@@ -138,6 +157,7 @@ function close() {
 document.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && !e.altKey && String(e.key).toLowerCase() === 'k') {
     if (!visible(document.getElementById('dashboard-content'))) return;
+    if (editable(document.activeElement)) return;
     e.preventDefault();
     if (dlg && dlg.open) close(); else open();
   }
