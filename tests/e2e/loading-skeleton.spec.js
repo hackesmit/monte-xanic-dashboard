@@ -21,7 +21,9 @@ test('skeleton shows 6 text-free cards while data is pending', async ({ page }, 
   await page.goto('/');
   const root = page.locator('#loading-spinner');
   await expect(root.locator('.kpi-skel')).toHaveCount(6);
-  expect((await root.innerText()).trim()).toBe('');
+  // The only text is the visually hidden screen-reader status, outside the aria-hidden cards.
+  expect((await root.innerText()).trim()).toBe('Cargando datos');
+  expect((await root.locator('.kpi-skel-row').innerText()).trim()).toBe('');
   await expect(root.locator('.kpi-skel').first()).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('skeleton.png') });
 });

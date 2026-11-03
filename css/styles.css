@@ -979,6 +979,13 @@ body.demo-mode-active .demo-banner { display: block; }
   color: var(--text);
   white-space: nowrap;
   font-weight: 300;
+  /* Digits of equal width so columns of figures align. SackersGothicMedium
+     has no tnum feature, so cells use the body font (Daniel, hq-ik6v0.6).
+     The KPI values keep SackersGothicMedium and are left unchanged. */
+  font-family: var(--font-body);
+  font-variant-numeric: tabular-nums;
+  /* Kerning pairs such as "11" would still narrow a run of digits. */
+  font-kerning: none;
 }
 .data-table tr:hover td {
   background: rgba(196,160,96,0.04);
@@ -3685,4 +3692,69 @@ header { padding-top: env(safe-area-inset-top); }
   .data-loader-overlay {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
+}
+
+/* ── Command menu (Ctrl-K, js/comando.js) ── */
+.comando-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  min-height: 32px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sharp);
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color var(--motion-base), border-color var(--motion-base);
+}
+.comando-btn:hover { color: var(--gold); border-color: var(--border-gold); }
+.comando-btn kbd {
+  font-family: var(--font-body);
+  font-size: var(--text-xs);
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sharp);
+}
+.comando {
+  padding: 0;
+  width: min(480px, 92vw);
+  max-height: 70vh;
+  margin: 12vh auto auto;
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border-gold);
+  border-radius: var(--radius-panel);
+  overflow: hidden;
+}
+.comando[open] { display: flex; flex-direction: column; }
+.comando::backdrop { background: rgba(0,0,0,0.45); }
+.comando-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  background: transparent;
+  color: var(--text);
+  border: none;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-body);
+  font-size: var(--text-lg);
+  outline: none;
+}
+.comando-lista { list-style: none; margin: 0; padding: 6px; overflow-y: auto; }
+.comando-lista li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sharp);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+.comando-lista li.is-active { background: var(--border); color: var(--gold); }
+.comando-tipo { color: var(--muted); font-size: var(--text-xs); letter-spacing: 0.12em; text-transform: uppercase; }
+@media (max-width: 768px) {
+  .comando-btn kbd { display: none; }
 }
