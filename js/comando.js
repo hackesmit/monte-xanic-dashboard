@@ -10,7 +10,9 @@ const ACTIONS = [
 ];
 
 function visible(el) {
-  return !!el && !el.hidden && el.getClientRects().length > 0;
+  if (!el || el.hidden || el.getClientRects().length === 0) return false;
+  const v = getComputedStyle(el).visibility;
+  return v !== 'hidden' && v !== 'collapse';
 }
 
 // A text field keeps its own Ctrl-K (search boxes, textareas, contenteditable).
