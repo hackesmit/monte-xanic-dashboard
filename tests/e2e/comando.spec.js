@@ -90,3 +90,15 @@ test('actions whose button is not rendered are not offered; aria-expanded follow
   await page.keyboard.type('zzzzzz');
   await expect(input).toHaveAttribute('aria-expanded', 'false');
 });
+
+test('a control hidden with visibility:hidden is not offered', async ({ page, context }) => {
+  await boot(page, context);
+  await page.evaluate(() => { document.getElementById('demo-toggle-btn').style.visibility = 'hidden'; });
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('#comando-lista li', { hasText: 'Modo Demo' })).toHaveCount(0);
+});
+
+test('the loading status is not marked busy, so screen readers announce it', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#loading-spinner')).not.toHaveAttribute('aria-busy', /.*/);
+});
