@@ -63,17 +63,17 @@ export const Tables = {
         ? `class="row-clickable" data-sample-id="${this._esc(d.sampleId)}" data-sample-date="${this._esc(d.sampleDate)}" data-sample-seq="${this._esc(d.sampleSeq)}"`
         : '';
       return `<tr ${trAttrs}>
-        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.sampleId) || '—'}${bdMark}${editMark}</td>
-        <td>${this._esc(d.sampleDate) || '—'}</td>
-        <td>${this._esc(d.vintage) || '—'}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variety) || '—'}</span></td>
-        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.appellation) || '—'}</span></td>
-        <td ${this.brixStyle(d.brix)}>${d.brix !== null && d.brix !== undefined ? d.brix.toFixed(1) : '—'}</td>
-        <td style="${this.phStyle(d.pH)}">${d.pH !== null && d.pH !== undefined ? d.pH.toFixed(2) : '—'}</td>
-        <td>${d.ta !== null && d.ta !== undefined ? d.ta.toFixed(1) : '—'}</td>
-        <td>${d.tANT !== null && typeof d.tANT === 'number' ? Math.round(d.tANT) : '—'}</td>
-        <td>${d.berryFW !== null && d.berryFW !== undefined ? d.berryFW.toFixed(2) : '—'}</td>
-        <td>${d.daysPostCrush !== null && d.daysPostCrush !== undefined ? d.daysPostCrush : '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.sampleId) || '-'}${bdMark}${editMark}</td>
+        <td>${this._esc(d.sampleDate) || '-'}</td>
+        <td>${this._esc(d.vintage) || '-'}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variety) || '-'}</span></td>
+        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.appellation) || '-'}</span></td>
+        <td ${this.brixStyle(d.brix)}>${d.brix !== null && d.brix !== undefined ? d.brix.toFixed(1) : '-'}</td>
+        <td style="${this.phStyle(d.pH)}">${d.pH !== null && d.pH !== undefined ? d.pH.toFixed(2) : '-'}</td>
+        <td>${d.ta !== null && d.ta !== undefined ? d.ta.toFixed(1) : '-'}</td>
+        <td>${d.tANT !== null && typeof d.tANT === 'number' ? Math.round(d.tANT) : '-'}</td>
+        <td>${d.berryFW !== null && d.berryFW !== undefined ? d.berryFW.toFixed(2) : '-'}</td>
+        <td>${d.daysPostCrush !== null && d.daysPostCrush !== undefined ? d.daysPostCrush : '-'}</td>
       </tr>`;
     }).join('');
 
@@ -98,7 +98,7 @@ export const Tables = {
 
   // Format numeric helper
   fmtNum(v, dec) {
-    if (v === null || v === undefined || typeof v !== 'number' || isNaN(v)) return '—';
+    if (v === null || v === undefined || typeof v !== 'number' || isNaN(v)) return '-';
     return dec === 0 ? Math.round(v) : v.toFixed(dec);
   },
 
@@ -125,17 +125,17 @@ export const Tables = {
         ? `class="row-clickable" data-sample-id="${this._esc(d.codigoBodega)}" data-sample-date="${this._esc(d.fecha)}" data-sample-seq="${this._esc(d.sampleSeq)}"`
         : '';
       return `<tr ${trAttrs}>
-        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}${editMark}</td>
-        <td>${this._esc(d.fecha) || '—'}</td>
-        <td>${this._esc(d.tanque) || '—'}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '—'}</span></td>
-        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.proveedor) || '—'}</span></td>
-        <td style="font-size:10px;color:var(--muted)">${this._esc(d.sampleType) || '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '-'}${editMark}</td>
+        <td>${this._esc(d.fecha) || '-'}</td>
+        <td>${this._esc(d.tanque) || '-'}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '-'}</span></td>
+        <td><span class="badge badge-origin" style="border-color:${origColor}55;color:${origColor}">${this._esc(d.proveedor) || '-'}</span></td>
+        <td style="font-size:10px;color:var(--muted)">${this._esc(d.sampleType) || '-'}</td>
         <td>${this.fmtNum(d.antoWX, 0)}</td>
         <td>${this.fmtNum(d.freeANT, 0)}</td>
         <td>${this.fmtNum(d.pTAN, 0)}</td>
         <td>${this.fmtNum(d.iptSpica, 0)}</td>
-        <td>${d.daysPostCrush !== null && d.daysPostCrush !== undefined ? d.daysPostCrush : '—'}</td>
+        <td>${d.daysPostCrush !== null && d.daysPostCrush !== undefined ? d.daysPostCrush : '-'}</td>
       </tr>`;
     }).join('');
   },
@@ -169,16 +169,16 @@ export const Tables = {
         }
       }
       return `<tr ${trAttrs}>
-        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '—'}${editMark}</td>
-        <td>${this._esc(d.fecha) || '—'}</td>
-        <td>${this._esc(d.tanque) || '—'}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '—'}</span></td>
-        <td>${this._esc(d.proveedor) || '—'}</td>
+        <td style="font-weight:400;color:var(--gold-lt)">${this._esc(d.codigoBodega) || '-'}${editMark}</td>
+        <td>${this._esc(d.fecha) || '-'}</td>
+        <td>${this._esc(d.tanque) || '-'}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${this._esc(d.variedad) || '-'}</span></td>
+        <td>${this._esc(d.proveedor) || '-'}</td>
         <td>${this.fmtNum(d.antoWX, 0)}</td>
         <td>${this.fmtNum(d.freeANT, 0)}</td>
         <td>${this.fmtNum(d.pTAN, 0)}</td>
         <td>${this.fmtNum(d.iptSpica, 0)}</td>
-        <td>${d.daysPostCrush !== null && d.daysPostCrush !== undefined ? d.daysPostCrush : '—'}</td>
+        <td>${d.daysPostCrush !== null && d.daysPostCrush !== undefined ? d.daysPostCrush : '-'}</td>
       </tr>`;
     }).join('');
   },

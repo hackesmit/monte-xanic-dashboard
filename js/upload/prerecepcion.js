@@ -2,7 +2,7 @@
 // Pre-recepción XLSX parser.
 //
 // Reads one sheet named "Pre-recepción" (case-insensitive substring match).
-// Header row is NOT at row 0 in the source files — it's typically row 2.
+// Header row is NOT at row 0 in the source files - it's typically row 2.
 // Parser picks the header row in the first ~10 rows by content (findHeaderRow in
 // normalize.js scores how many cells resolve to a known column).
 //
@@ -207,7 +207,7 @@ export const prerecepcionParser = {
       // join matches without read-side fixups.
       if (obj.lot_code) obj.lot_code = CONFIG.normalizeFieldLotCode(obj.lot_code);
 
-      // Initialize vintage_year so all rows share the same key set —
+      // Initialize vintage_year so all rows share the same key set -
       // PostgREST rejects mixed-shape arrays with "All object keys must
       // match" (Round 33). Block below overwrites when derivable.
       obj.vintage_year = null;

@@ -18,7 +18,7 @@ export const Filters = {
     weatherCustomEnd: null,
     weatherShowForecast: false,  // F8: toggle forecast overlay
     weatherForecastHorizon: 7,   // F8: 7 or 16 days
-    mapVintage: null,    // Single vintage for the Mapa view (#21 — separate
+    mapVintage: null,    // Single vintage for the Mapa view (#21 - separate
                          // from `vintages` Set to keep map's single-select
                          // independent of the global multi-select chips).
   },
@@ -268,7 +268,7 @@ export const Filters = {
     const customWrap = document.getElementById('weather-custom-dates');
     if (customWrap) customWrap.style.display = 'none';
     const sectionTitle = document.getElementById('weather-section-title');
-    if (sectionTitle) sectionTitle.textContent = 'Clima durante la Vendimia — Valle de Guadalupe';
+    if (sectionTitle) sectionTitle.textContent = 'Clima durante la Vendimia - Valle de Guadalupe';
     const lotSearch = document.getElementById('lot-search');
     if (lotSearch) lotSearch.value = '';
     this.filterLotSearch('');
@@ -428,7 +428,7 @@ export const Filters = {
   // Re-sync chip active classes with current filter state on view return
   syncChipUI() {
     const syncSet = (containerId, stateSet) => {
-      // dataset.value is always a string but vintage Sets hold numbers —
+      // dataset.value is always a string but vintage Sets hold numbers -
       // compare both sides as strings or active chips silently desync.
       const asStrings = new Set([...stateSet].map(String));
       document.querySelectorAll(`#${containerId} .chip`).forEach(c => {

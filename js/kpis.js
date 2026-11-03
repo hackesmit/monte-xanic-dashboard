@@ -2,7 +2,7 @@
 import { weightedMean } from './aggregations.js';
 
 export const KPIs = {
-  // Unweighted arithmetic mean — legacy path for callers without row context.
+  // Unweighted arithmetic mean - legacy path for callers without row context.
   avg(arr) {
     const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
     return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
@@ -40,7 +40,7 @@ export const KPIs = {
     const el = document.getElementById(id);
     if (!el) return;
     if (value === null || value === undefined) {
-      el.innerHTML = '—';
+      el.innerHTML = '-';
     } else {
       const formatted = decimals === 0 ? Math.round(value) : value.toFixed(decimals);
       el.innerHTML = unit ? `${formatted}<span class="kpi-unit">${unit}</span>` : formatted;

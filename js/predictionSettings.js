@@ -79,11 +79,11 @@ export const PredictionSettings = {
       .slice()
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at))[0];
     if (meta && latest) {
-      meta.textContent = `Última actualización: ${latest.updated_by ?? '—'} · `
+      meta.textContent = `Última actualización: ${latest.updated_by ?? '-'} · `
         + new Date(latest.updated_at).toLocaleDateString('es-MX',
             { day:'numeric', month:'short', year:'numeric' });
     } else if (meta) {
-      meta.textContent = 'Sin overrides registrados — todos los valores se heredan de la rúbrica.';
+      meta.textContent = 'Sin overrides registrados - todos los valores se heredan de la rúbrica.';
     }
     const saveBtn = document.getElementById('ajustes-objetivos-save');
     if (saveBtn) saveBtn.disabled = !canEdit;
