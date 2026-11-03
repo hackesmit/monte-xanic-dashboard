@@ -48,7 +48,15 @@ test('while data loads the page shows six gray KPI cards and no text', async ({ 
   const loader = page.locator('#loading-spinner');
   await expect(loader).toBeVisible();
   await expect(loader.locator('.kpi-skel-card')).toHaveCount(6);
-  expect((await loader.innerText()).trim()).toBe('');
+  // No visible text: the only text is the 1px screen-reader status, outside the aria-hidden skeleton.
+  const sr = loader.locator('.sr-only');
+  await expect(sr).toHaveText('Cargando datos');
+  const box = await sr.evaluate(el => ({ w: el.getBoundingClientRect().width, h: el.getBoundingClientRect().height,
+    hiddenSkel: !!el.closest('[aria-hidden="true"]') }));
+  expect(box.w).toBeLessThanOrEqual(1);
+  expect(box.h).toBeLessThanOrEqual(1);
+  expect(box.hiddenSkel).toBe(false);
+  await expect(loader.locator('.kpi-skel')).toHaveAttribute('aria-hidden', 'true');
   await page.screenshot({ path: 'test-results/kpi-skeleton.png' });
 });
 
@@ -69,4 +77,10 @@ test('the skeleton pulses when motion is allowed', async ({ page }) => {
   const name = await page.locator('.kpi-skel-card').first()
     .evaluate(el => getComputedStyle(el).animationName);
   expect(name).toBe('kpi-skel-pulse');
+});
+
+test('the "Cargando datos" status goes away with the spinner', async ({ page, context }) => {
+  await boot(page, context);
+  await expect(page.locator('#loading-spinner')).toBeHidden();
+  await expect(page.getByText('Cargando datos', { exact: true })).toBeHidden();
 });
