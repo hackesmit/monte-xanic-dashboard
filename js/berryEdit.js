@@ -11,7 +11,7 @@ import { DemoMode } from './demoMode.js';
 import { RowEditor } from './rowEditor.js';
 import { App } from './app.js';
 
-// JS field → DOM input id. Only fields the form exposes are listed —
+// JS field → DOM input id. Only fields the form exposes are listed -
 // composite-key columns (sampleId/sampleDate/sampleSeq) live in jsToDb
 // but not here, so they never count toward the dirty set.
 const FIELD_MAP = {
@@ -65,12 +65,12 @@ function populateDropdowns(row) {
   const origin  = document.getElementById('berry-edit-origin');
   if (variety && (!variety.options.length || variety.options.length < 2)) {
     const allVarieties = [...CONFIG.grapeTypes.red, ...CONFIG.grapeTypes.white].sort();
-    variety.innerHTML = '<option value="">— Seleccionar —</option>' +
+    variety.innerHTML = '<option value="">- Seleccionar -</option>' +
       allVarieties.map(v => `<option value="${v}">${v}</option>`).join('');
   }
   if (origin && (!origin.options.length || origin.options.length < 2)) {
     const origins = Object.keys(CONFIG.originColors).sort();
-    origin.innerHTML = '<option value="">— Seleccionar —</option>' +
+    origin.innerHTML = '<option value="">- Seleccionar -</option>' +
       origins.map(o => `<option value="${o}">${o}</option>`).join('');
   }
   if (variety) variety.value = row.variety || '';
@@ -98,7 +98,7 @@ export const BerryEdit = {
       };
       const setText = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.textContent = (val === null || val === undefined) ? '—' : val;
+        if (el) el.textContent = (val === null || val === undefined) ? '-' : val;
       };
 
       setText('berry-edit-sample-id', row.sampleId);

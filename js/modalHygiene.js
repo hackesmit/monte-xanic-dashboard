@@ -1,4 +1,4 @@
-// ── modalHygiene — shared dialog hygiene helpers ──────────────────
+// ── modalHygiene - shared dialog hygiene helpers ──────────────────
 //
 // Used by rowEditor.js (berry/wine/preferment edit) and mediciones.js to
 // add iOS-safe body scroll lock, focus trap, autofocus, and optional ESC +

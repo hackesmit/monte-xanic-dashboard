@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Monte Xanic">
-<title>Vendimias — Monte Xanic</title>
+<title>Vendimias - Monte Xanic</title>
 <script src="/theme-init.js"></script>
 <link rel="stylesheet" href="css/styles.css">
 <link rel="stylesheet" href="css/mona.css">
@@ -36,7 +36,7 @@
       <button type="submit" id="login-btn" class="login-btn">Iniciar Sesión</button>
       <div id="login-error" class="login-error"></div>
     </form>
-    <div class="login-footer">Monte Xanic &mdash; Bodega Vinícola</div>
+    <div class="login-footer">Monte Xanic - Bodega Vinícola</div>
     <button class="theme-toggle login-theme-toggle" id="login-theme-toggle" title="Cambiar tema" aria-label="Cambiar tema">
       <span class="theme-icon-dark">&#9790;</span>
       <span class="theme-icon-light" style="display:none">&#9788;</span>
@@ -60,7 +60,7 @@
     <button class="loader-btn">Seleccionar Archivos</button>
     <div class="loader-files" id="loader-status"></div>
 
-    <!-- ── DB upload (persists to Supabase) — lab role only ── -->
+    <!-- ── DB upload (persists to Supabase) - lab role only ── -->
     <div id="db-upload-section" style="display:none">
       <div class="loader-divider"></div>
       <div class="loader-section-label">Guardar en Base de Datos</div>
@@ -100,12 +100,13 @@
   </div>
 </div>
 
-<!-- Loading skeleton (shown between login and data ready): six gray KPI cards, no text -->
+<!-- Loading skeleton (shown between login and data ready). A KPI-row placeholder
+     with no text; app.js _hideSpinner() hides it by id. -->
 <div id="loading-spinner" class="loading-spinner" role="status">
   <span class="sr-only">Cargando datos</span>
-  <div class="kpi-skel" aria-hidden="true">
-    <div class="kpi-skel-card"></div><div class="kpi-skel-card"></div><div class="kpi-skel-card"></div>
-    <div class="kpi-skel-card"></div><div class="kpi-skel-card"></div><div class="kpi-skel-card"></div>
+  <div class="kpi-skel-row" aria-hidden="true">
+    <div class="kpi-skel"></div><div class="kpi-skel"></div><div class="kpi-skel"></div>
+    <div class="kpi-skel"></div><div class="kpi-skel"></div><div class="kpi-skel"></div>
   </div>
 </div>
 
@@ -124,11 +125,11 @@
     </div>
   </div>
   <div class="header-right">
-    <div class="hdr-stat"><div class="hdr-num" id="hdr-muestras">—</div><div class="hdr-lbl">Muestras</div></div>
-    <div class="hdr-stat"><div class="hdr-num" id="hdr-lotes">—</div><div class="hdr-lbl">Lotes</div></div>
-    <div class="hdr-stat"><div class="hdr-num" id="hdr-varietales">—</div><div class="hdr-lbl">Varietales</div></div>
-    <div class="hdr-stat"><div class="hdr-num" id="hdr-origenes">—</div><div class="hdr-lbl">Orígenes</div></div>
-    <span id="db-status-badge" class="db-badge db-badge-off" title="Sin conexión a base de datos">DB —</span>
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-muestras">-</div><div class="hdr-lbl">Muestras</div></div>
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-lotes">-</div><div class="hdr-lbl">Lotes</div></div>
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-varietales">-</div><div class="hdr-lbl">Varietales</div></div>
+    <div class="hdr-stat"><div class="hdr-num" id="hdr-origenes">-</div><div class="hdr-lbl">Orígenes</div></div>
+    <span id="db-status-badge" class="db-badge db-badge-off" title="Sin conexión a base de datos">DB -</span>
     <button type="button" class="comando-btn" id="comando-btn" aria-haspopup="dialog" aria-keyshortcuts="Control+K Meta+K">Ir a <kbd>Ctrl K</kbd></button>
     <button class="demo-toggle" id="demo-toggle-btn" title="Activar/desactivar Modo Demo (datos temporales, no toca la base de datos)" aria-label="Modo Demo">Demo</button>
     <button class="theme-toggle" title="Cambiar tema claro/oscuro" id="theme-toggle-btn" aria-label="Cambiar tema">
@@ -140,9 +141,9 @@
   </div>
 </header>
 
-<!-- Modo Demo banner — shown only when body has .demo-mode-active -->
+<!-- Modo Demo banner - shown only when body has .demo-mode-active -->
 <div id="demo-banner" class="demo-banner" role="status" aria-live="polite">
-  MODO DEMO — datos de demostración temporales. La base de datos real no se modifica.
+  MODO DEMO - datos de demostración temporales. La base de datos real no se modifica.
 </div>
 
 <div class="layout">
@@ -267,11 +268,11 @@
         <button class="page-export-btn" data-view="berry" data-view-title="Bayas" title="Exportar vista completa">Exportar Vista &#x2913;</button>
       </div>
       <div class="kpi-row">
-        <div class="kpi-card"><div class="kpi-label">Brix Promedio</div><div class="kpi-value" id="kpi-avg-brix">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">pH Promedio</div><div class="kpi-value" id="kpi-avg-ph">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">AT Promedio</div><div class="kpi-value" id="kpi-avg-ta">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="kpi-avg-tant">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Peso Baya Prom.</div><div class="kpi-value" id="kpi-avg-fw">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Brix Promedio</div><div class="kpi-value" id="kpi-avg-brix">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">pH Promedio</div><div class="kpi-value" id="kpi-avg-ph">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">AT Promedio</div><div class="kpi-value" id="kpi-avg-ta">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="kpi-avg-tant">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">Peso Baya Prom.</div><div class="kpi-value" id="kpi-avg-fw">-</div></div>
       </div>
 
       <div class="section-label">Evolución vs Días Post-Envero</div>
@@ -467,15 +468,15 @@
         <button class="summary-clear" data-clear="all-wine">Limpiar</button>
       </div>
       <div class="view-export-row">
-        <div class="section-label">Indicadores Clave — Recepción</div>
+        <div class="section-label">Indicadores Clave - Recepción</div>
         <button class="page-export-btn" data-view="wine" data-view-title="Vino" title="Exportar vista completa">Exportar Vista &#x2913;</button>
       </div>
       <div class="kpi-row">
-        <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="wine-kpi-tant">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">fANT Promedio</div><div class="kpi-value" id="wine-kpi-fant">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">pTAN Promedio</div><div class="kpi-value" id="wine-kpi-ptan">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">IPT Promedio</div><div class="kpi-value" id="wine-kpi-ipt">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Muestras</div><div class="kpi-value" id="wine-kpi-count">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">tANT Promedio</div><div class="kpi-value" id="wine-kpi-tant">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">fANT Promedio</div><div class="kpi-value" id="wine-kpi-fant">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">pTAN Promedio</div><div class="kpi-value" id="wine-kpi-ptan">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">IPT Promedio</div><div class="kpi-value" id="wine-kpi-ipt">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">Muestras</div><div class="kpi-value" id="wine-kpi-count">-</div></div>
       </div>
 
       <div class="section-label">Fenólicos por Varietal</div>
@@ -551,7 +552,7 @@
         <div class="chart-card chart-wide">
           <button class="chart-export-btn" data-chart-id="chartExtraction" data-chart-title="Extraccion tANT Baya vs Vino" title="Exportar gráfico">&#x2913;</button>
           <div class="chart-title">tANT: Baya vs Vino</div>
-          <div class="chart-sub">Antocianinas totales — porcentaje de extracción</div>
+          <div class="chart-sub">Antocianinas totales - porcentaje de extracción</div>
           <div class="chart-h chart-h-lg" style="height:320px"><canvas id="chartExtraction"></canvas></div>
         </div>
         <div class="chart-card chart-wide">
@@ -666,13 +667,13 @@
         <div class="chart-card chart-wide">
           <button class="chart-export-btn" data-chart-id="chartValleyTemp" data-chart-title="Temperatura por Valle" title="Exportar gráfico">&#x2913;</button>
           <div class="chart-title">Temperatura Media Diaria por Valle</div>
-          <div class="chart-sub">°C por día de temporada — VDG vs VON vs SV (vendimia seleccionada)</div>
+          <div class="chart-sub">°C por día de temporada - VDG vs VON vs SV (vendimia seleccionada)</div>
           <div class="chart-h chart-h-md" style="height:280px"><canvas id="chartValleyTemp"></canvas></div>
         </div>
       </div>
 
       <div class="section-label" style="margin-top:24px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <span id="weather-section-title">Clima durante la Vendimia — Valle de Guadalupe</span>
+        <span id="weather-section-title">Clima durante la Vendimia - Valle de Guadalupe</span>
         <select id="weather-valley-select" class="nav-select nav-select-inline">
           <option value="VDG">VDG</option>
           <option value="VON">VON</option>
@@ -705,19 +706,19 @@
         <div class="chart-card">
           <button class="chart-export-btn" data-chart-id="chartWeatherTemp" data-chart-title="Temperatura Media Diaria" title="Exportar gráfico">&#x2913;</button>
           <div class="chart-title">Temperatura Media Diaria</div>
-          <div class="chart-sub">°C por día de temporada (1 Jul = Día 1) — comparativo entre vendimias</div>
+          <div class="chart-sub">°C por día de temporada (1 Jul = Día 1) - comparativo entre vendimias</div>
           <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartWeatherTemp"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" data-chart-id="chartWeatherRain" data-chart-title="Eventos de Lluvia" title="Exportar gráfico">&#x2913;</button>
           <div class="chart-title">Eventos de Lluvia</div>
-          <div class="chart-sub">Precipitación (mm) por día de temporada — comparativo entre vendimias</div>
+          <div class="chart-sub">Precipitación (mm) por día de temporada - comparativo entre vendimias</div>
           <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartWeatherRain"></canvas></div>
         </div>
         <div class="chart-card">
           <button class="chart-export-btn" data-chart-id="chartGDD" data-chart-title="Grados Día de Crecimiento (GDD)" title="Exportar gráfico">&#x2913;</button>
           <div class="chart-title">Grados Día Acumulados (GDD)</div>
-          <div class="chart-sub">GDD acumulado desde 1 Jul (base 10°C) — comparativo entre vendimias</div>
+          <div class="chart-sub">GDD acumulado desde 1 Jul (base 10°C) - comparativo entre vendimias</div>
           <div class="chart-h chart-h-sm" style="height:240px"><canvas id="chartGDD"></canvas></div>
         </div>
       </div>
@@ -772,11 +773,11 @@
       </p>
 
       <div class="map-kpis">
-        <div class="kpi-card"><span class="kpi-label">Muestras</span><span id="map-kpi-samples" class="kpi-value">—</span></div>
-        <div class="kpi-card"><span class="kpi-label">Secciones</span><span id="map-kpi-sections" class="kpi-value">—</span></div>
-        <div class="kpi-card"><span class="kpi-label">Brix Prom.</span><span id="map-kpi-brix" class="kpi-value">—</span></div>
-        <div class="kpi-card"><span class="kpi-label">pH Prom.</span><span id="map-kpi-ph" class="kpi-value">—</span></div>
-        <div class="kpi-card"><span class="kpi-label">A.T. Prom.</span><span id="map-kpi-ta" class="kpi-value">—</span></div>
+        <div class="kpi-card"><span class="kpi-label">Muestras</span><span id="map-kpi-samples" class="kpi-value">-</span></div>
+        <div class="kpi-card"><span class="kpi-label">Secciones</span><span id="map-kpi-sections" class="kpi-value">-</span></div>
+        <div class="kpi-card"><span class="kpi-label">Brix Prom.</span><span id="map-kpi-brix" class="kpi-value">-</span></div>
+        <div class="kpi-card"><span class="kpi-label">pH Prom.</span><span id="map-kpi-ph" class="kpi-value">-</span></div>
+        <div class="kpi-card"><span class="kpi-label">A.T. Prom.</span><span id="map-kpi-ta" class="kpi-value">-</span></div>
       </div>
 
       <div class="map-body">
@@ -794,10 +795,10 @@
       </div>
 
       <div class="kpi-row">
-        <div class="kpi-card"><div class="kpi-label">Total Mediciones</div><div class="kpi-value" id="med-kpi-count">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Toneladas Totales</div><div class="kpi-value" id="med-kpi-tons">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">Peso Prom. Baya</div><div class="kpi-value" id="med-kpi-weight">—</div></div>
-        <div class="kpi-card"><div class="kpi-label">% Madura Prom.</div><div class="kpi-value" id="med-kpi-health">—</div></div>
+        <div class="kpi-card"><div class="kpi-label">Total Mediciones</div><div class="kpi-value" id="med-kpi-count">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">Toneladas Totales</div><div class="kpi-value" id="med-kpi-tons">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">Peso Prom. Baya</div><div class="kpi-value" id="med-kpi-weight">-</div></div>
+        <div class="kpi-card"><div class="kpi-label">% Madura Prom.</div><div class="kpi-value" id="med-kpi-health">-</div></div>
       </div>
 
       <div class="section-label" style="margin-top:18px">Nueva Medicion</div>
@@ -819,11 +820,11 @@
         <div class="form-row">
           <div class="form-group">
             <label>Variedad</label>
-            <select id="med-variety" required><option value="">—</option></select>
+            <select id="med-variety" required><option value="">-</option></select>
           </div>
           <div class="form-group">
             <label>Origen</label>
-            <select id="med-origin" required><option value="">—</option></select>
+            <select id="med-origin" required><option value="">-</option></select>
           </div>
           <div class="form-group">
             <label>Lote</label>
@@ -1003,8 +1004,8 @@
   <dialog id="med-edit-modal" class="row-edit-modal" aria-labelledby="med-edit-title">
     <form method="dialog" id="med-edit-form" class="medicion-form">
       <header class="modal-header">
-        <h2 id="med-edit-title">Editar medición · <span id="med-edit-code">—</span></h2>
-        <p id="med-edit-audit" class="modal-audit-line">—</p>
+        <h2 id="med-edit-title">Editar medición · <span id="med-edit-code">-</span></h2>
+        <p id="med-edit-audit" class="modal-audit-line">-</p>
         <button type="button" class="modal-close" id="med-edit-close" aria-label="Cerrar">×</button>
       </header>
 
@@ -1031,11 +1032,11 @@
       <div class="form-row">
         <div class="form-group">
           <label>Variedad</label>
-          <select id="med-edit-variety"><option value="">—</option></select>
+          <select id="med-edit-variety"><option value="">-</option></select>
         </div>
         <div class="form-group">
           <label>Origen</label>
-          <select id="med-edit-origin"><option value="">—</option></select>
+          <select id="med-edit-origin"><option value="">-</option></select>
         </div>
         <div class="form-group">
           <label>Lote</label>
@@ -1081,7 +1082,7 @@
           <label>Calidad estimada</label>
           <div id="med-edit-score" class="detail-grade"
                aria-live="polite"
-               title="Se calcula en vivo con los valores actuales del formulario.">—</div>
+               title="Se calcula en vivo con los valores actuales del formulario.">-</div>
         </div>
         <div class="form-group">
           <label>Medido por</label>
@@ -1108,8 +1109,8 @@
   <dialog id="berry-edit-modal" class="row-edit-modal" aria-labelledby="berry-edit-title">
     <form method="dialog" id="berry-edit-form" class="medicion-form">
       <header class="modal-header">
-        <h2 id="berry-edit-title">Editar muestra · <span id="berry-edit-sample-id">—</span></h2>
-        <p id="berry-edit-audit" class="modal-audit-line">—</p>
+        <h2 id="berry-edit-title">Editar muestra · <span id="berry-edit-sample-id">-</span></h2>
+        <p id="berry-edit-audit" class="modal-audit-line">-</p>
         <button type="button" class="modal-close" id="berry-edit-close" aria-label="Cerrar">×</button>
       </header>
 
@@ -1135,11 +1136,11 @@
       <div class="form-row">
         <div class="form-group">
           <label>Variedad</label>
-          <select id="berry-edit-variety"><option value="">—</option></select>
+          <select id="berry-edit-variety"><option value="">-</option></select>
         </div>
         <div class="form-group">
           <label>Origen</label>
-          <select id="berry-edit-origin"><option value="">—</option></select>
+          <select id="berry-edit-origin"><option value="">-</option></select>
         </div>
         <div class="form-group">
           <label>Fecha de Envero</label>
@@ -1192,8 +1193,8 @@
   <dialog id="wine-edit-modal" class="row-edit-modal" aria-labelledby="wine-edit-title">
     <form method="dialog" id="wine-edit-form" class="medicion-form">
       <header class="modal-header">
-        <h2 id="wine-edit-title">Editar recepción · <span id="wine-edit-code">—</span></h2>
-        <p id="wine-edit-audit" class="modal-audit-line">—</p>
+        <h2 id="wine-edit-title">Editar recepción · <span id="wine-edit-code">-</span></h2>
+        <p id="wine-edit-audit" class="modal-audit-line">-</p>
         <button type="button" class="modal-close" id="wine-edit-close" aria-label="Cerrar">×</button>
       </header>
 
@@ -1223,11 +1224,11 @@
         </div>
         <div class="form-group">
           <label>Variedad</label>
-          <select id="wine-edit-variety"><option value="">—</option></select>
+          <select id="wine-edit-variety"><option value="">-</option></select>
         </div>
         <div class="form-group">
           <label>Origen</label>
-          <select id="wine-edit-origin"><option value="">—</option></select>
+          <select id="wine-edit-origin"><option value="">-</option></select>
         </div>
         <div class="form-group">
           <label>Tanque</label>
@@ -1291,8 +1292,8 @@
   <dialog id="pref-edit-modal" class="row-edit-modal" aria-labelledby="pref-edit-title">
     <form method="dialog" id="pref-edit-form" class="medicion-form">
       <header class="modal-header">
-        <h2 id="pref-edit-title">Editar pre-fermentativo · <span id="pref-edit-code">—</span></h2>
-        <p id="pref-edit-audit" class="modal-audit-line">—</p>
+        <h2 id="pref-edit-title">Editar pre-fermentativo · <span id="pref-edit-code">-</span></h2>
+        <p id="pref-edit-audit" class="modal-audit-line">-</p>
         <button type="button" class="modal-close" id="pref-edit-close" aria-label="Cerrar">×</button>
       </header>
 
@@ -1322,7 +1323,7 @@
         </div>
         <div class="form-group">
           <label>Variedad</label>
-          <select id="pref-edit-variety"><option value="">—</option></select>
+          <select id="pref-edit-variety"><option value="">-</option></select>
         </div>
       </div>
 
@@ -1351,7 +1352,7 @@
     </form>
   </dialog>
 
-  <!-- Predicción — expanded detail modal -->
+  <!-- Predicción - expanded detail modal -->
   <dialog id="pred-detail-modal" class="row-edit-modal pred-detail-modal"
           aria-labelledby="pred-detail-title">
     <button type="button" class="row-edit-close" data-pred-detail-close
@@ -1444,7 +1445,7 @@
 <div id="help-modal" class="help-overlay" style="display:none">
   <div class="help-card">
     <div class="help-header">
-      <div class="help-title">Guía de Uso — Dashboard Vendimia</div>
+      <div class="help-title">Guía de Uso - Dashboard Vendimia</div>
       <button class="help-close">&times;</button>
     </div>
     <div class="help-body">
@@ -1460,15 +1461,15 @@
         <p>Haga clic en <strong>"Recargar Datos"</strong> en la barra lateral para abrir la pantalla de carga. Puede arrastrar y soltar archivos o usar el botón de selección.</p>
         <p><strong>Archivo principal:</strong></p>
         <ul>
-          <li><strong>Exportación WineXRay</strong> (.csv o .xlsx) — Un solo archivo con todos los datos. El dashboard separa automáticamente muestras de bayas (<code>Sample Type = Berries</code>) y muestras de vino (Aging Wine, Young Wine, Must, etc.).</li>
-          <li><strong>Movimientos de tanque</strong> (opcional) — Archivo de contexto sobre mezclas y movimientos.</li>
+          <li><strong>Exportación WineXRay</strong> (.csv o .xlsx) - Un solo archivo con todos los datos. El dashboard separa automáticamente muestras de bayas (<code>Sample Type = Berries</code>) y muestras de vino (Aging Wine, Young Wine, Must, etc.).</li>
+          <li><strong>Movimientos de tanque</strong> (opcional) - Archivo de contexto sobre mezclas y movimientos.</li>
         </ul>
       </div>
 
       <div class="help-section">
         <h3>Formato de Datos Requerido</h3>
         <p><strong>Exportación WineXRay (.csv o .xlsx):</strong></p>
-        <p>Exportación directa de WineXRay. La primera fila debe ser encabezados. Valores nulos se representan con <code>-</code> o <code>—</code>. El archivo contiene tanto datos de bayas como de vino, diferenciados por la columna <code>Sample Type</code>. Columnas utilizadas:</p>
+        <p>Exportación directa de WineXRay. La primera fila debe ser encabezados. Valores nulos se representan con <code>-</code> o celda vacía. El archivo contiene tanto datos de bayas como de vino, diferenciados por la columna <code>Sample Type</code>. Columnas utilizadas:</p>
         <div class="help-columns">
           <code>Sample Id</code> <code>Sample Type</code> <code>Sample Date</code> <code>Vintage</code> <code>Variety</code> <code>Appellation</code> <code>Vessel Id</code> <code>DaysPostCrush</code> <code>Brix</code> <code>pH</code> <code>tANT</code> <code>fANT</code> <code>pTAN</code> <code>IPT</code> <code>Berry Fresh Weight</code>
         </div>
@@ -1477,24 +1478,24 @@
       <div class="help-section">
         <h3>Vistas del Dashboard</h3>
         <ul>
-          <li><strong>Bayas</strong> — Gráficas de dispersión de Brix, pH, tANT, Acidez y Peso vs Días Post-Envero. Comparativo por varietal y distribución por origen.</li>
-          <li><strong>Vino</strong> — Tablas de recepción de tanque y prefermentativos con KPIs. Filtre por varietal, proveedor/origen y tipo de uva.</li>
-          <li><strong>Extracción</strong> — Comparación baya→vino de antocianinas totales. Muestra porcentaje de extracción fenólica.</li>
-          <li><strong>Vendimias</strong> — Gráficas de comparación entre vendimias y tablas de resumen con promedios por parámetro y varietal.</li>
+          <li><strong>Bayas</strong> - Gráficas de dispersión de Brix, pH, tANT, Acidez y Peso vs Días Post-Envero. Comparativo por varietal y distribución por origen.</li>
+          <li><strong>Vino</strong> - Tablas de recepción de tanque y prefermentativos con KPIs. Filtre por varietal, proveedor/origen y tipo de uva.</li>
+          <li><strong>Extracción</strong> - Comparación baya→vino de antocianinas totales. Muestra porcentaje de extracción fenólica.</li>
+          <li><strong>Vendimias</strong> - Gráficas de comparación entre vendimias y tablas de resumen con promedios por parámetro y varietal.</li>
         </ul>
       </div>
 
       <div class="help-section">
         <h3>Controles y Filtros</h3>
         <ul>
-          <li><strong>Tipo de Uva</strong> — Filtre entre tintas, blancas o todas.</li>
-          <li><strong>Varietal</strong> — Haga clic en chips para seleccionar/deseleccionar varietales. Los chips tienen borde de color indicando tinta (rojo) o blanca (amarillo).</li>
-          <li><strong>Origen</strong> — Filtre por viñedo/origen.</li>
-          <li><strong>Lote</strong> — Busque y filtre por lote específico.</li>
-          <li><strong>Color por</strong> — Cambie el color de las gráficas entre "Por Varietal" y "Por Origen".</li>
-          <li><strong>Conectar Líneas</strong> — Active/desactive líneas entre puntos de datos.</li>
-          <li><strong>Leyenda</strong> — Haga clic en items de la leyenda para ocultar/mostrar series.</li>
-          <li><strong>Modo Claro/Oscuro</strong> — Use el botón de luna/sol en la esquina superior derecha.</li>
+          <li><strong>Tipo de Uva</strong> - Filtre entre tintas, blancas o todas.</li>
+          <li><strong>Varietal</strong> - Haga clic en chips para seleccionar/deseleccionar varietales. Los chips tienen borde de color indicando tinta (rojo) o blanca (amarillo).</li>
+          <li><strong>Origen</strong> - Filtre por viñedo/origen.</li>
+          <li><strong>Lote</strong> - Busque y filtre por lote específico.</li>
+          <li><strong>Color por</strong> - Cambie el color de las gráficas entre "Por Varietal" y "Por Origen".</li>
+          <li><strong>Conectar Líneas</strong> - Active/desactive líneas entre puntos de datos.</li>
+          <li><strong>Leyenda</strong> - Haga clic en items de la leyenda para ocultar/mostrar series.</li>
+          <li><strong>Modo Claro/Oscuro</strong> - Use el botón de luna/sol en la esquina superior derecha.</li>
         </ul>
       </div>
 

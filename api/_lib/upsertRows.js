@@ -10,7 +10,7 @@
 //
 // Returns { status, body } instead of writing to a response, so both an HTTP
 // handler and an unattended job can call it. Callers own auth, rate limiting
-// and role checks — this module assumes the caller is already authorized.
+// and role checks - this module assumes the caller is already authorized.
 import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../../js/quality-scale.js';
 import { ALLOWED_TABLES } from './allowedTables.js';
 
@@ -105,7 +105,7 @@ export async function upsertRows({ table, rows }) {
   // any key column makes the constraint a no-op, so the row is INSERTed fresh on
   // every retry instead of merged. A sync button's double-clicks, timeout
   // retries, and overlapping runs would each leave a duplicate. Reject a row
-  // whose natural key is not fully present — the same guard /api/row already
+  // whose natural key is not fully present - the same guard /api/row already
   // applies to its edit path. Columns with a deterministic non-null DB default
   // (keyDefault, e.g. sample_seq) may be omitted: the default still lets the
   // conflict arbiter match across retries.
@@ -117,7 +117,7 @@ export async function upsertRows({ table, rows }) {
         const present = col in rows[i];
         const empty = rows[i][col] === null || rows[i][col] === '';
         if (keyDefault && keyDefault.has(col)) {
-          // Absent is fine (DB fills the default); an explicit null/'' is not —
+          // Absent is fine (DB fills the default); an explicit null/'' is not -
           // it would either duplicate or fail the NOT NULL column for the whole
           // batch. Reject early with a clear per-row message.
           if (present && empty) {
@@ -197,7 +197,7 @@ export async function upsertRows({ table, rows }) {
         // Schema-cache errors → translate the opaque PostgREST message into
         // an actionable hint pointing at the missing migration (Round 36).
         if (/schema cache|column .+ does not exist/i.test(errText)) {
-          detail += ' — la migración correspondiente parece no estar aplicada. ' +
+          detail += ' - la migración correspondiente parece no estar aplicada. ' +
             'Revisa /api/migrations-status o ejecuta los archivos pendientes en sql/.';
         }
         return reply(500, { ok: false, error: detail });

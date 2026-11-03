@@ -289,7 +289,7 @@ export const DataStore = {
       catch (e) { pErr = e; }
 
       // Fetch tank_receptions + reception_lots for the quality-classification
-      // engine's av/ag/polyphenols inputs. Failure is non-fatal — the engine's
+      // engine's av/ag/polyphenols inputs. Failure is non-fatal - the engine's
       // partial-data guard handles missing params gracefully.
       let receptions = [], receptionLots = [];
       try {
@@ -299,7 +299,7 @@ export const DataStore = {
         receptionLots = await this._fetchAll('reception_lots');
       } catch (_) { receptionLots = []; }
 
-      // Demo mode may have been enabled while these fetches were in flight —
+      // Demo mode may have been enabled while these fetches were in flight -
       // discard the result rather than clobbering the demo overlay.
       if (this._demoActive) return true;
 
@@ -336,7 +336,7 @@ export const DataStore = {
     if (!this.supabase) return;
     try {
       const rows = await this._fetchAll('mediciones_tecnicas');
-      if (this._demoActive) return;  // demo enabled mid-fetch — keep overlay
+      if (this._demoActive) return;  // demo enabled mid-fetch - keep overlay
       this.medicionesData = (rows || []).map(r => this._rowToMedicion(r))
         .filter(m => !CONFIG.isForeignAppellation(m.appellation));
       // Re-run join so existing berryData picks up the new medicion rows.
@@ -354,7 +354,7 @@ export const DataStore = {
     if (!this.supabase) { this.harvestTargetOverrides = []; return; }
     try {
       const rows = await this._fetchAll('harvest_target_overrides');
-      if (this._demoActive) return;  // demo enabled mid-fetch — keep overlay
+      if (this._demoActive) return;  // demo enabled mid-fetch - keep overlay
       this.harvestTargetOverrides = rows || [];
     } catch (e) {
       console.error('[DataStore] loadHarvestTargetOverrides failed:', e);
@@ -579,7 +579,7 @@ export const DataStore = {
   },
 
   parseValue(v) {
-    if (v === '-' || v === '—' || v === '' || v === null || v === undefined) return null;
+    if (v === '-' || v === '\u2014' || v === '' || v === null || v === undefined) return null;
     if (typeof v === 'number') return v;
     const n = parseFloat(v);
     return isNaN(n) ? v : n;
@@ -617,7 +617,7 @@ export const DataStore = {
           } else if (key === 'vintage') {
             val = this.parseValue(val);
           } else {
-            val = val === '-' || val === '—' ? null : val;
+            val = val === '-' || val === '\u2014' ? null : val;
           }
           obj[key] = val;
           if (val !== null && val !== undefined && val !== '') hasData = true;
@@ -653,7 +653,7 @@ export const DataStore = {
           } else if (key === 'fecha') {
             val = this.parseDate(val);
           } else {
-            val = val === '-' || val === '—' ? null : val;
+            val = val === '-' || val === '\u2014' ? null : val;
           }
           obj[key] = val;
           if (val !== null && val !== undefined && val !== '') hasData = true;
@@ -741,7 +741,7 @@ export const DataStore = {
           } else if (key === 'vintage') {
             val = this.parseValue(val);
           } else {
-            val = val === '-' || val === '—' ? null : val;
+            val = val === '-' || val === '\u2014' ? null : val;
           }
           obj[key] = val;
           if (val !== null && val !== undefined && val !== '') hasData = true;
@@ -877,7 +877,7 @@ export const DataStore = {
     });
   },
 
-  // Get wine data (filtered by varietal if applicable) — legacy
+  // Get wine data (filtered by varietal if applicable) - legacy
   getFilteredWine(filters) {
     return this.wineRecepcion.filter(d => {
       if (filters.varieties && filters.varieties.size > 0 && !filters.varieties.has(d.variedad)) return false;
@@ -935,7 +935,7 @@ export const DataStore = {
     this.wineRecepcion  = this.wineRecepcion.filter(d => !CONFIG.isForeignAppellation(d.proveedor));
     this.winePreferment = this.winePreferment.filter(d => !CONFIG.isForeignAppellation(d.proveedor));
     // Enrich berry rows with their matching medicion (if loaded).
-    // Idempotent — safe to call before or after loadMediciones().
+    // Idempotent - safe to call before or after loadMediciones().
     this.joinBerryWithMediciones();
     // Same pattern for tank_receptions → supplies av/ag/polyphenols.
     this.joinBerryWithReceptions();
@@ -1000,9 +1000,9 @@ export const DataStore = {
   // mediciones_tecnicas.tons_received (Map<lotCode, tons>). Samples
   // without a matching medicion get _weight = null (callers fall back
   // to 1 via aggregations.weightedMean's fallbackWeight option).
-  // Idempotent — safe to call multiple times. See Wave 1 #1 dispatch.
+  // Idempotent - safe to call multiple times. See Wave 1 #1 dispatch.
   _tagSampleWeights() {
-    // Key on (lotCode, vintage) like joinBerryWithMediciones — keying on
+    // Key on (lotCode, vintage) like joinBerryWithMediciones - keying on
     // lotCode alone let one vintage's tons overwrite every other vintage's
     // weight for the same lot.
     const weightByLot = new Map();
@@ -1033,7 +1033,7 @@ export const DataStore = {
   joinBerryWithReceptions() {
     // Build reception lookups. reception_lots rows uploaded since
     // migration_reception_lots_upsert carry report_code with reception_id
-    // NULL ("the reception_id path never worked" — see that migration), so
+    // NULL ("the reception_id path never worked" - see that migration), so
     // report_code is the primary key here; reception_id is kept as fallback
     // for legacy/demo rows. Requiring reception_id silently dropped EVERY
     // uploaded lot → av/ag/polifenoles never reached the berries → the
@@ -1054,7 +1054,7 @@ export const DataStore = {
       const rec = (rl.report_code != null ? recByReport.get(rl.report_code) : null)
                ?? (rl.reception_id != null ? recById.get(rl.reception_id) : null);
       if (!rec || rec.vintage_year == null) continue;
-      // Strip the vintage prefix BEFORE dialect normalization — reception
+      // Strip the vintage prefix BEFORE dialect normalization - reception
       // files write '25TEKMP-S1' and the dialect rules anchor on letters.
       const base = CONFIG.normalizeFieldLotCode(this._normalizeLotCode(rl.lot_code));
       for (const code of this._expandLotCode(base)) {

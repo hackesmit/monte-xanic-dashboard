@@ -28,10 +28,10 @@ export const App = {
     this.restoreTheme();
     this.restoreSidebar();
 
-    // Always show dashboard first — never show data loader as first screen
+    // Always show dashboard first - never show data loader as first screen
     this.hideDataLoader();
 
-    // 1 — Try localStorage cache (instant render)
+    // 1 - Try localStorage cache (instant render)
     if (DataStore.loadCache()) {
       this.onDataLoaded();
       // Refresh from Supabase in background; silently update if new data arrives
@@ -69,10 +69,10 @@ export const App = {
         this._showOfflineToast();
       });
     } else {
-      // 2 — Try Supabase (first visit or stale cache)
+      // 2 - Try Supabase (first visit or stale cache)
       await DataStore.initSupabase();
       const supaLoaded = await DataStore.loadFromSupabase();
-      // Re-render when mediciones land (same as the cached path) — otherwise
+      // Re-render when mediciones land (same as the cached path) - otherwise
       // first-visit users see "Sin clasificar" on the Calidad map until they
       // happen to trigger a refresh.
       DataStore.loadMediciones().then(() => {
@@ -83,12 +83,12 @@ export const App = {
       if (supaLoaded) {
         this.onDataLoaded();
       } else {
-        // 3 — Fall back to pre-extracted JSON files (legacy / offline)
+        // 3 - Fall back to pre-extracted JSON files (legacy / offline)
         const jsonLoaded = await DataStore.loadFromJSON();
         if (jsonLoaded) {
           this.onDataLoaded();
         } else {
-          // Show empty dashboard — upload is accessible via "Recargar Datos"
+          // Show empty dashboard - upload is accessible via "Recargar Datos"
           this.onDataLoaded();
         }
       }
@@ -108,7 +108,7 @@ export const App = {
       badge.title = 'Conectado a Supabase';
       badge.className = 'db-badge db-badge-ok';
     } else {
-      badge.textContent = 'DB —';
+      badge.textContent = 'DB -';
       badge.title = 'Sin conexión a base de datos (modo local)';
       badge.className = 'db-badge db-badge-off';
     }
@@ -117,7 +117,7 @@ export const App = {
   bindGlobalEvents() {
     Events.bindAll();
 
-    // File input handler (legacy loader — upload panel handled by Events)
+    // File input handler (legacy loader - upload panel handled by Events)
     const fileInput = document.getElementById('file-input');
     if (fileInput) {
       fileInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
@@ -164,47 +164,47 @@ export const App = {
     for (const file of files) {
       const name = file.name.toLowerCase();
       try {
-        // Try WineXRay format first (CSV or any file) — auto-detect by headers
+        // Try WineXRay format first (CSV or any file) - auto-detect by headers
         if (statusEl) statusEl.innerHTML += `<div class="loader-file-item"><span class="pending">⏳</span> Procesando ${this._esc(file.name)}...</div>`;
 
         if (name.endsWith('.csv') || name.includes('result') || name.includes('winexray') || name.includes('export')) {
-          // Likely WineXRay — try unified processing
+          // Likely WineXRay - try unified processing
           const result = await DataStore.processWineXRayFile(file);
           if (result.berry > 0 || result.wine > 0) {
-            if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${result.berry} bayas, ${result.wine} vinos`;
+            if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} - ${result.berry} bayas, ${result.wine} vinos`;
           } else {
-            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} — No se encontraron datos`;
+            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} - No se encontraron datos`;
           }
         } else if (name.includes('berry') || name.includes('corrected') || name.includes('combined')) {
           const count = await DataStore.processBerryFile(file);
-          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${count} registros de bayas`;
+          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} - ${count} registros de bayas`;
         } else if (name.includes('recep') || name.includes('tanque') || name.includes('tank') || name.includes('rg-lab')) {
           const count = await DataStore.processWineFile(file);
-          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${count} registros de vino`;
+          if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} - ${count} registros de vino`;
         } else {
-          // Unknown file — try WineXRay first, then berry, then wine
+          // Unknown file - try WineXRay first, then berry, then wine
           try {
             const wb = await DataStore.loadFile(file);
             const sheetName = wb.SheetNames[0];
             const rows = DataStore.sheetToArray(wb, sheetName);
             if (DataStore.isWineXRayFormat(rows[0])) {
               const result = await DataStore.processWineXRayFile(file);
-              if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${result.berry} bayas, ${result.wine} vinos`;
+              if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} - ${result.berry} bayas, ${result.wine} vinos`;
             } else {
               const count = await DataStore.processBerryFile(file);
               if (count > 0) {
-                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${count} registros`;
+                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} - ${count} registros`;
               } else {
                 const wCount = await DataStore.processWineFile(file);
-                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} — ${wCount} registros`;
+                if (statusEl) statusEl.lastElementChild.innerHTML = `<span class="check">✓</span> ${this._esc(file.name)} - ${wCount} registros`;
               }
             }
           } catch (e2) {
-            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} — Error: ${this._esc(e2.message)}`;
+            if (statusEl) statusEl.lastElementChild.innerHTML = `<span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} - Error: ${this._esc(e2.message)}`;
           }
         }
       } catch (err) {
-        if (statusEl) statusEl.innerHTML += `<div class="loader-file-item"><span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} — Error: ${this._esc(err.message)}</div>`;
+        if (statusEl) statusEl.innerHTML += `<div class="loader-file-item"><span style="color:var(--flag-error)">✗</span> ${this._esc(file.name)} - Error: ${this._esc(err.message)}</div>`;
       }
     }
 
@@ -262,7 +262,7 @@ export const App = {
     Filters.init();
     Filters.buildMapVintageOptions();
     Filters.initMapVintage();
-    // setView already ends with refresh() — no second full render needed
+    // setView already ends with refresh() - no second full render needed
     this.setView('berry');
 
     // Boot Mona (chat UI, knowledge base, conversation) in the background.
@@ -317,7 +317,7 @@ export const App = {
     const wineFilters = document.getElementById('wine-filters');
     if (berryFilters) berryFilters.style.display = (view === 'berry' || view === 'vintage' || view === 'extraction' || view === 'explorer' || view === 'map' || view === 'mediciones') ? '' : 'none';
     if (wineFilters) wineFilters.style.display = (view === 'wine') ? '' : 'none';
-    // Map view uses its own ranch/metric selectors — hide all filters
+    // Map view uses its own ranch/metric selectors - hide all filters
     if (view === 'map' || view === 'mediciones') {
       if (berryFilters) berryFilters.style.display = 'none';
       if (wineFilters) wineFilters.style.display = 'none';
@@ -503,7 +503,7 @@ export const App = {
     // Update header tagline with detected years
     const tagline = document.getElementById('header-tagline');
     if (tagline && years.length) {
-      tagline.textContent = 'Seguimiento de Maduración y Fenólicos — Vendimia ' + years.join(' & ');
+      tagline.textContent = 'Seguimiento de Maduración y Fenólicos - Vendimia ' + years.join(' & ');
     }
   },
 
@@ -554,7 +554,7 @@ export const App = {
       { name: 'Toneladas Recibidas', field: '_tons', dec: 1, unit: 't' }
     ];
 
-    const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
+    const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '-';
 
     body.innerHTML = metrics.map(m => {
       // Compute value for each vintage year
@@ -589,8 +589,8 @@ export const App = {
         const pct = (vPrev !== null && vCurr !== null && vPrev !== 0) ? ((diff / Math.abs(vPrev)) * 100) : null;
         const diffClass = diff !== null ? (diff > 0 ? 'diff-positive' : diff < 0 ? 'diff-negative' : 'diff-neutral') : '';
         const sign = diff !== null && diff > 0 ? '+' : '';
-        row += `<td class="${diffClass}">${diff !== null ? sign + fmt(diff, m.dec) : '—'}</td>`;
-        row += `<td class="${diffClass}">${pct !== null ? sign + pct.toFixed(1) + '%' : '—'}</td>`;
+        row += `<td class="${diffClass}">${diff !== null ? sign + fmt(diff, m.dec) : '-'}</td>`;
+        row += `<td class="${diffClass}">${pct !== null ? sign + pct.toFixed(1) + '%' : '-'}</td>`;
       }
 
       return `<tr>${row}</tr>`;
@@ -606,7 +606,7 @@ export const App = {
       const valid = arr.filter(x => typeof x === 'number' && !isNaN(x));
       return valid.length ? valid.reduce((a, b) => a + b, 0) / valid.length : null;
     };
-    const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '—';
+    const fmt = (v, dec) => v !== null && v !== undefined ? (dec === 0 ? Math.round(v) : v.toFixed(dec)) : '-';
 
     // Dynamically detect all vintage years, sorted ascending
     const years = [...new Set(data.map(d => d.vintage).filter(Boolean))].map(Number).sort();
@@ -651,7 +651,7 @@ export const App = {
           } else {
             val = avg(byYear[y].map(d => d[p.field]));
           }
-          row += `<td style="color:${vintColor}">${p.field === '_count' ? (val || '—') : fmt(val, p.dec)}</td>`;
+          row += `<td style="color:${vintColor}">${p.field === '_count' ? (val || '-') : fmt(val, p.dec)}</td>`;
         });
       });
 
@@ -667,7 +667,7 @@ export const App = {
 
     const mapping = CONFIG.berryToWine;
     // Key berries by (lotCode, vintage) and pair each wine with the berry
-    // sample of the vintage encoded in its bodega code — same-lot rows from
+    // sample of the vintage encoded in its bodega code - same-lot rows from
     // another vintage would otherwise corrupt the extraction %.
     const berryByLot = {};
     const filteredBerry = Filters.getFiltered();
@@ -720,11 +720,11 @@ export const App = {
       return `<tr ${trAttrs}>
         <td style="font-weight:400;color:var(--gold-lt)">${esc(r.berryLot)}</td>
         <td>${esc(r.wineLot)}</td>
-        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${esc(r.variety) || '—'}</span></td>
-        <td>${esc(r.appellation) || '—'}</td>
-        <td>${r.berryTANT !== null ? Math.round(r.berryTANT) : '—'}</td>
-        <td>${r.wineTANT !== null && r.wineTANT !== undefined ? Math.round(r.wineTANT) : '—'}</td>
-        <td style="color:${extColor};font-weight:400">${r.extraction !== null ? r.extraction.toFixed(1) + '%' : '—'}</td>
+        <td><span class="badge badge-variety" style="border-color:${varColor}55;color:${varColor}">${esc(r.variety) || '-'}</span></td>
+        <td>${esc(r.appellation) || '-'}</td>
+        <td>${r.berryTANT !== null ? Math.round(r.berryTANT) : '-'}</td>
+        <td>${r.wineTANT !== null && r.wineTANT !== undefined ? Math.round(r.wineTANT) : '-'}</td>
+        <td style="color:${extColor};font-weight:400">${r.extraction !== null ? r.extraction.toFixed(1) + '%' : '-'}</td>
       </tr>`;
     }).join('');
   },
@@ -734,7 +734,7 @@ export const App = {
   _savedScrollY: 0,
 
   toggleMobileFilters() {
-    // Legacy — now handled by FAB
+    // Legacy - now handled by FAB
     this.openMobileFilters();
   },
 
@@ -991,7 +991,7 @@ export const App = {
   }
 };
 
-// Initialize on DOM ready — auth gate before app
+// Initialize on DOM ready - auth gate before app
 if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', async () => {
   // Restore theme + bind login toggle before auth (works on login screen)
   App.restoreTheme();

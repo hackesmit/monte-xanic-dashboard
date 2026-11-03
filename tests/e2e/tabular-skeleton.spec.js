@@ -47,7 +47,7 @@ test('while data loads the page shows six gray KPI cards and no text', async ({ 
 
   const loader = page.locator('#loading-spinner');
   await expect(loader).toBeVisible();
-  await expect(loader.locator('.kpi-skel-card')).toHaveCount(6);
+  await expect(loader.locator('.kpi-skel')).toHaveCount(6);
   // No visible text: the only text is the 1px screen-reader status, outside the aria-hidden skeleton.
   const sr = loader.locator('.sr-only');
   await expect(sr).toHaveText('Cargando datos');
@@ -56,7 +56,7 @@ test('while data loads the page shows six gray KPI cards and no text', async ({ 
   expect(box.w).toBeLessThanOrEqual(1);
   expect(box.h).toBeLessThanOrEqual(1);
   expect(box.hiddenSkel).toBe(false);
-  await expect(loader.locator('.kpi-skel')).toHaveAttribute('aria-hidden', 'true');
+  await expect(loader.locator('.kpi-skel-row')).toHaveAttribute('aria-hidden', 'true');
   await page.screenshot({ path: 'test-results/kpi-skeleton.png' });
 });
 
@@ -65,7 +65,7 @@ test('the skeleton pulse stops under prefers-reduced-motion', async ({ page, con
   await page.route('**/api/**', () => new Promise(() => {}));
   await page.route('**/rest/v1/**', () => new Promise(() => {}));
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  const name = await page.locator('.kpi-skel-card').first()
+  const name = await page.locator('.kpi-skel').first()
     .evaluate(el => getComputedStyle(el).animationName);
   expect(name).toBe('none');
 });
@@ -74,7 +74,7 @@ test('the skeleton pulses when motion is allowed', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.route('**/api/**', () => new Promise(() => {}));
   await page.goto('/', { waitUntil: 'domcontentloaded' });
-  const name = await page.locator('.kpi-skel-card').first()
+  const name = await page.locator('.kpi-skel').first()
     .evaluate(el => getComputedStyle(el).animationName);
   expect(name).toBe('kpi-skel-pulse');
 });

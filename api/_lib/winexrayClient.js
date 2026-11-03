@@ -13,7 +13,7 @@
 //     cleartext send. We supply that guarantee here instead.
 //   * redirect: 'manual' on every request, not just login. Most clients follow
 //     a 303 by default, which turns an expired session into a 200 carrying the
-//     login page's HTML — that then feeds into a JSON or CSV parser and fails
+//     login page's HTML - that then feeds into a JSON or CSV parser and fails
 //     far from the real cause, or parses as an empty result set.
 //   * The login 303 must be read, not followed: following it to /client-center
 //     discards the Set-Cookie header we need.
@@ -148,7 +148,7 @@ export class WineXRayClient {
       ? res.headers.getSetCookie()
       : [res.headers.get('set-cookie')].filter(Boolean);
 
-    // Take only _ncfa, and only its name=value pair — never the attributes.
+    // Take only _ncfa, and only its name=value pair - never the attributes.
     for (const c of cookies) {
       const pair = String(c).split(';')[0];
       if (pair.startsWith('_ncfa=') && pair.length > '_ncfa='.length) {
@@ -162,7 +162,7 @@ export class WineXRayClient {
   /**
    * Date-bounded sample list, paginated to exhaustion.
    *
-   * `from`/`to` must be YYYY-MM-DD — an ISO timestamp makes the server 500.
+   * `from`/`to` must be YYYY-MM-DD - an ISO timestamp makes the server 500.
    *
    * Pagination is not optional. A single page silently truncates a busy window
    * and the caller still reports success, which is the worst failure shape on
@@ -257,7 +257,7 @@ export class WineXRayClient {
   /**
    * Download the export CSV as bytes. Returned as an ArrayBuffer so the
    * existing parser owns decoding (it honours a UTF-16 BOM and falls back to
-   * Windows-1252 — decoding here as UTF-8 would mangle "Peña").
+   * Windows-1252 - decoding here as UTF-8 would mangle "Peña").
    */
   async downloadCsv(guid) {
     const { data } = await this._request(`/api/export/result.csv?guid=${encodeURIComponent(guid)}`, {

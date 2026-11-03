@@ -43,7 +43,7 @@ export const UploadManager = {
     return d.innerHTML;
   },
 
-  // Public entry point — called from events.js button handlers.
+  // Public entry point - called from events.js button handlers.
   async startUpload(parserId, file, statusEl) {
     const parser = PARSERS[parserId];
     if (!parser) {
@@ -53,7 +53,7 @@ export const UploadManager = {
     return this._startUploadWithParser(parser, file, statusEl);
   },
 
-  // Internal — also the test surface.
+  // Internal - also the test surface.
   async _startUploadWithParser(parser, file, statusEl) {
     if (this._uploading) {
       this._setStatus(statusEl, 'error', 'Carga en progreso, espere...');
@@ -66,7 +66,7 @@ export const UploadManager = {
     if (DemoMode.isActive()) {
       // Every other write path blocks demo mode; uploads write the REAL
       // tables via /api/upload, so they must too.
-      this._setStatus(statusEl, 'error', '✗ Modo demo activo — desactívelo para subir datos reales.');
+      this._setStatus(statusEl, 'error', '✗ Modo demo activo - desactívelo para subir datos reales.');
       return;
     }
     if (file.size > MAX_SIZE) {
@@ -108,7 +108,7 @@ export const UploadManager = {
     if (DemoMode.isActive()) {
       this._pendingUpload = null;
       this._uploading = false;
-      this._setStatus(statusEl, 'error', '✗ Modo demo activo — desactívelo para subir datos reales.');
+      this._setStatus(statusEl, 'error', '✗ Modo demo activo - desactívelo para subir datos reales.');
       return [];
     }
     const { targets, rejected } = this._pendingUpload;
@@ -160,7 +160,7 @@ export const UploadManager = {
   async upsertRows(table, rows) {
     if (!rows.length) return { count: 0, error: null };
     const token = Auth.getToken();
-    if (!token) return { count: 0, error: 'No autorizado — inicie sesión' };
+    if (!token) return { count: 0, error: 'No autorizado - inicie sesión' };
 
     let total = 0;
     for (let i = 0; i < rows.length; i += 500) {
@@ -200,12 +200,12 @@ export const UploadManager = {
       return { ok: false };
     }
     if (DemoMode.isActive()) {
-      this._setStatus(statusEl, 'error', '\u2717 Modo demo activo \u2014 desactívelo para sincronizar datos reales.');
+      this._setStatus(statusEl, 'error', '\u2717 Modo demo activo - desactívelo para sincronizar datos reales.');
       return { ok: false };
     }
     const token = Auth.getToken();
     if (!token) {
-      this._setStatus(statusEl, 'error', '\u2717 No autorizado \u2014 inicie sesión.');
+      this._setStatus(statusEl, 'error', '\u2717 No autorizado - inicie sesión.');
       return { ok: false };
     }
 
@@ -241,7 +241,7 @@ export const UploadManager = {
     }
   },
 
-  // UI helpers (preview card + summary DOM rendering) — implemented in Task 13
+  // UI helpers (preview card + summary DOM rendering) - implemented in Task 13
   _setStatus(el, state, msg) {
     if (!el) return;
     el.dataset.state = state;

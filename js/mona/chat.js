@@ -1,4 +1,4 @@
-// js/mona/chat.js — conversation state and client-side agent loop.
+// js/mona/chat.js - conversation state and client-side agent loop.
 // Runs the tool loop in the browser: streams from /api/mona, executes tool_use
 // blocks locally via executeTool, resubmits until end_turn. Persists to /api/mona-data.
 import { executeTool } from './tools.js';

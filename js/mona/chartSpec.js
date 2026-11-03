@@ -1,4 +1,4 @@
-// js/mona/chartSpec.js — declarative chart/table spec validation + rendering.
+// js/mona/chartSpec.js - declarative chart/table spec validation + rendering.
 // Validation is pure (safe under `node --test`). Rendering (renderChart/renderTable)
 // touches Chart.js/DOM only when invoked, never at import time.
 
@@ -89,6 +89,9 @@ function toChartType(t) {
   return t; // line, bar, scatter, pie
 }
 
+// Display only: the empty-group key stays U+2014 in the data, shown as '-'.
+const sinRaya = (v) => (typeof v === 'string' ? v.replace(/\u2014/g, '-') : v);
+
 function buildDatasets(spec) {
   const isXY = spec.type === 'scatter';
   return spec.series.map((s, i) => {
@@ -97,7 +100,7 @@ function buildDatasets(spec) {
       ? s.points.map(p => ({ x: p.x, y: p.y }))
       : s.points.map(p => p.y);
     return {
-      label: s.label,
+      label: sinRaya(s.label),
       data,
       backgroundColor: spec.type === 'pie' ? PALETTE.map(c => c) : color,
       borderColor: color,
@@ -112,10 +115,10 @@ function buildDatasets(spec) {
 // Labels come from the first series' x values (categorical/line/bar/area).
 function buildLabels(spec) {
   if (spec.type === 'scatter' || spec.type === 'pie') {
-    return spec.type === 'pie' ? spec.series.map(s => s.label) : undefined;
+    return spec.type === 'pie' ? spec.series.map(s => sinRaya(s.label)) : undefined;
   }
   const first = spec.series[0];
-  return first ? first.points.map(p => p.x) : [];
+  return first ? first.points.map(p => sinRaya(p.x)) : [];
 }
 
 export async function renderChart(canvasEl, spec) {
@@ -137,7 +140,7 @@ export async function renderChart(canvasEl, spec) {
   const scales = isPie ? {} : {
     x: {
       stacked,
-      title: { display: !!spec.xLabel, text: spec.xLabel, color: titleColor, font: { size: 11, family: 'Sackers Gothic Medium' } },
+      title: { display: !!spec.xLabel, text: sinRaya(spec.xLabel), color: titleColor, font: { size: 11, family: 'Sackers Gothic Medium' } },
       ticks: { color: tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
       grid: { color: gridColor },
       type: spec.type === 'scatter' ? 'linear' : 'category',
@@ -145,7 +148,7 @@ export async function renderChart(canvasEl, spec) {
     y: {
       stacked,
       min: spec.options?.yMin, max: spec.options?.yMax,
-      title: { display: !!spec.yLabel, text: spec.yLabel, color: titleColor, font: { size: 11, family: 'Sackers Gothic Medium' } },
+      title: { display: !!spec.yLabel, text: sinRaya(spec.yLabel), color: titleColor, font: { size: 11, family: 'Sackers Gothic Medium' } },
       ticks: { color: tickColor, font: { size: 9, family: 'Sackers Gothic Medium' } },
       grid: { color: gridColor },
     },
@@ -163,7 +166,7 @@ export async function renderChart(canvasEl, spec) {
           display: spec.series.length > 1 || isPie,
           labels: { color: titleColor, font: { size: 10, family: 'Sackers Gothic Medium' }, boxWidth: 12 },
         },
-        title: { display: !!spec.title, text: spec.title, color: titleColor, font: { size: 12, family: 'Sackers Gothic Medium' } },
+        title: { display: !!spec.title, text: sinRaya(spec.title), color: titleColor, font: { size: 12, family: 'Sackers Gothic Medium' } },
       },
       scales,
     },
@@ -175,7 +178,7 @@ export async function renderChart(canvasEl, spec) {
 }
 
 export function renderTable(containerEl, spec) {
-  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const esc = (s) => sinRaya(String(s ?? '')).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const head = spec.columns.map(c => `<th>${esc(c.label)}${c.unit ? ` <span class="mona-unit">(${esc(c.unit)})</span>` : ''}</th>`).join('');
   const body = spec.rows.map(row => {
     const cells = spec.columns.map(c => {

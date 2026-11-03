@@ -7,7 +7,7 @@ import { MIGRATIONS } from '../js/migrations-manifest.js';
 // Returns the diff between the deployed code's expected migrations
 // (js/migrations-manifest.js) and what's actually been applied on the live
 // Supabase DB (public.applied_migrations). Used by the dashboard to warn
-// lab/admin users when code references schema that hasn't been migrated —
+// lab/admin users when code references schema that hasn't been migrated -
 // the recurring failure mode behind Round 35's "Could not find the 'ag'
 // column of 'mediciones_tecnicas' in the schema cache".
 //
@@ -58,7 +58,7 @@ export default async function handler(req, res) {
     });
 
     if (resp.status === 404 || resp.status === 400) {
-      // Table doesn't exist — bootstrap migration not yet run.
+      // Table doesn't exist - bootstrap migration not yet run.
       const errText = await resp.text();
       if (/applied_migrations/.test(errText) || resp.status === 404) {
         return res.status(200).json({

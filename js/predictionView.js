@@ -226,7 +226,7 @@ export const PredictionView = {
           <span style="font-size:10px">se requiere n ≥ 2</span>
         </div>
         ${renderFlagAlerts(p)}` : `
-        <div class="${dateClass}">${dateText ? escapeHtml(dateText) : '—'}</div>
+        <div class="${dateClass}">${dateText ? escapeHtml(dateText) : '-'}</div>
         <div class="pred-card-sub">
           ${horizonDays != null ? `±${Math.round(p.bandDays)} d · faltan ${horizonDays} d` : ''}
           ${closesText ? ` · ${closesText}` : ''}
@@ -241,10 +241,10 @@ export const PredictionView = {
           <div style="font-size:9px;color:#7a7368;margin-top:4px">pH</div>
           <div class="pred-mini"><canvas data-axis="ph"></canvas></div>` : ''}
         <div class="pred-card-foot">
-          <span>Brix <b>${p.brixHoy != null ? p.brixHoy.toFixed(1) : '—'}</b></span>
+          <span>Brix <b>${p.brixHoy != null ? p.brixHoy.toFixed(1) : '-'}</b></span>
           ${r.target.antTarget != null
-            ? `<span>ANT <b>${p.antHoy != null ? Math.round(p.antHoy) : '—'}</b></span>`
-            : `<span>pH <b>${p.phHoy != null ? p.phHoy.toFixed(2) : '—'}</b></span>`}
+            ? `<span>ANT <b>${p.antHoy != null ? Math.round(p.antHoy) : '-'}</b></span>`
+            : `<span>pH <b>${p.phHoy != null ? p.phHoy.toFixed(2) : '-'}</b></span>`}
           <span>n=${p.nCurrent} · ${p.V}v</span>
         </div>`}
     `;
@@ -324,7 +324,7 @@ export const PredictionView = {
         return p.recommendedDate.toLocaleDateString('es-MX',
           { weekday: 'long', day: 'numeric', month: 'long' });
       }
-      return '—';
+      return '-';
     })();
     statusEl.textContent = statusText;
     statusEl.classList.toggle('is-reason', !!p.reason && p.reason !== 'ya-en-ventana');
@@ -419,7 +419,7 @@ export const PredictionView = {
       'ph-temprano':
         'El pH cruzará el umbral antes de que el Brix entre en la ventana ideal. Calidad A no es viable este ciclo.',
       'riesgo-ph':
-        'El pH apretará la ventana — habrá que cosechar antes del Brix ideal para no perder calidad A.',
+        'El pH apretará la ventana - habrá que cosechar antes del Brix ideal para no perder calidad A.',
     };
     if (reasonExplain[p.reason]) {
       reasonBody.textContent = reasonExplain[p.reason];
@@ -479,7 +479,7 @@ export const PredictionView = {
 
 // Rebuild the current-vintage sample array for the chart. computeAll
 // consumed berryData and returned a per-group result, but didn't include
-// the raw sample list — pull it again from DataStore.
+// the raw sample list - pull it again from DataStore.
 function rebuildCurrent(r) {
   const currentVintage = new Date().getFullYear();
   return (DataStore.berryData || [])
