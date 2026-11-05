@@ -681,3 +681,32 @@ export function recorridoLote(tanques, movimientos, lot_code, opciones = {}) {
     litros_salidos: salidos,
   };
 }
+
+/**
+ * The movements of the last `dias` days, newest first (xd-3c2.4: the
+ * 'Movimientos recientes' list under the plan). `hoy` is the vineyard business
+ * date (utils.todayInVineyard), YYYY-MM-DD. The window is inclusive on both
+ * calendar ends: dias = 3 on 2026-11-05 keeps fechas 2026-11-03, -04 and -05.
+ * A fecha after `hoy` is kept (it sorts first, where a mistyped date shows),
+ * a row without a valid fecha is not, and anulado rows are dropped. Order is
+ * the replay order reversed (fecha, then created_at, then log position), so
+ * the list and the replay never disagree on which move came first.
+ * Returns the original row objects; nothing is copied or changed.
+ */
+export function movimientosEnVentana(movimientos, hoy, dias) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(texto(hoy));
+  const n = Number(dias);
+  if (!m || !Number.isInteger(n) || n < 1) return [];
+  const base = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  if (Number.isNaN(base)) return [];
+  const desde = new Date(base - (n - 1) * 86_400_000).toISOString().slice(0, 10);
+  const lista = Array.isArray(movimientos) ? movimientos : [];
+  return ordenar(lista)
+    .filter(({ mov }) => {
+      if (!mov || typeof mov !== 'object' || mov.anulado) return false;
+      const f = texto(mov.fecha).slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(f) && f >= desde;
+    })
+    .reverse()
+    .map(({ mov }) => mov);
+}

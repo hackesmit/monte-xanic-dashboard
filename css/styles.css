@@ -3296,6 +3296,34 @@ button.tanques-chip:focus-visible { outline: 2px solid var(--gold); outline-offs
 .tanques-alert.err { border-left-color: var(--flag-error); }
 .tanques-avisos { display: grid; gap: 4px; font-size: var(--text-sm); color: var(--muted); }
 .tanques-avisos li { margin-left: 16px; }
+/* 'Movimientos recientes' under the plan (xd-3c2.4): a 3 dias / semana / mes
+   switch and the log's rows in that window, newest first. A line is a button
+   that selects the tank the wine went to. */
+.tanques-recientes { display: grid; gap: 8px; }
+.tanques-recientes-head {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
+}
+.tanques-recientes h3 {
+  font-family: var(--font-display); font-size: var(--text-xs); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--gold-dim); font-weight: 400;
+}
+.tanques-recientes-lista {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 2px;
+  max-height: 320px; overflow-y: auto;
+}
+.tanques-recientes-lista button, .tanques-recientes-lista li > div {
+  display: grid; grid-template-columns: 5.5em 7em minmax(0, 1fr) minmax(0, 1fr) auto;
+  gap: 4px 10px; align-items: baseline; width: 100%; text-align: left;
+  background: transparent; color: var(--text); border: 1px solid transparent;
+  border-radius: var(--radius-sharp); padding: 4px 6px;
+  font-family: var(--font-body); font-size: var(--text-sm);
+}
+.tanques-recientes-lista button { cursor: pointer; transition: background var(--motion-fast); }
+.tanques-recientes-lista button:hover { background: var(--card2); }
+.tanques-recientes-lista button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.tanques-recientes-lista time { color: var(--muted); }
+.tanques-recientes-ruta, .tanques-recientes-lote { font-family: var(--font-mono); }
+.tanques-recientes-litros { font-family: var(--font-mono); text-align: right; }
 
 /* ==================================================================
    Tanques: registrar un movimiento (bead xd-qrn.5)
@@ -3509,6 +3537,10 @@ button.tanques-chip.drop { border-color: var(--gold-lt); border-style: dashed; }
   .tanques-route-stop { min-height: 44px; display: inline-flex; align-items: center; }
   button.tanques-chip { min-height: 44px; }
   .tanques-timeline li { grid-template-columns: 1fr; gap: 2px; }
+  .tanques-recientes-lista button, .tanques-recientes-lista li > div {
+    grid-template-columns: auto minmax(0, 1fr) auto; grid-auto-flow: dense; min-height: 44px;
+  }
+  .tanques-recientes-ruta, .tanques-recientes-lote { grid-column: 1 / -1; }
 }
 
 /* ==================================================================
