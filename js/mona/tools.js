@@ -32,9 +32,10 @@ export async function executeTool(name, input = {}, ctx = {}) {
       case 'list_fields':
         return { content: JSON.stringify(listFields(resolveDataset(input.dataset))) };
       case 'compute_kpis': {
-        const rows = queryData(resolveDataset('berry'), { filters: input.filters, limit: 1e9 }).rows;
-        const kpis = { muestras: rows.length };
-        for (const [k, field] of Object.entries(KPI_FIELDS)) kpis[k] = KPIs.weightedAvg(rows, field);
+        const q = queryData(resolveDataset('berry'), { filters: input.filters, limit: 1e9 });
+        const kpis = { muestras: q.rows.length };
+        for (const [k, field] of Object.entries(KPI_FIELDS)) kpis[k] = KPIs.weightedAvg(q.rows, field);
+        if (q.aviso) kpis.aviso = q.aviso;
         return { content: JSON.stringify(kpis) };
       }
       case 'render_chart': {
