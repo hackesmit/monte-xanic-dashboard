@@ -3133,6 +3133,20 @@ body.demo-mode-active .row-clickable        { display: none; }
   text-transform: uppercase; cursor: pointer; transition: background var(--motion-fast);
 }
 .tanques-seg button[aria-pressed="true"] { background: var(--gold); color: var(--on-gold); }
+/* Stage filter chips (xd-3c2.3): several can be on; a tank outside the chosen
+   stages is drawn grey and faint (.tanque.apagado). Independent of the colour
+   mode switch above. */
+.tanques-filtro { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.tanques-filtro button {
+  background: transparent; color: var(--muted); border: 1px solid var(--border);
+  border-radius: var(--radius-sharp); padding: 6px 12px;
+  font-family: var(--font-body); font-size: var(--text-sm); cursor: pointer;
+  transition: background var(--motion-fast), color var(--motion-fast), border-color var(--motion-fast);
+}
+.tanques-filtro button[aria-pressed="true"] {
+  background: var(--gold); color: var(--on-gold); border-color: var(--gold);
+}
+.tanques-filtro button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .tanques-search {
   background: var(--card); color: var(--text); border: 1px solid var(--border);
   border-radius: var(--radius-base); padding: 7px 10px;
@@ -3158,6 +3172,7 @@ body.demo-mode-active .row-clickable        { display: none; }
 }
 .tanque { cursor: pointer; }
 .tanque.dim { opacity: 0.22; }
+.tanque.apagado { opacity: 0.3; filter: grayscale(1); }
 /* Selection: the tank lifts a little over a soft gold glow on the floor, with
    a thin gold rim on the lid. A thick ring read as a heavy brown hoop
    (Daniel, 2026-10-15). Hover gives a smaller lift so the plan reads as

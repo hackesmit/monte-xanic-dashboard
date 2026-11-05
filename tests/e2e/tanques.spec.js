@@ -68,7 +68,7 @@ const MOVIMIENTOS = [
   mv({ fecha: '2025-10-06', tipo: 'trasiego', origen: 'F5', destino: 'F7', lot_code: '25NBVDG-1', volumen_l: 2000 }),
 ];
 
-async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark' } = {}) {
+async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark', movimientos = MOVIMIENTOS } = {}) {
   await page.setViewportSize({ width: ancho, height: alto });
   await page.addInitScript((t) => {
     try {
@@ -80,7 +80,7 @@ async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark' } = {}) {
   await page.route('**/api/tanques', (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
-    body: JSON.stringify({ ok: true, version: 1, tanques: TANQUES, sinonimos: SINONIMOS, movimientos: MOVIMIENTOS }),
+    body: JSON.stringify({ ok: true, version: 1, tanques: TANQUES, sinonimos: SINONIMOS, movimientos }),
   }));
   await page.goto('/');
   await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
@@ -88,6 +88,18 @@ async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark' } = {}) {
   await page.waitForSelector('#tanques-plano .tanque', { timeout: 12_000 });
   await page.waitForTimeout(150);
 }
+
+// The base log names no finer stage than rec/des, so the stage-chip tests
+// (xd-3c2.3) mark three tanks explicitly: B4 in crianza, F6 in FML and a new
+// reception in H10 in fermentacion alcoholica.
+const MOVIMIENTOS_ETAPAS = [
+  ...MOVIMIENTOS.map((m) => {
+    if (m.destino === 'B4') return { ...m, etapa: 'cri' };
+    if (m.destino === 'F6') return { ...m, etapa: 'fml' };
+    return m;
+  }),
+  mv({ fecha: '2026-01-20', tipo: 'recepcion', destino: 'H10', lot_code: '25CSKMP-9', volumen_l: 3000, etapa: 'fa' }),
+];
 
 test.describe('Tanques', () => {
   test('under each tank the wine code, not the capacity (xd-3c2.1)', async ({ page }) => {
@@ -231,6 +243,49 @@ test.describe('Tanques', () => {
 
     await page.locator('#tanques-buscar').fill('');
     await expect(page.locator('#tanques-plano .tanque.dim')).toHaveCount(0);
+  });
+
+  test('the stage chips light only the tanks in those stages (xd-3c2.3)', async ({ page }) => {
+    await abrir(page, { movimientos: MOVIMIENTOS_ETAPAS });
+    const chip = (e) => page.locator(`#tanques-filtros button[data-etapa="${e}"]`);
+    const encendidos = () => page.$$eval('#tanques-plano .tanque:not(.apagado)',
+      (gs) => gs.map((g) => g.dataset.tanque).sort());
+    await expect(page.locator('#tanques-plano .tanque.apagado')).toHaveCount(0);
+
+    await page.locator('#tanques-plano [data-tanque="C5"]').click();
+    await chip('cri').click();
+    await expect(chip('cri')).toHaveAttribute('aria-pressed', 'true');
+    expect(await encendidos()).toEqual(['B4']);
+    await page.waitForTimeout(400); // let the chip colour transition settle
+    await page.screenshot({ path: 'test-results/xd-3c2.3-crianza.png', fullPage: false });
+
+    await chip('fa').click();
+    const criFa = await encendidos();
+    expect(criFa).toEqual(['B4', 'H10']);
+    // The filter leaves selection, the side panel and the colour mode alone.
+    await expect(page.locator('#tanques-panel h2')).toHaveText('C5');
+    await expect(page.locator('#tanques-modos button[data-modo="variedad"]')).toHaveAttribute('aria-pressed', 'true');
+    // A re-render (colour mode switch) keeps the chips.
+    await page.locator('#tanques-modos button[data-modo="etapa"]').click();
+    expect(await encendidos()).toEqual(criFa);
+
+    await chip('cri').click();
+    await chip('fml').click();
+    expect(await encendidos()).toEqual(['F6', 'H10']);
+    await chip('fa').click();
+    await chip('fml').click();
+    await expect(page.locator('#tanques-plano .tanque.apagado')).toHaveCount(0);
+  });
+
+  test('the stage chips fit a phone width (xd-3c2.3)', async ({ page }) => {
+    await abrir(page, { ancho: 390, alto: 844, movimientos: MOVIMIENTOS_ETAPAS });
+    const grupo = page.locator('#tanques-filtros');
+    await expect(grupo).toBeVisible();
+    const caja = await grupo.boundingBox();
+    expect(caja.x + caja.width).toBeLessThanOrEqual(390);
+    await page.locator('#tanques-filtros button[data-etapa="cri"]').click();
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: 'test-results/xd-3c2.3-crianza-movil.png' });
   });
 
   test('the unlocated vessels are trayed, grouped, and never lost', async ({ page }) => {
