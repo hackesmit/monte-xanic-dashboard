@@ -16,6 +16,7 @@ import { replayMovimientos, historialTanque, recorridoLote, ETAPAS } from './est
 import { TanquesMoves, etiquetaMovimiento } from './moves.js';
 import { TanquesInbox } from './inbox.js';
 import { PanelCharts } from './panelCharts.js';
+import { etiquetaTanque } from './etiqueta.js';
 import {
   POSICION_1_AL, GEOMETRIA, construirPlano,
   MODOS, MODO_ETIQUETAS, ETAPA_ETIQUETAS, ETAPA_ABREV,
@@ -429,8 +430,13 @@ export const TanquesView = {
     g += `<text class="tanque-codigo" x="${x}" y="${tapa + 3}" text-anchor="middle" font-size="8.5" font-weight="500"`
       + ` style="fill:var(--tank-steel-edge)">${escapeHtml(t.codigo)}</text>`;
     g += '</g>';
-    g += `<text x="${x}" y="${y + G.RY + 9}" text-anchor="middle" font-size="7"`
-      + ` style="fill:var(--tank-path-text)">${(cap / 1000).toFixed(1)}k</text>`;
+    // The wine code, not the capacity (xd-3c2.1): litres stay in the side
+    // panel and the aria label; an empty tank shows nothing here.
+    const etiqueta = etiquetaTanque(partes);
+    if (etiqueta) {
+      g += `<text class="tanque-lote" x="${x}" y="${y + G.RY + 9}" text-anchor="middle" font-size="6"`
+        + ` style="fill:var(--tank-path-text)">${escapeHtml(etiqueta)}</text>`;
+    }
     return `${g}</g>`;
   },
 

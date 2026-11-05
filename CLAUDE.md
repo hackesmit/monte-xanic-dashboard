@@ -53,6 +53,7 @@ Full documentation in [`docs/`](docs/README.md). This file is for code agent con
 | `api/mona-data.js` | Token-gated CRUD for `mona_*` tables (service key). Username/role from token, never body. |
 | `tanques/estado.js` | Pure tank state: derive contents from the movement log, validate a movement. No DOM, no imports. |
 | `tanques/plan.js` | Pure bodega-plan layout (where each vessel is drawn) and colour-token mapping. No DOM. |
+| `tanques/etiqueta.js` | Pure text drawn under each tank on the plan: the largest lote's code, '+N' for a blend, nothing when empty. No DOM, no imports. |
 | `tanques/view.js` | Tanques tab: SVG plan, colour modes, search, tank side panel. Read-only; no queries. |
 | `tanques/moves.js` | Recording a movement: the drag/tap gestures, the move dialog, the undo toast, and the pure planner behind them (dialog defaults, volume ceiling, posted payload). The only write surface of the Tanques tab. |
 | `api/datos.js` | Session-checked, read-only access to the confidential lab tables (service key): paged table reads and the upload preview's key probe. The anon key reads none of them. |

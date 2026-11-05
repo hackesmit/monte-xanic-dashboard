@@ -90,6 +90,23 @@ async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark' } = {}) {
 }
 
 test.describe('Tanques', () => {
+  test('under each tank the wine code, not the capacity (xd-3c2.1)', async ({ page }) => {
+    await abrir(page);
+    const etiqueta = (c) => page.locator(`#tanques-plano [data-tanque="${c}"] .tanque-lote`);
+    await expect(etiqueta('B4')).toHaveText('25DUKMP-3');
+    // C5 holds 12 700 L of 25MEKMP-3 plus 5 350 L of 25MEKMP-1: largest first.
+    await expect(etiqueta('C5')).toHaveText('25MEKMP-3 +1');
+    // An empty tank shows nothing under it, and no capacity is drawn anywhere.
+    await expect(etiqueta('H11')).toHaveCount(0);
+    const capacidades = await page.$$eval('#tanques-plano text', (t) =>
+      t.map((x) => x.textContent).filter((s) => /^\d+\.\dk$/.test(s)));
+    expect(capacidades).toEqual([]);
+    // Litres stay in the aria label.
+    await expect(page.locator('#tanques-plano [data-tanque="B4"]'))
+      .toHaveAttribute('aria-label', /[\d,]+ litros de 25DUKMP-3/);
+    await page.locator('#tanques-plano').screenshot({ path: 'test-results/tanques-etiqueta-lote.png' });
+  });
+
   test('draws the whole floor with no overlapping lids', async ({ page }) => {
     await abrir(page);
     const tanques = page.locator('#tanques-plano .tanque');
