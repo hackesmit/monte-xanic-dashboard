@@ -197,8 +197,13 @@ test.describe('Tanques', () => {
   test('the colour modes repaint the bands and the legend', async ({ page }) => {
     await abrir(page);
     const banda = page.locator('#tanques-plano [data-tanque="C2"] path.tanque-liquido').last();
-    await expect(banda).toHaveAttribute('style', /--tank-v-cs/);
-    await expect(page.locator('#tanques-leyenda')).toContainText('Cabernet Sauvignon');
+    await expect(banda).toHaveAttribute('style', /--tank-v-tinto/);
+    // One colour per wine colour (xd-3c2.2): the legend lists those, not grapes.
+    const leyenda = page.locator('#tanques-leyenda');
+    await expect(leyenda.locator('span')).toHaveText(['Tinto', 'Rosado', 'Blanco', 'Sin variedad', 'Vacío']);
+    await expect(page.locator('#tanques-plano [data-tanque="A2"] path.tanque-liquido'))
+      .toHaveAttribute('style', /--tank-v-blanco/);
+    await page.locator('#view-tanques').screenshot({ path: 'test-results/tanques-color-vino.png' });
 
     await page.locator('#tanques-modos button[data-modo="etapa"]').click();
     await expect(banda).toHaveAttribute('style', /--tank-s-des/);
@@ -210,7 +215,7 @@ test.describe('Tanques', () => {
     await expect(page.locator('#tanques-leyenda')).toContainText('Lleno');
 
     await page.locator('#tanques-modos button[data-modo="variedad"]').click();
-    await expect(banda).toHaveAttribute('style', /--tank-v-cs/);
+    await expect(banda).toHaveAttribute('style', /--tank-v-tinto/);
   });
 
   test('search dims what does not match and jumps to the hit', async ({ page }) => {

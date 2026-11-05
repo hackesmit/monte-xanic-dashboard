@@ -17,8 +17,8 @@ import {
   POSICION_1_AL, GEOMETRIA, FILAS_PLANO,
   construirPlano, alturaDeCapacidad, fechaCorta, cadenasRecorrido,
   MODOS, ETAPA_ETIQUETAS, NIVELES_OCUPACION,
-  TOKEN_VARIEDAD, TOKEN_VARIEDAD_OTRA, TOKEN_VACIO, TOKEN_ETAPA_ND,
-  variedadDeLote, tokenVariedad, tokenEtapa, tokenBanda, nivelOcupacion,
+  COLORES_VINO, TOKEN_COLOR_VINO, TOKEN_VARIEDAD_OTRA, TOKEN_VACIO, TOKEN_ETAPA_ND,
+  variedadDeLote, colorDeVino, tokenLote, tokenEtapa, tokenBanda, nivelOcupacion,
 } from '../js/tanques/plan.js';
 
 const CATALOGO = catalogoTanques();
@@ -269,15 +269,49 @@ describe('mt53 - lot code to variety', () => {
     assert.equal(variedadDeLote(''), null);
     assert.equal(variedadDeLote(null), null);
     assert.equal(variedadDeLote('25XXKMP-1'), null);
-    assert.equal(tokenVariedad(variedadDeLote('25XXKMP-1')), TOKEN_VARIEDAD_OTRA);
+    assert.equal(tokenLote('25XXKMP-1'), TOKEN_VARIEDAD_OTRA);
+  });
+});
+
+describe('mt53 - one colour per wine colour (xd-3c2.2)', () => {
+  test('a tinto grape paints tinto', () => {
+    assert.equal(colorDeVino('25CSKMP-1'), 'tinto');
+    assert.equal(colorDeVino('25DUKMP-3'), 'tinto');
+    assert.equal(tokenLote('25MEKMP-3'), '--tank-v-tinto');
   });
 
-  test('every abbreviation the dashboard knows has a tank colour token', () => {
-    for (const [code, nombre] of Object.entries(CONFIG.varietyAbbr)) {
-      const full = CONFIG.normalizeVariety(nombre);
-      assert.ok(TOKEN_VARIEDAD[full],
-        `varietyAbbr ${code} -> ${full} has no --tank-v-* token, so its band would fall back to grey`);
+  test('a blanco grape paints blanco (yellow)', () => {
+    assert.equal(colorDeVino('25SBVDG-1'), 'blanco');
+    assert.equal(colorDeVino('25CHVA-1'), 'blanco');
+    assert.equal(tokenLote('25CBKMP-1'), '--tank-v-blanco');
+  });
+
+  test('a rosado lote paints rosado whatever its grape', () => {
+    assert.equal(colorDeVino('25ROSADO-1'), 'rosado');
+    assert.equal(colorDeVino('25GRKMP-ROSE'), 'rosado');
+    assert.equal(colorDeVino('25grkmp-rosé'), 'rosado');
+    assert.equal(tokenLote('25CSKMP-ROSADO'), '--tank-v-rosado');
+  });
+
+  test('an unknown variety paints grey, and so does no code', () => {
+    assert.equal(colorDeVino('25XXKMP-1'), null);
+    assert.equal(tokenLote('25XXKMP-1'), TOKEN_VARIEDAD_OTRA);
+    assert.equal(tokenLote(''), TOKEN_VARIEDAD_OTRA);
+    assert.equal(tokenLote(null), TOKEN_VARIEDAD_OTRA);
+  });
+
+  test('every abbreviation the dashboard knows is tinto or blanco, never grey', () => {
+    for (const [code] of Object.entries(CONFIG.varietyAbbr)) {
+      const c = colorDeVino(`25${code}KMP-1`);
+      assert.ok(c === 'tinto' || c === 'blanco', `varietyAbbr ${code} has no wine colour, so its band would be grey`);
     }
+  });
+
+  test('the palette is exactly three colours plus grey', () => {
+    assert.deepEqual(COLORES_VINO, ['tinto', 'rosado', 'blanco']);
+    const tokens = new Set([...COLORES_VINO.map((c) => TOKEN_COLOR_VINO[c]), TOKEN_VARIEDAD_OTRA]);
+    assert.equal(tokens.size, 4);
+    assert.ok(!tokens.has(TOKEN_VACIO), 'a wine colour must not read as an empty tank');
   });
 });
 
@@ -286,7 +320,7 @@ describe('mt53 - every colour is a token that exists', () => {
 
   test('the variety, stage, fill-level and steel tokens are all defined in both themes', () => {
     const tokens = [
-      ...Object.values(TOKEN_VARIEDAD),
+      ...Object.values(TOKEN_COLOR_VINO),
       TOKEN_VARIEDAD_OTRA,
       TOKEN_VACIO,
       ...ETAPAS.map((e) => tokenEtapa(e)),
@@ -324,11 +358,11 @@ describe('mt53 - the colour modes', () => {
 
   test('each mode colours the band from a different fact', () => {
     assert.deepEqual(MODOS, ['variedad', 'etapa', 'ocupacion']);
-    assert.equal(tokenBanda('variedad', tanque, parte), '--tank-v-me');
+    assert.equal(tokenBanda('variedad', tanque, parte), '--tank-v-tinto');
     assert.equal(tokenBanda('etapa', tanque, parte), '--tank-s-cri');
     assert.equal(tokenBanda('ocupacion', tanque, parte), '--tank-ocu-lleno');
     // An unknown mode is read as the default rather than losing the colour.
-    assert.equal(tokenBanda('otra', tanque, parte), '--tank-v-me');
+    assert.equal(tokenBanda('otra', tanque, parte), '--tank-v-tinto');
   });
 
   test('the fill-level buckets are >95%, 60-95% and under 60%', () => {
