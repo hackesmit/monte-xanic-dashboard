@@ -21,7 +21,8 @@ import {
   POSICION_1_AL, GEOMETRIA, construirPlano,
   MODOS, MODO_ETIQUETAS, ETAPA_ETIQUETAS, ETAPA_ABREV,
   TOKEN_VACIO, TOKEN_ETAPA_ND, ETAPA_ND_ETIQUETA, NIVELES_OCUPACION,
-  variedadDeLote, tokenVariedad, tokenEtapa, tokenBanda, nivelOcupacion, fechaCorta,
+  COLORES_VINO, TOKEN_COLOR_VINO, COLOR_VINO_ETIQUETAS, SIN_COLOR_ETIQUETA, TOKEN_VARIEDAD_OTRA,
+  variedadDeLote, tokenLote, tokenEtapa, tokenBanda, nivelOcupacion, fechaCorta,
   cadenasRecorrido,
 } from './plan.js';
 
@@ -452,16 +453,10 @@ export const TanquesView = {
     } else if (this.modo === 'ocupacion') {
       items = NIVELES_OCUPACION.map((n) => [n.etiqueta, n.token]);
     } else {
-      // Only the varieties actually in a tank: the full token palette is 18
-      // entries and a legend nobody can scan is not a legend.
-      const vistas = new Map();
-      for (const t of plan.ubicados) {
-        for (const p of (estado[t.codigo]?.partes || [])) {
-          const nombre = variedadDeLote(p.lot_code);
-          vistas.set(nombre || 'Sin variedad', tokenVariedad(nombre));
-        }
-      }
-      items = [...vistas.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es'));
+      // Three wine colours plus grey for a lote whose colour the code cannot
+      // tell (xd-3c2.2); the variety names stay in the side panel.
+      items = COLORES_VINO.map((c) => [COLOR_VINO_ETIQUETAS[c], TOKEN_COLOR_VINO[c]]);
+      items.push([SIN_COLOR_ETIQUETA, TOKEN_VARIEDAD_OTRA]);
     }
     items.push(['Vacío', TOKEN_VACIO]);
     el.innerHTML = items.map(([texto, token]) =>
@@ -488,9 +483,8 @@ export const TanquesView = {
       `<button type="button" class="tanques-chip${codigo === this.seleccion ? ' cur' : ''}"`
       + ` data-ir-tanque="${escapeHtml(codigo)}">${interior}</button>`;
     for (const [t, v] of conVino) {
-      const nombre = variedadDeLote(estado[t.codigo].partes[0]?.lot_code);
-      chips.push(boton(t.codigo, `<i style="width:8px;height:8px;`
-        + `border-radius:var(--radius-round);background:var(${tokenVariedad(nombre)})"></i>`
+            chips.push(boton(t.codigo, `<i style="width:8px;height:8px;`
+        + `border-radius:var(--radius-round);background:var(${tokenLote(estado[t.codigo].partes[0]?.lot_code)})"></i>`
         + `${escapeHtml(t.codigo)} <small>${litros(v)} de ${litros(t.capacidad_l)} L</small>`));
     }
     for (const [clave, g] of grupos) {
@@ -561,9 +555,8 @@ export const TanquesView = {
       if (partes.length > 1) {
         s += '<div class="tanques-sec"><h3>Ensamble</h3><div class="tanques-comp">'
           + partes.map((p) => {
-            const nombre = variedadDeLote(p.lot_code);
             return `<div style="width:${(p.litros / v) * 100}%;`
-              + `background:var(${tokenVariedad(nombre)})">`
+              + `background:var(${tokenLote(p.lot_code)})">`
               + `${escapeHtml(p.lot_code)} ${Math.round((p.litros / v) * 100)}%</div>`;
           }).join('')
           + '</div></div>';
