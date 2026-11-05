@@ -17,6 +17,7 @@ import { TanquesMoves, etiquetaMovimiento } from './moves.js';
 import { TanquesInbox } from './inbox.js';
 import { PanelCharts } from './panelCharts.js';
 import { etiquetaTanque } from './etiqueta.js';
+import { FILTROS_ETAPA, tanqueIluminado, alternarFiltro } from './filtro.js';
 import {
   POSICION_1_AL, GEOMETRIA, construirPlano,
   MODOS, MODO_ETIQUETAS, ETAPA_ETIQUETAS, ETAPA_ABREV,
@@ -79,6 +80,9 @@ const REINTENTO_MS = 10_000;
 
 export const TanquesView = {
   modo: 'variedad',
+  // Stage chips that are on (xd-3c2.3). Independent of `modo`; lives on the
+  // view object so a re-render keeps it.
+  filtros: new Set(),
   seleccion: null,
   busqueda: '',
   _cargado: false,
@@ -153,6 +157,15 @@ export const TanquesView = {
         const btn = e.target.closest('button[data-modo]');
         if (!btn || !MODOS.includes(btn.dataset.modo)) return;
         this.modo = btn.dataset.modo;
+        this.render();
+      });
+    }
+    const filtros = document.getElementById('tanques-filtros');
+    if (filtros) {
+      filtros.addEventListener('click', (e) => {
+        const btn = e.target.closest('button[data-etapa]');
+        if (!btn || !FILTROS_ETAPA.includes(btn.dataset.etapa)) return;
+        this.filtros = alternarFiltro(this.filtros, btn.dataset.etapa);
         this.render();
       });
     }
@@ -234,6 +247,9 @@ export const TanquesView = {
 
     document.querySelectorAll('#tanques-modos button[data-modo]').forEach((b) => {
       b.setAttribute('aria-pressed', String(b.dataset.modo === this.modo));
+    });
+    document.querySelectorAll('#tanques-filtros button[data-etapa]').forEach((b) => {
+      b.setAttribute('aria-pressed', String(this.filtros.has(b.dataset.etapa)));
     });
 
     if (estadoEl) estadoEl.innerHTML = this._avisoCarga(catalogo, movimientos);
@@ -385,6 +401,7 @@ export const TanquesView = {
     if (t.codigo === this.seleccion) clases.push('sel');
     if (t.codigo === TanquesMoves.origenArmado()) clases.push('origen');
     if (!this._coincide(t, est)) clases.push('dim');
+    if (!tanqueIluminado(est, this.filtros)) clases.push('apagado');
     if (!t.activo) clases.push('inactivo');
 
     const lotes = partes.map((p) => p.lot_code).join(' y ');
