@@ -110,11 +110,10 @@
      The bodega plan is an SVG whose colours all come from here, so a theme
      switch needs no re-render. Three families:
        --tank-floor/path/path-text/steel-*: the room and the vessels themselves
-       --tank-v-*  : varietal of the wine in the band (palette approved by
-                     Daniel on the mockup; the extra varietals CONFIG.varietyAbbr
-                     can produce continue the same wine-toned family)
+       --tank-v-*  : colour of the wine in the band: tinto, rosado, blanco,
+                     and otra (grey) when the lote code cannot tell (xd-3c2.2)
        --tank-s-*  : vinification stage; --tank-ocu-*: fill level
-     The varietal and stage hues are deliberately NOT redefined in the light
+     The wine and stage hues are deliberately NOT redefined in the light
      theme: they are wine colours read against steel, and they carry the same
      meaning on either ground. js/tanques/plan.js maps a varietal, a stage or a
      fill level to one of these token NAMES; nothing writes a literal colour. */
@@ -129,25 +128,10 @@
   --tank-sel:        #DDB96E;                 /* rim of the selected tank */
   --tank-halo:       rgba(221,185,110,0.55);  /* glow around the selected tank */
 
-  --tank-v-cs:   #7A1E2E;
-  --tank-v-cf:   #A0344A;
-  --tank-v-me:   #8E3B5E;
-  --tank-v-sy:   #5A2A6E;
-  --tank-v-du:   #3E1F4F;
-  --tank-v-te:   #B04A3A;
-  --tank-v-pv:   #4A2340;
-  --tank-v-ma:   #6E2338;
-  --tank-v-sb:   #CDB64E;
-  --tank-v-ch:   #D9A441;
-  --tank-v-ro:   #D97A7A;
-  --tank-v-gr:   #C2654B;
-  --tank-v-ca:   #8F5570;
-  --tank-v-ms:   #7E4A86;
-  --tank-v-nb:   #9E4426;
-  --tank-v-mv:   #6B3B2A;
-  --tank-v-vg:   #E8D08C;
-  --tank-v-cb:   #A8BE72;
-  --tank-v-otra: #6E7378;
+  --tank-v-tinto:  #7A1E2E;
+  --tank-v-rosado: #D97A7A;
+  --tank-v-blanco: #D9BE45;
+  --tank-v-otra:   #A8A296;   /* warm light grey: unlike the empty steel */
 
   --tank-s-rec: #8AA1B1;
   --tank-s-mac: #B07A9A;

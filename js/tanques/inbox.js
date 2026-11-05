@@ -26,7 +26,7 @@ import { DataStore } from '../dataLoader.js';
 import { escapeHtml } from '../utils.js';
 import { TanquesMoves, planearMovimiento, etiquetaMovimiento } from './moves.js';
 import { inferirMovimientos } from './inferencia.js';
-import { fechaCorta, variedadDeLote, tokenVariedad } from './plan.js';
+import { fechaCorta, tokenLote } from './plan.js';
 
 const ID = {
   caja: 'tanques-inbox',
@@ -175,11 +175,10 @@ export const TanquesInbox = {
     const modelo = planearMovimiento(
       { origen: p.origen, destino: p.destino, fecha: p.fecha, fuente: 'lab' }, bodega);
     const clave = escapeHtml(p.clave);
-    const variedad = variedadDeLote(p.lot_code);
 
     let s = '<div class="tanques-prop">';
     s += '<div class="tanques-prop-cab">'
-      + `<i style="background:var(${tokenVariedad(variedad)})"></i>`
+      + `<i style="background:var(${tokenLote(p.lot_code)})"></i>`
       + `<b>${escapeHtml(p.lot_code)}</b>`
       + `<span class="tanques-prop-ruta">${escapeHtml(p.origen)} a ${escapeHtml(p.destino)}</span>`
       + `<span class="tanques-p-sub">${escapeHtml(dia(p.fecha))}</span>`
