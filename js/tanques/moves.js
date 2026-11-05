@@ -30,7 +30,7 @@ import { DataStore, mismaIntencion } from '../dataLoader.js';
 import { DemoMode } from '../demoMode.js';
 import { escapeHtml, todayInVineyard } from '../utils.js';
 import { validarMovimientoEnLog, estadoEnPosicion, ETAPAS } from './estado.js';
-import { variedadDeLote, tokenVariedad, fechaCorta, ETAPA_ETIQUETAS } from './plan.js';
+import { tokenLote, fechaCorta, ETAPA_ETIQUETAS } from './plan.js';
 
 // --- labels ------------------------------------------------------------------
 
@@ -1133,11 +1133,10 @@ export const TanquesMoves = {
     const resto = lotes.length - visibles.length;
     el.innerHTML = visibles.map((l) => {
       const armado = !!(this._armado && this._armado.lote && this._armado.lote.lot_code === l.lot_code);
-      const nombre = variedadDeLote(l.lot_code);
       return `<button type="button" class="tanques-chip tanques-lote${armado ? ' cur' : ''}"`
         + ` data-lote="${escapeHtml(l.lot_code)}" aria-pressed="${armado}">`
         + `<i style="width:8px;height:8px;border-radius:var(--radius-round);`
-        + `background:var(${tokenVariedad(nombre)})"></i>`
+        + `background:var(${tokenLote(l.lot_code)})"></i>`
         + `${escapeHtml(l.lot_code)} <small>${escapeHtml(fechaCorta(l.fecha) || 'sin fecha')}</small>`
         + '</button>';
     }).join('')

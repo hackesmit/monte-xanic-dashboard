@@ -235,7 +235,7 @@ export function fechaCorta(iso) {
 export const MODOS = ['variedad', 'etapa', 'ocupacion'];
 
 export const MODO_ETIQUETAS = {
-  variedad: 'Variedad',
+  variedad: 'Tipo de vino',
   etapa: 'Etapa',
   ocupacion: 'Ocupación',
 };
@@ -258,32 +258,20 @@ export const ETAPA_ABREV = {
   rec: 'Rec', mac: 'Mac', fa: 'FA', des: 'Desc', fml: 'FML', cri: 'Cri', emb: 'Emb',
 };
 
-// Variety colour tokens. The eleven Daniel approved on the mockup, plus the
-// varieties CONFIG.varietyAbbr can produce that the mockup never showed; the
-// design tokens live in css/styles.css and tests/mt53-tanques-plan.test.mjs
-// asserts every abbreviation in the catalog resolves to one that exists.
-// 'Rosado' has no lot-code abbreviation yet, so nothing maps to --tank-v-ro.
-export const TOKEN_VARIEDAD = {
-  'Cabernet Sauvignon': '--tank-v-cs',
-  'Cabernet Franc': '--tank-v-cf',
-  'Merlot': '--tank-v-me',
-  'Syrah': '--tank-v-sy',
-  'Durif': '--tank-v-du',
-  'Tempranillo': '--tank-v-te',
-  'Petit Verdot': '--tank-v-pv',
-  'Malbec': '--tank-v-ma',
-  'Sauvignon Blanc': '--tank-v-sb',
-  'Chardonnay': '--tank-v-ch',
-  'Rosado': '--tank-v-ro',
-  'Grenache': '--tank-v-gr',
-  'Caladoc': '--tank-v-ca',
-  'Marselan': '--tank-v-ms',
-  'Nebbiolo': '--tank-v-nb',
-  'Mourvèdre': '--tank-v-mv',
-  'Viognier': '--tank-v-vg',
-  'Chenin Blanc': '--tank-v-cb',
+// Wine-colour tokens (xd-3c2.2, Daniel 2026-11-05: "only one for reds, rose,
+// and the yellow for the whites"). The band says what colour of wine a tank
+// holds, not which grape: tinto, rosado or blanco. The grape's colour comes
+// from CONFIG.grapeTypes, the one red/white table the dashboard already keeps;
+// rosado is a property of the lote, not the grape, so it is read from the code.
+// A code whose colour cannot be told falls to TOKEN_VARIEDAD_OTRA (grey).
+export const COLORES_VINO = ['tinto', 'rosado', 'blanco'];
+export const TOKEN_COLOR_VINO = {
+  tinto: '--tank-v-tinto',
+  rosado: '--tank-v-rosado',
+  blanco: '--tank-v-blanco',
 };
-
+export const COLOR_VINO_ETIQUETAS = { tinto: 'Tinto', rosado: 'Rosado', blanco: 'Blanco' };
+export const SIN_COLOR_ETIQUETA = 'Sin variedad';
 export const TOKEN_VARIEDAD_OTRA = '--tank-v-otra';
 export const TOKEN_VACIO = '--tank-steel-top';
 // A tank that HOLDS wine whose stage the log cannot say must not be painted the
@@ -327,10 +315,23 @@ export function variedadDeLote(lot_code) {
   return null;
 }
 
-/** The design token that colours a variety's band ('--tank-v-otra' if unknown). */
-export function tokenVariedad(nombre) {
-  if (!nombre) return TOKEN_VARIEDAD_OTRA;
-  return TOKEN_VARIEDAD[nombre] || TOKEN_VARIEDAD_OTRA;
+/**
+ * The colour of wine a lote is: 'rosado' when its code says so, otherwise the
+ * colour of the grape its code names ('tinto' or 'blanco'), or null.
+ */
+export function colorDeVino(lot_code) {
+  if (!lot_code) return null;
+  if (/ROSAD|ROS[EÉ]/.test(String(lot_code).toUpperCase())) return 'rosado';
+  const nombre = variedadDeLote(lot_code);
+  if (!nombre) return null;
+  if (CONFIG.grapeTypes.red.includes(nombre)) return 'tinto';
+  if (CONFIG.grapeTypes.white.includes(nombre)) return 'blanco';
+  return null;
+}
+
+/** The design token that colours a lote's band ('--tank-v-otra' if unknown). */
+export function tokenLote(lot_code) {
+  return TOKEN_COLOR_VINO[colorDeVino(lot_code)] || TOKEN_VARIEDAD_OTRA;
 }
 
 /** The design token for a stage code, or the "not recorded" token if unset. */
@@ -356,5 +357,5 @@ export function nivelOcupacion(litros, capacidad_l) {
 export function tokenBanda(modo, tanque, parte) {
   if (modo === 'etapa') return tokenEtapa(tanque?.etapa);
   if (modo === 'ocupacion') return nivelOcupacion(tanque?.litros, tanque?.capacidad_l).token;
-  return tokenVariedad(variedadDeLote(parte?.lot_code));
+  return tokenLote(parte?.lot_code);
 }

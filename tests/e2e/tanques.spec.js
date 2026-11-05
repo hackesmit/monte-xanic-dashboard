@@ -90,6 +90,23 @@ async function abrir(page, { ancho = 1300, alto = 1000, tema = 'dark' } = {}) {
 }
 
 test.describe('Tanques', () => {
+  test('under each tank the wine code, not the capacity (xd-3c2.1)', async ({ page }) => {
+    await abrir(page);
+    const etiqueta = (c) => page.locator(`#tanques-plano [data-tanque="${c}"] .tanque-lote`);
+    await expect(etiqueta('B4')).toHaveText('25DUKMP-3');
+    // C5 holds 12 700 L of 25MEKMP-3 plus 5 350 L of 25MEKMP-1: largest first.
+    await expect(etiqueta('C5')).toHaveText('25MEKMP-3 +1');
+    // An empty tank shows nothing under it, and no capacity is drawn anywhere.
+    await expect(etiqueta('H11')).toHaveCount(0);
+    const capacidades = await page.$$eval('#tanques-plano text', (t) =>
+      t.map((x) => x.textContent).filter((s) => /^\d+\.\dk$/.test(s)));
+    expect(capacidades).toEqual([]);
+    // Litres stay in the aria label.
+    await expect(page.locator('#tanques-plano [data-tanque="B4"]'))
+      .toHaveAttribute('aria-label', /[\d,]+ litros de 25DUKMP-3/);
+    await page.locator('#tanques-plano').screenshot({ path: 'test-results/tanques-etiqueta-lote.png' });
+  });
+
   test('draws the whole floor with no overlapping lids', async ({ page }) => {
     await abrir(page);
     const tanques = page.locator('#tanques-plano .tanque');
@@ -180,8 +197,13 @@ test.describe('Tanques', () => {
   test('the colour modes repaint the bands and the legend', async ({ page }) => {
     await abrir(page);
     const banda = page.locator('#tanques-plano [data-tanque="C2"] path.tanque-liquido').last();
-    await expect(banda).toHaveAttribute('style', /--tank-v-cs/);
-    await expect(page.locator('#tanques-leyenda')).toContainText('Cabernet Sauvignon');
+    await expect(banda).toHaveAttribute('style', /--tank-v-tinto/);
+    // One colour per wine colour (xd-3c2.2): the legend lists those, not grapes.
+    const leyenda = page.locator('#tanques-leyenda');
+    await expect(leyenda.locator('span')).toHaveText(['Tinto', 'Rosado', 'Blanco', 'Sin variedad', 'Vacío']);
+    await expect(page.locator('#tanques-plano [data-tanque="A2"] path.tanque-liquido'))
+      .toHaveAttribute('style', /--tank-v-blanco/);
+    await page.locator('#view-tanques').screenshot({ path: 'test-results/tanques-color-vino.png' });
 
     await page.locator('#tanques-modos button[data-modo="etapa"]').click();
     await expect(banda).toHaveAttribute('style', /--tank-s-des/);
@@ -193,7 +215,7 @@ test.describe('Tanques', () => {
     await expect(page.locator('#tanques-leyenda')).toContainText('Lleno');
 
     await page.locator('#tanques-modos button[data-modo="variedad"]').click();
-    await expect(banda).toHaveAttribute('style', /--tank-v-cs/);
+    await expect(banda).toHaveAttribute('style', /--tank-v-tinto/);
   });
 
   test('search dims what does not match and jumps to the hit', async ({ page }) => {
