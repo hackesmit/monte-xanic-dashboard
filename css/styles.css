@@ -487,6 +487,14 @@ body.demo-mode-active .demo-banner { display: block; }
   padding: 8px;
 }
 
+/* Current conditions line (Open-Meteo), above the weather charts */
+.weather-current {
+  margin: 8px 0;
+  font-size: var(--text-md);
+  color: var(--text);
+}
+.weather-current[hidden] { display: none; }
+
 /* Forecast toggle button - matches .nav-select styling but shows pressed state */
 .weather-forecast-btn {
   background-image: none !important;

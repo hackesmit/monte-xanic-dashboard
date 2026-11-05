@@ -182,8 +182,8 @@ describe('MT.10 — cache: getForecast / clearForecastCache', () => {
 describe('MT.10 — cache: TTL semantics (via syncForecast short-circuit)', () => {
   beforeEach(() => WeatherStore.clearForecastCache());
 
-  it('TTL constant is 1 hour', () => {
-    assert.equal(WeatherStore._FORECAST_TTL_MS, 60 * 60 * 1000);
+  it('TTL constant is 12 hours', () => {
+    assert.equal(WeatherStore._FORECAST_TTL_MS, 12 * 60 * 60 * 1000);
   });
 
   it('fresh cache entry is returned without a network call', async () => {
@@ -213,5 +213,51 @@ describe('MT.10 — cache: TTL semantics (via syncForecast short-circuit)', () =
   it('unknown valley returns null (no coordinates configured)', async () => {
     const out = await WeatherStore.syncForecast('ZZZ', 7);
     assert.equal(out, null);
+  });
+});
+
+describe('xd-5ng — Open-Meteo URL builders and current conditions', () => {
+  beforeEach(() => WeatherStore.clearForecastCache());
+
+  it('buildForecastUrl asks for 7 daily days in the vineyard timezone', () => {
+    const u = new URL(WeatherStore.buildForecastUrl(32.08, -116.62, 7));
+    assert.equal(u.origin + u.pathname, 'https://api.open-meteo.com/v1/forecast');
+    assert.equal(u.searchParams.get('latitude'), '32.08');
+    assert.equal(u.searchParams.get('longitude'), '-116.62');
+    assert.equal(u.searchParams.get('forecast_days'), '7');
+    assert.match(u.searchParams.get('daily'), /precipitation_sum/);
+    assert.equal(u.searchParams.get('timezone'), WeatherStore._TZ);
+  });
+
+  it('buildCurrentUrl asks for the current block', () => {
+    const u = new URL(WeatherStore.buildCurrentUrl(32.08, -116.62));
+    assert.match(u.searchParams.get('current'), /temperature_2m/);
+    assert.equal(u.searchParams.get('daily'), null);
+  });
+
+  it('_parseCurrent maps the current block, null when absent', () => {
+    const c = WeatherStore._parseCurrent({ current: { time: '2026-11-05T08:00', temperature_2m: 17.2,
+      relative_humidity_2m: 60, precipitation: 0, wind_speed_10m: 9.5, weather_code: 1 } });
+    assert.deepEqual(c, { time: '2026-11-05T08:00', temp: 17.2, humidity_pct: 60,
+      rainfall_mm: 0, wind_kmh: 9.5, weather_code: 1 });
+    assert.equal(WeatherStore._parseCurrent({}), null);
+  });
+
+  it('syncCurrent serves a fresh cache without fetching, refetches when stale', async () => {
+    const data = { time: 't', temp: 20 };
+    WeatherStore._currentCache.VDG = { data, fetchedAt: Date.now() };
+    assert.equal(await WeatherStore.syncCurrent('VDG'), data);
+    const orig = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; return { ok: true, json: async () => ({ current: { time: 'n', temperature_2m: 1 } }) }; };
+    try {
+      WeatherStore._currentCache.VDG.fetchedAt = Date.now() - WeatherStore._FORECAST_TTL_MS - 1000;
+      const out = await WeatherStore.syncCurrent('VDG');
+      assert.equal(calls, 1);
+      assert.equal(out.temp, 1);
+      await WeatherStore.syncCurrent('VDG');
+      assert.equal(calls, 1);
+    } finally { globalThis.fetch = orig; }
+    assert.equal(await WeatherStore.syncCurrent('ZZZ'), null);
   });
 });
