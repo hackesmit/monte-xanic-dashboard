@@ -15,6 +15,7 @@
 
 import { test, expect } from '@playwright/test';
 import { catalogoTanques, sinonimosTanques } from '../fixtures/tanques-catalogo.mjs';
+import { todayInVineyard } from '../../js/utils.js';
 
 const TANQUES = catalogoTanques();
 const SINONIMOS = sinonimosTanques();
@@ -485,5 +486,52 @@ test.describe('Tanques', () => {
         .filter((r) => r.height < 44)
         .length);
     expect(chicos).toBe(0);
+  });
+});
+
+// 'Movimientos recientes' (xd-3c2.4). The window is relative to the vineyard's
+// today, so this log is dated from it: today, 2, 5 and 20 days back.
+function haceDias(n) {
+  const [y, m, d] = todayInVineyard().split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d) - n * 86_400_000).toISOString().slice(0, 10);
+}
+const MOVIMIENTOS_RECIENTES = [
+  ...MOVIMIENTOS,
+  mv({ fecha: haceDias(20), tipo: 'recepcion', destino: 'H9', lot_code: '25PVKMP-1', volumen_l: 3000 }),
+  mv({ fecha: haceDias(5), tipo: 'trasiego', origen: 'H9', destino: 'H8', lot_code: '25PVKMP-1', volumen_l: 2900 }),
+  mv({ fecha: haceDias(2), tipo: 'trasiego', origen: 'H8', destino: 'H7', lot_code: '25PVKMP-1', volumen_l: 2800 }),
+  mv({ fecha: haceDias(0), tipo: 'trasiego', origen: 'H7', destino: 'H6', lot_code: '25PVKMP-1', volumen_l: 2700 }),
+];
+
+test.describe('Tanques: movimientos recientes (xd-3c2.4)', () => {
+  test('3 dias by default, then semana and mes; a line selects its tank', async ({ page }) => {
+    await abrir(page, { movimientos: MOVIMIENTOS_RECIENTES });
+    const panel = page.locator('#tanques-recientes');
+    const filas = panel.locator('.tanques-recientes-lista li');
+    await expect(panel.locator('button[data-dias="3"]')).toHaveAttribute('aria-pressed', 'true');
+    await expect(filas).toHaveCount(2);
+    await expect(filas.first()).toContainText('H7');
+    await expect(filas.first()).toContainText('H6');
+    await page.screenshot({ path: 'test-results/xd-3c2.4-recientes.png', fullPage: true });
+    await panel.locator('button[data-dias="7"]').click();
+    await expect(filas).toHaveCount(3);
+    await panel.locator('button[data-dias="30"]').click();
+    await expect(filas).toHaveCount(4);
+    await filas.nth(1).locator('button').click();
+    await expect(page.locator('#tanques-panel h2')).toHaveText('H7');
+  });
+
+  test('an empty window says so', async ({ page }) => {
+    await abrir(page);
+    await expect(page.locator('#tanques-recientes')).toContainText('Sin movimientos en los últimos 3 días');
+  });
+
+  test('phone width: the lines stay tappable', async ({ page }) => {
+    await abrir(page, { ancho: 390, alto: 844, movimientos: MOVIMIENTOS_RECIENTES });
+    const boton = page.locator('#tanques-recientes .tanques-recientes-lista button').first();
+    await boton.scrollIntoViewIfNeeded();
+    const caja = await boton.boundingBox();
+    expect(caja.height).toBeGreaterThanOrEqual(44);
+    await page.screenshot({ path: 'test-results/xd-3c2.4-recientes-movil.png', fullPage: true });
   });
 });

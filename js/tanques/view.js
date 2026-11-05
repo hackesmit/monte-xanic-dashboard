@@ -11,8 +11,10 @@
 
 import { DataStore } from '../dataLoader.js';
 import { DemoMode } from '../demoMode.js';
-import { escapeHtml } from '../utils.js';
-import { replayMovimientos, historialTanque, recorridoLote, ETAPAS } from './estado.js';
+import { escapeHtml, todayInVineyard } from '../utils.js';
+import {
+  replayMovimientos, historialTanque, recorridoLote, movimientosEnVentana, ETAPAS,
+} from './estado.js';
 import { TanquesMoves, etiquetaMovimiento } from './moves.js';
 import { TanquesInbox } from './inbox.js';
 import { PanelCharts } from './panelCharts.js';
@@ -78,11 +80,21 @@ const FRESCURA_MS = 15_000;
 // App.refresh(): several of those fire in a row while the dashboard boots.
 const REINTENTO_MS = 10_000;
 
+// 'Movimientos recientes' windows (xd-3c2.4), in calendar days of the vineyard.
+// Daniel 2026-11-05: 3 days by default, with a week and a month option.
+const VENTANAS_RECIENTES = [
+  { dias: 3, etiqueta: '3 días' },
+  { dias: 7, etiqueta: 'Semana' },
+  { dias: 30, etiqueta: 'Mes' },
+];
+
 export const TanquesView = {
   modo: 'variedad',
   // Stage chips that are on (xd-3c2.3). Independent of `modo`; lives on the
   // view object so a re-render keeps it.
   filtros: new Set(),
+  // Window of the 'Movimientos recientes' list, in days (xd-3c2.4).
+  diasRecientes: 3,
   seleccion: null,
   busqueda: '',
   _cargado: false,
@@ -261,6 +273,7 @@ export const TanquesView = {
       this._pintarLeyenda(estado, plan);
       this._pintarBandeja(plan, estado);
       this._pintarAvisos(avisos);
+      this._pintarRecientes(movimientos);
       TanquesMoves.pintar();
       TanquesInbox.pintar();
       return;
@@ -283,6 +296,7 @@ export const TanquesView = {
     this._pintarLeyenda(estado, plan);
     this._pintarBandeja(plan, estado);
     this._pintarAvisos(avisos);
+    this._pintarRecientes(movimientos);
     TanquesMoves.pintar();
     // After the moves chrome, so the inbox always lands below it in the card.
     TanquesInbox.pintar({ estado, avisos, plan, catalogo, movimientos, sinonimos });
@@ -310,13 +324,15 @@ export const TanquesView = {
     if (typeof el.matches !== 'function' || !el.matches(':focus-visible')) return null;
     if (d.tanque) return { attr: 'data-tanque', valor: d.tanque };
     if (d.irTanque) return { attr: 'data-ir-tanque', valor: d.irTanque };
+    if (d.dias) return { attr: 'data-dias', valor: d.dias };
     return null;
   },
 
   _restaurarFoco(foco) {
     if (!foco) return;
     const sel = `[${foco.attr}="${CSS.escape(foco.valor)}"]`;
-    const el = document.querySelector(`#tanques-panel ${sel}, #tanques-otras ${sel}, #tanques-plano ${sel}`)
+    const el = document.querySelector(
+      `#tanques-panel ${sel}, #tanques-otras ${sel}, #tanques-plano ${sel}, #tanques-recientes ${sel}`)
       || document.querySelector(`#tanques-plano [data-tanque="${CSS.escape(foco.valor)}"]`);
     if (el && typeof el.focus === 'function') el.focus({ preventScroll: true });
   },
@@ -516,6 +532,67 @@ export const TanquesView = {
         + ` <small>${escapeHtml(plan.sinUbicar.join(', '))}</small></span>`);
     }
     el.innerHTML = chips.join('') || '<span class="tanques-hint">Sin vasijas pendientes de ubicar.</span>';
+  },
+
+  // The 'Movimientos recientes' list (xd-3c2.4): the log's rows whose fecha
+  // falls in the last N vineyard days, newest first. Read only. Its container
+  // is made here, under the plan's avisos, so index.html needs no change; a
+  // line selects the tank the wine went to (the origin for a salida).
+  _contenedorRecientes() {
+    let el = document.getElementById('tanques-recientes');
+    if (el) return el;
+    const ancla = document.getElementById('tanques-avisos');
+    if (!ancla || !ancla.parentNode) return null;
+    el = document.createElement('section');
+    el.id = 'tanques-recientes';
+    el.className = 'tanques-recientes';
+    el.setAttribute('aria-label', 'Movimientos recientes');
+    ancla.insertAdjacentElement('afterend', el);
+    el.addEventListener('click', (e) => {
+      const v = e.target.closest('button[data-dias]');
+      if (v) {
+        const dias = Number(v.dataset.dias);
+        if (!VENTANAS_RECIENTES.some((w) => w.dias === dias)) return;
+        this.diasRecientes = dias;
+        this.render();
+        return;
+      }
+      const ir = e.target.closest('[data-ir-tanque]');
+      if (!ir) return;
+      this.seleccion = ir.dataset.irTanque;
+      this.render();
+    });
+    return el;
+  },
+
+  _pintarRecientes(movimientos) {
+    const el = this._contenedorRecientes();
+    if (!el) return;
+    const dias = this.diasRecientes;
+    const filas = movimientosEnVentana(movimientos, todayInVineyard(), dias);
+    const selector = '<div class="tanques-seg" role="group" aria-label="Periodo">'
+      + VENTANAS_RECIENTES.map((w) => `<button type="button" data-dias="${w.dias}"`
+        + ` aria-pressed="${w.dias === dias}">${escapeHtml(w.etiqueta)}</button>`).join('')
+      + '</div>';
+    const lista = filas.length
+      ? '<ol class="tanques-recientes-lista">' + filas.map((m) => this._htmlFilaReciente(m)).join('') + '</ol>'
+      : `<p class="tanques-hint">Sin movimientos en los últimos ${dias} días.</p>`;
+    el.innerHTML = '<div class="tanques-recientes-head"><h3>Movimientos recientes</h3>'
+      + `${selector}</div>${lista}`;
+  },
+
+  _htmlFilaReciente(m) {
+    const origen = m.origen ? escapeHtml(m.origen) : 'recepción';
+    const destino = m.destino ? escapeHtml(m.destino) : 'salida';
+    const ir = m.destino || m.origen || '';
+    const cuerpo = `<time>${escapeHtml(fechaCorta(m.fecha))}</time>`
+      + `<b>${escapeHtml(etiquetaMovimiento(m.tipo))}</b>`
+      + `<span class="tanques-recientes-ruta">${origen} &rarr; ${destino}</span>`
+      + `<span class="tanques-recientes-lote">${escapeHtml(m.lot_code || 'sin lote')}</span>`
+      + `<span class="tanques-recientes-litros">${litros(m.volumen_l)} L</span>`;
+    return '<li>' + (ir
+      ? `<button type="button" data-ir-tanque="${escapeHtml(ir)}">${cuerpo}</button>`
+      : `<div>${cuerpo}</div>`) + '</li>';
   },
 
   _pintarAvisos(avisos) {
