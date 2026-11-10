@@ -10,24 +10,19 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DataStore, estadoDatos } from '../js/dataLoader.js';
 
-// A chainable stand-in for the supabase-js query builder. `tables` maps a
-// table name to its rows, or to an Error the query answers with.
+// Reads go through /api/datos (DataStore._fetchAll), not a supabase-js query
+// builder, so the stand-in replaces _fetchAll. `tables` maps a table name to
+// its rows, or to an Error the read fails with. The client object only has to
+// exist: loadFromSupabase refuses to run without one.
 function fakeClient(tables) {
-  return {
-    from(table) {
-      const q = {
-        select: () => q,
-        order: () => q,
-        range: (from, to) => {
-          const t = tables[table];
-          if (t instanceof Error) return Promise.resolve({ data: null, error: t });
-          return Promise.resolve({ data: (t || []).slice(from, to + 1), error: null });
-        },
-      };
-      return q;
-    },
-  };
+  return { tables };
 }
+
+DataStore._fetchAll = async function (table) {
+  const t = this.supabase.tables[table];
+  if (t instanceof Error) throw t;
+  return t || [];
+};
 
 function reset(client) {
   DataStore.supabase = client;

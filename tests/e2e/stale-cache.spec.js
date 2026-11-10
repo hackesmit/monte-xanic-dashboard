@@ -27,7 +27,8 @@ async function abrir(page, supabase) {
     } catch (_) { /* ignore */ }
   }, CACHE);
   await page.route('**/api/config', (route) => route.fulfill({ status: 503, body: 'down' }));
-  await page.route('**/rest/v1/**', supabase);
+  // Lab tables are read through /api/datos, never rest/v1 (xd-0lt.1).
+  await page.route('**/api/datos?*', supabase);
   await page.goto('/');
   await page.waitForSelector('#dashboard-content', { state: 'visible', timeout: 12_000 });
 }
@@ -36,7 +37,7 @@ test.describe('Stale cache indicator', () => {
   test('Supabase failing over a warm cache: banner with the cache date, badge not green', async ({ page }) => {
     await abrir(page, (route) => route.fulfill({
       status: 401, contentType: 'application/json',
-      body: JSON.stringify({ message: 'JWT expired', code: 'PGRST301' }),
+      body: JSON.stringify({ ok: false, error: 'sesión expirada' }),
     }));
     const banner = page.locator('#stale-banner');
     await expect(banner).toBeVisible();
@@ -53,7 +54,7 @@ test.describe('Stale cache indicator', () => {
   test('Supabase answering an empty table over a warm cache: live, no banner', async ({ page }) => {
     await abrir(page, (route) => route.fulfill({
       status: 200, contentType: 'application/json',
-      headers: { 'content-range': '0-0/0' }, body: '[]',
+      body: JSON.stringify({ ok: true, filas: [] }),
     }));
     await expect(page.locator('#db-status-badge')).toHaveClass(/db-badge-ok/);
     await expect(page.locator('#stale-banner')).toBeHidden();
