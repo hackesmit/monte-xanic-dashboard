@@ -1,3 +1,4 @@
+import { supabaseFetch } from './supabaseFetch.js';
 // api/_lib/monaUsage.js - the shared daily spend ceiling for /api/mona (xd-aiz).
 // The counter lives in public.mona_uso (sql/migration_mona_uso.sql and
 // migration_mona_uso_reserva.sql), so every Vercel instance sees the same count: a per-instance Map could not enforce a
@@ -26,7 +27,7 @@ async function rpc(fn, args) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error('Supabase not configured');
-  const resp = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+  const resp = await supabaseFetch(`${url}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
     body: JSON.stringify(args),

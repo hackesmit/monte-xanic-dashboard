@@ -13,10 +13,9 @@
 // and role checks - this module assumes the caller is already authorized.
 import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../../js/quality-scale.js';
 import { ALLOWED_TABLES } from './allowedTables.js';
+import { supabaseFetch, isTimeout } from './supabaseFetch.js';
 
 const reply = (status, body) => ({ status, body });
-
-const UPSERT_TIMEOUT_MS = 20000;
 
 export { ALLOWED_TABLES };
 
@@ -172,18 +171,15 @@ export async function upsertRows({ table, rows }) {
     }
 
     // A stalled Supabase leaves the serverless invocation hanging until the
-    // platform kills it, with no Spanish error for the caller. The timer stays
-    // armed through the error-body read for the same reason.
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), UPSERT_TIMEOUT_MS);
+    // platform kills it, with no Spanish error for the caller. The budget
+    // (supabaseFetch, 'batch') stays armed through the error-body read too.
     let response;
     try {
-      response = await fetch(url, {
+      response = await supabaseFetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(rows),
-        signal: ac.signal,
-      });
+      }, 'batch');
 
       if (!response.ok) {
         const errText = await response.text();
@@ -203,12 +199,10 @@ export async function upsertRows({ table, rows }) {
         return reply(500, { ok: false, error: detail });
       }
     } catch (err) {
-      if (err?.name === 'AbortError') {
+      if (isTimeout(err)) {
         return reply(504, { ok: false, error: 'La base de datos no respondió a tiempo.' });
       }
       throw err;
-    } finally {
-      clearTimeout(timer);
     }
 
     return reply(200, { ok: true, count: rows.length });

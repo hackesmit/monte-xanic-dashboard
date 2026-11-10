@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
+import { supabaseFetch } from './_lib/supabaseFetch.js';
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -45,7 +46,7 @@ export default async function handler(req, res) {
     // any non-2xx (or network error) as failure so the caller sees a real error.
     let resp;
     try {
-      resp = await fetch(`${supabaseUrl}/rest/v1/token_blacklist`, {
+      resp = await supabaseFetch(`${supabaseUrl}/rest/v1/token_blacklist`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

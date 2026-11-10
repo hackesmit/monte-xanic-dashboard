@@ -2,13 +2,14 @@
 // All mona_* tables are server-only (RLS on, no anon policies), so every read/write
 // goes through here. Username/role come from the verified token, never the body.
 import { verifyToken } from './_lib/verifyToken.js';
+import { supabaseFetch } from './_lib/supabaseFetch.js';
 
 const URL = process.env.SUPABASE_URL;
 const KEY = process.env.SUPABASE_SERVICE_KEY;
 const H = () => ({ 'content-type': 'application/json', apikey: KEY, Authorization: `Bearer ${KEY}` });
 
 async function sb(path, opts = {}) {
-  const res = await fetch(`${URL}/rest/v1/${path}`, { ...opts, headers: { ...H(), ...(opts.headers || {}) } });
+  const res = await supabaseFetch(`${URL}/rest/v1/${path}`, { ...opts, headers: { ...H(), ...(opts.headers || {}) } });
   const text = await res.text();
   const json = text ? JSON.parse(text) : null;
   // fetch() does not throw on an HTTP error status. Every handler below reads

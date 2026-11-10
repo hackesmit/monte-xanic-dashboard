@@ -1,6 +1,7 @@
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
 import { MIGRATIONS } from '../js/migrations-manifest.js';
+import { supabaseFetch } from './_lib/supabaseFetch.js';
 
 // GET /api/migrations-status
 //
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
 
   try {
     const url = `${supabaseUrl}/rest/v1/applied_migrations?select=name`;
-    const resp = await fetch(url, {
+    const resp = await supabaseFetch(url, {
       headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
     });
 

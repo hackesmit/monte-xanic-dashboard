@@ -14,6 +14,8 @@
 // On Supabase failure:
 //   500 { ok: false, error: '<message>' }
 
+import { supabaseFetch } from './_lib/supabaseFetch.js';
+
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -39,7 +41,7 @@ export default async function handler(req, res) {
   const startedAt = Date.now();
   try {
     const url = `${supabaseUrl}/rest/v1/applied_migrations?select=name&limit=1`;
-    const resp = await fetch(url, {
+    const resp = await supabaseFetch(url, {
       headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },
     });
 

@@ -3,6 +3,7 @@ import { rateLimit } from './_lib/rateLimit.js';
 import { ALLOWED_TABLES } from './upload.js';
 import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../js/quality-scale.js';
 import { validateRow } from '../js/validation.js';
+import { supabaseFetch } from './_lib/supabaseFetch.js';
 
 const ALLOWED_ACTIONS = new Set(['update', 'delete', 'upsert']);
 
@@ -108,7 +109,7 @@ export default async function handler(req, res) {
     row.last_edited_by = result.payload.user || 'lab';
 
     try {
-      const supaRes = await fetch(url, {
+      const supaRes = await supabaseFetch(url, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -137,7 +138,7 @@ export default async function handler(req, res) {
 
   if (action === 'delete') {
     try {
-      const supaRes = await fetch(url, {
+      const supaRes = await supabaseFetch(url, {
         method: 'DELETE',
         headers: {
           'apikey': serviceKey,
@@ -164,7 +165,7 @@ export default async function handler(req, res) {
     row.updated_by = result.payload.user || 'lab';
     const upsertUrl = `${supabaseUrl}/rest/v1/${table}?on_conflict=${conflictCols.join(',')}`;
     try {
-      const supaRes = await fetch(upsertUrl, {
+      const supaRes = await supabaseFetch(upsertUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -23,6 +23,7 @@
 // PostgREST's JSON back into the shapes that pure module expects.
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
+import { supabaseFetch } from './_lib/supabaseFetch.js';
 import { replayMovimientos, validarMovimientoEnLog } from '../js/tanques/estado.js';
 
 // Exactly the columns a client may put on a new movement. Anything else is
@@ -62,7 +63,6 @@ const VINTAGE_MAX = 2100;
 const PAGINA = 1000;        // PostgREST caps a response at 1000 rows
 const INTENTOS = 3;         // read, validate and write attempts before a 409
 const LECTURAS = 3;         // attempts at a read the version stays still across
-const ESPERA_RPC_MS = 8000; // past this the write is abandoned as indeterminate
 // One millilitre: the threshold below which a difference between two replays is
 // not a real worsening. js/tanques/estado.js reports its balance totals to the
 // same precision for the same reason, and the running destination level below
@@ -155,16 +155,24 @@ class ErrorIndeterminado extends Error {}
 
 async function sb(path, opts = {}) {
   const { url, key } = entorno();
-  const res = await fetch(`${url}/rest/v1/${path}`, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      ...(opts.headers || {}),
-    },
-  });
-  const text = await res.text();
+  // A stalled or unreachable Supabase is a database error like a 5xx, not the
+  // generic 500. The only write through here (descartar) ignores duplicates,
+  // so repeating it after an unknown outcome is harmless.
+  let res, text;
+  try {
+    res = await supabaseFetch(`${url}/rest/v1/${path}`, {
+      ...opts,
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        ...(opts.headers || {}),
+      },
+    });
+    text = await res.text();
+  } catch (e) {
+    throw new ErrorSupabase(`sin respuesta: ${(e && e.message) || e}`.slice(0, 200), 504);
+  }
   const json = text ? JSON.parse(text) : null;
   // fetch() does not throw on an HTTP error status. Without this, a 503 on the
   // log read would be reported as an empty bodega and every movement after it
@@ -188,11 +196,10 @@ async function sb(path, opts = {}) {
 // transaction rolled back.
 async function escribir(version, accion, fila, id) {
   const { url, key } = entorno();
-  const control = new AbortController();
-  const reloj = setTimeout(() => control.abort(), ESPERA_RPC_MS);
   let res, text;
   try {
-    res = await fetch(`${url}/rest/v1/rpc/tanques_escribir`, {
+    // Budget 'rpc': past it the write is abandoned as indeterminate.
+    res = await supabaseFetch(`${url}/rest/v1/rpc/tanques_escribir`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -200,13 +207,10 @@ async function escribir(version, accion, fila, id) {
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({ p_version: version, p_accion: accion, p_fila: fila, p_id: id }),
-      signal: control.signal,
-    });
+    }, 'rpc');
     text = await res.text();
   } catch (e) {
     throw new ErrorIndeterminado(e && e.message);
-  } finally {
-    clearTimeout(reloj);
   }
   if (res.status >= 500) throw new ErrorIndeterminado(`HTTP ${res.status}`);
   let json = null;

@@ -23,6 +23,7 @@
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
 import { ALLOWED_TABLES } from './_lib/allowedTables.js';
+import { supabaseFetch } from './_lib/supabaseFetch.js';
 
 // The tables this route serves and the column each is paged in. The orders are
 // the ones js/dataLoader.js used against PostgREST before, unchanged.
@@ -52,7 +53,7 @@ const lista = (vals) => `(${vals.map(v => `"${String(v).replace(/["\\]/g, '\\$&'
 async function sb(path) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
-  const res = await fetch(`${url}/rest/v1/${path}`, {
+  const res = await supabaseFetch(`${url}/rest/v1/${path}`, {
     headers: { apikey: key, Authorization: `Bearer ${key}` },
   });
   const text = await res.text();
