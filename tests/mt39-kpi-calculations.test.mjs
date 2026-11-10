@@ -46,3 +46,41 @@ test('MT.39 weightedAvg: no valid values → null', () => {
   const rows = [{ brix: null }, { brix: NaN }, {}];
   assert.equal(KPIs.weightedAvg(rows, 'brix'), null);
 });
+
+// ── weightedQualifier: KPI honesty labelling (xd-eg4 author round) ────
+// Pure decision function behind setKPI's `*` marker + tooltip. Kept DOM-free so
+// the three honesty rules below are unit-testable without a browser.
+
+test('MT.39 weightedQualifier: fully weighted → no marker, no tooltip', () => {
+  const q = KPIs.weightedQualifier({ coverage: 1, weighted: true });
+  assert.equal(q.marked, false);
+  assert.equal(q.title, null);
+});
+
+test('MT.39 weightedQualifier: partial coverage → marked, wording says "mediciones" not "lotes"', () => {
+  // Issue THREE: coverage counts value-rows, not unique lots, so the disclosure
+  // must not claim "% de los lotes" — that would itself be misleading.
+  const q = KPIs.weightedQualifier({ coverage: 0.5, weighted: false });
+  assert.equal(q.marked, true);
+  assert.match(q.title, /50% de las mediciones/);
+  assert.doesNotMatch(q.title, /lotes/);
+});
+
+test('MT.39 weightedQualifier: ZERO coverage still qualifies, with distinct wording', () => {
+  // Issue ONE: weighted===false && coverage===0 was rendered as an unqualified
+  // tonnage-weighted figure — the one case where weighting is fully undefined.
+  // It must be marked, and its wording must differ from the partial case.
+  const zero = KPIs.weightedQualifier({ coverage: 0, weighted: false });
+  const partial = KPIs.weightedQualifier({ coverage: 0.5, weighted: false });
+  assert.equal(zero.marked, true);
+  assert.notEqual(zero.title, partial.title);
+  assert.doesNotMatch(zero.title, /%/);        // no "conocido en X%" — none is known
+  assert.match(zero.title, /ninguna medición/);
+  assert.match(zero.title, /sin fuente/);      // no tonnage source: say so, never invent 1 t
+});
+
+test('MT.39 weightedQualifier: no meta → no marker (legacy callers)', () => {
+  const q = KPIs.weightedQualifier(undefined);
+  assert.equal(q.marked, false);
+  assert.equal(q.title, null);
+});

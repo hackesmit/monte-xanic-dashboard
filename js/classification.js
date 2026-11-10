@@ -329,25 +329,51 @@ export function scoreAll(lots, options = {}) {
 // ── aggregateSection: tonnage-weighted roll-up ───────────────────────
 
 export function aggregateSection(lots) {
+  // All-or-nothing tonnage policy (mirrors aggregations.weightedMeanStats):
+  // weight by tons only when every scored lot's tonnage is known; otherwise
+  // fall back to a plain unweighted mean rather than invent 1 ton for the
+  // unknown lots and let real-tonnage lots swamp them.
+  let plainSum = 0;
   let weightedSum = 0;
   let weightTotal = 0;
   let scoredLots = 0;
+  let weightedLots = 0;
   for (const l of lots) {
-    if (l.score36 === null || l.score36 === undefined) continue;
-    const w = (l.tons && l.tons > 0) ? l.tons : 1;
-    weightedSum += l.score36 * w;
-    weightTotal += w;
+    // Only a finite score counts. A non-finite score36 would poison the mean
+    // and, worse, a NaN roll-up compares false against every grade threshold and
+    // silently lands on C.
+    if (typeof l.score36 !== 'number' || !Number.isFinite(l.score36)) continue;
     scoredLots++;
+    plainSum += l.score36;
+    // Tonnage must be finite AND positive - `l.tons > 0` alone admits Infinity,
+    // which turns the weighted mean into NaN (see aggregations.weightedMeanStats).
+    if (typeof l.tons === 'number' && Number.isFinite(l.tons) && l.tons > 0) {
+      weightedLots++;
+      weightedSum += l.score36 * l.tons;
+      weightTotal += l.tons;
+    }
   }
   if (scoredLots === 0) {
-    return { grade: null, score36: null, lotCount: lots.length };
+    return { grade: null, score36: null, lotCount: lots.length, coverage: 0, weighted: false };
   }
-  const score36 = Math.round((weightedSum / weightTotal) * 100) / 100;
+  const fullyWeighted = weightedLots === scoredLots && weightTotal > 0;
+  const raw = fullyWeighted ? weightedSum / weightTotal : plainSum / scoredLots;
+  // Refuse to grade a non-finite aggregate rather than let NaN fall through to C.
+  if (!Number.isFinite(raw)) {
+    return { grade: null, score36: null, lotCount: lots.length, coverage: weightedLots / scoredLots, weighted: false };
+  }
+  const score36 = Math.round(raw * 100) / 100;
   const grade = score36 >= 30 ? 'A+'
               : score36 >= 27 ? 'A'
               : score36 >= 23 ? 'B'
               :                 'C';
-  return { grade, score36, lotCount: lots.length };
+  return {
+    grade,
+    score36,
+    lotCount: lots.length,
+    coverage: weightedLots / scoredLots,
+    weighted: fullyWeighted
+  };
 }
 
 // ── scoreFromMedicion: lift a medicion row into the lot shape scoreLot expects ──
