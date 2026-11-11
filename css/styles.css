@@ -720,6 +720,15 @@ body.demo-mode-active .demo-banner { display: block; }
   margin-left: 3px;
   font-family: var(--font-display);
 }
+/* Marks a KPI that could not be tonnage-weighted (partial or no tonnage);
+   the qualifying detail lives in the card's title tooltip (xd-eg4). */
+.kpi-note {
+  font-size: var(--text-md);
+  color: var(--muted);
+  margin-left: 2px;
+  vertical-align: super;
+  cursor: help;
+}
 
 /* ── CHARTS ── */
 .charts-grid {

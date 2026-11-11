@@ -5,26 +5,71 @@
 // in dataLoader._enrichData; see Wave 1 #1).
 
 /**
- * Weighted arithmetic mean.
+ * Weighted arithmetic mean with an explicit all-or-nothing tonnage policy.
+ *
+ * Tonnage weighting is only meaningful when every contributing lot's tonnage
+ * is known. When it is only partially known we must NOT invent a weight (the
+ * old `fallbackWeight = 1` behaviour): substituting 1 ton for an unknown lot
+ * lets real-tonnage lots swamp the rest, producing a figure that is neither a
+ * tonnage-weighted mean nor an unweighted one (e.g. a 20 Bx null-weight lot
+ * next to a 30 Bx / 100 t lot yielded ~29.9 instead of the honest 25).
+ *
+ * Policy:
+ *   - Every value-row carries a valid weight  -> tonnage-weighted mean.
+ *   - Any value-row is missing a valid weight  -> plain unweighted mean over
+ *     all value-rows (each lot counts once). No invented tonnage, no mixing.
+ * `coverage` (fraction of value-rows with a real weight) is reported so the UI
+ * can visibly qualify a figure that fell back to unweighted.
+ *
  * @param {Array<object>} rows
  * @param {string} valueKey - property name to average (e.g. 'brix')
  * @param {string} [weightKey='_weight'] - property name for the weight
- * @param {object} [opts]
- * @param {number} [opts.fallbackWeight=1] - used when row[weightKey] is null/0/NaN
- * @returns {number|null} weighted mean, or null if no valid rows
+ * @returns {{mean: number|null, coverage: number, weighted: boolean}}
  */
-export function weightedMean(rows, valueKey, weightKey = '_weight', { fallbackWeight = 1 } = {}) {
-  let num = 0;
-  let den = 0;
+export function weightedMeanStats(rows, valueKey, weightKey = '_weight') {
+  let valueRows = 0;
+  let weightedRows = 0;
+  let plainSum = 0;   // sum v            (unweighted)
+  let wNum = 0;       // sum v * w        (weighted numerator)
+  let wDen = 0;       // sum w            (weighted denominator)
   for (const r of rows) {
     const v = r[valueKey];
-    if (v === null || v === undefined || Number.isNaN(v) || typeof v !== 'number') continue;
+    // Parse strictly: only a finite number is a usable value. Infinity/NaN are
+    // discarded, not smuggled through - a non-finite value would poison both the
+    // plain and weighted sums (same coercion trap fixed in the predictor and the
+    // sanitary counts). Test loosely (v > 0) and Infinity slips in.
+    if (typeof v !== 'number' || !Number.isFinite(v)) continue;
+    valueRows++;
+    plainSum += v;
     const rawW = r[weightKey];
-    const w = (typeof rawW === 'number' && rawW > 0 && !Number.isNaN(rawW)) ? rawW : fallbackWeight;
-    num += v * w;
-    den += w;
+    // A weight must be finite AND positive. `rawW > 0` alone admits Infinity,
+    // which makes wNum and wDen both Infinity and their ratio NaN - a NaN KPI
+    // that renders as garbage and silently grades C downstream.
+    if (typeof rawW === 'number' && Number.isFinite(rawW) && rawW > 0) {
+      weightedRows++;
+      wNum += v * rawW;
+      wDen += rawW;
+    }
   }
-  return den > 0 ? num / den : null;
+  if (valueRows === 0) return { mean: null, coverage: 0, weighted: false };
+  const coverage = weightedRows / valueRows;
+  const fullyWeighted = weightedRows === valueRows && wDen > 0;
+  const mean = fullyWeighted ? wNum / wDen : plainSum / valueRows;
+  // Never let a non-finite aggregate propagate to a KPI. With finite values and
+  // finite positive weights this cannot fire, but guard rather than trust.
+  if (!Number.isFinite(mean)) return { mean: null, coverage, weighted: false };
+  return { mean, coverage, weighted: fullyWeighted };
+}
+
+/**
+ * Weighted arithmetic mean (see {@link weightedMeanStats} for the policy).
+ * @param {Array<object>} rows
+ * @param {string} valueKey - property name to average (e.g. 'brix')
+ * @param {string} [weightKey='_weight'] - property name for the weight
+ * @returns {number|null} weighted (or unweighted-fallback) mean, or null if no valid rows
+ */
+export function weightedMean(rows, valueKey, weightKey = '_weight') {
+  return weightedMeanStats(rows, valueKey, weightKey).mean;
 }
 
 /**

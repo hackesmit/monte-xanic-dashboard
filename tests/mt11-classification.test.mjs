@@ -493,7 +493,7 @@ test('MT.11 scoreAll: tied scores share higher percentile', () => {
   assert.equal(scored[0].percentile, scored[1].percentile);
 });
 
-test('MT.11 aggregateSection: tonnage-weighted average', () => {
+test('MT.11 aggregateSection: tonnage-weighted average (full coverage)', () => {
   const lots = [
     { lotCode: 'a', score36: 30, grade: 'A+', tons: 10 },
     { lotCode: 'b', score36: 24, grade: 'B',  tons: 10 }
@@ -502,15 +502,61 @@ test('MT.11 aggregateSection: tonnage-weighted average', () => {
   assert.equal(agg.score36, 27);    // weighted avg
   assert.equal(agg.grade, 'A');     // 27 is the A bucket floor
   assert.equal(agg.lotCount, 2);
+  assert.equal(agg.coverage, 1);
+  assert.equal(agg.weighted, true);
 });
 
-test('MT.11 aggregateSection: missing tons defaults to weight 1', () => {
+test('MT.11 aggregateSection: all tons missing → unweighted mean, coverage 0', () => {
   const lots = [
     { lotCode: 'a', score36: 30, grade: 'A+', tons: null },
     { lotCode: 'b', score36: 24, grade: 'B',  tons: null }
   ];
   const agg = aggregateSection(lots);
-  assert.equal(agg.score36, 27);
+  assert.equal(agg.score36, 27);    // (30 + 24)/2, no invented 1-ton weight
+  assert.equal(agg.coverage, 0);
+  assert.equal(agg.weighted, false);
+});
+
+// xd-eg4 policy: a section where only some lots have known tonnage must not
+// let the known-tonnage lots swamp the rest via a fabricated 1-ton weight.
+test('MT.11 aggregateSection: partial tonnage → unweighted fallback (no scale-mixing)', () => {
+  const lots = [
+    { lotCode: 'a', score36: 20, grade: 'C',  tons: null }, // tonnage unknown
+    { lotCode: 'b', score36: 30, grade: 'A+', tons: 100 }   // tonnage known
+  ];
+  const agg = aggregateSection(lots);
+  // Old broken behaviour: (20*1 + 30*100)/101 ≈ 29.90.
+  // New policy: unweighted (20 + 30)/2 = 25.
+  assert.equal(agg.score36, 25);
+  assert.equal(agg.coverage, 0.5);
+  assert.equal(agg.weighted, false);
+});
+
+// xd-eg4 author round (issue TWO): an Infinity tonnage must not slip through
+// `tons > 0` and turn the weighted roll-up into NaN. A NaN score36 compares
+// false against every grade threshold and would silently land on C — the exact
+// dishonest failure this bead exists to prevent. Reject non-finite tonnage.
+test('MT.11 aggregateSection: Infinity tonnage rejected → unweighted, finite grade (not NaN→C)', () => {
+  const lots = [
+    { lotCode: 'a', score36: 30, grade: 'A+', tons: Infinity },
+    { lotCode: 'b', score36: 30, grade: 'A+', tons: Infinity }
+  ];
+  const agg = aggregateSection(lots);
+  assert.equal(agg.weighted, false);   // Infinity weights count as missing
+  assert.equal(agg.coverage, 0);
+  assert.equal(agg.score36, 30);       // plain mean, never NaN
+  assert.equal(agg.grade, 'A+');       // NOT the silent C a NaN would give
+  assert.ok(Number.isFinite(agg.score36));
+});
+
+test('MT.11 aggregateSection: non-finite score36 lot is excluded, not averaged in', () => {
+  const lots = [
+    { lotCode: 'a', score36: Infinity, grade: 'A+', tons: 10 }, // poison, skipped
+    { lotCode: 'b', score36: 24, grade: 'B',  tons: 10 }
+  ];
+  const agg = aggregateSection(lots);
+  assert.equal(agg.score36, 24);       // only lot b counts
+  assert.ok(Number.isFinite(agg.score36));
 });
 
 test('MT.11 aggregateSection: all-null lots → grade null', () => {

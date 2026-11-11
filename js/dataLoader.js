@@ -998,8 +998,9 @@ export const DataStore = {
 
   // Tag each berry + wine sample row with _weight from its matching
   // mediciones_tecnicas.tons_received (Map<lotCode, tons>). Samples
-  // without a matching medicion get _weight = null (callers fall back
-  // to 1 via aggregations.weightedMean's fallbackWeight option).
+  // without a matching medicion get _weight = null; aggregations.weightedMeanStats
+  // counts that against coverage and falls back to a plain unweighted mean
+  // rather than inventing a weight (xd-eg4: the fallbackWeight=1 option is gone).
   // Idempotent - safe to call multiple times. See Wave 1 #1 dispatch.
   _tagSampleWeights() {
     // Key on (lotCode, vintage) like joinBerryWithMediciones - keying on
