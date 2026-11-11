@@ -2,6 +2,10 @@
 // so api/mona.js sends exactly these to Anthropic and the client cannot swap them (xd-aiz).
 
 const DATASET_ENUM = ['berry', 'wine', 'preferment', 'mediciones'];
+// Field names are the dataset's own (berry: variety, appellation, vintage; wine
+// and preferment: variedad, proveedor, vintage) and differ between datasets, so
+// the model is told to take them from list_fields instead of guessing (xd-7ap.2).
+const FILTERS_DESC = 'Lista de {field, op, value}. op: eq|ne|in|gt|gte|lt|lte|between. field es el nombre exacto que devuelve list_fields para ese conjunto (los nombres cambian entre conjuntos); un campo desconocido devuelve un error con los campos válidos.';
 
 export const TOOL_DEFS = [
   {
@@ -11,7 +15,7 @@ export const TOOL_DEFS = [
       type: 'object',
       properties: {
         dataset: { type: 'string', enum: DATASET_ENUM },
-        filters: { type: 'array', items: { type: 'object' }, description: 'Lista de {field, op, value}. op: eq|ne|in|gt|gte|lt|lte|between.' },
+        filters: { type: 'array', items: { type: 'object' }, description: FILTERS_DESC },
         fields: { type: 'array', items: { type: 'string' } },
         limit: { type: 'number' },
       },
@@ -20,15 +24,15 @@ export const TOOL_DEFS = [
   },
   {
     name: 'aggregate_data',
-    description: 'Agrupa por un campo y calcula avg/min/max/sum/count sobre un campo numérico. Base para las gráficas.',
+    description: 'Agrupa por un campo y calcula avg/min/max/sum/count sobre un campo numérico. Base para las gráficas. Con groupBy devuelve también overall: la misma métrica sobre todas las filas filtradas (el total o el promedio general); úsalo en vez de sumar o promediar los grupos tú misma.',
     input_schema: {
       type: 'object',
       properties: {
         dataset: { type: 'string', enum: DATASET_ENUM },
-        groupBy: { type: 'string' },
+        groupBy: { type: 'string', description: 'Nombre exacto de un campo de list_fields.' },
         metric: { type: 'string', enum: ['avg', 'min', 'max', 'sum', 'count'] },
         field: { type: 'string' },
-        filters: { type: 'array', items: { type: 'object' } },
+        filters: { type: 'array', items: { type: 'object' }, description: FILTERS_DESC },
       },
       required: ['dataset', 'metric'],
     },
@@ -41,7 +45,7 @@ export const TOOL_DEFS = [
   {
     name: 'compute_kpis',
     description: 'Calcula los KPIs de bayas (°Bx, pH, AT, taninos, peso de baya) ponderados por tonelaje sobre un subconjunto filtrado.',
-    input_schema: { type: 'object', properties: { filters: { type: 'array', items: { type: 'object' } } } },
+    input_schema: { type: 'object', properties: { filters: { type: 'array', items: { type: 'object' }, description: FILTERS_DESC } } },
   },
   {
     name: 'render_chart',

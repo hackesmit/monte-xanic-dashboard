@@ -1,0 +1,9 @@
+# Files that define Mona's behaviour. A merge that touches one of them, or this
+# list, needs a passing `node tests/mona-eval.mjs` receipt for the merged
+# content (contract: company-chatbot skill, references/evals.md).
+api/mona.js
+js/mona/toolDefs.js
+js/mona/knowledge.js
+js/mona/tools.js
+js/mona/chat.js
+js/mona/dataAccess.js
