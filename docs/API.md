@@ -298,6 +298,19 @@ grants; the anon read stays (public weather data).
 
 A bad valley or span is a 400; a failed Open-Meteo call or write is a 502.
 
+## /api/pronostico
+
+Session-checked (any role, blacklist checked, 120 requests per window). Per-lot
+date at target Brix, fitted on the server by `js/pronostico/brix.js`; see
+[pronostico.md](pronostico.md).
+
+- `GET /api/pronostico`: today's forecasts. Each issued forecast is recorded in
+  `public.pronosticos` (insert-or-ignore; a reload writes nothing new).
+- `GET /api/pronostico?corte=YYYY-MM-DD`: replay as of a past day; records
+  nothing. 400 for an invalid date or one after today.
+- 200 `{ ok, corte, vendimia, modelo, banda, filas, guardado }`. `guardado` is
+  false when the record write failed; the forecast is still returned.
+
 ## /api/tanques
 
 Token-gated access to the tank catalog and the movement log. `dim_tanque`,

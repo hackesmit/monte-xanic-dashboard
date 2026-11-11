@@ -3120,6 +3120,23 @@ body.demo-mode-active .row-clickable        { display: none; }
 .settings-meta { font-size: var(--text-md); color: var(--muted); margin: 6px 0 8px 0; }
 .settings-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 
+/* ══ PRONOSTICO: fecha a Brix objetivo por lote (xd-2ov.2) ══ */
+.pronostico-brix-seccion { margin-bottom: 20px; }
+.pronostico-corte  { display: flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--muted); }
+.pronostico-corte input { padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius-base);
+                          background: var(--surface); color: var(--text); font-size: var(--text-md); }
+.pronostico-scroll { overflow-x: auto; }
+.pronostico-tabla  { margin-top: 0; }
+.pronostico-tabla td { white-space: nowrap; }
+.pronostico-dia    { color: var(--muted); font-size: var(--text-sm); }
+.pronostico-fecha  { color: var(--muted); }
+.pronostico-pronostico .pronostico-fecha { color: var(--text); font-weight: 600; }
+.pronostico-vacio, .pronostico-pie { font-size: var(--text-md); color: var(--muted); margin: 8px 0; }
+@media (max-width: 600px) {
+  .pronostico-opcional { display: none; }
+  .pronostico-tabla th, .pronostico-tabla td { padding: 8px 6px; }
+}
+
 /* ══ TANQUES (Mapa de Tanques) ══
    Plan on the left, tank panel on the right; the panel stacks under the plan
    below 960px and the plan scrolls horizontally inside its card rather than

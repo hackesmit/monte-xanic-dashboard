@@ -443,6 +443,7 @@ export const App = {
 
       case 'prediccion':
         import('./predictionView.js').then(m => m.PredictionView.mount());
+        import('./pronostico/view.js').then(m => m.PronosticoBrix.render());
         break;
 
       case 'tanques':
