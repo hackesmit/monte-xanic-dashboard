@@ -276,6 +276,18 @@ export const DataStore = {
     return all;
   },
 
+  // Per-lot date at target Brix (xd-2ov.2): /api/pronostico fits on the server
+  // and records the forecast; corte (ISO, optional) replays a past day.
+  async loadPronosticoBrix(corte = null) {
+    const q = corte ? `?corte=${encodeURIComponent(corte)}` : '';
+    const res = await fetch(`/api/pronostico${q}`, {
+      headers: { 'x-session-token': this._sessionToken() },
+    });
+    const body = await res.json();
+    if (!body?.ok) throw new Error(body?.error || `HTTP ${res.status}`);
+    return body;
+  },
+
   // Query Supabase and populate berryData / wineRecepcion / winePreferment.
   // Returns true if berry data was loaded successfully.
   async loadFromSupabase() {

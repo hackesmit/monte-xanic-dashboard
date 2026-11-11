@@ -18,6 +18,7 @@
 | Know upload/validation rules | [Data-Validation.md](Data-Validation.md) |
 | Understand the development workflow | [Development-Rules.md](Development-Rules.md) |
 | Write or change any CSS | [Design-System.md](Design-System.md) |
+| Per-lot Brix date forecast and its backtest | [pronostico.md](pronostico.md) |
 
 ## Canonical Sources
 

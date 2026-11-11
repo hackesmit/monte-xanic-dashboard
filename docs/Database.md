@@ -366,6 +366,14 @@ trigger never sees a TRUNCATE. Both bind the service key and the SQL editor, whi
 not. A deliberate correction means
 `ALTER TABLE public.movimientos_tanque DISABLE TRIGGER USER`.
 
+## pronosticos
+
+Forecasts as issued (xd-2ov.2), `sql/migration_pronosticos.sql`. One row per
+`(tipo, lote, vendimia, fecha_corte, modelo, objetivo)`; `tipo` is
+`brix_objetivo` for now. `fecha_pronostico` and `banda_dias` are both set or
+both null. Written only by `api/pronostico.js` with the service key; RLS on, no
+policies, anon and authenticated revoked. Details: [pronostico.md](pronostico.md).
+
 ## Recommended Future Improvements
 
 - Add foreign key constraint: `reception_lots.reception_id` -> `tank_receptions.id`
