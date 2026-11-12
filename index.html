@@ -1463,58 +1463,87 @@
     </div>
     <div class="help-body">
       <div class="help-section">
-        <h3>Cómo Iniciar</h3>
-        <p>El dashboard carga datos automáticamente desde Supabase. Para servir localmente, ejecute:</p>
-        <pre>npm start</pre>
-        <p>Luego abra <code>http://localhost:8080</code> en su navegador.</p>
-      </div>
-
-      <div class="help-section">
-        <h3>Cargar / Actualizar Datos</h3>
-        <p>Haga clic en <strong>"Recargar Datos"</strong> en la barra lateral para abrir la pantalla de carga. Puede arrastrar y soltar archivos o usar el botón de selección.</p>
-        <p><strong>Archivo principal:</strong></p>
+        <h3>Entrar</h3>
         <ul>
-          <li><strong>Exportación WineXRay</strong> (.csv o .xlsx) - Un solo archivo con todos los datos. El dashboard separa automáticamente muestras de bayas (<code>Sample Type = Berries</code>) y muestras de vino (Aging Wine, Young Wine, Must, etc.).</li>
-          <li><strong>Movimientos de tanque</strong> (opcional) - Archivo de contexto sobre mezclas y movimientos.</li>
+          <li><strong>Usuario y contraseña</strong> - Hay dos cuentas: laboratorio (consulta, carga y edita) y dirección (consulta y exporta).</li>
+          <li><strong>Sesión</strong> - Dura 2 horas; después el sitio pide entrar de nuevo. Salga con el botón Cerrar sesión (&#x23FB;).</li>
+          <li><strong>Datos</strong> - Al entrar, el sitio carga los datos guardados. La marca DB en el encabezado indica la conexión.</li>
         </ul>
       </div>
 
       <div class="help-section">
-        <h3>Formato de Datos Requerido</h3>
-        <p><strong>Exportación WineXRay (.csv o .xlsx):</strong></p>
-        <p>Exportación directa de WineXRay. La primera fila debe ser encabezados. Valores nulos se representan con <code>-</code> o celda vacía. El archivo contiene tanto datos de bayas como de vino, diferenciados por la columna <code>Sample Type</code>. Columnas utilizadas:</p>
-        <div class="help-columns">
-          <code>Sample Id</code> <code>Sample Type</code> <code>Sample Date</code> <code>Vintage</code> <code>Variety</code> <code>Appellation</code> <code>Vessel Id</code> <code>DaysPostCrush</code> <code>Brix</code> <code>pH</code> <code>tANT</code> <code>fANT</code> <code>pTAN</code> <code>IPT</code> <code>Berry Fresh Weight</code>
-        </div>
-      </div>
-
-      <div class="help-section">
-        <h3>Vistas del Dashboard</h3>
+        <h3>Pestañas</h3>
         <ul>
-          <li><strong>Bayas</strong> - Gráficas de dispersión de Brix, pH, tANT, Acidez y Peso vs Días Post-Envero. Comparativo por varietal y distribución por origen.</li>
-          <li><strong>Vino</strong> - Tablas de recepción de tanque y prefermentativos con KPIs. Filtre por varietal, proveedor/origen y tipo de uva.</li>
-          <li><strong>Extracción</strong> - Comparación baya→vino de antocianinas totales. Muestra porcentaje de extracción fenólica.</li>
-          <li><strong>Vendimias</strong> - Gráficas de comparación entre vendimias y tablas de resumen con promedios por parámetro y varietal.</li>
+          <li><strong>Bayas</strong> - Indicadores, gráficas vs días post-envero, análisis por varietal y origen, evolución y clima, tabla de muestras.</li>
+          <li><strong>Vino</strong> - Fenólicos por varietal, tablas de recepción de tanque y prefermentativos.</li>
+          <li><strong>Extracción</strong> - tANT de baya vs vino y tasa de extracción (%) por lote.</li>
+          <li><strong>Vendimias</strong> - Comparativo entre vendimias, tonelaje, calendario de cosecha y clima por valle.</li>
+          <li><strong>Mapa</strong> - Mapa de viñedos por rancho; elija la métrica y toque una sección para ver su detalle.</li>
+          <li><strong>Explorador</strong> - Arme sus propias gráficas con + Agregar Gráfica: fuente, ejes, tipo y agrupación.</li>
+          <li><strong>Mediciones</strong> - Mediciones técnicas de recepción: indicadores, comparaciones y tabla con búsqueda.</li>
+          <li><strong>Tanques</strong> - Plano de la bodega: color por tipo de vino, etapa u ocupación; toque un tanque para ver su contenido e historial.</li>
+          <li><strong>Predicción</strong> - Fecha estimada a Brix objetivo por lote y predicción de cosecha por valle (VDG, VON, VSV).</li>
+          <li><strong>Mona</strong> - Asistente de preguntas sobre los datos; también abre con el botón M. Si responde que no está configurada, avise al administrador.</li>
+          <li><strong>Guardados</strong> - Gráficas y tablas que guardó desde Mona con el botón Guardar.</li>
         </ul>
       </div>
 
       <div class="help-section">
-        <h3>Controles y Filtros</h3>
+        <h3>Filtros y Gráficas</h3>
         <ul>
-          <li><strong>Tipo de Uva</strong> - Filtre entre tintas, blancas o todas.</li>
-          <li><strong>Varietal</strong> - Haga clic en chips para seleccionar/deseleccionar varietales. Los chips tienen borde de color indicando tinta (rojo) o blanca (amarillo).</li>
-          <li><strong>Origen</strong> - Filtre por viñedo/origen.</li>
-          <li><strong>Lote</strong> - Busque y filtre por lote específico.</li>
-          <li><strong>Color por</strong> - Cambie el color de las gráficas entre "Por Varietal" y "Por Origen".</li>
-          <li><strong>Conectar Líneas</strong> - Active/desactive líneas entre puntos de datos.</li>
-          <li><strong>Leyenda</strong> - Haga clic en items de la leyenda para ocultar/mostrar series.</li>
-          <li><strong>Modo Claro/Oscuro</strong> - Use el botón de luna/sol en la esquina superior derecha.</li>
+          <li><strong>Vendimia, Tipo de Uva, Varietal, Origen</strong> - Toque los chips para filtrar; Limpiar quita un filtro y Limpiar Todo quita todos.</li>
+          <li><strong>Lote Específico</strong> - En Bayas, busque un lote y selecciónelo.</li>
+          <li><strong>Por Varietal / Por Origen</strong> - Cambia el color de las gráficas de Bayas.</li>
+          <li><strong>Conectar Líneas</strong> - Une los puntos de cada serie en Bayas y Vendimias.</li>
+          <li><strong>Leyenda</strong> - Toque una serie de la leyenda para ocultarla o mostrarla.</li>
+          <li><strong>Exportar Vista</strong> - Descarga la pestaña completa en PNG o PDF; el botón &#x2913; de cada gráfica descarga solo esa gráfica.</li>
+          <li><strong>Ocultar panel</strong> - Oculta la barra lateral para ver las gráficas más grandes.</li>
         </ul>
       </div>
 
       <div class="help-section">
-        <h3>Actualizar Datos</h3>
-        <p>Arrastre archivos CSV (WineXRay) o Excel (Recepción de Tanque) a la pantalla de carga. Los datos se guardan directamente en Supabase.</p>
+        <h3>Encabezado</h3>
+        <ul>
+          <li><strong>Ir a (Ctrl K)</strong> - Escriba el nombre de una pestaña o acción y pulse Enter.</li>
+          <li><strong>Demo</strong> - Muestra datos de demostración; no cambia los datos reales. Púlselo de nuevo para salir.</li>
+          <li><strong>&#9788; / &#9790;</strong> - Cambia entre modo claro y oscuro.</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Cargar Datos</h3>
+        <ul>
+          <li><strong>Recargar Datos</strong> - Botón al final de los filtros (Bayas, Extracción, Vendimias, Explorador); abre la pantalla de carga.</li>
+          <li><strong>Ver en esta sesión</strong> - Abra una exportación WineXRay (.csv o .xlsx) para verla en este navegador sin guardarla.</li>
+          <li><strong>Guardar en Base de Datos</strong> - Solo la cuenta de laboratorio ve estos botones:</li>
+          <li><strong>Sincronizar WineXRay</strong> - Trae y guarda las muestras recientes directo de WineXRay.</li>
+          <li><strong>Cargar WineXRay (.csv)</strong> - Exportación de WineXRay; separa muestras de baya y de vino.</li>
+          <li><strong>Cargar Recepción de Tanque (.xlsx)</strong> - Lee las hojas Recepción y Prefermentativos.</li>
+          <li><strong>Cargar Pre-recepción (.xlsx)</strong> - Hoja Pre-recepción; sus filas van a la pestaña Mediciones.</li>
+          <li><strong>Cargar Seguimiento de Maduración (.xlsx)</strong> - Libro de seguimiento de maduración (hoja Uva) con los análisis de baya por día.</li>
+          <li><strong>Valores &lt;50 o &lt;10</strong> - Se guardan como bajo límite de detección y se marcan con &dagger; en las tablas.</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>Solo la cuenta de laboratorio</h3>
+        <p>Sin la cuenta de laboratorio, estas acciones no aparecen y el resto se consulta igual.</p>
+        <ul>
+          <li><strong>Editar</strong> - Toque una fila de las tablas de Bayas, Vino o Mediciones para corregirla.</li>
+          <li><strong>Nueva medición</strong> - Formulario en la pestaña Mediciones; Guardar Medicion la registra.</li>
+          <li><strong>Mover vino</strong> - En Tanques, arrastre un tanque sobre otro, o use Modo mover: toque el origen y luego el destino.</li>
+          <li><strong>Tanque</strong> - En su panel: Mover a otro tanque, Registrar salida y Anular un movimiento.</li>
+          <li><strong>Ajustes de objetivos</strong> - En Predicción, guarde los objetivos de Brix, ANT y pH por varietal y valle.</li>
+        </ul>
+      </div>
+
+      <div class="help-section">
+        <h3>En el Teléfono</h3>
+        <ul>
+          <li><strong>Pestañas</strong> - Aparecen arriba, en cuadrícula.</li>
+          <li><strong>Filtros</strong> - El botón Filtros, abajo a la derecha, abre los filtros; cierre con &times;.</li>
+          <li><strong>Secciones</strong> - Toque el título de una sección para abrirla o cerrarla.</li>
+        </ul>
       </div>
     </div>
   </div>
