@@ -18,6 +18,7 @@ import { ALLOWED_TABLES } from './_lib/allowedTables.js';
 import { WineXRayClient, WineXRayError } from './_lib/winexrayClient.js';
 import { postgresLease } from './_lib/syncLease.js';
 import { winexrayParser } from '../js/upload/winexray.js';
+import { supabaseFetch, isTimeout } from './_lib/supabaseFetch.js';
 
 const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -94,23 +95,18 @@ async function resumeCursor(supabaseUrl, serviceKey) {
   let oldest = null;
   for (const table of ['berry_samples', 'wine_samples']) {
     const url = `${supabaseUrl}/rest/v1/${table}?select=sample_date&order=sample_date.desc&limit=1`;
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), 15000);
-    // The timer must stay armed through the BODY read: a response whose
-    // headers arrive promptly and whose body then stalls would otherwise hang
-    // the invocation past any timeout.
+    // supabaseFetch keeps its signal armed through the BODY read, so a
+    // stalled body is cut off like a stalled connection.
     let rows;
     try {
-      const res = await fetch(url, { headers, signal: ac.signal });
+      const res = await supabaseFetch(url, { headers });
       if (!res.ok) throw new SyncError('No se pudo consultar la última muestra almacenada.');
       rows = await res.json();
     } catch (err) {
       if (err instanceof SyncError) throw err;
-      throw new SyncError(err?.name === 'AbortError'
+      throw new SyncError(isTimeout(err)
         ? 'La base de datos no respondió a tiempo.'
         : 'No se pudo consultar la base de datos.');
-    } finally {
-      clearTimeout(timer);
     }
     const d = rows?.[0]?.sample_date;
     // A table with no rows at all cannot bound the cursor; a full-season pull

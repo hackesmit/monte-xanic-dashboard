@@ -13,10 +13,16 @@
 // and role checks - this module assumes the caller is already authorized.
 import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../../js/quality-scale.js';
 import { ALLOWED_TABLES } from './allowedTables.js';
+import {
+  supabaseFetch, isIndeterminateStatus, indeterminado, INDETERMINADO_STATUS,
+} from './supabaseFetch.js';
+
+// Every row is written with merge-duplicates on its full natural key (checked
+// above the write), so sending the same batch again cannot duplicate it.
+const SIN_CONFIRMAR = 'No se pudo confirmar si el lote se guardó: la base de datos no respondió a tiempo. '
+  + 'Reintentar es seguro (las filas se actualizan, no se duplican).';
 
 const reply = (status, body) => ({ status, body });
-
-const UPSERT_TIMEOUT_MS = 20000;
 
 export { ALLOWED_TABLES };
 
@@ -171,44 +177,45 @@ export async function upsertRows({ table, rows }) {
       url += `?on_conflict=${encodeURIComponent(conflictCol)}`;
     }
 
-    // A stalled Supabase leaves the serverless invocation hanging until the
-    // platform kills it, with no Spanish error for the caller. The timer stays
-    // armed through the error-body read for the same reason.
-    const ac = new AbortController();
-    const timer = setTimeout(() => ac.abort(), UPSERT_TIMEOUT_MS);
+    // Three outcomes (xd-11a, api/_lib/supabaseFetch.js). No status at all
+    // (timeout, reset after the request left) or a gateway 502/504 is
+    // INDETERMINATE: the batch may have committed, so it is never answered as
+    // a failure. A 2xx is success even if nothing else arrives (no success
+    // body is read). Any other status is a confirmed rejection, even when its
+    // error body stalls: the budget stays armed through that read.
     let response;
     try {
-      response = await fetch(url, {
+      response = await supabaseFetch(url, {
         method: 'POST',
         headers,
         body: JSON.stringify(rows),
-        signal: ac.signal,
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        console.error(`[upload] Supabase error for ${table}:`, errText);
-        // Parse Supabase error for user-facing detail
-        let detail = 'Error al insertar datos';
-        try {
-          const errObj = JSON.parse(errText);
-          if (errObj.message) detail += ': ' + errObj.message;
-        } catch (_) { /* ignore parse error */ }
-        // Schema-cache errors → translate the opaque PostgREST message into
-        // an actionable hint pointing at the missing migration (Round 36).
-        if (/schema cache|column .+ does not exist/i.test(errText)) {
-          detail += ' - la migración correspondiente parece no estar aplicada. ' +
-            'Revisa /api/migrations-status o ejecuta los archivos pendientes en sql/.';
-        }
-        return reply(500, { ok: false, error: detail });
-      }
+      }, 'batch');
     } catch (err) {
-      if (err?.name === 'AbortError') {
-        return reply(504, { ok: false, error: 'La base de datos no respondió a tiempo.' });
+      console.error(`[upload] ${table}: write unconfirmed:`, err?.name || err);
+      return reply(INDETERMINADO_STATUS, indeterminado(SIN_CONFIRMAR));
+    }
+    if (isIndeterminateStatus(response.status)) {
+      console.error(`[upload] ${table}: write unconfirmed: HTTP ${response.status}`);
+      return reply(INDETERMINADO_STATUS, indeterminado(SIN_CONFIRMAR));
+    }
+
+    if (!response.ok) {
+      let errText = '';
+      try { errText = await response.text(); } catch (_) { /* rejection stands without its detail */ }
+      console.error(`[upload] Supabase error for ${table}:`, response.status, errText);
+      // Parse Supabase error for user-facing detail
+      let detail = 'Error al insertar datos';
+      try {
+        const errObj = JSON.parse(errText);
+        if (errObj.message) detail += ': ' + errObj.message;
+      } catch (_) { /* ignore parse error */ }
+      // Schema-cache errors → translate the opaque PostgREST message into
+      // an actionable hint pointing at the missing migration (Round 36).
+      if (/schema cache|column .+ does not exist/i.test(errText)) {
+        detail += ' - la migración correspondiente parece no estar aplicada. ' +
+          'Revisa /api/migrations-status o ejecuta los archivos pendientes en sql/.';
       }
-      throw err;
-    } finally {
-      clearTimeout(timer);
+      return reply(500, { ok: false, error: detail });
     }
 
     return reply(200, { ok: true, count: rows.length });

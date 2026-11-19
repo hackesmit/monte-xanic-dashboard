@@ -1,3 +1,4 @@
+import { supabaseFetch } from './supabaseFetch.js';
 // api/_lib/monaUsage.js - the shared daily spend ceiling for /api/mona (xd-aiz).
 // The counter lives in public.mona_uso (sql/migration_mona_uso.sql and
 // migration_mona_uso_reserva.sql), so every Vercel instance sees the same count: a per-instance Map could not enforce a
@@ -8,7 +9,6 @@
 const DEFAULT_MAX_PETICIONES = 300;      // per user per day; one question can take up to 9 (chat.js depth cap)
 const DEFAULT_MAX_TOKENS = 3_000_000;    // per user per day, input + output as Anthropic reports them
 const CAP_LIMIT = 1_000_000_000;         // an env typo like 1e300 must not become "no limit"
-const RPC_TIMEOUT_MS = 3000;
 
 function capFromEnv(name, fallback) {
   const n = Number(process.env[name]);
@@ -26,12 +26,11 @@ async function rpc(fn, args) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error('Supabase not configured');
-  const resp = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+  const resp = await supabaseFetch(`${url}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
     body: JSON.stringify(args),
-    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-  });
+  }, 'mona');
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const text = await resp.text();
   return text ? JSON.parse(text) : null;

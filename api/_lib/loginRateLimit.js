@@ -1,3 +1,4 @@
+import { supabaseFetch } from './supabaseFetch.js';
 // Persistent per-IP rate limiting for /api/login, with an in-memory fallback.
 //
 // Extracted from api/login.js so it can be unit-tested without pulling in
@@ -25,7 +26,7 @@ export async function checkRateLimit(ip) {
   // only a failed call falls through to the in-memory limiter below.
   if (supabaseUrl && serviceKey) {
     try {
-      const resp = await fetch(`${supabaseUrl}/rest/v1/rpc/login_rate_limit_hit`, {
+      const resp = await supabaseFetch(`${supabaseUrl}/rest/v1/rpc/login_rate_limit_hit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

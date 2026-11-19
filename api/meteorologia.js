@@ -21,6 +21,7 @@ import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
 import { CONFIG } from '../js/config.js';
 import { todayInVineyard, VINEYARD_TZ } from '../js/utils.js';
+import { supabaseFetch } from './_lib/supabaseFetch.js';
 
 const ARCHIVE_API = 'https://archive-api.open-meteo.com/v1/archive';
 const PRIMER_DIA = '1940-01-01';   // the start of the Open-Meteo archive
@@ -88,7 +89,7 @@ async function openMeteo(coord, desde, hasta) {
 async function upsert(filas) {
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
-  const res = await fetch(`${url}/rest/v1/meteorology?on_conflict=date,location`, {
+  const res = await supabaseFetch(`${url}/rest/v1/meteorology?on_conflict=date,location`, {
     method: 'POST',
     headers: {
       apikey: key,

@@ -23,6 +23,7 @@
 // PostgREST's JSON back into the shapes that pure module expects.
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
+import { supabaseFetch, isIndeterminateStatus } from './_lib/supabaseFetch.js';
 import { replayMovimientos, validarMovimientoEnLog } from '../js/tanques/estado.js';
 
 // Exactly the columns a client may put on a new movement. Anything else is
@@ -62,7 +63,6 @@ const VINTAGE_MAX = 2100;
 const PAGINA = 1000;        // PostgREST caps a response at 1000 rows
 const INTENTOS = 3;         // read, validate and write attempts before a 409
 const LECTURAS = 3;         // attempts at a read the version stays still across
-const ESPERA_RPC_MS = 8000; // past this the write is abandoned as indeterminate
 // One millilitre: the threshold below which a difference between two replays is
 // not a real worsening. js/tanques/estado.js reports its balance totals to the
 // same precision for the same reason, and the running destination level below
@@ -155,16 +155,36 @@ class ErrorIndeterminado extends Error {}
 
 async function sb(path, opts = {}) {
   const { url, key } = entorno();
-  const res = await fetch(`${url}/rest/v1/${path}`, {
-    ...opts,
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: key,
-      Authorization: `Bearer ${key}`,
-      ...(opts.headers || {}),
-    },
-  });
-  const text = await res.text();
+  // A stalled or unreachable Supabase is a database error like a 5xx, not the
+  // generic 500. The only write through here (descartar) ignores duplicates,
+  // so repeating it after an unknown outcome is harmless; it passes
+  // `escritura: true` so an unknown outcome is still reported as unknown
+  // (xd-11a): no status at all is ErrorIndeterminado, and a 2xx whose body
+  // stalls is the success it already was.
+  const { escritura, ...init } = opts;
+  let res, text;
+  try {
+    res = await supabaseFetch(`${url}/rest/v1/${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        ...(init.headers || {}),
+      },
+    });
+  } catch (e) {
+    if (escritura) throw new ErrorIndeterminado(`sin respuesta: ${(e && e.message) || e}`.slice(0, 200));
+    throw new ErrorSupabase(`sin respuesta: ${(e && e.message) || e}`.slice(0, 200), 504);
+  }
+  try {
+    text = await res.text();
+  } catch (e) {
+    if (escritura && isIndeterminateStatus(res.status)) throw new ErrorIndeterminado(`HTTP ${res.status}`);
+    if (escritura && res.ok) return null;
+    throw new ErrorSupabase(`sin respuesta: ${(e && e.message) || e}`.slice(0, 200), escritura ? res.status : 504);
+  }
+  if (escritura && isIndeterminateStatus(res.status)) throw new ErrorIndeterminado(`HTTP ${res.status}`);
   const json = text ? JSON.parse(text) : null;
   // fetch() does not throw on an HTTP error status. Without this, a 503 on the
   // log read would be reported as an empty bodega and every movement after it
@@ -188,11 +208,10 @@ async function sb(path, opts = {}) {
 // transaction rolled back.
 async function escribir(version, accion, fila, id) {
   const { url, key } = entorno();
-  const control = new AbortController();
-  const reloj = setTimeout(() => control.abort(), ESPERA_RPC_MS);
   let res, text;
   try {
-    res = await fetch(`${url}/rest/v1/rpc/tanques_escribir`, {
+    // Budget 'rpc': past it the write is abandoned as indeterminate.
+    res = await supabaseFetch(`${url}/rest/v1/rpc/tanques_escribir`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -200,13 +219,10 @@ async function escribir(version, accion, fila, id) {
         Authorization: `Bearer ${key}`,
       },
       body: JSON.stringify({ p_version: version, p_accion: accion, p_fila: fila, p_id: id }),
-      signal: control.signal,
-    });
+    }, 'rpc');
     text = await res.text();
   } catch (e) {
     throw new ErrorIndeterminado(e && e.message);
-  } finally {
-    clearTimeout(reloj);
   }
   if (res.status >= 500) throw new ErrorIndeterminado(`HTTP ${res.status}`);
   let json = null;
@@ -762,10 +778,23 @@ async function descartar(req, res, usuario) {
     return res.status(400).json({ ok: false, error: 'La clave de la propuesta no es válida.' });
   }
 
-  await sb('tanques_propuestas_descartadas?on_conflict=clave', {
-    method: 'POST',
-    headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
-    body: JSON.stringify({ clave, descartado_por: usuario }),  // usuario from the token
-  });
+  try {
+    await sb('tanques_propuestas_descartadas?on_conflict=clave', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify({ clave, descartado_por: usuario }),  // usuario from the token
+      escritura: true,
+    });
+  } catch (e) {
+    if (!(e instanceof ErrorIndeterminado)) throw e;
+    // Ignore-duplicates makes a repeat harmless, so the message says so
+    // instead of the movement log's "revise before repeating".
+    console.error('[tanques] descarte sin confirmar:', e.message);
+    return res.status(503).json({
+      ok: false,
+      indeterminado: true,
+      error: 'No se pudo confirmar si la propuesta quedó descartada. Puede repetirlo sin riesgo.',
+    });
+  }
   return res.status(200).json({ ok: true, clave });
 }
