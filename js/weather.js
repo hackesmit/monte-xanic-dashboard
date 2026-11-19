@@ -15,9 +15,12 @@ export const WeatherStore = {
   _TZ:       VINEYARD_TZ,   // the Open-Meteo query timezone, same one definition
   _VALLEYS:  ['VDG', 'VON', 'SV'],
 
-  // Forecast cache: in-memory, 1-hour TTL, keyed by `${valley}_${horizon}`
-  _FORECAST_TTL_MS: 60 * 60 * 1000,
+  // Forecast and current-conditions cache: in-memory, 12-hour TTL (xd-5ng).
+  // Forecast is keyed by `${valley}_${horizon}`, current by valley.
+  _FORECAST_TTL_MS: 12 * 60 * 60 * 1000,
   _forecastCache: {},
+  _currentCache: {},
+  _currentInflight: {},
 
   // ── Load ───────────────────────────────────────────────────────
 
@@ -210,7 +213,8 @@ export const WeatherStore = {
     }
   },
 
-  async _fetchForecastFromAPI(lat, lon, horizon) {
+  // Pure URL builders: one place that knows the Open-Meteo query shape.
+  buildForecastUrl(lat, lon, horizon) {
     const params = new URLSearchParams({
       latitude:  lat,
       longitude: lon,
@@ -224,11 +228,32 @@ export const WeatherStore = {
       forecast_days: horizon,
       timezone: this._TZ
     });
+    return `${this._FORECAST_API}?${params}`;
+  },
+
+  buildCurrentUrl(lat, lon) {
+    const params = new URLSearchParams({
+      latitude:  lat,
+      longitude: lon,
+      current: [
+        'temperature_2m',
+        'relative_humidity_2m',
+        'precipitation',
+        'wind_speed_10m',
+        'weather_code'
+      ].join(','),
+      timezone: this._TZ
+    });
+    return `${this._FORECAST_API}?${params}`;
+  },
+
+  async _fetchForecastFromAPI(lat, lon, horizon) {
+    const url = this.buildForecastUrl(lat, lon, horizon);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
     let res;
     try {
-      res = await fetch(`${this._FORECAST_API}?${params}`, { signal: controller.signal });
+      res = await fetch(url, { signal: controller.signal });
     } finally {
       clearTimeout(timeout);
     }
@@ -251,13 +276,87 @@ export const WeatherStore = {
     }));
   },
 
+  // ── Current conditions (Open-Meteo `current`), 12 h cache ──────
+
+  _parseCurrent(json) {
+    const c = json && json.current;
+    if (!c || typeof c.time !== 'string') return null;
+    return {
+      time:         c.time,
+      temp:         c.temperature_2m     ?? null,
+      humidity_pct: c.relative_humidity_2m ?? null,
+      rainfall_mm:  c.precipitation      ?? null,
+      wind_kmh:     c.wind_speed_10m     ?? null,
+      weather_code: c.weather_code       ?? null
+    };
+  },
+
+  // One request per valley at a time: concurrent callers share the promise.
+  syncCurrent(valley) {
+    const loc = valley || 'VDG';
+    const cached = this._currentCache[loc];
+    if (cached && (Date.now() - cached.fetchedAt) < this._FORECAST_TTL_MS) return Promise.resolve(cached.data);
+    if (this._currentInflight[loc]) return this._currentInflight[loc];
+    const p = this._fetchCurrent(loc).finally(() => { delete this._currentInflight[loc]; });
+    this._currentInflight[loc] = p;
+    return p;
+  },
+
+  async _fetchCurrent(loc) {
+    const now = Date.now();
+    const coord = (CONFIG.valleyCoordinates || {})[loc];
+    if (!coord) return null;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const res = await fetch(this.buildCurrentUrl(coord.lat, coord.lon), { signal: controller.signal });
+      if (!res.ok) throw new Error(`Open-Meteo current HTTP ${res.status}`);
+      const data = this._parseCurrent(await res.json());
+      if (!data) return null;
+      this._currentCache[loc] = { data, fetchedAt: now };
+      return data;
+    } catch (e) {
+      console.warn('[WeatherStore] current fetch failed for', loc, ':', e.message);
+      return null;
+    } finally {
+      clearTimeout(timeout);
+    }
+  },
+
+  // Pure: the text of the current-conditions line, with the observation time.
+  formatCurrentLine(loc, c) {
+    const f = (v, u) => (v === null || v === undefined) ? '-' : `${Math.round(v * 10) / 10} ${u}`;
+    const hm = /T(\d{2}:\d{2})/.exec(c.time || '');
+    const when = hm ? `a las ${hm[1]}` : 'ahora';
+    return `${loc}, ${when}: ${f(c.temp, '°C')} · Humedad ${f(c.humidity_pct, '%')} · Viento ${f(c.wind_kmh, 'km/h')} · Lluvia ${f(c.rainfall_mm, 'mm')}`;
+  },
+
+  // Fills #weather-current for the valley selected in `getLoc()`. Shared by the
+  // first render (app.js renderView) and every control change (events.js).
+  // A reply for a valley that is no longer selected is dropped.
+  renderCurrent(getLoc) {
+    const el = typeof document !== 'undefined' ? document.getElementById('weather-current') : null;
+    if (!el) return Promise.resolve();
+    const loc = getLoc() || 'VDG';
+    return this.syncCurrent(loc).then(c => {
+      if ((getLoc() || 'VDG') !== loc) return;
+      if (!c) { el.hidden = true; return; }
+      el.textContent = this.formatCurrentLine(loc, c);
+      el.hidden = false;
+    });
+  },
+
+  getCurrent(valley) {
+    return this._currentCache[valley || 'VDG']?.data || null;
+  },
+
   getForecast(valley, horizon) {
     const loc = valley || 'VDG';
     const h = horizon === 16 ? 16 : 7;
     return this._forecastCache[`${loc}_${h}`]?.data || null;
   },
 
-  clearForecastCache() { this._forecastCache = {}; },
+  clearForecastCache() { this._forecastCache = {}; this._currentCache = {}; },
 
   // Forecast is only meaningful when the visible range extends to/past today
   // AND we're not in a purely-historical mode (30d is today-backward).

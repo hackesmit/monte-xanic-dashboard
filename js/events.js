@@ -128,8 +128,12 @@ export const Events = {
       App.refresh();
     });
 
+    // Current conditions (Open-Meteo `current`, 12 h cache) for the selected valley.
+    const _renderCurrentConditions = () => WeatherStore.renderCurrent(() => Filters.state.weatherLocation);
+
     // Shared weather chart renderer - reads current filter state
     const _renderWeatherCharts = () => {
+      _renderCurrentConditions();
       const vintages = WeatherStore.getVintagesFromData();
       const loc = Filters.state.weatherLocation || 'VDG';
       const agg = Filters.state.weatherAggregation || 'day';
@@ -226,7 +230,7 @@ export const Events = {
     const _forecastSyncAndRender = () => {
       const h = Filters.state.weatherForecastHorizon || 7;
       // Sync only the valleys needed: current selection, plus all three for the
-      // Valley-comparison chart. Cache (1h TTL) dedupes redundant calls.
+      // Valley-comparison chart. Cache (12h TTL) dedupes redundant calls.
       const valleys = new Set([Filters.state.weatherLocation || 'VDG', 'VDG', 'VON', 'SV']);
       Promise.all([...valleys].map(v => WeatherStore.syncForecast(v, h)))
         .then(() => _renderWeatherCharts());
