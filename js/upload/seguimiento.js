@@ -249,7 +249,7 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 // Parse the "Fecha de envero" cell into an ISO YYYY-MM-DD, or null.
 //
 // Returns { date, warning }. A cell Excel stored as a real date is taken at
-// face value. ANYTHING ELSE IS REFUSED, NOT GUESSED: the real 2026 workbook
+// face value when its year is the workbook vintage. ANYTHING ELSE IS REFUSED, NOT GUESSED: the real 2026 workbook
 // ships lot 26CALMX1E with the text '30/6/269', which is a fat-fingered
 // '30/6/26'. Reading that as 30 June 2026 would be a guess, and this parser's
 // whole contract is that a wrong date lands a reading on a day nobody
@@ -259,7 +259,7 @@ function pad2(n) { return String(n).padStart(2, '0'); }
 // source is fixed.
 //
 // A blank cell is legitimate and silent: lots not yet received have no envero.
-function parseEnvero(raw, lote) {
+function parseEnvero(raw, lote, vintage) {
   if (raw === null || raw === undefined) return { date: null, warning: null };
   if (raw instanceof Date) {
     if (Number.isNaN(raw.getTime())) {
@@ -268,8 +268,35 @@ function parseEnvero(raw, lote) {
         warning: `Lote "${lote}": la fecha de envero no es una fecha válida y se guardó vacía.`,
       };
     }
+    // A date cell is accepted only inside the workbook's own vintage (xd-49p.4
+    // B1, B2). Veraison of a Vendimia AAAA lot happens in year AAAA, so any
+    // other year is a defect, never a date to plot:
+    //   - a 1900 serial is the typed-DD.MM defect: "07.07" typed into this
+    //     m/d/yy column stores the NUMBER 7.07, which SheetJS returns as
+    //     1900-01-07 (the header row's column 18 ships the same defect, see
+    //     recoverSerialDate). Taken at face value it gave days_post_crush
+    //     ~46000 and stretched every timeline chart's x axis. It is NOT
+    //     recovered here: the header has a strict calendar check behind its
+    //     recovery, a single envero cell has none, so refuse rather than guess;
+    //   - another real year is a yearly template not updated (2025-06-30 in a
+    //     2026 file), which put the lot a year down the timeline.
+    const year = raw.getUTCFullYear();
+    if (year !== vintage) {
+      const typed = recoverSerialDate(raw);
+      const why = typed
+        ? `parece el número ${typed.label} escrito en una celda con formato de fecha (Excel lo guarda como ` +
+          `${pad2(raw.getUTCDate())}/${pad2(raw.getUTCMonth() + 1)}/${year}), no una fecha de la vendimia ${vintage}`
+        : `es del año ${year}, pero el archivo es de la vendimia ${vintage}`;
+      return {
+        date: null,
+        warning:
+          `Lote "${lote}": la fecha de envero ${why}. No se adivinó un valor, así que el lote se guardó sin ` +
+          `fecha de envero y sus mediciones aparecen en la columna «Sin envero» de las gráficas de días ` +
+          `post-envero hasta corregir la celda (escriba la fecha completa, por ejemplo 17/06/${vintage}).`,
+      };
+    }
     return {
-      date: `${raw.getUTCFullYear()}-${pad2(raw.getUTCMonth() + 1)}-${pad2(raw.getUTCDate())}`,
+      date: `${year}-${pad2(raw.getUTCMonth() + 1)}-${pad2(raw.getUTCDate())}`,
       warning: null,
     };
   }
@@ -891,7 +918,7 @@ export const seguimientoParser = {
 
       // Envero (veraison) date for this lot. Refused rather than guessed when
       // unreadable; a warning names the lot either way.
-      const envero = parseEnvero(rawEnvero, block.lote);
+      const envero = parseEnvero(rawEnvero, block.lote, workbookVintage);
       if (envero.warning) warnings.push(envero.warning);
 
       // ── wine_samples (sample_type 'Berries'): one row per (lot, date) with
