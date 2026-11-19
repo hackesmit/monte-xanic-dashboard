@@ -46,7 +46,7 @@ export const DemoMode = {
     DataStore.loaded            = { berry: true, wine: true };
 
     DataStore.cacheData        = () => {};
-    DataStore.loadFromSupabase = async () => true;
+    DataStore.loadFromSupabase = async () => 'ok';
     DataStore.loadMediciones   = async () => {};
     DataStore.loadHarvestTargetOverrides = async () => {};
     // Loads already in flight when demo was enabled check this flag before
