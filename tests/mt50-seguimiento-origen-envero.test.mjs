@@ -549,3 +549,83 @@ describe('MT.50 — Antocianos reaches the tANT series the chart plots', () => {
     for (const v of vals) assert.ok(v >= 0, `negative anthocyanin reading ${v}`);
   });
 });
+
+// xd-49p.4 red team B1 and B2. An envero Date was taken "at face value", so:
+//   B1: a typed DD.MM in the date-formatted envero cell (the keystrokes 07.07
+//       stored as serial 7.07, the same defect the header row's column 18
+//       already ships) landed as crush_date 1900-01-07 and days_post_crush
+//       ~46000, which stretches every timeline chart's x axis;
+//   B2: an envero from another year (2025-06-30 in a Vendimia 2026 file, a
+//       yearly template not updated) silently put the lot a year down the
+//       timeline.
+// Both are refused like any unreadable envero: dropped, the lot named in a
+// warning, the chemistry still ingested.
+describe('MT.50 xd-49p.4 - an envero outside the workbook vintage is refused', () => {
+  // Build the file with lot 26AAAA1A-C's envero cell replaced. `cell` is either
+  // a Date, or { serial } for a NUMBER stored under the m/d/yy date format,
+  // exactly what Excel stores when a DD.MM is typed into a date-formatted cell.
+  function fileWithEnvero(cell) {
+    const aoa = buildAoa({ withOrigen: true }).map(r => (r ? [...r] : r));
+    const hdr = aoa[5];
+    const typoIdx = hdr.findIndex(v => v instanceof Date);
+    hdr[typoIdx] = '07.07';
+    const hRow = aoa.findIndex(r => r && r.some(v => typeof v === 'string' && v.trim() === 'Fecha de envero'));
+    const col = aoa[hRow].findIndex(v => typeof v === 'string' && v.trim() === 'Fecha de envero');
+    const row = aoa.findIndex(r => r && r.includes('26AAAA1A-C') && r[col] instanceof Date);
+    assert.ok(row > hRow, 'fixture: lot A envero cell not found');
+    aoa[row][col] = cell instanceof Date ? cell : null;
+    const ws = XLSX.utils.aoa_to_sheet(aoa, { UTC: true });
+    if (!(cell instanceof Date)) ws[XLSX.utils.encode_cell({ r: row, c: col })] = { t: 'n', v: cell.serial, z: 'm/d/yy' };
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Uva');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([[]]), 'Flujo Tons');
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    return asFakeFile(Buffer.from(buf), 'seguimiento Vendimia 2026.xlsx');
+  }
+
+  async function assertRefused(cell, label) {
+    const r = await seguimientoParser.parse(fileWithEnvero(cell));
+    const rows = berryRows(r).filter(b => b.sample_id === '26AAAA1A-C');
+    assert.ok(rows.length >= 3, `${label}: the lot lost its chemistry`);
+    for (const b of rows) {
+      assert.equal(b.crush_date, null, `${label}: crush_date ${b.crush_date} was accepted`);
+      assert.equal(b.days_post_crush, null, `${label}: days_post_crush ${b.days_post_crush} was accepted`);
+    }
+    assert.equal(lot(r, '26AAAA1A-C').fecha_envero, null, `${label}: fecha_envero was accepted`);
+    const w = r.warnings.filter(x => x.includes('26AAAA1A-C') && /envero/i.test(x));
+    assert.equal(w.length, 1, `${label}: expected one warning naming the lot, got ${JSON.stringify(r.warnings)}`);
+    assert.deepEqual(r.rejected, [], `${label}: chemistry rows were rejected`);
+    return w[0];
+  }
+
+  it('B1: refuses a typed DD.MM (serial 7.07 = 1900-01-07) and says it is a typed number', async () => {
+    const w = await assertRefused({ serial: 7.07 }, 'serial 7.07');
+    assert.match(w, /07\.07/, 'the warning should show what the lab typed');
+    assert.match(w, /2026/, 'the warning should name the workbook vintage');
+  });
+
+  it('B1: refuses every serial in the 1900 phantom range and 9999-12-31', async () => {
+    for (const serial of [0, 1, 17.06, 59, 61, -1, 2958465]) {
+      await assertRefused({ serial }, `serial ${serial}`);
+    }
+  });
+
+  it('B2: refuses an envero dated in another year (2025-06-30 in a Vendimia 2026 file)', async () => {
+    const w = await assertRefused(new Date(Date.UTC(2025, 5, 30)), '2025-06-30');
+    assert.match(w, /2025/);
+    assert.match(w, /2026/);
+  });
+
+  it('B2: refuses the year after the vintage too (2027-06-30)', async () => {
+    await assertRefused(new Date(Date.UTC(2027, 5, 30)), '2027-06-30');
+  });
+
+  it('still accepts an envero inside the vintage, on its first and last day', async () => {
+    for (const d of [new Date(Date.UTC(2026, 0, 1)), new Date(Date.UTC(2026, 11, 31))]) {
+      const r = await seguimientoParser.parse(fileWithEnvero(d));
+      const iso = d.toISOString().slice(0, 10);
+      assert.equal(lot(r, '26AAAA1A-C').fecha_envero, iso);
+      assert.ok(!r.warnings.some(x => x.includes('26AAAA1A-C') && /envero/i.test(x)));
+    }
+  });
+});
