@@ -129,17 +129,7 @@ export const Events = {
     });
 
     // Current conditions (Open-Meteo `current`, 12 h cache) for the selected valley.
-    const _renderCurrentConditions = () => {
-      const el = document.getElementById('weather-current');
-      if (!el) return;
-      const loc = Filters.state.weatherLocation || 'VDG';
-      WeatherStore.syncCurrent(loc).then(c => {
-        if (!c) { el.hidden = true; return; }
-        const f = (v, u) => (v === null || v === undefined) ? '-' : `${Math.round(v * 10) / 10} ${u}`;
-        el.textContent = `Ahora en ${loc}: ${f(c.temp, '°C')} · Humedad ${f(c.humidity_pct, '%')} · Viento ${f(c.wind_kmh, 'km/h')} · Lluvia ${f(c.rainfall_mm, 'mm')}`;
-        el.hidden = false;
-      });
-    };
+    const _renderCurrentConditions = () => WeatherStore.renderCurrent(() => Filters.state.weatherLocation);
 
     // Shared weather chart renderer - reads current filter state
     const _renderWeatherCharts = () => {

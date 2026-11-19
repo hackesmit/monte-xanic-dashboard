@@ -20,6 +20,7 @@ export const WeatherStore = {
   _FORECAST_TTL_MS: 12 * 60 * 60 * 1000,
   _forecastCache: {},
   _currentCache: {},
+  _currentInflight: {},
 
   // ── Load ───────────────────────────────────────────────────────
 
@@ -290,11 +291,19 @@ export const WeatherStore = {
     };
   },
 
-  async syncCurrent(valley) {
+  // One request per valley at a time: concurrent callers share the promise.
+  syncCurrent(valley) {
     const loc = valley || 'VDG';
-    const now = Date.now();
     const cached = this._currentCache[loc];
-    if (cached && (now - cached.fetchedAt) < this._FORECAST_TTL_MS) return cached.data;
+    if (cached && (Date.now() - cached.fetchedAt) < this._FORECAST_TTL_MS) return Promise.resolve(cached.data);
+    if (this._currentInflight[loc]) return this._currentInflight[loc];
+    const p = this._fetchCurrent(loc).finally(() => { delete this._currentInflight[loc]; });
+    this._currentInflight[loc] = p;
+    return p;
+  },
+
+  async _fetchCurrent(loc) {
+    const now = Date.now();
     const coord = (CONFIG.valleyCoordinates || {})[loc];
     if (!coord) return null;
     const controller = new AbortController();
@@ -312,6 +321,29 @@ export const WeatherStore = {
     } finally {
       clearTimeout(timeout);
     }
+  },
+
+  // Pure: the text of the current-conditions line, with the observation time.
+  formatCurrentLine(loc, c) {
+    const f = (v, u) => (v === null || v === undefined) ? '-' : `${Math.round(v * 10) / 10} ${u}`;
+    const hm = /T(\d{2}:\d{2})/.exec(c.time || '');
+    const when = hm ? `a las ${hm[1]}` : 'ahora';
+    return `${loc}, ${when}: ${f(c.temp, '°C')} · Humedad ${f(c.humidity_pct, '%')} · Viento ${f(c.wind_kmh, 'km/h')} · Lluvia ${f(c.rainfall_mm, 'mm')}`;
+  },
+
+  // Fills #weather-current for the valley selected in `getLoc()`. Shared by the
+  // first render (app.js renderView) and every control change (events.js).
+  // A reply for a valley that is no longer selected is dropped.
+  renderCurrent(getLoc) {
+    const el = typeof document !== 'undefined' ? document.getElementById('weather-current') : null;
+    if (!el) return Promise.resolve();
+    const loc = getLoc() || 'VDG';
+    return this.syncCurrent(loc).then(c => {
+      if ((getLoc() || 'VDG') !== loc) return;
+      if (!c) { el.hidden = true; return; }
+      el.textContent = this.formatCurrentLine(loc, c);
+      el.hidden = false;
+    });
   },
 
   getCurrent(valley) {

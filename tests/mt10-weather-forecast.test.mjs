@@ -261,3 +261,41 @@ describe('xd-5ng — Open-Meteo URL builders and current conditions', () => {
     assert.equal(await WeatherStore.syncCurrent('ZZZ'), null);
   });
 });
+
+describe('MT.10 - current conditions line (xd-52c)', () => {
+  it('formatCurrentLine shows the observation time, not a bare Ahora', () => {
+    const t = WeatherStore.formatCurrentLine('VDG', { time: '2026-11-05T08:00', temp: 17.24, humidity_pct: 60, wind_kmh: 5, rainfall_mm: 0 });
+    assert.match(t, /^VDG, a las 08:00: 17.2 °C/);
+  });
+
+  it('syncCurrent shares one in-flight request per valley', async () => {
+    WeatherStore.clearForecastCache();
+    const realFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => { calls++; return { ok: true, json: async () => ({ current: { time: '2026-11-05T08:00', temperature_2m: 1 } }) }; };
+    try {
+      const [a, b] = await Promise.all([WeatherStore.syncCurrent('VDG'), WeatherStore.syncCurrent('VDG')]);
+      assert.equal(calls, 1);
+      assert.equal(a, b);
+    } finally { globalThis.fetch = realFetch; WeatherStore.clearForecastCache(); }
+  });
+
+  it('renderCurrent fills the line on first call and drops a stale valley', async () => {
+    WeatherStore.clearForecastCache();
+    const realFetch = globalThis.fetch, realDoc = globalThis.document;
+    const el = { hidden: true, textContent: '' };
+    globalThis.document = { getElementById: (id) => id === 'weather-current' ? el : null };
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ current: { time: '2026-11-05T08:00', temperature_2m: 20 } }) });
+    try {
+      await WeatherStore.renderCurrent(() => 'VDG');
+      assert.equal(el.hidden, false);
+      assert.match(el.textContent, /a las 08:00/);
+      el.hidden = true; el.textContent = '';
+      let loc = 'VDG';
+      const p = WeatherStore.renderCurrent(() => loc);
+      loc = 'VON';
+      await p;
+      assert.equal(el.hidden, true);
+    } finally { globalThis.fetch = realFetch; globalThis.document = realDoc; WeatherStore.clearForecastCache(); }
+  });
+});

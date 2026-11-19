@@ -399,6 +399,7 @@ export const App = {
         const weatherTf = Filters.state.weatherTimeframe || 'season';
         const weatherCustom = (Filters.state.weatherCustomStart && Filters.state.weatherCustomEnd)
           ? { start: Filters.state.weatherCustomStart, end: Filters.state.weatherCustomEnd } : null;
+        WeatherStore.renderCurrent(() => Filters.state.weatherLocation);
         Charts.createValleyTempChart('chartValleyTemp', valleyVintage, weatherAgg);
         Charts.createWeatherTimeSeries('chartWeatherTemp', weatherVintages, weatherLoc, weatherAgg, weatherTf, weatherCustom);
         Charts.createRainfallChart('chartWeatherRain', weatherVintages, weatherLoc, weatherAgg, weatherTf, weatherCustom);
