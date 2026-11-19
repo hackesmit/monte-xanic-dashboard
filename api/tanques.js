@@ -23,7 +23,7 @@
 // PostgREST's JSON back into the shapes that pure module expects.
 import { verifyToken } from './_lib/verifyToken.js';
 import { rateLimit } from './_lib/rateLimit.js';
-import { supabaseFetch } from './_lib/supabaseFetch.js';
+import { supabaseFetch, isIndeterminateStatus } from './_lib/supabaseFetch.js';
 import { replayMovimientos, validarMovimientoEnLog } from '../js/tanques/estado.js';
 
 // Exactly the columns a client may put on a new movement. Anything else is
@@ -157,22 +157,34 @@ async function sb(path, opts = {}) {
   const { url, key } = entorno();
   // A stalled or unreachable Supabase is a database error like a 5xx, not the
   // generic 500. The only write through here (descartar) ignores duplicates,
-  // so repeating it after an unknown outcome is harmless.
+  // so repeating it after an unknown outcome is harmless; it passes
+  // `escritura: true` so an unknown outcome is still reported as unknown
+  // (xd-11a): no status at all is ErrorIndeterminado, and a 2xx whose body
+  // stalls is the success it already was.
+  const { escritura, ...init } = opts;
   let res, text;
   try {
     res = await supabaseFetch(`${url}/rest/v1/${path}`, {
-      ...opts,
+      ...init,
       headers: {
         'Content-Type': 'application/json',
         apikey: key,
         Authorization: `Bearer ${key}`,
-        ...(opts.headers || {}),
+        ...(init.headers || {}),
       },
     });
-    text = await res.text();
   } catch (e) {
+    if (escritura) throw new ErrorIndeterminado(`sin respuesta: ${(e && e.message) || e}`.slice(0, 200));
     throw new ErrorSupabase(`sin respuesta: ${(e && e.message) || e}`.slice(0, 200), 504);
   }
+  try {
+    text = await res.text();
+  } catch (e) {
+    if (escritura && isIndeterminateStatus(res.status)) throw new ErrorIndeterminado(`HTTP ${res.status}`);
+    if (escritura && res.ok) return null;
+    throw new ErrorSupabase(`sin respuesta: ${(e && e.message) || e}`.slice(0, 200), escritura ? res.status : 504);
+  }
+  if (escritura && isIndeterminateStatus(res.status)) throw new ErrorIndeterminado(`HTTP ${res.status}`);
   const json = text ? JSON.parse(text) : null;
   // fetch() does not throw on an HTTP error status. Without this, a 503 on the
   // log read would be reported as an empty bodega and every movement after it
@@ -766,10 +778,23 @@ async function descartar(req, res, usuario) {
     return res.status(400).json({ ok: false, error: 'La clave de la propuesta no es válida.' });
   }
 
-  await sb('tanques_propuestas_descartadas?on_conflict=clave', {
-    method: 'POST',
-    headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
-    body: JSON.stringify({ clave, descartado_por: usuario }),  // usuario from the token
-  });
+  try {
+    await sb('tanques_propuestas_descartadas?on_conflict=clave', {
+      method: 'POST',
+      headers: { Prefer: 'resolution=ignore-duplicates,return=minimal' },
+      body: JSON.stringify({ clave, descartado_por: usuario }),  // usuario from the token
+      escritura: true,
+    });
+  } catch (e) {
+    if (!(e instanceof ErrorIndeterminado)) throw e;
+    // Ignore-duplicates makes a repeat harmless, so the message says so
+    // instead of the movement log's "revise before repeating".
+    console.error('[tanques] descarte sin confirmar:', e.message);
+    return res.status(503).json({
+      ok: false,
+      indeterminado: true,
+      error: 'No se pudo confirmar si la propuesta quedó descartada. Puede repetirlo sin riesgo.',
+    });
+  }
   return res.status(200).json({ ok: true, clave });
 }

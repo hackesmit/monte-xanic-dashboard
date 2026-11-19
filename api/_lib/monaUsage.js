@@ -9,7 +9,6 @@ import { supabaseFetch } from './supabaseFetch.js';
 const DEFAULT_MAX_PETICIONES = 300;      // per user per day; one question can take up to 9 (chat.js depth cap)
 const DEFAULT_MAX_TOKENS = 3_000_000;    // per user per day, input + output as Anthropic reports them
 const CAP_LIMIT = 1_000_000_000;         // an env typo like 1e300 must not become "no limit"
-const RPC_TIMEOUT_MS = 3000;
 
 function capFromEnv(name, fallback) {
   const n = Number(process.env[name]);
@@ -31,8 +30,7 @@ async function rpc(fn, args) {
     method: 'POST',
     headers: { 'content-type': 'application/json', apikey: key, Authorization: `Bearer ${key}` },
     body: JSON.stringify(args),
-    signal: AbortSignal.timeout(RPC_TIMEOUT_MS),
-  });
+  }, 'mona');
   if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
   const text = await resp.text();
   return text ? JSON.parse(text) : null;

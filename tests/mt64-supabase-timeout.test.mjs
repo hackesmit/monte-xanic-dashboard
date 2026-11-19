@@ -24,8 +24,14 @@ process.env.SUPABASE_TIMEOUT_MS = String(BUDGET_MS);
 process.env.TOKEN_BLACKLIST_TIMEOUT_MS = String(BUDGET_MS);
 process.env.CRON_SECRET = 'cron-mt64';
 
-let modo = 'silencio';   // 'silencio': never answer; 'goteo': headers, then a stalled body
+// 'silencio': never answer; 'goteo': 200 headers, then a stalled body;
+// 'rechaza-goteo': 409 headers, then a stalled body (a confirmed rejection);
+// 'pasarela': an immediate gateway 504 (the write may have committed behind it).
+let modo = 'silencio';
 const abiertas = new Set();
+// Every write the stub received, recorded BEFORE it stalls: a write the
+// handler calls indeterminate really did reach the database (xd-11a).
+const escrituras = [];
 let revocacion = 'limpia';   // 'limpia': the revocation check answers [] (token not revoked)
 const server = http.createServer((req, res) => {
   if (revocacion === 'limpia' && req.method === 'GET' && req.url.startsWith('/rest/v1/token_blacklist')) {
@@ -38,10 +44,15 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     return res.end('true');
   }
+  if (req.method !== 'GET') escrituras.push(`${req.method} ${req.url.split('?')[0]}`);
+  if (modo === 'pasarela') {
+    res.writeHead(504, { 'content-type': 'application/json' });
+    return res.end('{"message":"upstream timeout"}');
+  }
   abiertas.add(res);
-  if (modo === 'goteo') {
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.write('[');   // the body never completes
+  if (modo === 'goteo' || modo === 'rechaza-goteo') {
+    res.writeHead(modo === 'goteo' ? 200 : 409, { 'content-type': 'application/json' });
+    res.write(modo === 'goteo' ? '[' : '{');   // the body never completes
   }
 });
 
@@ -62,6 +73,7 @@ before(async () => {
     checkRateLimit: (await import('../api/_lib/loginRateLimit.js')).checkRateLimit,
     verifyToken: (await import('../api/_lib/verifyToken.js')).verifyToken,
     supabaseTimeoutMs: (await import('../api/_lib/supabaseFetch.js')).supabaseTimeoutMs,
+    reserveBudget: (await import('../api/_lib/monaUsage.js')).reserveBudget,
   };
 });
 after(() => {
@@ -105,7 +117,7 @@ async function dentroDelPlazo(fn) {
 }
 
 test('the budget is configurable in one place and every kind honours the override', () => {
-  for (const kind of ['read', 'batch', 'rpc']) assert.equal(mod.supabaseTimeoutMs(kind), BUDGET_MS);
+  for (const kind of ['read', 'batch', 'rpc', 'mona']) assert.equal(mod.supabaseTimeoutMs(kind), BUDGET_MS);
 });
 
 for (const m of ['silencio', 'goteo']) {
@@ -141,17 +153,6 @@ for (const m of ['silencio', 'goteo']) {
     }
   });
 
-  test(`row delete: Supabase ${etiqueta} -> 500 'Error de red'`, async () => {
-    modo = m;
-    const r = res();
-    await dentroDelPlazo(() => mod.row(req({
-      headers: { 'x-session-token': mintToken('lab') },
-      body: { table: 'wine_samples', action: 'delete', row: { sample_id: '25CSMX-1', sample_date: '2025-08-01', sample_seq: 1 } },
-    }), r));
-    assert.equal(r.out.statusCode, 500);
-    assert.match(r.out.body.error, /Error de red/);
-  });
-
   test(`mona-data: Supabase ${etiqueta} -> 500`, async () => {
     modo = m;
     const r = res();
@@ -178,22 +179,6 @@ for (const m of ['silencio', 'goteo']) {
     assert.match(r.out.body.error, m === 'silencio' ? /no respondió a tiempo/ : /no respondió a tiempo|No se pudo consultar/);
   });
 
-  test(`upsertRows: Supabase ${etiqueta} -> answers within the budget (504 when nothing came back)`, async () => {
-    modo = m;
-    const { value } = await dentroDelPlazo(() => mod.upsertRows({
-      table: 'wine_samples',
-      rows: [{ sample_id: '25CSMX-1', sample_date: '2025-08-01', sample_seq: 1, sample_type: 'Must' }],
-    }));
-    if (m === 'silencio') {
-      assert.equal(value.status, 504);
-      assert.match(value.body.error, /no respondió a tiempo/);
-    } else {
-      // A 200 whose body stalls: upsertRows reads no success body, so the
-      // write is reported as the 200 it was.
-      assert.equal(value.status, 200);
-    }
-  });
-
   test(`login limiter: Supabase ${etiqueta} -> falls back to the in-memory limiter`, async () => {
     modo = m;
     const { value } = await dentroDelPlazo(() => mod.checkRateLimit(`10.62.0.${m.length}`));
@@ -209,6 +194,174 @@ for (const m of ['silencio', 'goteo']) {
     assert.equal(value.payload, undefined);
   });
 }
+
+// ── xd-11a: a write is a confirmed success, a confirmed rejection, or
+// indeterminate; a stalled or unanswered write is never a definite failure.
+
+const FILA = {
+  delete: { sample_id: '25CSMX-1', sample_date: '2025-08-01', sample_seq: 1 },
+  update: { sample_id: '25CSMX-1', sample_date: '2025-08-01', sample_seq: 1, brix: 24.1 },
+  upsert: { sample_id: '25CSMX-1', sample_date: '2025-08-01', sample_seq: 1, sample_type: 'Must', brix: 24.1 },
+};
+const METODO = { delete: 'DELETE', update: 'PATCH', upsert: 'POST' };
+
+async function filaPor(action) {
+  const r = res();
+  await dentroDelPlazo(() => mod.row(req({
+    headers: { 'x-session-token': mintToken('lab') },
+    body: { table: 'wine_samples', action, row: { ...FILA[action] } },
+  }), r));
+  return r.out;
+}
+
+function esIndeterminado(out) {
+  assert.equal(out.statusCode, 503);
+  assert.equal(out.body.indeterminado, true);
+  assert.notEqual(out.body.ok, false, 'an unknown outcome is not a failure');
+  assert.notEqual(out.body.ok, true, 'nor a success');
+  assert.match(out.body.error, /No se pudo confirmar/);
+}
+
+for (const action of ['delete', 'update', 'upsert']) {
+  for (const m of ['silencio', 'goteo', 'pasarela']) {
+    test(`row ${action}: write reached Supabase, then ${m} -> 503 indeterminado, never a 500 failure`, async () => {
+      modo = m;
+      escrituras.length = 0;
+      const out = await filaPor(action);
+      assert.deepEqual(escrituras, [`${METODO[action]} /rest/v1/wine_samples`], 'the write was received before the stall');
+      esIndeterminado(out);
+    });
+  }
+
+  test(`row ${action}: a rejection whose body stalls stays a confirmed rejection (409, ok false)`, async () => {
+    modo = 'rechaza-goteo';
+    const out = await filaPor(action);
+    assert.equal(out.statusCode, 409);
+    assert.equal(out.body.ok, false);
+    assert.equal(out.body.indeterminado, undefined);
+  });
+}
+
+const LOTE = () => ({
+  table: 'wine_samples',
+  rows: [{ sample_id: '25CSMX-1', sample_date: '2025-08-01', sample_seq: 1, sample_type: 'Must' }],
+});
+
+for (const m of ['silencio', 'pasarela']) {
+  test(`upsertRows: batch reached Supabase, then ${m} -> 503 indeterminado, not ok:false`, async () => {
+    modo = m;
+    escrituras.length = 0;
+    const { value } = await dentroDelPlazo(() => mod.upsertRows(LOTE()));
+    assert.deepEqual(escrituras, ['POST /rest/v1/wine_samples']);
+    assert.equal(value.status, 503);
+    assert.equal(value.body.indeterminado, true);
+    assert.notEqual(value.body.ok, false);
+    assert.match(value.body.error, /No se pudo confirmar/);
+  });
+}
+
+test('upsertRows: 200 headers then a stalled body -> 200 success (the status confirms the write)', async () => {
+  modo = 'goteo';
+  const { value } = await dentroDelPlazo(() => mod.upsertRows(LOTE()));
+  assert.equal(value.status, 200);
+  assert.equal(value.body.ok, true);
+});
+
+test('upsertRows: a rejection whose error body stalls -> confirmed failure, not indeterminate', async () => {
+  modo = 'rechaza-goteo';
+  const { value } = await dentroDelPlazo(() => mod.upsertRows(LOTE()));
+  assert.equal(value.status, 500);
+  assert.equal(value.body.ok, false);
+  assert.equal(value.body.indeterminado, undefined);
+});
+
+const CLAVE = 'a|b|c|d';
+for (const m of ['silencio', 'pasarela']) {
+  test(`tanques descartar: ${m} -> 503 indeterminado, not the 502 database failure`, async () => {
+    modo = m;
+    escrituras.length = 0;
+    const r = res();
+    await dentroDelPlazo(() => mod.tanques(req({ headers: { 'x-session-token': mintToken('lab') }, body: { action: 'descartar', clave: CLAVE } }), r));
+    assert.deepEqual(escrituras, ['POST /rest/v1/tanques_propuestas_descartadas']);
+    assert.equal(r.out.statusCode, 503);
+    assert.equal(r.out.body.indeterminado, true);
+    assert.match(r.out.body.error, /Puede repetirlo/);
+  });
+}
+
+test('tanques descartar: 200 headers then a stalled body -> 200 ok', async () => {
+  modo = 'goteo';
+  const r = res();
+  await dentroDelPlazo(() => mod.tanques(req({ headers: { 'x-session-token': mintToken('lab') }, body: { action: 'descartar', clave: CLAVE } }), r));
+  assert.equal(r.out.statusCode, 200);
+  assert.equal(r.out.body.ok, true);
+});
+
+// ── xd-11a: the override never reaches AbortSignal.timeout as a bad number.
+
+test('override: fractions floor, NaN/0/negative fall back, huge clamps; never a RangeError', async () => {
+  const { supabaseTimeoutMs, supabaseFetch, MAX_OVERRIDE_MS } = await import('../api/_lib/supabaseFetch.js');
+  const keep = process.env.SUPABASE_TIMEOUT_MS;
+  try {
+    const casos = [
+      ['1000.5', 1000], ['NaN', 8000], ['0', 8000], ['-5', 8000], ['1e12', MAX_OVERRIDE_MS],
+      ['0.5', 8000], ['', 8000], ['Infinity', 8000],
+    ];
+    for (const [env, esperado] of casos) {
+      process.env.SUPABASE_TIMEOUT_MS = env;
+      const ms = supabaseTimeoutMs('read');
+      assert.equal(ms, esperado, `SUPABASE_TIMEOUT_MS=${env}`);
+      assert.ok(Number.isInteger(ms) && ms >= 1 && ms <= MAX_OVERRIDE_MS);
+      assert.doesNotThrow(() => AbortSignal.timeout(ms), `SUPABASE_TIMEOUT_MS=${env}`);
+    }
+    // The real call with a fractional override answers instead of throwing RangeError.
+    process.env.SUPABASE_TIMEOUT_MS = '1000.5';
+    modo = 'pasarela';
+    const r = await supabaseFetch(`${process.env.SUPABASE_URL}/rest/v1/x`, { method: 'GET' });
+    assert.equal(r.status, 504);
+  } finally { process.env.SUPABASE_TIMEOUT_MS = keep; }
+});
+
+// ── xd-11a / Opus N1: a caller signal is combined with the budget, never dropped.
+
+test('caller signal: aborts the call before a longer budget would', async () => {
+  const { supabaseFetch, isTimeout } = await import('../api/_lib/supabaseFetch.js');
+  const keep = process.env.SUPABASE_TIMEOUT_MS;
+  process.env.SUPABASE_TIMEOUT_MS = '2500';
+  modo = 'silencio';
+  const t0 = Date.now();
+  try {
+    await assert.rejects(
+      () => supabaseFetch(`${process.env.SUPABASE_URL}/rest/v1/x`, { signal: AbortSignal.timeout(50) }),
+      (e) => isTimeout(e));
+    assert.ok(Date.now() - t0 < 1500, `caller signal ignored: ${Date.now() - t0} ms`);
+  } finally { process.env.SUPABASE_TIMEOUT_MS = keep; }
+});
+
+test('caller signal: the budget still fires when the caller signal never does', async () => {
+  const { supabaseFetch, isTimeout } = await import('../api/_lib/supabaseFetch.js');
+  modo = 'silencio';
+  const nunca = new AbortController();
+  const { ms } = await dentroDelPlazo(() => assert.rejects(
+    () => supabaseFetch(`${process.env.SUPABASE_URL}/rest/v1/x`, { signal: nunca.signal }),
+    (e) => isTimeout(e)));
+  assert.ok(ms < HANG_GUARD_MS);
+});
+
+test('mona usage RPCs keep their own 3000 ms budget (kind mona), not the 8000 ms read budget', async () => {
+  const keep = process.env.SUPABASE_TIMEOUT_MS;
+  delete process.env.SUPABASE_TIMEOUT_MS;
+  modo = 'silencio';
+  const t0 = Date.now();
+  try {
+    assert.equal(mod.supabaseTimeoutMs('mona'), 3000);
+    const r = await mod.reserveBudget('mt64-id', 'mt64', 10);
+    const ms = Date.now() - t0;
+    assert.equal(r.ok, false);
+    assert.equal(r.status, 503, 'fails closed');
+    assert.ok(ms >= 2800 && ms < 6000, `${ms} ms`);
+  } finally { process.env.SUPABASE_TIMEOUT_MS = keep; }
+});
 
 test('error shape: supabaseFetch rejects with a TimeoutError that isTimeout names', async () => {
   modo = 'silencio';

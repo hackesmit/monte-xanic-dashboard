@@ -3,9 +3,52 @@ import { rateLimit } from './_lib/rateLimit.js';
 import { ALLOWED_TABLES } from './upload.js';
 import { sanitizeEvaluaciones, panelConsensus, panelRejectionReason } from '../js/quality-scale.js';
 import { validateRow } from '../js/validation.js';
-import { supabaseFetch } from './_lib/supabaseFetch.js';
+import {
+  supabaseFetch, isIndeterminateStatus, indeterminado, INDETERMINADO_STATUS,
+} from './_lib/supabaseFetch.js';
 
 const ALLOWED_ACTIONS = new Set(['update', 'delete', 'upsert']);
+
+const SIN_CONFIRMAR = {
+  update: 'No se pudo confirmar si el cambio se guardó. Recargue los datos y revise la fila antes de repetirlo.',
+  delete: 'No se pudo confirmar si la fila se eliminó. Recargue los datos y revise antes de repetirlo.',
+  upsert: 'No se pudo confirmar si el cambio se guardó. Recargue los datos y revise antes de repetirlo.',
+};
+
+// One write to PostgREST, sorted into the three outcomes (xd-11a; see
+// api/_lib/supabaseFetch.js). A timeout or a reset with no status, a gateway
+// 502/504, or a 2xx whose body never finishes is INDETERMINATE: the write may
+// have committed, so it is never answered as a failure. Any other status is
+// definite. Returns { kind: 'ok', body } | { kind: 'rechazo', status, body }
+// | { kind: 'indeterminado', motivo }.
+async function escribir(url, init) {
+  let supaRes;
+  try {
+    supaRes = await supabaseFetch(url, init);
+  } catch (e) {
+    return { kind: 'indeterminado', motivo: (e && e.name) || String(e) };
+  }
+  if (isIndeterminateStatus(supaRes.status)) {
+    return { kind: 'indeterminado', motivo: `HTTP ${supaRes.status}` };
+  }
+  let body = null;
+  try {
+    body = await supaRes.json();
+  } catch (e) {
+    // The status already arrived. A 2xx committed and only its body is lost;
+    // that is not a confirmed result we can show (which row, how many), so it
+    // is indeterminate, never a failure. A rejection stays a rejection.
+    if (supaRes.ok) return { kind: 'indeterminado', motivo: `HTTP ${supaRes.status}, cuerpo ilegible` };
+    return { kind: 'rechazo', status: supaRes.status, body: null };
+  }
+  if (!supaRes.ok) return { kind: 'rechazo', status: supaRes.status, body };
+  return { kind: 'ok', body };
+}
+
+function responderIndeterminado(res, action, motivo) {
+  console.error(`[row] ${action} sin confirmar:`, motivo);
+  return res.status(INDETERMINADO_STATUS).json(indeterminado(SIN_CONFIRMAR[action]));
+}
 
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -108,85 +151,73 @@ export default async function handler(req, res) {
     row.last_edited_at = new Date().toISOString();
     row.last_edited_by = result.payload.user || 'lab';
 
-    try {
-      const supaRes = await supabaseFetch(url, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': serviceKey,
-          'Authorization': `Bearer ${serviceKey}`,
-          'Prefer': 'return=representation',
-        },
-        body: JSON.stringify(row),
+    const r = await escribir(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Prefer': 'return=representation',
+      },
+      body: JSON.stringify(row),
+    });
+    if (r.kind === 'indeterminado') return responderIndeterminado(res, action, r.motivo);
+    if (r.kind === 'rechazo') {
+      console.error('[row] update failed:', r.status, JSON.stringify(r.body));
+      return res.status(r.status).json({
+        ok: false, error: r.body?.message || 'Error al actualizar',
       });
-      const updated = await supaRes.json();
-      if (!supaRes.ok) {
-        console.error('[row] update failed:', supaRes.status, JSON.stringify(updated));
-        return res.status(supaRes.status).json({
-          ok: false, error: updated?.message || 'Error al actualizar',
-        });
-      }
-      const updatedRow = Array.isArray(updated) ? updated[0] : updated;
-      if (!updatedRow) {
-        return res.status(404).json({ ok: false, error: 'Fila no encontrada' });
-      }
-      return res.status(200).json({ ok: true, row: updatedRow });
-    } catch (e) {
-      return res.status(500).json({ ok: false, error: 'Error de red al actualizar' });
     }
+    const updatedRow = Array.isArray(r.body) ? r.body[0] : r.body;
+    if (!updatedRow) {
+      return res.status(404).json({ ok: false, error: 'Fila no encontrada' });
+    }
+    return res.status(200).json({ ok: true, row: updatedRow });
   }
 
   if (action === 'delete') {
-    try {
-      const supaRes = await supabaseFetch(url, {
-        method: 'DELETE',
-        headers: {
-          'apikey': serviceKey,
-          'Authorization': `Bearer ${serviceKey}`,
-          'Prefer': 'return=representation',
-        },
+    const r = await escribir(url, {
+      method: 'DELETE',
+      headers: {
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Prefer': 'return=representation',
+      },
+    });
+    if (r.kind === 'indeterminado') return responderIndeterminado(res, action, r.motivo);
+    if (r.kind === 'rechazo') {
+      console.error('[row] delete failed:', r.status, JSON.stringify(r.body));
+      return res.status(r.status).json({
+        ok: false, error: r.body?.message || 'Error al eliminar',
       });
-      const body = await supaRes.json();
-      if (!supaRes.ok) {
-        console.error('[row] delete failed:', supaRes.status, JSON.stringify(body));
-        return res.status(supaRes.status).json({
-          ok: false, error: body?.message || 'Error al eliminar',
-        });
-      }
-      const count = Array.isArray(body) ? body.length : 0;
-      return res.status(200).json({ ok: true, deleted: count });
-    } catch (e) {
-      return res.status(500).json({ ok: false, error: 'Error de red al eliminar' });
     }
+    const count = Array.isArray(r.body) ? r.body.length : 0;
+    return res.status(200).json({ ok: true, deleted: count });
   }
 
   if (action === 'upsert') {
     row.updated_at = new Date().toISOString();
     row.updated_by = result.payload.user || 'lab';
     const upsertUrl = `${supabaseUrl}/rest/v1/${table}?on_conflict=${conflictCols.join(',')}`;
-    try {
-      const supaRes = await supabaseFetch(upsertUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'apikey': serviceKey,
-          'Authorization': `Bearer ${serviceKey}`,
-          'Prefer': 'resolution=merge-duplicates,return=representation',
-        },
-        body: JSON.stringify(row),
+    const r = await escribir(upsertUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Prefer': 'resolution=merge-duplicates,return=representation',
+      },
+      body: JSON.stringify(row),
+    });
+    if (r.kind === 'indeterminado') return responderIndeterminado(res, action, r.motivo);
+    if (r.kind === 'rechazo') {
+      console.error('[row] upsert failed:', r.status, JSON.stringify(r.body));
+      return res.status(r.status).json({
+        ok: false, error: r.body?.message || 'Error al guardar',
       });
-      const upserted = await supaRes.json();
-      if (!supaRes.ok) {
-        console.error('[row] upsert failed:', supaRes.status, JSON.stringify(upserted));
-        return res.status(supaRes.status).json({
-          ok: false, error: upserted?.message || 'Error al guardar',
-        });
-      }
-      const upsertedRow = Array.isArray(upserted) ? upserted[0] : upserted;
-      return res.status(200).json({ ok: true, row: upsertedRow });
-    } catch (e) {
-      return res.status(500).json({ ok: false, error: 'Error de red al guardar' });
     }
+    const upsertedRow = Array.isArray(r.body) ? r.body[0] : r.body;
+    return res.status(200).json({ ok: true, row: upsertedRow });
   }
 
   // Should be unreachable - ALLOWED_ACTIONS guards above.
