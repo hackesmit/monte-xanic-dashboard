@@ -59,4 +59,34 @@ test.describe('Stale cache indicator', () => {
     await expect(page.locator('#db-status-badge')).toHaveClass(/db-badge-ok/);
     await expect(page.locator('#stale-banner')).toBeHidden();
   });
+
+  // xd-vqe: a reconnect reruns every loader, and the banner clears only after.
+  test('Supabase back after a failed boot: the online event restores live data and all loaders', async ({ page }) => {
+    let caido = true;
+    const tablas = [];
+    await abrir(page, (route) => {
+      const tabla = new URL(route.request().url()).searchParams.get('tabla');
+      if (caido) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'caído' }) });
+      tablas.push(tabla);
+      return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, filas: [] }) });
+    });
+    // Meteorology is read with the anon client (rest/v1), not /api/datos.
+    let meteo = 0;
+    await page.route('https://e2e.supabase.co/rest/v1/meteorology*', (route) => {
+      meteo++;
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '[]' });
+    });
+    const banner = page.locator('#stale-banner');
+    await expect(banner).toBeVisible();
+    const meteoAntes = meteo;
+    caido = false;
+    await page.evaluate(() => window.dispatchEvent(new Event('online')));
+    await expect(page.locator('#db-status-badge')).toHaveClass(/db-badge-ok/);
+    await expect(banner).toBeHidden();
+    for (const t of ['wine_samples', 'mediciones_tecnicas', 'harvest_target_overrides']) {
+      expect(tablas, `${t} not reloaded after reconnect`).toContain(t);
+    }
+    expect(meteo, 'meteorology not reloaded after reconnect').toBeGreaterThan(meteoAntes);
+    await page.screenshot({ path: 'test-results/stale-cache-reconnected.png' });
+  });
 });

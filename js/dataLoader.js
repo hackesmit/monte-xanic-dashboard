@@ -65,7 +65,10 @@ export const DataStore = {
 
   // Initialise the Supabase client by fetching credentials from /api/config.
   // Falls back to localStorage dev keys when running locally without the API.
-  async initSupabase() {
+  // reintentar: after a failed boot attempt, try /api/config again (the
+  // reconnect path in app.js _recuperarDatos). A live client is never rebuilt.
+  async initSupabase({ reintentar = false } = {}) {
+    if (reintentar && !this.supabase) this._supabaseReady = false;
     if (this._supabaseReady) return !!this.supabase;
     try {
       let url, anonKey;

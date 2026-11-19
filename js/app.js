@@ -46,23 +46,7 @@ export const App = {
           }
           this._updateDbStatus();
         });
-
-        // Mediciones power the Calidad (classification) scoring on the map.
-        // Fire-and-forget; the join is re-run when the rows arrive.
-        DataStore.loadMediciones().then(() => {
-          if (this.initialized) this.refresh();
-        });
-        DataStore.loadHarvestTargetOverrides();
-
-        // Weather: load from Supabase meteorology table now that connection is ready
-        WeatherStore.load().then(hasCache => {
-          const vintages = WeatherStore.getVintagesFromData();
-          if (!vintages.length) return;
-          WeatherStore.sync(vintages).then(() => {
-            if (this.currentView === 'vintage') this.refresh();
-          });
-          if (hasCache && this.currentView === 'vintage') this.refresh();
-        });
+        this._cargarSecundarios();
       });
     } else {
       // 2 - Try Supabase (first visit or stale cache)
@@ -92,6 +76,7 @@ export const App = {
       this._updateDbStatus();
     }
     this.bindGlobalEvents();
+    this._bindRecoveryTriggers();
 
     const chipPred = document.querySelector('.nav-tab[data-view="prediccion"]');
     if (chipPred && !CONFIG.harvestPredictorEnabled) chipPred.hidden = true;
@@ -100,6 +85,9 @@ export const App = {
   // Header badge plus the stale-data banner, driven by the last fetch
   // outcome (estadoDatos), never by whether a Supabase client object exists.
   _updateDbStatus() {
+    // While a reconnect is in flight the last state stays on screen: the
+    // banner clears only once every loader of _recuperarDatos has finished.
+    if (this._recovering) return;
     const { estado, ts } = estadoDatos({
       lastFetch: DataStore.lastFetch,
       dataTs: DataStore.dataTs,
@@ -131,6 +119,83 @@ export const App = {
         ? `Sin conexión a la base de datos. Mostrando datos en caché del ${cuando}; pueden estar desactualizados.`
         : '';
     }
+  },
+
+  // The loaders that run beside loadFromSupabase once a client exists:
+  // mediciones (Calidad scoring), harvest target overrides (prediction) and
+  // meteorology. Resolves when all three have finished; none of them rejects,
+  // and allSettled keeps a future one that does from hanging a reconnect.
+  // The Open-Meteo sync after the weather load is not awaited: it is slow
+  // and only adds days, the meteorology rows are already in.
+  _cargarSecundarios() {
+    return Promise.allSettled([
+      // Fire-and-forget at boot; the join is re-run when the rows arrive.
+      DataStore.loadMediciones().then(() => {
+        if (this.initialized) this.refresh();
+      }),
+      DataStore.loadHarvestTargetOverrides(),
+      WeatherStore.load().then(hasCache => {
+        const vintages = WeatherStore.getVintagesFromData();
+        if (!vintages.length) return;
+        WeatherStore.sync(vintages).then(() => {
+          if (this.currentView === 'vintage') this.refresh();
+        });
+        if (hasCache && this.currentView === 'vintage') this.refresh();
+      }),
+    ]);
+  },
+
+  // Reconnect after a failed boot (xd-vqe). Without it a failed boot held
+  // until F5: no client, the cache or an empty dashboard, and the banner.
+  _recovering: false,
+  _recoveryBound: false,
+  _lastRecoveryAt: -Infinity,
+  RECOVERY_COOLDOWN_MS: 30_000,
+
+  _bindRecoveryTriggers() {
+    if (this._recoveryBound || typeof window === 'undefined') return;
+    this._recoveryBound = true;
+    window.addEventListener('online', () => this._recuperarDatos({ sinEspera: true }));
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this._recuperarDatos();
+      });
+    }
+  },
+
+  // Rebuild the client if the boot had none, rerun loadFromSupabase and then
+  // every secondary loader, and only then let the badge and banner change.
+  // Acts only when the last fetch failed: a live dashboard, a boot still in
+  // flight or demo mode is left alone. One attempt at a time; a tab coming
+  // back into view waits RECOVERY_COOLDOWN_MS between attempts, a network
+  // 'online' event does not. Resolves true when the data is live again.
+  async _recuperarDatos({ sinEspera = false } = {}) {
+    if (this._recovering || DataStore._demoActive) return false;
+    if (DataStore.lastFetch?.outcome !== 'error') return false;
+    const ahora = Date.now();
+    if (!sinEspera && ahora - this._lastRecoveryAt < this.RECOVERY_COOLDOWN_MS) return false;
+    this._lastRecoveryAt = ahora;
+    this._recovering = true;
+    let ok = false;
+    try {
+      await DataStore.initSupabase({ reintentar: true });
+      const outcome = await DataStore.loadFromSupabase();
+      if (outcome !== 'error') {
+        await this._cargarSecundarios();
+        ok = true;
+      }
+    } catch (e) {
+      console.warn('[App] reconexión fallida:', e);
+    } finally {
+      this._recovering = false;
+    }
+    if (ok && this.initialized) {
+      Filters.buildMapVintageOptions();
+      Filters.initMapVintage();
+      this.refresh();
+    }
+    this._updateDbStatus();
+    return ok;
   },
 
   bindGlobalEvents() {
