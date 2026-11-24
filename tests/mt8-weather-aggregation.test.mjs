@@ -6,6 +6,13 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { WeatherStore } from '../js/weather.js';
 import { todayInVineyard } from '../js/utils.js';
+import { mock } from 'node:test';
+
+// Fixed clock (xd-trx): "today" is 2026-07-15 mid-season, noon in Tijuana, so
+// the suite gives the same answer on any run date (the real date failed once
+// the season ended or the forecast window crossed 10-31). Enabled at module
+// load because some fixtures compute dates while describing.
+mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-07-15T19:00:00Z') });
 
 // ── Sample data: 14 days of weather from Jul 1–14, 2025 ──
 function sampleRows() {
